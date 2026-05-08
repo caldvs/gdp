@@ -44,7 +44,7 @@ export const parseService = {
 
     const sha256 = createHash('sha256').update(bytes).digest('hex');
 
-    const existing = await billStore.findByImageHash(sha256);
+    const existing = await billStore.findByImageHash(input.userId, sha256);
     if (existing) {
       const bill = await billStore.getLatest(existing.billId);
       if (bill) return bill;
@@ -52,7 +52,9 @@ export const parseService = {
 
     const parsed = await input.parser.parse(bytes, input.requestId);
     const bill = buildBillV1({ parsed, userId: input.userId, sha256, parser: input.parser });
-    await billStore.putVersion(bill, { indexImageHash: sha256 });
+    await billStore.putVersion(bill, {
+      indexImageHash: { userId: input.userId, sha256 },
+    });
     return bill;
   },
 };

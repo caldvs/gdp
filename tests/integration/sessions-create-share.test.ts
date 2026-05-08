@@ -152,6 +152,26 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(res.status).toBe(404);
   });
 
+  it('a stranger cannot read a session they are not part of (404)', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const stranger = `s-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const sessionId = ((await create.json()) as { sessionId: string }).sessionId;
+
+    const res = await app.request(`/v1/sessions/${sessionId}`, {
+      headers: makeAuth(stranger),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('SESSION_NOT_FOUND');
+  });
+
   it('cannot share twice (state must be setup)', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;

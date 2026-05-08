@@ -30,7 +30,9 @@ export const uploadService = {
     sizeBytes: number;
     mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
   }): Promise<UploadResult> {
-    const existing = await billStore.findByImageHash(input.sha256);
+    // Hash index is scoped per-user so a hash collision across users
+    // never reveals one user's billId to another.
+    const existing = await billStore.findByImageHash(input.userId, input.sha256);
     if (existing) {
       return { status: 'duplicate', billId: existing.billId };
     }

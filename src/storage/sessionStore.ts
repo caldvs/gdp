@@ -1,4 +1,5 @@
 import {
+  BatchGetCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -15,6 +16,21 @@ const META_SK = 'META';
 const partSk = (userId: string) => `PART#${userId}`;
 const codePk = (code: string) => `JCODE#${code}`;
 const billLockPk = (billId: string) => `BILLLOCK#${billId}`;
+const userIdx = (userId: string) => `USER#${userId}`;
+
+// Participant row helper — every participant row carries GSI1PK so we can
+// list a user's sessions via the GSI1 query. UUIDv7 sessionIds are
+// time-ordered, so reverse-sort on GSI1SK gives most-recent-first for free.
+function participantItem(sessionId: string, ttlAt: number, p: Participant) {
+  return {
+    pk: sessionPk(sessionId),
+    sk: partSk(p.userId),
+    ttlAt,
+    GSI1PK: userIdx(p.userId),
+    GSI1SK: sessionId,
+    ...p,
+  };
+}
 
 type SessionMetaRow = Omit<Session, 'participants'> & { pk: string; sk: string };
 
@@ -41,7 +57,7 @@ export const sessionStore = {
       ...session.participants.map((p) => ({
         Put: {
           TableName: TABLE_NAME,
-          Item: { pk: sessionPk(session.sessionId), sk: partSk(p.userId), ttlAt, ...p },
+          Item: participantItem(session.sessionId, ttlAt, p),
         },
       })),
     ];
@@ -95,7 +111,7 @@ export const sessionStore = {
     const participants: Participant[] = [];
 
     for (const raw of result.Items) {
-      const { pk: _pk, sk, ...rest } = raw;
+      const { pk: _pk, sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
       if (sk === META_SK) {
         meta = rest as Omit<Session, 'participants'>;
       } else if (typeof sk === 'string' && sk.startsWith('PART#')) {
@@ -126,12 +142,7 @@ export const sessionStore = {
     await ddb.send(
       new PutCommand({
         TableName: TABLE_NAME,
-        Item: {
-          pk: sessionPk(sessionId),
-          sk: partSk(participant.userId),
-          ttlAt: ttlEpochSeconds(),
-          ...participant,
-        },
+        Item: participantItem(sessionId, ttlEpochSeconds(), participant),
       }),
     );
   },
@@ -181,12 +192,7 @@ export const sessionStore = {
           {
             Put: {
               TableName: TABLE_NAME,
-              Item: {
-                pk: sessionPk(input.sessionMeta.sessionId),
-                sk: partSk(input.creator.userId),
-                ttlAt,
-                ...input.creator,
-              },
+              Item: participantItem(input.sessionMeta.sessionId, ttlAt, input.creator),
             },
           },
         ],
@@ -219,13 +225,91 @@ export const sessionStore = {
       ...input.participants.map((p) => ({
         Put: {
           TableName: TABLE_NAME,
-          Item: { pk: sessionPk(input.sessionMeta.sessionId), sk: partSk(p.userId), ttlAt, ...p },
+          Item: participantItem(input.sessionMeta.sessionId, ttlAt, p),
         },
       })),
     ];
     // Bill lock is already in place from session create; no need to write again.
 
     await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
+  },
+
+  /**
+   * List sessions where the user is a participant, most recent first. Uses
+   * GSI1 (USER#{userId} → sessionId) for the index then BatchGet on the META
+   * rows to assemble summaries.
+   *
+   * Returns lightweight summaries (sessionId, status, role, billId,
+   * pinnedBillVersion, createdAt, plus the caller's owedPence and payment
+   * status when available). The full Session can be fetched on demand.
+   */
+  async listForUser(
+    userId: string,
+    limit: number,
+  ): Promise<
+    Array<
+      Omit<Session, 'participants'> & {
+        role: 'lead' | 'diner';
+        myOwedPence?: number;
+        myPaymentStatus: Participant['payment']['status'];
+      }
+    >
+  > {
+    const idxRes = await ddb.send(
+      new QueryCommand({
+        TableName: TABLE_NAME,
+        IndexName: 'GSI1',
+        KeyConditionExpression: 'GSI1PK = :pk',
+        ExpressionAttributeValues: { ':pk': userIdx(userId) },
+        ScanIndexForward: false,
+        Limit: limit,
+      }),
+    );
+    const partRows = idxRes.Items ?? [];
+    if (partRows.length === 0) return [];
+
+    const sessionIds = partRows
+      .map((row) => {
+        const { GSI1SK } = row as { GSI1SK?: string };
+        return typeof GSI1SK === 'string' ? GSI1SK : null;
+      })
+      .filter((id): id is string => !!id);
+    if (sessionIds.length === 0) return [];
+
+    const metaRes = await ddb.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [TABLE_NAME]: {
+            Keys: sessionIds.map((id) => ({ pk: sessionPk(id), sk: META_SK })),
+          },
+        },
+      }),
+    );
+    const metaBySessionId = new Map<string, Omit<Session, 'participants'>>();
+    for (const raw of metaRes.Responses?.[TABLE_NAME] ?? []) {
+      const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
+      const meta = rest as Omit<Session, 'participants'>;
+      metaBySessionId.set(meta.sessionId, meta);
+    }
+
+    // Preserve the index order; drop sessions whose meta is missing
+    // (TTL-expired or partial data). Augment with the caller's PART# row.
+    const out = sessionIds
+      .map((id) => {
+        const meta = metaBySessionId.get(id);
+        if (!meta) return null;
+        const partRow = partRows.find((r) => r.GSI1SK === id) as
+          | (Participant & { GSI1SK?: string })
+          | undefined;
+        return {
+          ...meta,
+          role: meta.creatorUserId === userId ? ('lead' as const) : ('diner' as const),
+          ...(partRow?.owedPence !== undefined ? { myOwedPence: partRow.owedPence } : {}),
+          myPaymentStatus: partRow?.payment.status ?? ('unpaid' as const),
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    return out;
   },
 
   async getBillLock(billId: string): Promise<{ sessionId: string } | null> {

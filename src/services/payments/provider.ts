@@ -43,5 +43,11 @@ export interface PaymentProvider {
    */
   verifyWebhookSignature(input: VerifyWebhookInput): Promise<void> | void;
 
-  parseWebhookEvent(rawBody: string): WebhookEvent;
+  /**
+   * Parses the verified webhook body. Returns `null` for events the provider
+   * recognises but we don't want to act on (e.g. TL's `payment_creditable`
+   * informational event); the route then 200-acks without applying state.
+   * Throws for malformed bodies — those should 400 so the provider retries.
+   */
+  parseWebhookEvent(rawBody: string): WebhookEvent | null;
 }

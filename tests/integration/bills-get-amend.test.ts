@@ -4,7 +4,13 @@ import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-s
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
-import { fakeVerifier, makeAuth, newIdempotencyKey, sampleParsedBill } from './helpers.js';
+import {
+  fakeVerifier,
+  makeAuth,
+  newIdempotencyKey,
+  sampleParsedBill,
+  uniqueImageBytes,
+} from './helpers.js';
 
 const buildApp = () =>
   createApp({
@@ -18,7 +24,7 @@ async function createBill(app: ReturnType<typeof buildApp>, userId: string) {
     new PutObjectCommand({
       Bucket: BILLS_BUCKET,
       Key: `${userId}/${uploadId}`,
-      Body: new Uint8Array([1, 2, 3, Math.floor(Math.random() * 255)]),
+      Body: uniqueImageBytes(),
       ContentType: 'image/jpeg',
     }),
   );

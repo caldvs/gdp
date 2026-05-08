@@ -6,6 +6,8 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as sm from 'aws-cdk-lib/aws-secretsmanager';
 import type { Construct } from 'constructs';
 import { tableSchema } from './tableSchema.js';
 
@@ -73,6 +75,37 @@ class GdpBackendStack extends cdk.Stack {
       autoDeleteObjects: envName !== 'prod',
     });
 
+    // Public-ish config — SSM Parameter Store, resolved at deploy time.
+    const googleClientId = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/google-client-id`,
+    );
+    const trueLayerClientId = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/truelayer-client-id`,
+    );
+
+    // Secrets — Secrets Manager. Values resolved at deploy time via dynamic
+    // CloudFormation references and land as Lambda env vars. Trade-off: the
+    // values are visible in the Lambda console UI to anyone with read access
+    // to this account. Acceptable for dev; revisit for prod (switch to a
+    // runtime fetch via aws-sdk client-secrets-manager).
+    const geminiKey = sm.Secret.fromSecretNameV2(
+      this,
+      'GeminiKey',
+      `gdp-${envName}/gemini-api-key`,
+    );
+    const trueLayerClientSecret = sm.Secret.fromSecretNameV2(
+      this,
+      'TrueLayerClientSecret',
+      `gdp-${envName}/truelayer-client-secret`,
+    );
+    const trueLayerWebhookSecret = sm.Secret.fromSecretNameV2(
+      this,
+      'TrueLayerWebhookSecret',
+      `gdp-${envName}/truelayer-webhook-secret`,
+    );
+
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: 'src/lambda.ts',
@@ -86,8 +119,15 @@ class GdpBackendStack extends cdk.Stack {
         DDB_TABLE_NAME: table.tableName,
         S3_BUCKET_BILLS: billsBucket.bucketName,
         LOG_LEVEL: envName === 'prod' ? 'info' : 'debug',
-        // Secrets (GOOGLE_CLIENT_ID, GEMINI_API_KEY, TRUELAYER_*) are wired via
-        // SSM Parameter Store / Secrets Manager when the account is provisioned.
+
+        GOOGLE_CLIENT_ID: googleClientId,
+
+        GEMINI_API_KEY: geminiKey.secretValue.unsafeUnwrap(),
+
+        TRUELAYER_CLIENT_ID: trueLayerClientId,
+        TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.secretValue.unsafeUnwrap(),
+        TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.secretValue.unsafeUnwrap(),
+        TRUELAYER_ENVIRONMENT: 'sandbox',
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,

@@ -690,6 +690,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/payments/{paymentId}/mark-paid:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [payments]
+      operationId: markPaymentPaidByPayer
+      summary: Payer claims they've sent the money via their banking app
+      description: |
+        Payer-only. Idempotent — re-claiming returns the same `payerClaimedPaidAt` timestamp.
+        **Does not advance payment status** — only the lead's `/confirm` does that. This claim
+        exists purely as a UX signal: the lead's session view can flag pending payments where
+        the payer says they've already paid, so the lead knows which ones to confirm next.
+
+        Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
+        payments advance via webhook from TL, not via the payer self-claiming).
+      responses:
+        '200':
+          description: Payment with `payerClaimedPaidAt` set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Payment not found, or caller is not the payer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Payment is not in `pending` (e.g. already succeeded or failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /webhooks/truelayer:
     post:
       tags: [webhooks]
@@ -960,6 +993,14 @@ components:
           properties:
             status: { type: string, const: pending }
             paymentId: { type: string, format: uuid }
+            payerClaimedPaidAt:
+              type: string
+              format: date-time
+              description: |
+                Mirrors `Payment.payerClaimedPaidAt` — set when the payer hits
+                `/v1/payments/{paymentId}/mark-paid` to claim they've sent the money.
+                The lead's UI can use this to flag "they say they paid" alongside the
+                pending payment.
         - type: object
           required: [status, paymentId, paidAt]
           properties:
@@ -1100,6 +1141,14 @@ components:
               source: { type: string, enum: [api, webhook, system] }
               note: { type: string }
         createdAt: { type: string, format: date-time }
+        payerClaimedPaidAt:
+          type: string
+          format: date-time
+          description: |
+            Set when the payer hits `POST /v1/payments/{paymentId}/mark-paid` to claim
+            "I've sent the money via my bank app". Surfaced in the lead's session view so
+            they know which pending payments are awaiting their `/confirm`. Does not advance
+            payment status — only `/confirm` does that.
 
     UploadRequest:
       type: object

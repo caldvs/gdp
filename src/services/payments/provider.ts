@@ -1,5 +1,13 @@
 import type { WebhookEventType } from './stateMachine.js';
 
+export interface PaymentBeneficiary {
+  /** UK sort code, 6 digits, no separators. */
+  sortCode: string;
+  /** UK account number, 8 digits. */
+  accountNumber: string;
+  accountHolderName: string;
+}
+
 export interface InitiatePaymentInput {
   paymentId: string;
   amountPence: number;
@@ -7,6 +15,7 @@ export interface InitiatePaymentInput {
   payerUserId: string;
   collectorUserId: string;
   reference: string;
+  beneficiary: PaymentBeneficiary;
 }
 
 export interface InitiatedPayment {

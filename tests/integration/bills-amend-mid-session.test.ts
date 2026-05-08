@@ -8,6 +8,7 @@ import {
   makeAuth,
   createBillFor,
   sampleParsedBill,
+  setPayoutFor,
 } from './helpers.js';
 
 const buildApp = () =>
@@ -26,6 +27,7 @@ async function setupSessionInClaiming(app: ReturnType<typeof buildApp>) {
     body: JSON.stringify({ billId: bill.billId }),
   });
   const session = (await sRes.json()) as { sessionId: string };
+  await setPayoutFor(app, creator);
   await app.request(`/v1/sessions/${session.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),
@@ -223,6 +225,7 @@ describe('POST /v1/bills/:billId/amend — mid-session', () => {
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({ claimedItemIds: bill.items.map((it) => it.itemId) }),
     });
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${session.sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),

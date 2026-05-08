@@ -14,6 +14,7 @@ export const ErrorCodes = {
   CLAIMS_INCOMPLETE: { http: 409 },
   CLAIMS_EXCEED_QUANTITY: { http: 409 },
   PARTICIPANTS_NOT_READY: { http: 409 },
+  PAYOUT_ACCOUNT_REQUIRED: { http: 409 },
   PARSE_FAILED: { http: 422 },
   PARSE_LOW_CONFIDENCE: { http: 422 },
   RATE_LIMITED: { http: 429 },

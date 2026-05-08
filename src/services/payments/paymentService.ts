@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
+import { userStore } from '../../storage/userStore.js';
 import { isAlreadyApplied, nextStatus } from './stateMachine.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
@@ -39,6 +40,15 @@ export const paymentService = {
       throw new AppError('SESSION_INVALID_STATE', 'Participant has nothing owed');
     }
 
+    // Beneficiary = the collector's saved bank details. The /share gate
+    // means a session can't reach `paying` without these set, so this
+    // load should always succeed; the explicit error preserves a clean
+    // failure mode if data has been deleted out from under us.
+    const collector = await userStore.get(session.collectorUserId);
+    if (!collector?.payoutAccount) {
+      throw new AppError('PAYOUT_ACCOUNT_REQUIRED', 'Collector has no payout account on file');
+    }
+
     const paymentId = uuidv7();
     const initiated = await initiateOrTranslate(input.provider, {
       paymentId,
@@ -47,6 +57,7 @@ export const paymentService = {
       payerUserId: participant.userId,
       collectorUserId: session.collectorUserId,
       reference: `gdp-${session.sessionId.slice(0, 8)}`,
+      beneficiary: collector.payoutAccount,
     });
 
     const now = new Date().toISOString();

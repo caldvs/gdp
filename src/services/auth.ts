@@ -6,6 +6,8 @@ export interface VerifiedIdentity {
   userId: string;
   email?: string;
   name?: string;
+  /** Google `picture` claim — profile photo URL. Optional. */
+  picture?: string;
 }
 
 export type IdTokenVerifier = (token: string) => Promise<VerifiedIdentity>;
@@ -40,5 +42,6 @@ export const verifyGoogleIdToken: IdTokenVerifier = async (token) => {
     userId: payload.sub,
     email: payload.email,
     name: payload.name,
+    picture: payload.picture,
   };
 };

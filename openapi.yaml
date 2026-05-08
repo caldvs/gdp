@@ -199,6 +199,31 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/bills/{billId}/image-url:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    get:
+      tags: [bills]
+      operationId: getBillImageUrl
+      summary: Get a short-lived presigned GET URL for the original bill image
+      description: |
+        Returns a presigned S3 GET URL (TTL ~5 min) for the original uploaded image. Available to the
+        bill creator and to any participant of a session this bill is pinned to. Returns 404 NOT_FOUND
+        for legacy bills that were parsed before the upload reference was retained.
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/bills/{billId}/amend:
     parameters:
       - $ref: '#/components/parameters/BillId'
@@ -768,6 +793,10 @@ components:
             parser: { type: string, example: gemini-2.5-flash }
             parserVersion: { type: string, example: v1 }
             parsedAt: { type: string, format: date-time }
+            uploadId:
+              type: string
+              format: uuid
+              description: Original upload identifier; absent on bills parsed before this field was retained.
         venue: { $ref: '#/components/schemas/Venue' }
         previousVersionId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }

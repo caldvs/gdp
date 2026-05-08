@@ -26,6 +26,9 @@ export const ParsedFromSchema = z.object({
   parser: z.string(),
   parserVersion: z.string(),
   parsedAt: z.string().datetime(),
+  // Optional for forward-compat with bills parsed before this field existed.
+  // Bills without it can't serve image-url; the endpoint returns IMAGE_UNAVAILABLE.
+  uploadId: z.string().uuid().optional(),
 });
 export type ParsedFrom = z.infer<typeof ParsedFromSchema>;
 

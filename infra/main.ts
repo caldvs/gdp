@@ -7,6 +7,9 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as cw from 'aws-cdk-lib/aws-cloudwatch';
+import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
+import * as sns from 'aws-cdk-lib/aws-sns';
 import type { Construct } from 'constructs';
 import { tableSchema } from './tableSchema.js';
 
@@ -162,9 +165,82 @@ class GdpBackendStack extends cdk.Stack {
       defaultIntegration: new integrations.HttpLambdaIntegration('LambdaIntegration', fn),
     });
 
+    // ---------------- Observability: alarms ----------------
+
+    // SNS topic for alarm notifications. Email subscribers are added
+    // post-deploy via the AWS console (or `aws sns subscribe` from the
+    // CLI) so the email address isn't baked into source / version
+    // control. See RUNBOOK.md for the one-click subscription steps.
+    const alertTopic = new sns.Topic(this, 'AlertTopic', {
+      topicName: `gdp-${envName}-alerts`,
+      displayName: `Group Dine Pay (${envName}) alerts`,
+    });
+
+    const snsAction = new cwActions.SnsAction(alertTopic);
+    const period5m = cdk.Duration.minutes(5);
+
+    const lambdaErrorsAlarm = new cw.Alarm(this, 'LambdaErrorsAlarm', {
+      alarmName: `gdp-${envName}-lambda-errors`,
+      alarmDescription: 'Lambda has thrown errors. See RUNBOOK.md "lambda-errors" for diagnosis.',
+      metric: fn.metricErrors({ period: period5m, statistic: 'Sum' }),
+      threshold: 3,
+      evaluationPeriods: 1,
+      treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    lambdaErrorsAlarm.addAlarmAction(snsAction);
+    lambdaErrorsAlarm.addOkAction(snsAction);
+
+    const lambdaP99Alarm = new cw.Alarm(this, 'LambdaDurationP99Alarm', {
+      alarmName: `gdp-${envName}-lambda-duration-p99`,
+      alarmDescription: 'Lambda p99 duration > 10s for 5m. See RUNBOOK.md "lambda-duration".',
+      metric: fn.metricDuration({ period: period5m, statistic: 'p99' }),
+      threshold: 10_000,
+      evaluationPeriods: 1,
+      treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    lambdaP99Alarm.addAlarmAction(snsAction);
+
+    const api5xxAlarm = new cw.Alarm(this, 'Api5xxAlarm', {
+      alarmName: `gdp-${envName}-api-5xx`,
+      alarmDescription: 'API Gateway saw >5 5xx responses in 5m. See RUNBOOK.md "api-5xx".',
+      metric: new cw.Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName: '5xx',
+        dimensionsMap: { ApiId: httpApi.apiId, Stage: '$default' },
+        period: period5m,
+        statistic: 'Sum',
+      }),
+      threshold: 5,
+      evaluationPeriods: 1,
+      treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    api5xxAlarm.addAlarmAction(snsAction);
+    api5xxAlarm.addOkAction(snsAction);
+
+    const ddbThrottleAlarm = new cw.Alarm(this, 'DdbThrottleAlarm', {
+      alarmName: `gdp-${envName}-ddb-throttles`,
+      alarmDescription: 'DynamoDB throttled at least one request. See RUNBOOK.md "ddb-throttle".',
+      metric: new cw.Metric({
+        namespace: 'AWS/DynamoDB',
+        metricName: 'ThrottledRequests',
+        dimensionsMap: { TableName: table.tableName },
+        period: period5m,
+        statistic: 'Sum',
+      }),
+      threshold: 0,
+      evaluationPeriods: 1,
+      treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    ddbThrottleAlarm.addAlarmAction(snsAction);
+
     new cdk.CfnOutput(this, 'ApiUrlOutput', { value: httpApi.apiEndpoint });
     new cdk.CfnOutput(this, 'TableNameOutput', { value: table.tableName });
     new cdk.CfnOutput(this, 'BillsBucketOutput', { value: billsBucket.bucketName });
+    new cdk.CfnOutput(this, 'AlertTopicArnOutput', { value: alertTopic.topicArn });
   }
 }
 

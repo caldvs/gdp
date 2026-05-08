@@ -70,7 +70,7 @@ describe('GET /v1/bills/:billId', () => {
     expect(body.error.code).toBe('BILL_NOT_FOUND');
   });
 
-  it('returns 404 BILL_NOT_FOUND when the caller is not the creator', async () => {
+  it('returns 404 BILL_NOT_FOUND when the caller is not the creator and not a session participant', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const stranger = `s-${uuidv7()}`;
@@ -82,6 +82,38 @@ describe('GET /v1/bills/:billId', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('BILL_NOT_FOUND');
+  });
+
+  it('lets a session participant read the pinned bill', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const created = await createBill(app, creator);
+
+    // Lead creates session, shares (transitions to claiming), guest joins.
+    const sessionRes = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: created.billId }),
+    });
+    const session = (await sessionRes.json()) as { sessionId: string };
+    await app.request(`/v1/sessions/${session.sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    await app.request(`/v1/sessions/${session.sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+
+    // Guest can now read the bill (they need the items to claim against)
+    const res = await app.request(`/v1/bills/${created.billId}`, {
+      headers: makeAuth(guest),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { billId: string; items: unknown[] };
+    expect(body.billId).toBe(created.billId);
+    expect(Array.isArray(body.items)).toBe(true);
   });
 
   it('returns the latest version by default', async () => {

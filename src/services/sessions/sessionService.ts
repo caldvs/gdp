@@ -30,6 +30,7 @@ export const sessionService = {
     const creatorParticipant: Participant = {
       userId: input.caller.userId,
       displayName: input.caller.displayName,
+      ...(input.caller.avatarUrl ? { avatarUrl: input.caller.avatarUrl } : {}),
       claimedItemIds: [],
       payment: { status: 'unpaid' },
       // Creator's "ready" doesn't gate lock-claims — they ARE the locker.
@@ -151,6 +152,7 @@ export const sessionService = {
     const newParticipant: Participant = {
       userId: input.caller.userId,
       displayName: input.caller.displayName,
+      ...(input.caller.avatarUrl ? { avatarUrl: input.caller.avatarUrl } : {}),
       claimedItemIds: [],
       payment: { status: 'unpaid' },
       readyToLock: false,

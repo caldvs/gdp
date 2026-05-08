@@ -68,7 +68,7 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
       billId: string;
       pinnedBillVersion: number;
       joinCode?: string;
-      participants: { userId: string; payment: { status: string } }[];
+      participants: { userId: string; avatarUrl?: string; payment: { status: string } }[];
     };
     expect(session.status).toBe('setup');
     expect(session.creatorUserId).toBe(creator);
@@ -79,6 +79,9 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(session.participants).toHaveLength(1);
     expect(session.participants[0]?.userId).toBe(creator);
     expect(session.participants[0]?.payment.status).toBe('unpaid');
+    // fakeVerifier returns picture for tok-<userId>; sessionService should
+    // plumb that into Participant.avatarUrl.
+    expect(session.participants[0]?.avatarUrl).toBe(`https://avatar.example/${creator}.png`);
   });
 
   it("rejects creating a session for someone else's bill (BILL_NOT_FOUND)", async () => {

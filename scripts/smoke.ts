@@ -81,6 +81,30 @@ async function checkAuthGate(api: string): Promise<void> {
   pass('/v1/me (unauthed) → 401 AUTH_MISSING with requestId');
 }
 
+/**
+ * A bogus Bearer token must be rejected as AUTH_INVALID (Google's lib
+ * tried to verify and failed), NOT INTERNAL_ERROR (which would mean
+ * GOOGLE_CLIENT_ID is unset and the verifier short-circuits). This is
+ * how we smoke-detect that the auth verifier is actually wired up to
+ * the Lambda env.
+ */
+async function checkAuthVerifierWired(api: string): Promise<void> {
+  const res = await fetch(`${api}/v1/me`, {
+    headers: { authorization: 'Bearer not-a-real-token' },
+  });
+  if (res.status !== 401) {
+    fail(
+      `/v1/me with bogus token: expected 401 (verifier wired), got ${res.status} ` +
+        `— GOOGLE_CLIENT_ID may be unset`,
+    );
+  }
+  const body = (await res.json()) as { error?: { code?: string } };
+  if (body.error?.code !== 'AUTH_INVALID' && body.error?.code !== 'AUTH_EXPIRED') {
+    fail(`/v1/me with bogus token: expected AUTH_INVALID/AUTH_EXPIRED, got ${body.error?.code}`);
+  }
+  pass('/v1/me (bogus token) → 401 AUTH_INVALID — Google verifier is wired');
+}
+
 async function checkRequestIdHeader(api: string): Promise<void> {
   const res = await fetch(`${api}/healthz`);
   const id = res.headers.get('x-request-id');
@@ -115,6 +139,7 @@ async function main(): Promise<void> {
   await checkHealthz(api);
   await checkReadyz(api);
   await checkAuthGate(api);
+  await checkAuthVerifierWired(api);
   await checkRequestIdHeader(api);
   await checkDocs(api);
 

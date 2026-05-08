@@ -7,6 +7,7 @@ import { uploadService } from '../services/bills/uploadService.js';
 import { parseService } from '../services/bills/parseService.js';
 import { amendService } from '../services/bills/amendService.js';
 import { billStore } from '../storage/billStore.js';
+import { sessionStore } from '../storage/sessionStore.js';
 import { AppError } from '../errors/AppError.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { BillParser } from '../services/bills/parser.js';
@@ -77,12 +78,18 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
       : await billStore.getLatest(billId);
 
     if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
-    if (bill.creatorUserId !== userId) {
-      // For v0 only the creator can read a bill directly. Participants
-      // see bill items embedded in their session view.
-      throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    if (bill.creatorUserId === userId) return c.json(bill);
+
+    // Session participants can read the bill they're pinned to. Without
+    // this, guest diners can't render the items list to claim against.
+    const lock = await sessionStore.getBillLock(billId);
+    if (lock) {
+      const session = await sessionStore.get(lock.sessionId);
+      if (session?.participants.some((p) => p.userId === userId)) {
+        return c.json(bill);
+      }
     }
-    return c.json(bill);
+    throw new AppError('BILL_NOT_FOUND', 'Bill not found');
   });
 
   r.post(

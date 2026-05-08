@@ -102,10 +102,6 @@ class GdpBackendStack extends cdk.Stack {
       this,
       `/gdp-${envName}/truelayer-signing-kid`,
     );
-    const trueLayerMerchantAccountId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/gdp-${envName}/truelayer-merchant-account-id`,
-    );
 
     // Secrets — Secrets Manager. Values resolved at deploy time via friendly-
     // name dynamic CloudFormation references and land as Lambda env vars.
@@ -156,7 +152,6 @@ class GdpBackendStack extends cdk.Stack {
         TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.unsafeUnwrap(),
         TRUELAYER_SIGNING_KID: trueLayerSigningKid,
         TRUELAYER_SIGNING_PRIVATE_KEY_PEM: trueLayerSigningPrivateKey.unsafeUnwrap(),
-        TRUELAYER_MERCHANT_ACCOUNT_ID: trueLayerMerchantAccountId,
         TRUELAYER_ENVIRONMENT: 'sandbox',
         PAYMENT_PROVIDER: 'truelayer',
       },

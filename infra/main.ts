@@ -153,7 +153,11 @@ class GdpBackendStack extends cdk.Stack {
         TRUELAYER_SIGNING_KID: trueLayerSigningKid,
         TRUELAYER_SIGNING_PRIVATE_KEY_PEM: trueLayerSigningPrivateKey.unsafeUnwrap(),
         TRUELAYER_ENVIRONMENT: 'sandbox',
-        PAYMENT_PROVIDER: 'truelayer',
+        // `manual` = guests pay the lead via their own banking app (Monzo/
+        // Revolut deep links if available, raw sort+account otherwise),
+        // lead confirms receipt manually. Free of TrueLayer fees. Switch
+        // to `truelayer` once TL Live commercial onboarding is in place.
+        PAYMENT_PROVIDER: 'manual',
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,

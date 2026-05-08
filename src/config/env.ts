@@ -23,7 +23,7 @@ const EnvSchema = z.object({
   TRUELAYER_SIGNING_PRIVATE_KEY_PEM: z.string().optional(),
   TRUELAYER_RETURN_URI: z.string().url().optional(),
 
-  PAYMENT_PROVIDER: z.enum(['mock', 'truelayer']).default('mock'),
+  PAYMENT_PROVIDER: z.enum(['mock', 'truelayer', 'manual']).default('mock'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

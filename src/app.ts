@@ -22,10 +22,15 @@ import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.
 export interface AppDeps {
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
-  paymentProvider?: PaymentProvider;
+  /**
+   * Pass a concrete provider for tests. Pass `null` to force manual mode.
+   * Omit to fall back to env-driven default.
+   */
+  paymentProvider?: PaymentProvider | null;
 }
 
-const defaultPaymentProvider = (): PaymentProvider => {
+const defaultPaymentProvider = (): PaymentProvider | null => {
+  if (env.PAYMENT_PROVIDER === 'manual') return null;
   if (env.PAYMENT_PROVIDER === 'truelayer') {
     if (
       !env.TRUELAYER_CLIENT_ID ||
@@ -54,7 +59,10 @@ const defaultPaymentProvider = (): PaymentProvider => {
 export const createApp = (deps: AppDeps = {}): Hono => {
   const app = new Hono();
   const billParser = deps.billParser ?? createDefaultBillParser(env.GEMINI_API_KEY);
-  const paymentProvider = deps.paymentProvider ?? defaultPaymentProvider();
+  // `paymentProvider: undefined` (omitted) → use env default (which may itself be null).
+  // `paymentProvider: null` → explicit "manual mode" override (used in tests).
+  const paymentProvider =
+    deps.paymentProvider === undefined ? defaultPaymentProvider() : deps.paymentProvider;
 
   app.use('*', requestId());
   app.use('*', requestLogger());
@@ -85,7 +93,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     }),
   );
   app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier: deps.idTokenVerifier }));
-  app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
+  // No webhook route in manual mode — there's no provider sending events.
+  if (paymentProvider) {
+    app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
+  }
 
   app.notFound((c) =>
     c.json(

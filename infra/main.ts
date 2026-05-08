@@ -7,7 +7,6 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import * as sm from 'aws-cdk-lib/aws-secretsmanager';
 import type { Construct } from 'constructs';
 import { tableSchema } from './tableSchema.js';
 
@@ -85,24 +84,21 @@ class GdpBackendStack extends cdk.Stack {
       `/gdp-${envName}/truelayer-client-id`,
     );
 
-    // Secrets — Secrets Manager. Values resolved at deploy time via dynamic
-    // CloudFormation references and land as Lambda env vars. Trade-off: the
-    // values are visible in the Lambda console UI to anyone with read access
-    // to this account. Acceptable for dev; revisit for prod (switch to a
-    // runtime fetch via aws-sdk client-secrets-manager).
-    const geminiKey = sm.Secret.fromSecretNameV2(
-      this,
-      'GeminiKey',
-      `gdp-${envName}/gemini-api-key`,
-    );
-    const trueLayerClientSecret = sm.Secret.fromSecretNameV2(
-      this,
-      'TrueLayerClientSecret',
+    // Secrets — Secrets Manager. Values resolved at deploy time via friendly-
+    // name dynamic CloudFormation references and land as Lambda env vars.
+    // Trade-off: the values are visible in the Lambda console UI to anyone
+    // with read access to this account. Acceptable for dev; revisit for prod
+    // (switch to a runtime fetch via aws-sdk client-secrets-manager).
+    //
+    // Using cdk.SecretValue.secretsManager() rather than Secret.fromSecretNameV2,
+    // because the latter generates an ARN-form dynamic reference that CFN
+    // sometimes refuses to resolve; the friendly-name form is what AWS docs
+    // describe as canonical.
+    const geminiKey = cdk.SecretValue.secretsManager(`gdp-${envName}/gemini-api-key`);
+    const trueLayerClientSecret = cdk.SecretValue.secretsManager(
       `gdp-${envName}/truelayer-client-secret`,
     );
-    const trueLayerWebhookSecret = sm.Secret.fromSecretNameV2(
-      this,
-      'TrueLayerWebhookSecret',
+    const trueLayerWebhookSecret = cdk.SecretValue.secretsManager(
       `gdp-${envName}/truelayer-webhook-secret`,
     );
 
@@ -122,11 +118,11 @@ class GdpBackendStack extends cdk.Stack {
 
         GOOGLE_CLIENT_ID: googleClientId,
 
-        GEMINI_API_KEY: geminiKey.secretValue.unsafeUnwrap(),
+        GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
 
         TRUELAYER_CLIENT_ID: trueLayerClientId,
-        TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.secretValue.unsafeUnwrap(),
-        TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.secretValue.unsafeUnwrap(),
+        TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.unsafeUnwrap(),
+        TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.unsafeUnwrap(),
         TRUELAYER_ENVIRONMENT: 'sandbox',
       },
       bundling: {

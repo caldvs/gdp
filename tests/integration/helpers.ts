@@ -4,6 +4,13 @@ import type { IdTokenVerifier } from '../../src/services/auth.js';
 import type { ParsedBillFromImage } from '../../src/services/bills/parser.js';
 
 /**
+ * Returns bytes whose SHA-256 is unique per call, so tests don't collide
+ * with the bill image-hash dedupe index from previous runs.
+ */
+export const uniqueImageBytes = (): Uint8Array =>
+  new TextEncoder().encode(`fixture-${uuidv7()}-${Math.random()}`);
+
+/**
  * Token format: `tok-<userId>` returns a verified identity for that user.
  * Token `expired-token` throws AUTH_EXPIRED.
  * Anything else throws AUTH_INVALID.

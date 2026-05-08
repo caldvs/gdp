@@ -4,7 +4,13 @@ import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-s
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
-import { fakeVerifier, makeAuth, newIdempotencyKey, sampleParsedBill } from './helpers.js';
+import {
+  fakeVerifier,
+  makeAuth,
+  newIdempotencyKey,
+  sampleParsedBill,
+  uniqueImageBytes,
+} from './helpers.js';
 
 const buildApp = () =>
   createApp({
@@ -64,7 +70,7 @@ describe('POST /v1/bills/parse', () => {
     const app = buildApp();
     const userId = `u-${uuidv7()}`;
     const uploadId = uuidv7();
-    await putObject(userId, uploadId, new Uint8Array([1, 2, 3, 4, 5]));
+    await putObject(userId, uploadId, uniqueImageBytes());
 
     const res = await app.request('/v1/bills/parse', {
       method: 'POST',
@@ -105,7 +111,7 @@ describe('POST /v1/bills/parse', () => {
     const userId = `u-${uuidv7()}`;
     const uploadId = uuidv7();
     const idempotencyKey = newIdempotencyKey();
-    await putObject(userId, uploadId, new Uint8Array([10, 11, 12]));
+    await putObject(userId, uploadId, uniqueImageBytes());
 
     const first = await app.request('/v1/bills/parse', {
       method: 'POST',
@@ -140,8 +146,8 @@ describe('POST /v1/bills/parse', () => {
     const uploadId1 = uuidv7();
     const uploadId2 = uuidv7();
     const idempotencyKey = newIdempotencyKey();
-    await putObject(userId, uploadId1, new Uint8Array([1]));
-    await putObject(userId, uploadId2, new Uint8Array([2]));
+    await putObject(userId, uploadId1, uniqueImageBytes());
+    await putObject(userId, uploadId2, uniqueImageBytes());
 
     await app.request('/v1/bills/parse', {
       method: 'POST',
@@ -173,7 +179,7 @@ describe('POST /v1/bills/parse', () => {
     const userB = `b-${uuidv7()}`;
     const uploadId = uuidv7();
     // upload as A
-    await putObject(userA, uploadId, new Uint8Array([1, 2, 3]));
+    await putObject(userA, uploadId, uniqueImageBytes());
 
     // B tries to parse same uploadId
     const res = await app.request('/v1/bills/parse', {
@@ -191,7 +197,7 @@ describe('POST /v1/bills/parse', () => {
   it('re-parsing the same image bytes returns the existing bill (hash dedupe)', async () => {
     const app = buildApp();
     const userId = `u-${uuidv7()}`;
-    const bytes = new Uint8Array([42, 43, 44, 45, 46]);
+    const bytes = uniqueImageBytes();
     const uploadId1 = uuidv7();
     const uploadId2 = uuidv7();
     await putObject(userId, uploadId1, bytes);

@@ -1,5 +1,6 @@
 import { v7 as uuidv7 } from 'uuid';
 import { billStore } from '../../storage/billStore.js';
+import { sessionStore } from '../../storage/sessionStore.js';
 import { AppError } from '../../errors/AppError.js';
 import type { Bill, BillItem, AmendBillRequest } from '../../types/bills.js';
 
@@ -18,8 +19,15 @@ export const amendService = {
       throw new AppError('BILL_NOT_FOUND', 'Bill not found');
     }
 
-    // checkpoint 6 (Sessions) will gate amendments by session state.
-    // For v0 of bills-only, amendments are always allowed.
+    // Reject if a session has locked this bill (status >= paying).
+    const lock = await sessionStore.getBillLock(input.billId);
+    if (lock) {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        'Bill is locked: a session has entered the paying state',
+        { sessionId: lock.sessionId },
+      );
+    }
 
     const items: BillItem[] = input.amendment.items.map((it) => ({
       itemId: it.itemId ?? uuidv7(),

@@ -3,52 +3,49 @@ import type { Participant } from '../../types/sessions.js';
 
 /**
  * Computes `owedPence` for each participant such that the total reconciles
- * exactly to `bill.totalPence`. Uses a deterministic algorithm:
+ * exactly to `bill.totalPence`. Per-unit claim semantics:
  *
- *   1. For each item, divide the cost (unitPrice × quantity) equally among
- *      its claimers. Remainder pennies go to claimers in userId-sorted order.
+ *   1. claimedItemIds may contain the same itemId multiple times — each
+ *      occurrence claims one unit. Each user owes unitPricePence × N for
+ *      each item they claimed N units of.
  *   2. Apportion service charge and tax proportionally to each participant's
- *      subtotal share, using the largest-remainder method (Hare quota).
+ *      subtotal, using the largest-remainder method (Hare quota).
  *   3. Sum each participant's contributions.
  *
- * Throws an Error with `code = 'CLAIMS_INCOMPLETE'` and a list of unclaimed
- * itemIds if any item has zero claimers.
+ * Throws an Error with `code = 'CLAIMS_INCOMPLETE'` and a list of itemIds
+ * whose total claim count across all participants is less than item.quantity.
  */
 export function computeOwed(
   bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'>,
   participants: ReadonlyArray<Pick<Participant, 'userId' | 'claimedItemIds'>>,
 ): Map<string, number> {
-  const subtotalByUser = new Map<string, number>();
-  for (const p of participants) {
-    subtotalByUser.set(p.userId, 0);
-  }
+  const itemById = new Map(bill.items.map((it) => [it.itemId, it]));
 
+  // Per-unit completeness: for each item, total claim count across all
+  // participants must equal item.quantity. Anything short → unclaimed.
   const unclaimed: string[] = [];
-
   for (const item of bill.items) {
-    const cost = item.unitPricePence * item.quantity;
-    const claimers = participants
-      .filter((p) => p.claimedItemIds.includes(item.itemId))
-      .map((p) => p.userId)
-      .sort();
-
-    if (claimers.length === 0) {
-      unclaimed.push(item.itemId);
-      continue;
-    }
-
-    const baseShare = Math.floor(cost / claimers.length);
-    const remainder = cost - baseShare * claimers.length;
-    claimers.forEach((userId, i) => {
-      const extra = i < remainder ? 1 : 0;
-      subtotalByUser.set(userId, (subtotalByUser.get(userId) ?? 0) + baseShare + extra);
-    });
+    const totalClaimed = participants.reduce(
+      (sum, p) => sum + p.claimedItemIds.filter((id) => id === item.itemId).length,
+      0,
+    );
+    if (totalClaimed < item.quantity) unclaimed.push(item.itemId);
   }
-
   if (unclaimed.length > 0) {
     const err = new Error('CLAIMS_INCOMPLETE');
     (err as Error & { unclaimedItemIds: string[] }).unclaimedItemIds = unclaimed;
     throw err;
+  }
+
+  // Subtotal per user: sum of unitPricePence for each occurrence in their claims.
+  const subtotalByUser = new Map<string, number>();
+  for (const p of participants) {
+    let subtotal = 0;
+    for (const id of p.claimedItemIds) {
+      const item = itemById.get(id);
+      if (item) subtotal += item.unitPricePence;
+    }
+    subtotalByUser.set(p.userId, subtotal);
   }
 
   const serviceShares = apportionByWeight(bill.serviceChargePence, subtotalByUser);

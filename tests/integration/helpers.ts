@@ -48,7 +48,11 @@ export async function ensureBillsBucket(): Promise<void> {
 export async function createBillFor(
   app: Hono,
   userId: string,
-): Promise<{ billId: string; totalPence: number; items: { itemId: string }[] }> {
+): Promise<{
+  billId: string;
+  totalPence: number;
+  items: { itemId: string; quantity: number; unitPricePence: number; name: string }[];
+}> {
   const uploadId = uuidv7();
   await s3.send(
     new PutObjectCommand({
@@ -70,14 +74,14 @@ export async function createBillFor(
   return (await res.json()) as {
     billId: string;
     totalPence: number;
-    items: { itemId: string }[];
+    items: { itemId: string; quantity: number; unitPricePence: number; name: string }[];
   };
 }
 
 /**
  * Creates a session in `paying` state with the creator (collector) +
- * supplied guests, distributing one item to each (creator → item[0],
- * guests[i] → item[i+1]). All participants have owedPence computed.
+ * supplied guests. With per-unit claim semantics, every individual unit
+ * needs an owner; this helper round-robins units across (creator + guests).
  */
 export async function buildPayingSession(
   app: Hono,
@@ -85,7 +89,11 @@ export async function buildPayingSession(
   guests: string[],
 ): Promise<{
   sessionId: string;
-  bill: { billId: string; totalPence: number; items: { itemId: string }[] };
+  bill: {
+    billId: string;
+    totalPence: number;
+    items: { itemId: string; quantity: number; unitPricePence: number; name: string }[];
+  };
 }> {
   const bill = await createBillFor(app, creator);
   const create = await app.request('/v1/sessions', {
@@ -95,21 +103,28 @@ export async function buildPayingSession(
   });
   const initial = (await create.json()) as { sessionId: string };
 
-  // Creator claims item[0] plus any leftover items beyond what guests get.
-  const creatorItemIds = [bill.items[0]!.itemId];
-  for (let i = guests.length + 1; i < bill.items.length; i += 1) {
-    creatorItemIds.push(bill.items[i]!.itemId);
+  // Round-robin every unit across creator + guests
+  const allUsers = [creator, ...guests];
+  const buckets = new Map<string, string[]>(allUsers.map((u) => [u, []]));
+  let cursor = 0;
+  for (const item of bill.items) {
+    for (let unit = 0; unit < item.quantity; unit += 1) {
+      const owner = allUsers[cursor % allUsers.length]!;
+      buckets.get(owner)!.push(item.itemId);
+      cursor += 1;
+    }
   }
+
   await app.request(`/v1/sessions/${initial.sessionId}/claims`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...makeAuth(creator) },
-    body: JSON.stringify({ claimedItemIds: creatorItemIds }),
+    body: JSON.stringify({ claimedItemIds: buckets.get(creator)! }),
   });
   await app.request(`/v1/sessions/${initial.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),
   });
-  for (const [i, g] of guests.entries()) {
+  for (const g of guests) {
     await app.request(`/v1/sessions/${initial.sessionId}/join`, {
       method: 'POST',
       headers: makeAuth(g),
@@ -117,7 +132,7 @@ export async function buildPayingSession(
     await app.request(`/v1/sessions/${initial.sessionId}/claims`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...makeAuth(g) },
-      body: JSON.stringify({ claimedItemIds: [bill.items[i + 1]!.itemId] }),
+      body: JSON.stringify({ claimedItemIds: buckets.get(g)! }),
     });
   }
   await app.request(`/v1/sessions/${initial.sessionId}/lock-claims`, {
@@ -132,14 +147,18 @@ export async function buildPayingSession(
 }
 
 export const sampleParsedBill: ParsedBillFromImage = {
+  // All quantity-1 items so the claim distribution in setUpClaiming maps
+  // 1:1 with participants for the tests that exercise lock/payment flow.
+  // Per-unit semantics are covered separately in allocation.test.ts and the
+  // dedicated integration test below.
   items: [
-    { name: 'Margherita Pizza', unitPricePence: 1450, quantity: 2, category: 'food' },
-    { name: 'Pint of IPA', unitPricePence: 650, quantity: 3, category: 'drink' },
+    { name: 'Margherita Pizza', unitPricePence: 1450, quantity: 1, category: 'food' },
+    { name: 'Pint of IPA', unitPricePence: 650, quantity: 1, category: 'drink' },
     { name: 'Tiramisu', unitPricePence: 750, quantity: 1, category: 'food' },
   ],
-  taxPence: 0, // VAT typically baked in for UK menu prices
-  serviceChargePence: 575, // 12.5% on 4600 subtotal = 575
-  totalPence: 5175,
+  taxPence: 0,
+  serviceChargePence: 356, // ~12.5% on 2850 subtotal
+  totalPence: 3206,
   currency: 'GBP',
   venue: { name: 'Pizzeria Test', address: '1 Test Street, London' },
 };

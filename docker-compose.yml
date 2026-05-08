@@ -1,0 +1,17 @@
+services:
+  ddb:
+    image: amazon/dynamodb-local:latest
+    container_name: gdp-ddb-local
+    ports:
+      - '8000:8000'
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
+
+  s3:
+    image: localstack/localstack:latest
+    container_name: gdp-s3-local
+    ports:
+      - '4566:4566'
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=eu-west-2
+      - PERSISTENCE=0

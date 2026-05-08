@@ -5,7 +5,7 @@ import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { uploadKey } from './uploadService.js';
-import type { Bill, BillItem } from '../../types/bills.js';
+import { BillSchema, type Bill, type BillItem } from '../../types/bills.js';
 import type { BillParser, ParsedBillFromImage } from './parser.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -48,10 +48,19 @@ export const parseService = {
     if (existing) {
       const bill = await billStore.getLatest(existing.billId);
       if (bill) return bill;
+      // Index pointed somewhere we can't read — partial write or external
+      // mutation. Don't silently re-parse: that would overwrite the index
+      // and orphan the original billId. Surface as internal error instead.
+      throw new AppError(
+        'INTERNAL_ERROR',
+        'Image hash index points to a missing bill — manual reconciliation needed',
+      );
     }
 
     const parsed = await input.parser.parse(bytes, input.requestId);
-    const bill = buildBillV1({ parsed, userId: input.userId, sha256, parser: input.parser });
+    const bill = BillSchema.parse(
+      buildBillV1({ parsed, userId: input.userId, sha256, parser: input.parser }),
+    );
     await billStore.putVersion(bill, {
       indexImageHash: { userId: input.userId, sha256 },
     });

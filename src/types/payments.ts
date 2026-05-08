@@ -27,7 +27,7 @@ export const PaymentSchema = z.object({
   collectorUserId: z.string(),
   amountPence: z.number().int().positive(),
   currency: z.literal('GBP'),
-  provider: z.enum(['truelayer', 'mock']),
+  provider: z.literal('truelayer'),
   providerPaymentId: z.string(),
   status: PaymentStatusSchema,
   idempotencyKey: z.string(),

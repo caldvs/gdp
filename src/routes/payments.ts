@@ -1,17 +1,12 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
+import { callerOf } from '../context/caller.js';
 import { paymentService } from '../services/payments/paymentService.js';
-import { AppError } from '../errors/AppError.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 
 export interface PaymentGetRouteDeps {
   idTokenVerifier?: IdTokenVerifier;
 }
-
-const callerOf = (c: { var: { userId?: string } }): { userId: string } => {
-  if (!c.var.userId) throw new AppError('AUTH_MISSING', 'No verified user');
-  return { userId: c.var.userId };
-};
 
 export const buildPaymentGetRoute = (deps: PaymentGetRouteDeps): Hono => {
   const r = new Hono();

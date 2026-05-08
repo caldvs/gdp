@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
+import { callerOf } from '../context/caller.js';
 import { uploadService } from '../services/bills/uploadService.js';
 import { parseService } from '../services/bills/parseService.js';
 import { amendService } from '../services/bills/amendService.js';
@@ -41,8 +42,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
       }
     }),
     async (c) => {
-      const userId = c.var.userId;
-      if (!userId) throw new AppError('AUTH_MISSING', 'No verified user');
+      const { userId } = callerOf(c);
       const body = c.req.valid('json');
       const result = await uploadService.requestUpload({ ...body, userId });
       return c.json(result);
@@ -55,8 +55,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     requireIdempotency(),
     zValidator('json', ParseRequestSchema),
     async (c) => {
-      const userId = c.var.userId;
-      if (!userId) throw new AppError('AUTH_MISSING', 'No verified user');
+      const { userId } = callerOf(c);
       const { uploadId } = c.req.valid('json');
       const bill = await parseService.parse({
         userId,
@@ -69,8 +68,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
   );
 
   r.get('/:billId', requireAuth(deps.idTokenVerifier), async (c) => {
-    const userId = c.var.userId;
-    if (!userId) throw new AppError('AUTH_MISSING', 'No verified user');
+    const { userId } = callerOf(c);
     const billId = c.req.param('billId');
     const versionParam = c.req.query('version');
 
@@ -92,8 +90,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     requireAuth(deps.idTokenVerifier),
     zValidator('json', AmendBillRequestSchema),
     async (c) => {
-      const userId = c.var.userId;
-      if (!userId) throw new AppError('AUTH_MISSING', 'No verified user');
+      const { userId } = callerOf(c);
       const billId = c.req.param('billId');
       const amendment = c.req.valid('json');
       const bill = await amendService.amend({ billId, userId, amendment });

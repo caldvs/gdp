@@ -242,22 +242,24 @@ describe('POST /v1/sessions/:id/claims', () => {
     expect(body.error.code).toBe('INVALID_INPUT');
   });
 
-  it("creator's claims are frozen once share has been called", async () => {
+  it('creator can update their own claims after share (catches missed items)', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const { sessionId, bill } = await buildSharedSession(app, creator);
 
-    // Session is now in claiming. Creator tries to update claims.
     const res = await app.request(`/v1/sessions/${sessionId}/claims`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({
-        claimedItemIds: [bill.items[1]?.itemId, bill.items[2]?.itemId],
+        claimedItemIds: [bill.items[1]!.itemId, bill.items[2]!.itemId],
       }),
     });
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('SESSION_INVALID_STATE');
+    expect(res.status).toBe(200);
+    const refreshed = (await res.json()) as {
+      participants: { userId: string; claimedItemIds: string[] }[];
+    };
+    const me = refreshed.participants.find((p) => p.userId === creator)!;
+    expect(me.claimedItemIds).toEqual([bill.items[1]!.itemId, bill.items[2]!.itemId]);
   });
 
   it('rejects claims from non-participants', async () => {

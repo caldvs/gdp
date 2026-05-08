@@ -6,11 +6,19 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
 import type { Bill } from '../types/bills.js';
+import type { Participant, Session } from '../types/sessions.js';
+
+const SESSION_TTL_DAYS = 30;
+const ttlEpochSeconds = (): number =>
+  Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
 
 const billPk = (billId: string) => `BILL#${billId}`;
 const versionSk = (n: number) => `V#${String(n).padStart(3, '0')}`;
 const LATEST_SK = 'LATEST';
 const hashPk = (userId: string, sha256: string) => `IMGHASH#${userId}#${sha256}`;
+const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
+const META_SK = 'META';
+const partSk = (userId: string) => `PART#${userId}`;
 
 export const billStore = {
   /**
@@ -81,6 +89,49 @@ export const billStore = {
     );
     if (!result.Item) return null;
     return { billId: result.Item.billId as string };
+  },
+
+  /**
+   * Atomic mid-session amend: writes the new bill version (V# + LATEST) AND
+   * the reconciled session meta + participant rows in one TransactWrite.
+   * Used when the lead amends a bill that's currently pinned to an active
+   * session — the session's pinnedBillVersion bumps and stale claims/ready
+   * flags are pruned in lockstep.
+   */
+  async applyAmendWithSession(input: {
+    bill: Bill;
+    sessionMeta: Omit<Session, 'participants'>;
+    participants: Participant[];
+  }): Promise<void> {
+    const ttlAt = ttlEpochSeconds();
+    const billItem = { pk: billPk(input.bill.billId), ...input.bill };
+    const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: { ...billItem, sk: versionSk(input.bill.versionNumber) },
+        },
+      },
+      { Put: { TableName: TABLE_NAME, Item: { ...billItem, sk: LATEST_SK } } },
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            pk: sessionPk(input.sessionMeta.sessionId),
+            sk: META_SK,
+            ttlAt,
+            ...input.sessionMeta,
+          },
+        },
+      },
+      ...input.participants.map((p) => ({
+        Put: {
+          TableName: TABLE_NAME,
+          Item: { pk: sessionPk(input.sessionMeta.sessionId), sk: partSk(p.userId), ttlAt, ...p },
+        },
+      })),
+    ];
+    await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
   },
 
   async indexImageHash(userId: string, sha256: string, billId: string): Promise<void> {

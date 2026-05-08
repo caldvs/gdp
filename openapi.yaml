@@ -236,10 +236,15 @@ paths:
       operationId: amendBill
       summary: Create a new version of the bill with user edits
       description: |
-        Allowed only when the bill is either (a) not yet attached to a session, or (b) attached to a
-        session in `setup` or `claiming`. Once a session enters `paying`, the bill is frozen.
-        Item IDs are preserved where item identity is preserved; deleted items invalidate any claims
-        attached to them and the affected participants must re-claim.
+        Allowed when the bill is either (a) not yet attached to a session, or (b) attached to a session
+        in `setup` or `claiming`. Once a session enters `paying`, the bill is frozen.
+
+        When an active session is attached, the amend reconciles in lockstep: the session's
+        `pinnedBillVersion` bumps to the new version, claims pointing to removed items are dropped, and
+        non-creator participants are un-readied so they re-confirm against the new bill. If the new
+        quantity for an item is below the count of claims already attached to it, the call fails with
+        `409 CLAIMS_EXCEED_QUANTITY` — the lead must clear those claims (or raise the quantity) first.
+        Item IDs are preserved where item identity is preserved.
       requestBody:
         required: true
         content:
@@ -255,7 +260,9 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Bill is frozen (session in `paying` or `settled`)
+          description: |
+            Bill is frozen (session in `paying` or `settled`), or the amend would orphan existing
+            claims (`CLAIMS_EXCEED_QUANTITY`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }

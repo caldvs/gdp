@@ -5,6 +5,7 @@ import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { opsRoutes } from './routes/ops.js';
+import { docsRoutes } from './routes/docs.js';
 import { buildMeRoutes, meRoutes } from './routes/me.js';
 import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
@@ -38,6 +39,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   app.onError(errorHandler);
 
   app.route('/', opsRoutes);
+  app.route('/', docsRoutes);
   app.route('/v1', deps.idTokenVerifier ? buildMeRoutes(deps.idTokenVerifier) : meRoutes);
   app.route('/v1/bills', buildBillRoutes({ idTokenVerifier: deps.idTokenVerifier, billParser }));
   app.route(

@@ -59,13 +59,13 @@ fields @timestamp, level, requestId, route, msg, err.message
 
 **Common causes & mitigation.**
 
-| Symptom in logs                               | Likely cause                                 | Mitigation                                                             |
-| --------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
-| `Invalid environment variables` at INIT       | CDK env value drifted from zod schema        | Fix `infra/main.ts` env block; redeploy                                |
-| `Dynamic require of …` at INIT                | Bundling missing the createRequire banner    | Check `infra/main.ts` `bundling.banner`                                |
-| `Secrets Manager can't find …` at deploy time | Friendly-name secret missing or wrong region | `aws secretsmanager list-secrets --profile gdp-dev --region eu-west-2` |
-| Repeated `PARSE_FAILED`                       | Gemini quota / outage / model deprecation    | Check Google AI Studio dashboard; fall back to Flash-Lite              |
-| `PAYMENT_PROVIDER_ERROR`                      | TrueLayer 5xx or webhook signature mismatch  | Check TrueLayer status page; verify webhook secret matches             |
+| Symptom in logs                               | Likely cause                                         | Mitigation                                                                                                                                                                   |
+| --------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Invalid environment variables` at INIT       | CDK env value drifted from zod schema                | Fix `infra/main.ts` env block; redeploy                                                                                                                                      |
+| `Dynamic require of …` at INIT                | Bundling missing the createRequire banner            | Check `infra/main.ts` `bundling.banner`                                                                                                                                      |
+| `Secrets Manager can't find …` at deploy time | Friendly-name secret missing or wrong region         | `aws secretsmanager list-secrets --profile gdp-dev --region eu-west-2`                                                                                                       |
+| Repeated `PARSE_FAILED`                       | Gemini quota / outage / model deprecation            | Check Google AI Studio dashboard; fall back to Flash-Lite                                                                                                                    |
+| `PAYMENT_PROVIDER_ERROR`                      | TrueLayer 5xx, auth failure, or signing-key mismatch | Check TrueLayer status page; check Console kid matches `/gdp-{env}/truelayer-signing-kid` SSM and that `gdp-{env}/truelayer-signing-private-key` is the matching private key |
 
 The error envelope's `requestId` cross-references the `x-request-id`
 header we return to clients — if a user reports a failure, they can give
@@ -188,9 +188,9 @@ A payment row exists with `status: pending` but no webhook arrived after
 endpoint rejected it.
 
 1. Check our `/webhooks/truelayer` endpoint logs for that
-   `providerPaymentId` — if it appears with 401, signature verification
-   failed (probably webhook secret mismatch). If it doesn't appear,
-   TrueLayer never delivered.
+   `providerPaymentId` — if it appears with 401, JWS verification
+   failed (likely a JWKS rotation or our `path` arg drifted from the
+   route mount). If it doesn't appear, TrueLayer never delivered.
 2. TrueLayer dashboard → Webhook deliveries — see retry attempts and
    response codes.
 3. If TrueLayer says it delivered but we don't have it: our endpoint

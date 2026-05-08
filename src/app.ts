@@ -17,6 +17,7 @@ import type { BillParser } from './services/bills/parser.js';
 import { createDefaultBillParser } from './services/bills/geminiParser.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
+import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
 
 export interface AppDeps {
   idTokenVerifier?: IdTokenVerifier;
@@ -25,6 +26,29 @@ export interface AppDeps {
 }
 
 const defaultPaymentProvider = (): PaymentProvider => {
+  if (env.PAYMENT_PROVIDER === 'truelayer') {
+    if (
+      !env.TRUELAYER_CLIENT_ID ||
+      !env.TRUELAYER_CLIENT_SECRET ||
+      !env.TRUELAYER_SIGNING_KID ||
+      !env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM ||
+      !env.TRUELAYER_MERCHANT_ACCOUNT_ID ||
+      !env.TRUELAYER_RETURN_URI
+    ) {
+      throw new Error(
+        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_MERCHANT_ACCOUNT_ID, TRUELAYER_RETURN_URI',
+      );
+    }
+    return new TrueLayerSandboxProvider({
+      environment: env.TRUELAYER_ENVIRONMENT,
+      clientId: env.TRUELAYER_CLIENT_ID,
+      clientSecret: env.TRUELAYER_CLIENT_SECRET,
+      signingKid: env.TRUELAYER_SIGNING_KID,
+      signingPrivateKeyPem: env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM,
+      merchantAccountId: env.TRUELAYER_MERCHANT_ACCOUNT_ID,
+      returnUri: env.TRUELAYER_RETURN_URI,
+    });
+  }
   const secret = env.TRUELAYER_WEBHOOK_SECRET ?? 'local-mock-secret';
   return new MockTrueLayerProvider(secret);
 };

@@ -6,6 +6,7 @@ import type {
   InitiatePaymentInput,
   InitiatedPayment,
   PaymentProvider,
+  VerifyWebhookInput,
   WebhookEvent,
 } from './provider.js';
 
@@ -46,13 +47,14 @@ export class MockTrueLayerProvider implements PaymentProvider {
     return createHmac('sha256', this.webhookSecret).update(rawBody).digest('hex');
   }
 
-  verifyWebhookSignature(input: { rawBody: string; signature: string | undefined }): void {
-    if (!input.signature) {
+  verifyWebhookSignature(input: VerifyWebhookInput): void {
+    const signature = input.headers['tl-signature'];
+    if (!signature) {
       throw new AppError('AUTH_INVALID', 'Tl-Signature header missing');
     }
     const expected = this.signBody(input.rawBody);
     const expectedBuf = Buffer.from(expected, 'utf8');
-    const actualBuf = Buffer.from(input.signature, 'utf8');
+    const actualBuf = Buffer.from(signature, 'utf8');
     if (expectedBuf.length !== actualBuf.length) {
       throw new AppError('AUTH_INVALID', 'Signature length mismatch');
     }

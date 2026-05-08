@@ -47,6 +47,18 @@ export const sessionService = {
       createdAt: new Date().toISOString(),
     };
 
+    // Check if the bill is already locked into another session before
+    // attempting create — this surfaces a clean error rather than a generic
+    // ConditionalCheckFailed. There's a small race window if two creates
+    // run concurrently for the same bill; the conditional Put on the
+    // bill-lock row inside `sessionStore.create` is the authoritative gate.
+    const existingLock = await sessionStore.getBillLock(bill.billId);
+    if (existingLock) {
+      throw new AppError('SESSION_INVALID_STATE', 'Bill is already in use by another session', {
+        sessionId: existingLock.sessionId,
+      });
+    }
+
     let lastErr: unknown;
     for (let attempt = 0; attempt < CODE_COLLISION_RETRIES; attempt += 1) {
       try {
@@ -55,6 +67,16 @@ export const sessionService = {
       } catch (err) {
         lastErr = err;
         if (isConditionalCheckFailed(err)) {
+          // Could be the join-code or the bill-lock conditional. Re-check
+          // the bill lock; if it now exists, the race has resolved against us.
+          const lockNow = await sessionStore.getBillLock(bill.billId);
+          if (lockNow) {
+            throw new AppError(
+              'SESSION_INVALID_STATE',
+              'Bill is already in use by another session',
+              { sessionId: lockNow.sessionId },
+            );
+          }
           session.joinCode = generateJoinCode();
           continue;
         }
@@ -154,9 +176,17 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
 
-    const allowed = (session.status === 'setup' && isCreator) || session.status === 'claiming';
+    // Creator claims their items in setup; others claim in claiming.
+    // Once shared, the creator's claims are frozen.
+    const allowed =
+      (session.status === 'setup' && isCreator) || (session.status === 'claiming' && !isCreator);
     if (!allowed) {
-      throw new AppError('SESSION_INVALID_STATE', 'Claims cannot be modified in this state');
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        isCreator
+          ? 'Creator claims are frozen once the session has been shared'
+          : 'Claims cannot be modified in this state',
+      );
     }
 
     const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
@@ -241,9 +271,10 @@ export const sessionService = {
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'abandoned' };
     await sessionStore.putMeta(updatedMeta);
-    if (session.status === 'paying') {
-      await sessionStore.deleteBillLock(session.billId).catch(() => undefined);
-    }
+    // Bill is locked from session-create through any non-settled state.
+    // Abandon releases the lock so the creator can amend the bill or
+    // start a fresh session.
+    await sessionStore.deleteBillLock(session.billId).catch(() => undefined);
 
     return projectForCaller(
       { ...updatedMeta, participants: session.participants },
@@ -253,10 +284,12 @@ export const sessionService = {
 };
 
 /**
- * Hide the join code from non-creator callers in `setup`.
+ * Project the session for the caller. The join code is hidden from everyone
+ * (including the creator) while the session is in `setup`; it becomes visible
+ * once `share` activates the code.
  */
-function projectForCaller(session: Session, callerUserId: string): Session {
-  if (session.status === 'setup' && session.creatorUserId !== callerUserId) {
+function projectForCaller(session: Session, _callerUserId: string): Session {
+  if (session.status === 'setup') {
     const { joinCode: _hidden, ...rest } = session;
     return rest;
   }

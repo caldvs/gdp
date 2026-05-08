@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { opsRoutes } from './routes/ops.js';
 import { buildMeRoutes, meRoutes } from './routes/me.js';
 import { buildBillRoutes } from './routes/bills.js';
+import { buildSessionRoutes } from './routes/sessions.js';
 import type { IdTokenVerifier } from './services/auth.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createDefaultBillParser } from './services/bills/geminiParser.js';
@@ -28,6 +29,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   app.route('/', opsRoutes);
   app.route('/v1', deps.idTokenVerifier ? buildMeRoutes(deps.idTokenVerifier) : meRoutes);
   app.route('/v1/bills', buildBillRoutes({ idTokenVerifier: deps.idTokenVerifier, billParser }));
+  app.route('/v1/sessions', buildSessionRoutes({ idTokenVerifier: deps.idTokenVerifier }));
 
   app.notFound((c) =>
     c.json(

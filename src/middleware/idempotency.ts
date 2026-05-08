@@ -1,0 +1,52 @@
+import type { MiddlewareHandler } from 'hono';
+import { createHash } from 'node:crypto';
+import { AppError } from '../errors/AppError.js';
+import { idempotencyStore } from '../storage/idempotencyStore.js';
+
+const KEY_PATTERN = /^[A-Za-z0-9-]{8,128}$/;
+
+export const requireIdempotency = (): MiddlewareHandler => async (c, next) => {
+  const key = c.req.header('idempotency-key');
+  if (!key) {
+    throw new AppError('INVALID_INPUT', 'Idempotency-Key header required');
+  }
+  if (!KEY_PATTERN.test(key)) {
+    throw new AppError('INVALID_INPUT', 'Idempotency-Key has invalid format');
+  }
+
+  const userId = c.var.userId;
+  if (!userId) {
+    throw new AppError('AUTH_MISSING', 'Authenticated user required for idempotent endpoint');
+  }
+
+  const endpoint = `${c.req.method} ${c.req.routePath}`;
+  const bodyText = await c.req.text();
+  const bodyHash = createHash('sha256').update(bodyText).digest('hex');
+
+  const cached = await idempotencyStore.get(userId, endpoint, key);
+  if (cached) {
+    if (cached.bodyHash !== bodyHash) {
+      throw new AppError('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with a different body');
+    }
+    return new Response(cached.response.body, {
+      status: cached.response.status,
+      headers: { 'content-type': cached.response.contentType, 'idempotency-replayed': 'true' },
+    });
+  }
+
+  await next();
+
+  const status = c.res.status;
+  if (status >= 200 && status < 300) {
+    const cloned = c.res.clone();
+    const responseBody = await cloned.text();
+    await idempotencyStore.put(userId, endpoint, key, {
+      bodyHash,
+      response: {
+        status,
+        body: responseBody,
+        contentType: cloned.headers.get('content-type') ?? 'application/json',
+      },
+    });
+  }
+};

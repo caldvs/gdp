@@ -387,6 +387,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/ready:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: setReady
+      summary: Non-creator participant signals 'I'm done claiming'
+      description: |
+        Per-diner readiness flag used by the hybrid claim model. Each guest
+        toggles this when they're done claiming items; the lead's lock-claims
+        precondition checks all non-creator participants are ready (unless
+        `force: true`). The creator cannot use this endpoint — they signal
+        readiness implicitly via `lock-claims`.
+
+        Editing claims (`POST /claims`) un-readies the participant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ready]
+              properties:
+                ready: { type: boolean }
+      responses:
+        '200':
+          description: Session, with the caller's readyToLock flipped
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session not in `claiming`, or caller is the creator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/lock-claims:
     parameters:
       - $ref: '#/components/parameters/SessionId'
@@ -396,8 +434,29 @@ paths:
       summary: Creator locks claims and transitions claiming -> paying
       description: |
         Creator-only. All bill items must be claimed by ≥1 participant; otherwise returns
-        `409 CLAIMS_INCOMPLETE` with the list of unclaimed item IDs in `details`. On success, computes
-        `owedPence` for every participant and freezes claims.
+        `409 CLAIMS_INCOMPLETE` with the list of unclaimed item IDs in `details`.
+
+        All non-creator participants must have `readyToLock: true` (set via
+        `POST /ready`); otherwise returns `409 PARTICIPANTS_NOT_READY` with
+        the list of un-ready user IDs in `details`. The order of these
+        checks: items completeness first, then readiness.
+
+        Pass `force: true` in the body to skip the readiness precondition
+        (e.g. a guest dropped off). Items completeness is always required.
+
+        On success, computes `owedPence` for every participant and freezes
+        claims.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: Skip the readiness precondition.
       responses:
         '200':
           description: Session, now in `paying` with `owedPence` computed
@@ -412,7 +471,10 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Session not in `claiming`, or items unclaimed
+          description: |
+            One of: session not in `claiming`, items unclaimed
+            (`CLAIMS_INCOMPLETE`), or participants not ready
+            (`PARTICIPANTS_NOT_READY`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -746,7 +808,7 @@ components:
 
     Participant:
       type: object
-      required: [userId, displayName, claimedItemIds, payment]
+      required: [userId, displayName, claimedItemIds, payment, readyToLock]
       properties:
         userId: { type: string }
         displayName: { type: string }
@@ -759,6 +821,14 @@ components:
           format: int64
           description: Computed at lock-claims; absent before then
         payment: { $ref: '#/components/schemas/ParticipantPayment' }
+        readyToLock:
+          type: boolean
+          description: |
+            True once the diner has signalled they're done claiming via
+            `POST /v1/sessions/:id/ready`. Lead's `lock-claims` rejects
+            with `PARTICIPANTS_NOT_READY` unless all non-creator participants
+            are ready (override with `force: true`). Creator is implicitly
+            ready and cannot toggle this flag.
 
     Session:
       type: object

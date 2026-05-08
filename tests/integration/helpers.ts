@@ -122,7 +122,11 @@ export async function buildPayingSession(
   }
   await app.request(`/v1/sessions/${initial.sessionId}/lock-claims`, {
     method: 'POST',
-    headers: makeAuth(creator),
+    // force=true so this helper doesn't have to walk every guest through
+    // the new /ready endpoint. Tests focused on the readiness flow exercise
+    // the no-force path directly.
+    headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+    body: JSON.stringify({ force: true }),
   });
   return { sessionId: initial.sessionId, bill };
 }

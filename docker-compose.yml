@@ -7,11 +7,12 @@ services:
     command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
 
   s3:
-    image: localstack/localstack:latest
+    image: minio/minio:latest
     container_name: gdp-s3-local
     ports:
-      - '4566:4566'
+      - '9000:9000'
+      - '9001:9001'
     environment:
-      - SERVICES=s3
-      - DEFAULT_REGION=eu-west-2
-      - PERSISTENCE=0
+      - MINIO_ROOT_USER=local
+      - MINIO_ROOT_PASSWORD=local-secret
+    command: ['server', '/data', '--address', ':9000', '--console-address', ':9001']

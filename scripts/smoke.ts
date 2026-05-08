@@ -90,6 +90,24 @@ async function checkRequestIdHeader(api: string): Promise<void> {
   pass(`/healthz response carries X-Request-Id: ${DIM}${id}${RESET}`);
 }
 
+async function checkDocs(api: string): Promise<void> {
+  const docs = await fetch(`${api}/docs`);
+  if (docs.status !== 200) fail(`/docs: expected 200, got ${docs.status}`);
+  const html = await docs.text();
+  if (!html.includes('<redoc') || !html.includes('spec-url="/openapi.yaml"')) {
+    fail('/docs: HTML missing the Redoc tag or spec-url attribute');
+  }
+  pass('/docs → 200 (Redoc page)');
+
+  const spec = await fetch(`${api}/openapi.yaml`);
+  if (spec.status !== 200) fail(`/openapi.yaml: expected 200, got ${spec.status}`);
+  const yaml = await spec.text();
+  if (!/^openapi:\s*3\.1\.0/.test(yaml)) {
+    fail('/openapi.yaml: body does not start with openapi: 3.1.0');
+  }
+  pass('/openapi.yaml → 200 (spec served, openapi 3.1.0)');
+}
+
 async function main(): Promise<void> {
   const api = getApiUrl();
   console.log(`${DIM}Smoking ${api}${RESET}\n`);
@@ -98,6 +116,7 @@ async function main(): Promise<void> {
   await checkReadyz(api);
   await checkAuthGate(api);
   await checkRequestIdHeader(api);
+  await checkDocs(api);
 
   console.log(`\n${GREEN}All smoke checks passed${RESET}`);
 }

@@ -113,12 +113,17 @@ export const paymentService = {
 
   /**
    * Payer claims they've sent the money via their bank app. Idempotent —
-   * doesn't overwrite an existing claim timestamp. Doesn't advance state;
+   * concurrent claims both end up with the same canonical timestamp (the
+   * earlier write wins via DDB's `if_not_exists`). Doesn't advance state;
    * it's purely a UX signal so the lead knows which pending payments are
    * awaiting confirmation. Available for any provider, but really only
    * meaningful in manual mode (TL-mediated payments advance via webhook).
    */
   async markPaidByPayer(input: { caller: VerifiedCaller; paymentId: string }): Promise<Payment> {
+    // Read first to enforce auth + state guards. The actual write is a
+    // separate atomic UpdateExpression so two concurrent claims can't
+    // race past the `payerClaimedPaidAt` check and write different
+    // timestamps.
     const payment = await paymentStore.get(input.paymentId);
     if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
     if (payment.payerUserId !== input.caller.userId) {
@@ -130,29 +135,25 @@ export const paymentService = {
         `Cannot mark a payment as paid in status ${payment.status}`,
       );
     }
-    if (payment.payerClaimedPaidAt) {
-      // Idempotent — keep the original claim timestamp.
-      return payment;
-    }
-
-    const session = await sessionStore.get(payment.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    const participant = session.participants.find((p) => p.userId === payment.payerUserId);
-    if (!participant) throw new AppError('SESSION_NOT_FOUND', 'Participant not found');
-    if (participant.payment.status !== 'pending') {
-      // Belt-and-braces: payment status said pending but participant view
-      // disagrees. Reject rather than try to reconcile silently.
-      throw new AppError('SESSION_INVALID_STATE', 'Participant payment not pending');
-    }
 
     const now = new Date().toISOString();
-    const updatedPayment: Payment = { ...payment, payerClaimedPaidAt: now };
-    const updatedParticipant: Participant = {
-      ...participant,
-      payment: { ...participant.payment, payerClaimedPaidAt: now },
-    };
-    await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
-    return updatedPayment;
+    // Atomic: SET payerClaimedPaidAt = if_not_exists(payerClaimedPaidAt, :now).
+    // Returned value is the canonical timestamp — ours if we won the
+    // race, the earlier writer's if we lost.
+    const updated = await paymentStore.setPayerClaimedPaidAt(input.paymentId, now);
+    // Mirror the canonical timestamp onto the participant's payment
+    // subdocument so the lead's session view shows it without re-fetching
+    // the payment row. The mirror is condition-gated on participant still
+    // being `pending` — if they've already moved on, the mirror is a
+    // no-op. The payment row is the truth; the mirror is best-effort UX.
+    if (updated.payerClaimedPaidAt) {
+      await paymentStore.setParticipantPayerClaimedPaidAt({
+        sessionId: payment.sessionId,
+        userId: payment.payerUserId,
+        ts: updated.payerClaimedPaidAt,
+      });
+    }
+    return updated;
   },
 
   /**

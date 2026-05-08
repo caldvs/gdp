@@ -40,6 +40,7 @@
     "google-auth-library": "^9.15.0",
     "hono": "^4.6.0",
     "pino": "^9.5.0",
+    "truelayer-signing": "^0.2.1",
     "uuid": "^11.0.0",
     "zod": "^3.23.0"
   },

@@ -5,7 +5,8 @@ import { AppError } from '../errors/AppError.js';
 describe('localStubVerifier', () => {
   it('accepts dev:<userId> and returns a verified identity', async () => {
     const id = await localStubVerifier('dev:alice');
-    expect(id).toEqual({ userId: 'alice', email: 'alice@dev.local', name: 'alice' });
+    expect(id).toMatchObject({ userId: 'alice', email: 'alice@dev.local', name: 'alice' });
+    expect(id.picture).toMatch(/^https:\/\/api\.dicebear\.com\/.*alice/);
   });
 
   it('rejects tokens without dev: prefix', async () => {

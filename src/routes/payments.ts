@@ -46,5 +46,18 @@ export const buildPaymentGetRoute = (deps: PaymentGetRouteDeps): Hono => {
     return c.json(payment);
   });
 
+  // Manual mode only: collector confirms they've received the transfer.
+  // Idempotent. Drives session settlement when this was the last unpaid guest.
+  r.post('/:paymentId/confirm', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    const paymentId = c.req.param('paymentId');
+    const payment = await paymentService.confirmManual({
+      caller,
+      paymentId,
+      logger: c.var.logger,
+    });
+    return c.json(payment);
+  });
+
   return r;
 };

@@ -17,7 +17,8 @@ import type { PaymentProvider } from '../services/payments/provider.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
-  paymentProvider: PaymentProvider;
+  /** null = manual mode; no provider call on initiate. */
+  paymentProvider: PaymentProvider | null;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
@@ -141,10 +142,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         provider: deps.paymentProvider,
         logger: c.var.logger,
       });
-      return c.json(
-        { payment: result.payment, providerRedirectUrl: result.providerRedirectUrl },
-        201,
-      );
+      return c.json({ payment: result.payment, instructions: result.instructions }, 201);
     },
   );
 

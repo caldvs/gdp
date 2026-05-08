@@ -6,12 +6,29 @@ import { callerOf } from '../context/caller.js';
 import { uploadService } from '../services/bills/uploadService.js';
 import { parseService } from '../services/bills/parseService.js';
 import { amendService } from '../services/bills/amendService.js';
+import { imageService } from '../services/bills/imageService.js';
 import { billStore } from '../storage/billStore.js';
 import { sessionStore } from '../storage/sessionStore.js';
 import { AppError } from '../errors/AppError.js';
+import type { Bill } from '../types/bills.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { BillParser } from '../services/bills/parser.js';
 import { AmendBillRequestSchema, ParseRequestSchema, UploadRequestSchema } from '../types/bills.js';
+
+async function loadBillForReader(billId: string, userId: string): Promise<Bill> {
+  const bill = await billStore.getLatest(billId);
+  if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+  if (bill.creatorUserId === userId) return bill;
+  // Session participants can read the bill they're pinned to.
+  const lock = await sessionStore.getBillLock(billId);
+  if (lock) {
+    const session = await sessionStore.get(lock.sessionId);
+    if (session?.participants.some((p) => p.userId === userId)) {
+      return bill;
+    }
+  }
+  throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+}
 
 export interface BillRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
@@ -73,23 +90,31 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     const billId = c.req.param('billId');
     const versionParam = c.req.query('version');
 
-    const bill = versionParam
-      ? await billStore.getVersion(billId, parseInt(versionParam, 10))
-      : await billStore.getLatest(billId);
-
-    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
-    if (bill.creatorUserId === userId) return c.json(bill);
-
-    // Session participants can read the bill they're pinned to. Without
-    // this, guest diners can't render the items list to claim against.
-    const lock = await sessionStore.getBillLock(billId);
-    if (lock) {
-      const session = await sessionStore.get(lock.sessionId);
-      if (session?.participants.some((p) => p.userId === userId)) {
-        return c.json(bill);
-      }
+    if (versionParam) {
+      // Older versions aren't pinned to a session lock, so reuse the latest
+      // for authz then return the requested historical version.
+      await loadBillForReader(billId, userId);
+      const bill = await billStore.getVersion(billId, parseInt(versionParam, 10));
+      if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+      return c.json(bill);
     }
-    throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    const bill = await loadBillForReader(billId, userId);
+    return c.json(bill);
+  });
+
+  r.get('/:billId/image-url', requireAuth(deps.idTokenVerifier), async (c) => {
+    const { userId } = callerOf(c);
+    const billId = c.req.param('billId');
+    const bill = await loadBillForReader(billId, userId);
+    const uploadId = bill.parsedFrom.uploadId;
+    if (!uploadId) {
+      throw new AppError('NOT_FOUND', 'Original image is not available for this bill');
+    }
+    const result = await imageService.getImageUrl({
+      creatorUserId: bill.creatorUserId,
+      uploadId,
+    });
+    return c.json(result);
   });
 
   r.post(

@@ -67,6 +67,10 @@ export const sessionService = {
   async get(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    const isParticipant = session.participants.some((p) => p.userId === input.caller.userId);
+    if (!isParticipant) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
     return projectForCaller(session, input.caller.userId);
   },
 

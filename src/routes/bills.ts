@@ -69,6 +69,8 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
   );
 
   r.get('/:billId', requireAuth(deps.idTokenVerifier), async (c) => {
+    const userId = c.var.userId;
+    if (!userId) throw new AppError('AUTH_MISSING', 'No verified user');
     const billId = c.req.param('billId');
     const versionParam = c.req.query('version');
 
@@ -77,6 +79,11 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
       : await billStore.getLatest(billId);
 
     if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    if (bill.creatorUserId !== userId) {
+      // For v0 only the creator can read a bill directly. Participants
+      // see bill items embedded in their session view.
+      throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    }
     return c.json(bill);
   });
 

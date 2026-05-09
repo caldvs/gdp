@@ -70,6 +70,20 @@ describe('GET /v1/bills/:billId', () => {
     expect(body.error.code).toBe('BILL_NOT_FOUND');
   });
 
+  it('returns 404 BILL_NOT_FOUND when the caller is not the creator', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const stranger = `s-${uuidv7()}`;
+    const created = await createBill(app, creator);
+
+    const res = await app.request(`/v1/bills/${created.billId}`, {
+      headers: makeAuth(stranger),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('BILL_NOT_FOUND');
+  });
+
   it('returns the latest version by default', async () => {
     const app = buildApp();
     const userId = `u-${uuidv7()}`;

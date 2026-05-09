@@ -83,10 +83,10 @@ describe('POST /v1/bills/uploads', () => {
     expect(new Date(body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('short-circuits with status=duplicate when the sha256 already maps to a bill', async () => {
+  it("short-circuits with status=duplicate when the sha256 already maps to one of the caller's bills", async () => {
     const knownHash = sha256Of(`dup-${uuidv7()}`);
     const knownBillId = uuidv7();
-    await billStore.indexImageHash(knownHash, knownBillId);
+    await billStore.indexImageHash(userId, knownHash, knownBillId);
 
     const res = await app.request('/v1/bills/uploads', {
       method: 'POST',
@@ -101,5 +101,26 @@ describe('POST /v1/bills/uploads', () => {
     const body = (await res.json()) as { status: string; billId?: string };
     expect(body.status).toBe('duplicate');
     expect(body.billId).toBe(knownBillId);
+  });
+
+  it("does NOT leak another user's billId via hash dedupe", async () => {
+    const knownHash = sha256Of(`crossuser-${uuidv7()}`);
+    const otherUser = `other-${uuidv7()}`;
+    const otherBillId = uuidv7();
+    await billStore.indexImageHash(otherUser, knownHash, otherBillId);
+
+    const res = await app.request('/v1/bills/uploads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        sha256: knownHash,
+        sizeBytes: 1024,
+        mimeType: 'image/jpeg',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; billId?: string };
+    expect(body.status).toBe('new');
+    expect(body.billId).toBeUndefined();
   });
 });

@@ -10,7 +10,7 @@ import type { Bill } from '../types/bills.js';
 const billPk = (billId: string) => `BILL#${billId}`;
 const versionSk = (n: number) => `V#${String(n).padStart(3, '0')}`;
 const LATEST_SK = 'LATEST';
-const hashPk = (sha256: string) => `IMGHASH#${sha256}`;
+const hashPk = (userId: string, sha256: string) => `IMGHASH#${userId}#${sha256}`;
 
 export const billStore = {
   /**
@@ -18,7 +18,10 @@ export const billStore = {
    * If indexImageHash is provided, also writes the image-hash index in the
    * same transaction (used on initial parse, not on amendment).
    */
-  async putVersion(bill: Bill, opts?: { indexImageHash?: string }): Promise<void> {
+  async putVersion(
+    bill: Bill,
+    opts?: { indexImageHash?: { userId: string; sha256: string } },
+  ): Promise<void> {
     const item = {
       pk: billPk(bill.billId),
       ...bill,
@@ -31,12 +34,13 @@ export const billStore = {
       { Put: { TableName: TABLE_NAME, Item: latestItem } },
     ];
     if (opts?.indexImageHash) {
+      const { userId, sha256 } = opts.indexImageHash;
       transactItems.push({
         Put: {
           TableName: TABLE_NAME,
           Item: {
-            pk: hashPk(opts.indexImageHash),
-            sk: hashPk(opts.indexImageHash),
+            pk: hashPk(userId, sha256),
+            sk: hashPk(userId, sha256),
             billId: bill.billId,
           },
         },
@@ -68,24 +72,24 @@ export const billStore = {
     return stripKeys(result.Item) as Bill;
   },
 
-  async findByImageHash(sha256: string): Promise<{ billId: string } | null> {
+  async findByImageHash(userId: string, sha256: string): Promise<{ billId: string } | null> {
     const result = await ddb.send(
       new GetCommand({
         TableName: TABLE_NAME,
-        Key: { pk: hashPk(sha256), sk: hashPk(sha256) },
+        Key: { pk: hashPk(userId, sha256), sk: hashPk(userId, sha256) },
       }),
     );
     if (!result.Item) return null;
     return { billId: result.Item.billId as string };
   },
 
-  async indexImageHash(sha256: string, billId: string): Promise<void> {
+  async indexImageHash(userId: string, sha256: string, billId: string): Promise<void> {
     await ddb.send(
       new PutCommand({
         TableName: TABLE_NAME,
         Item: {
-          pk: hashPk(sha256),
-          sk: hashPk(sha256),
+          pk: hashPk(userId, sha256),
+          sk: hashPk(userId, sha256),
           billId,
         },
       }),

@@ -122,7 +122,12 @@ class GdpBackendStack extends cdk.Stack {
       entry: 'src/lambda.ts',
       handler: 'handler',
       memorySize: 1024,
-      timeout: cdk.Duration.seconds(25),
+      // 30s is the API Gateway HTTP API integration timeout cap. Bumped
+      // from 25s after a complex receipt (HEIC source, large JPEG after
+      // conversion) made Gemini parse take 25001ms and the Lambda was
+      // killed mid-flight. Most parses come back in 6-15s; the buffer
+      // covers cold-start + complex images.
+      timeout: cdk.Duration.seconds(30),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         NODE_ENV: nodeEnvFor(envName),

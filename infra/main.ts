@@ -95,6 +95,11 @@ class GdpBackendStack extends cdk.Stack {
         minify: envName === 'prod',
         sourceMap: true,
         externalModules: ['@aws-sdk/*'],
+        // pino + some transitive deps still use `require()` even when
+        // bundled as ESM. Provide a CJS-compatible require so the bundle
+        // can resolve them at module load.
+        banner:
+          "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
       },
       logGroup: new logs.LogGroup(this, 'ApiHandlerLogs', {
         retention:

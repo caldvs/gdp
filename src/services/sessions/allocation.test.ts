@@ -115,14 +115,19 @@ describe('computeOwed', () => {
     }
   });
 
-  it('single participant claims everything → owes the full total', () => {
+  it('single participant claims every unit of every item → owes the full total', () => {
     const bill = billOf([item('i1', 1450, 2), item('i2', 650, 3)], 100, 200);
-    const owed = computeOwed(bill, [{ userId: 'u1', claimedItemIds: ['i1', 'i2'] }]);
+    // Per-unit semantics: user must claim each individual unit (i1 twice, i2 thrice)
+    const owed = computeOwed(bill, [
+      { userId: 'u1', claimedItemIds: ['i1', 'i1', 'i2', 'i2', 'i2'] },
+    ]);
     expect(owed.get('u1')).toBe(bill.totalPence);
   });
 
-  it('two participants split a single item evenly with no remainder', () => {
-    const bill = billOf([item('i1', 1000)], 0, 0);
+  it('two participants each take one unit of a 2-quantity item', () => {
+    // Per-unit replacement for the old "two split a single item" test: a
+    // qty=2 item with two diners each claiming one unit.
+    const bill = billOf([item('i1', 500, 2)], 0, 0);
     const owed = computeOwed(bill, [
       { userId: 'a', claimedItemIds: ['i1'] },
       { userId: 'b', claimedItemIds: ['i1'] },
@@ -132,18 +137,40 @@ describe('computeOwed', () => {
     expect(sumValues(owed)).toBe(bill.totalPence);
   });
 
-  it('three participants split a single item with a 1p remainder, deterministic by userId', () => {
-    const bill = billOf([item('i1', 1001)], 0, 0);
+  it('three participants share a 3-quantity item one unit each', () => {
+    const bill = billOf([item('i1', 333, 3)], 0, 0);
     const owed = computeOwed(bill, [
       { userId: 'c', claimedItemIds: ['i1'] },
       { userId: 'a', claimedItemIds: ['i1'] },
       { userId: 'b', claimedItemIds: ['i1'] },
     ]);
-    // 1001 / 3 = 333 r 2 → 'a' and 'b' each get +1, 'c' gets 333
-    expect(owed.get('a')).toBe(334);
-    expect(owed.get('b')).toBe(334);
+    expect(owed.get('a')).toBe(333);
+    expect(owed.get('b')).toBe(333);
     expect(owed.get('c')).toBe(333);
-    expect(sumValues(owed)).toBe(1001);
+    expect(sumValues(owed)).toBe(999);
+  });
+
+  it('one participant takes 4 of a 6-pack, another takes 2', () => {
+    // The motivating case: 6× Guinness; Alice 4, Bob 2.
+    const bill = billOf([item('g', 600, 6)], 0, 0);
+    const owed = computeOwed(bill, [
+      { userId: 'alice', claimedItemIds: ['g', 'g', 'g', 'g'] },
+      { userId: 'bob', claimedItemIds: ['g', 'g'] },
+    ]);
+    expect(owed.get('alice')).toBe(2400);
+    expect(owed.get('bob')).toBe(1200);
+    expect(sumValues(owed)).toBe(3600);
+  });
+
+  it('CLAIMS_INCOMPLETE when a multi-quantity item has units left over', () => {
+    const bill = billOf([item('g', 600, 6)], 0, 0);
+    expect(() =>
+      computeOwed(bill, [
+        { userId: 'a', claimedItemIds: ['g', 'g', 'g'] },
+        { userId: 'b', claimedItemIds: ['g', 'g'] },
+        // 5 of 6 claimed → 1 unit short → throws
+      ]),
+    ).toThrowError('CLAIMS_INCOMPLETE');
   });
 
   it('proportional service charge across participants with different shares', () => {
@@ -214,15 +241,17 @@ describe('computeOwed', () => {
       const service = Math.floor(random() * 500);
       const bill = billOf(items, tax, service);
 
+      // Per-unit allocation: for each item, distribute exactly `quantity`
+      // claims among random participants. Guarantees CLAIMS_INCOMPLETE never
+      // fires and exercises the per-unit math at scale.
       const participants = Array.from({ length: numParticipants }, (_, i) => ({
         userId: `u-${i}`,
-        claimedItemIds: items.filter(() => random() > 0.3).map((it) => it.itemId),
+        claimedItemIds: [] as string[],
       }));
-
-      // Ensure every item is claimed by at least one participant.
       for (const it of items) {
-        if (!participants.some((p) => p.claimedItemIds.includes(it.itemId))) {
-          participants[0]!.claimedItemIds.push(it.itemId);
+        for (let unit = 0; unit < it.quantity; unit += 1) {
+          const who = participants[Math.floor(random() * participants.length)]!;
+          who.claimedItemIds.push(it.itemId);
         }
       }
 

@@ -192,11 +192,42 @@ export const sessionService = {
 
     const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
     if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
-    const validItemIds = new Set(bill.items.map((it) => it.itemId));
-    const dedupedClaims = [...new Set(input.claims.claimedItemIds)];
-    for (const id of dedupedClaims) {
-      if (!validItemIds.has(id)) {
+
+    // Per-unit semantics: claimedItemIds may contain the same itemId multiple
+    // times — once per unit claimed. e.g. "I had 3 of the 6 Guinness" sends
+    // the Guinness uuid three times. Validate each claim references a real
+    // item, that the caller hasn't over-claimed beyond item.quantity, and
+    // that the caller's claim plus claims from other participants doesn't
+    // exceed item.quantity.
+    const itemById = new Map(bill.items.map((it) => [it.itemId, it]));
+    const claims = input.claims.claimedItemIds;
+    const myCounts = new Map<string, number>();
+    for (const id of claims) {
+      const item = itemById.get(id);
+      if (!item) {
         throw new AppError('INVALID_INPUT', 'Unknown itemId in claim list', { itemId: id });
+      }
+      myCounts.set(id, (myCounts.get(id) ?? 0) + 1);
+    }
+    for (const [id, count] of myCounts) {
+      const item = itemById.get(id)!;
+      if (count > item.quantity) {
+        throw new AppError(
+          'INVALID_INPUT',
+          `You claimed ${count} of "${item.name}" but the bill only has ${item.quantity}`,
+          { itemId: id, claimed: count, available: item.quantity },
+        );
+      }
+      // Other-participants check: sum existing (excluding caller) + my new count must not exceed quantity
+      const othersCount = session.participants
+        .filter((p) => p.userId !== input.caller.userId)
+        .reduce((acc, p) => acc + p.claimedItemIds.filter((c) => c === id).length, 0);
+      if (othersCount + count > item.quantity) {
+        throw new AppError(
+          'SESSION_INVALID_STATE',
+          `Only ${item.quantity - othersCount} of "${item.name}" left to claim`,
+          { itemId: id, claimed: count, available: item.quantity - othersCount },
+        );
       }
     }
 
@@ -206,7 +237,7 @@ export const sessionService = {
     // "I'm done with my CURRENT claims". Creator stays implicitly ready.
     const updated: Participant = {
       ...target,
-      claimedItemIds: dedupedClaims,
+      claimedItemIds: claims,
       readyToLock: isCreator ? target.readyToLock : false,
     };
     await sessionStore.putParticipant(session.sessionId, updated);

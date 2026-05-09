@@ -64,3 +64,4 @@ npx cdk deploy GdpBackendDev --profile gdp-dev
 
 - `openapi.yaml` — HTTP contract; mobile clients are generated from it
 - `SHAPE.md` — domain model, lifecycles, DDB single-table access patterns
+- `RUNBOOK.md` — what to do when an alarm fires

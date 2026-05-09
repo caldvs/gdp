@@ -22,6 +22,8 @@
     "ddb:up": "docker compose up -d",
     "ddb:down": "docker compose down",
     "cdk": "cdk",
+    "smoke": "tsx scripts/smoke.ts",
+    "deploy:dev": "cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
     "prepare": "husky"
   },
   "dependencies": {

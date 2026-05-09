@@ -30,9 +30,26 @@ npm run openapi:lint
 ## Deploy
 
 ```bash
-npm run build
-npx cdk synth
-npx cdk deploy GdpBackendDev      # deploys to AWS account selected via AWS_PROFILE
+npm run deploy:dev                # cdk deploy GdpBackendDev (eu-west-2) + post-deploy smoke
+```
+
+`deploy:dev` runs `cdk deploy` against the `gdp-dev` AWS profile, writes
+the stack outputs to `cdk-outputs.dev.json`, then runs `scripts/smoke.ts`
+against the deployed `ApiUrlOutput` to verify `/healthz`, `/readyz`,
+auth-gating, and request-id propagation.
+
+To smoke an arbitrary deployed env without re-deploying:
+
+```bash
+npm run smoke -- https://your-api-url
+```
+
+Lower-level commands if you need them:
+
+```bash
+npm run build                     # esbuild bundle to dist/
+npx cdk synth GdpBackendDev       # CloudFormation template, no AWS account needed
+npx cdk deploy GdpBackendDev --profile gdp-dev
 ```
 
 ## Source of truth

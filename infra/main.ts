@@ -62,6 +62,18 @@ class GdpBackendStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
+      // Browser clients PUT directly to presigned URLs from a different
+      // origin (e.g. http://localhost:8081 in dev). Without CORS the
+      // preflight fails. Permissive in dev — tighten origins before prod.
+      cors: [
+        {
+          allowedOrigins: ['*'],
+          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+          allowedHeaders: ['*'],
+          exposedHeaders: ['ETag'],
+          maxAge: 600,
+        },
+      ],
       lifecycleRules: [
         {
           transitions: [

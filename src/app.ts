@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import './context/types.js';
 import { env } from './config/env.js';
 import { requestId } from './middleware/requestId.js';
@@ -35,6 +36,18 @@ export const createApp = (deps: AppDeps = {}): Hono => {
 
   app.use('*', requestId());
   app.use('*', requestLogger());
+
+  // CORS for browser clients (Expo web dev). Permissive in dev — tighten before prod.
+  app.use(
+    '*',
+    cors({
+      origin: '*',
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
+      exposeHeaders: ['x-request-id'],
+      maxAge: 600,
+    }),
+  );
 
   app.onError(errorHandler);
 

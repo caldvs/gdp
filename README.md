@@ -30,13 +30,21 @@ npm run openapi:lint
 ## Deploy
 
 ```bash
-npm run deploy:dev                # cdk deploy GdpBackendDev (eu-west-2) + post-deploy smoke
+npm run deploy:dev                # validate locally → cdk deploy → smoke
 ```
 
-`deploy:dev` runs `cdk deploy` against the `gdp-dev` AWS profile, writes
-the stack outputs to `cdk-outputs.dev.json`, then runs `scripts/smoke.ts`
-against the deployed `ApiUrlOutput` to verify `/healthz`, `/readyz`,
-auth-gating, and request-id propagation.
+`deploy:dev` chains three steps and aborts on the first failure:
+
+1. `npm run validate:bundle` — runs `cdk synth`, locates the bundled
+   Lambda asset, loads it in this Node process with realistic env vars,
+   and invokes the handler against fake API Gateway events for
+   `/healthz`, `/v1/me`, and `/docs`. Catches module-load failures and
+   missing-bundle-asset bugs before any AWS call.
+2. `cdk deploy GdpBackendDev` against the `gdp-dev` profile, with
+   `--outputs-file cdk-outputs.dev.json`.
+3. `scripts/smoke.ts` against the deployed `ApiUrlOutput` to verify
+   end-to-end: `/healthz`, `/readyz`, auth-gating, auth verifier wiring,
+   request-id propagation, `/docs`, `/openapi.yaml`.
 
 To smoke an arbitrary deployed env without re-deploying:
 

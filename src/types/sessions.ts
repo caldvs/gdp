@@ -27,8 +27,23 @@ export const ParticipantSchema = z.object({
   claimedItemIds: z.array(z.string().uuid()),
   owedPence: z.number().int().nonnegative().optional(),
   payment: ParticipantPaymentSchema,
+  // True once the diner has signalled they're done claiming. Lock-claims
+  // requires all non-creator participants to be ready (unless force=true).
+  // Default false; flipped via POST /v1/sessions/:id/ready.
+  readyToLock: z.boolean().default(false),
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
+
+export const SetReadyRequestSchema = z.object({
+  ready: z.boolean(),
+});
+export type SetReadyRequest = z.infer<typeof SetReadyRequestSchema>;
+
+export const LockClaimsRequestSchema = z.object({
+  // Bypass the all-ready precondition. Useful if a guest has dropped off.
+  force: z.boolean().optional(),
+});
+export type LockClaimsRequest = z.infer<typeof LockClaimsRequestSchema>;
 
 export const SessionSchema = z.object({
   sessionId: z.string().uuid(),

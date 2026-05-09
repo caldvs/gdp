@@ -32,6 +32,9 @@ export const sessionService = {
       displayName: input.caller.displayName,
       claimedItemIds: [],
       payment: { status: 'unpaid' },
+      // Creator's "ready" doesn't gate lock-claims — they ARE the locker.
+      // Mark them ready by default so the all-ready check is just about guests.
+      readyToLock: true,
     };
     const session: Session = {
       sessionId,
@@ -150,6 +153,7 @@ export const sessionService = {
       displayName: input.caller.displayName,
       claimedItemIds: [],
       payment: { status: 'unpaid' },
+      readyToLock: false,
     };
     await sessionStore.putParticipant(session.sessionId, newParticipant);
 
@@ -198,7 +202,13 @@ export const sessionService = {
 
     const target = session.participants.find((p) => p.userId === input.caller.userId);
     if (!target) throw new Error('Invariant: caller participant missing');
-    const updated: Participant = { ...target, claimedItemIds: dedupedClaims };
+    // Editing claims un-readies the participant — "I'm done" should mean
+    // "I'm done with my CURRENT claims". Creator stays implicitly ready.
+    const updated: Participant = {
+      ...target,
+      claimedItemIds: dedupedClaims,
+      readyToLock: isCreator ? target.readyToLock : false,
+    };
     await sessionStore.putParticipant(session.sessionId, updated);
 
     return projectForCaller(
@@ -210,7 +220,40 @@ export const sessionService = {
     );
   },
 
-  async lockClaims(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
+  async setReady(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    ready: boolean;
+  }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    if (session.status !== 'claiming') {
+      throw new AppError('SESSION_INVALID_STATE', 'Session is not in claiming');
+    }
+    const target = session.participants.find((p) => p.userId === input.caller.userId);
+    if (!target) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    // Creator's ready flag is always true; reject explicit toggles to avoid
+    // surprise behaviour (use lock-claims directly).
+    if (target.userId === session.creatorUserId) {
+      throw new AppError('SESSION_INVALID_STATE', 'Creator does not signal ready; use lock-claims');
+    }
+
+    const updated: Participant = { ...target, readyToLock: input.ready };
+    await sessionStore.putParticipant(session.sessionId, updated);
+    return projectForCaller(
+      {
+        ...session,
+        participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
+      },
+      input.caller.userId,
+    );
+  },
+
+  async lockClaims(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    force?: boolean;
+  }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     if (session.creatorUserId !== input.caller.userId) {
@@ -223,6 +266,9 @@ export const sessionService = {
     const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
     if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
 
+    // Check claims completeness before readiness — a missing claim is more
+    // actionable than a missing ready signal ("get N to claim X" vs "ask N
+    // to mark themselves done").
     let owed: Map<string, number>;
     try {
       owed = computeOwed(bill, session.participants);
@@ -235,6 +281,22 @@ export const sessionService = {
         );
       }
       throw err;
+    }
+
+    // Hybrid claim model: all non-creator participants must signal ready
+    // before the lead can lock, unless they pass force=true. This stops the
+    // lead from racing ahead of a slower diner who's still toggling items.
+    if (!input.force) {
+      const notReady = session.participants
+        .filter((p) => p.userId !== session.creatorUserId && !p.readyToLock)
+        .map((p) => p.userId);
+      if (notReady.length > 0) {
+        throw new AppError(
+          'PARTICIPANTS_NOT_READY',
+          'One or more participants have not yet marked themselves ready',
+          { notReadyUserIds: notReady },
+        );
+      }
     }
 
     const updatedParticipants: Participant[] = session.participants.map((p) => ({

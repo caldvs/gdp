@@ -37,6 +37,9 @@ const s3 = new S3Client({
   endpoint: S3_ENDPOINT,
   forcePathStyle: true,
   credentials: { accessKeyId: 'local', secretAccessKey: 'local-secret' },
+  // MinIO doesn't implement the auto-applied x-amz-checksum-* headers the
+  // SDK adds by default; PutBucketCors fails with 501 NotImplemented.
+  requestChecksumCalculation: 'WHEN_REQUIRED',
 });
 
 async function ensureTable(): Promise<void> {
@@ -93,23 +96,39 @@ async function ensureBucket(): Promise<void> {
     console.log(`✓ S3 bucket ${BUCKET} created`);
   }
 
-  await s3.send(
-    new PutBucketCorsCommand({
-      Bucket: BUCKET,
-      CORSConfiguration: {
-        CORSRules: [
-          {
-            AllowedOrigins: ['*'],
-            AllowedMethods: ['PUT', 'GET', 'HEAD'],
-            AllowedHeaders: ['*'],
-            ExposeHeaders: ['ETag'],
-            MaxAgeSeconds: 600,
-          },
-        ],
-      },
-    }),
-  );
-  console.log(`✓ S3 bucket ${BUCKET} CORS applied`);
+  // MinIO doesn't implement PutBucketCors via the S3 API — CORS is set via
+  // server-side env vars (MINIO_API_CORS_ALLOW_ORIGIN). Try the call against
+  // real S3 endpoints, warn-and-skip on MinIO. Not blocking for API tests
+  // (no browser involved); only matters for browser → local-S3 PUTs.
+  try {
+    await s3.send(
+      new PutBucketCorsCommand({
+        Bucket: BUCKET,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: ['*'],
+              AllowedMethods: ['PUT', 'GET', 'HEAD'],
+              AllowedHeaders: ['*'],
+              ExposeHeaders: ['ETag'],
+              MaxAgeSeconds: 600,
+            },
+          ],
+        },
+      }),
+    );
+    console.log(`✓ S3 bucket ${BUCKET} CORS applied`);
+  } catch (e) {
+    const code = (e as { Code?: string; name?: string }).Code ?? (e as Error).name ?? 'unknown';
+    if (code === 'NotImplemented') {
+      console.log(
+        `⚠ S3 bucket ${BUCKET} CORS skipped (MinIO doesn't implement PutBucketCors). ` +
+          `For browser → local-S3 PUTs, configure MinIO with MINIO_API_CORS_ALLOW_ORIGIN.`,
+      );
+    } else {
+      throw e;
+    }
+  }
 }
 
 async function main(): Promise<void> {

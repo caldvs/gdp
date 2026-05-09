@@ -152,8 +152,8 @@ async function main() {
     `  ✓ ${items.length} items, total ${fmtGBP(bill.body.totalPence)} (subtotal ${fmtGBP(bill.body.subtotalPence)}, service ${fmtGBP(bill.body.serviceChargePence)}, tax ${fmtGBP(bill.body.taxPence)})`,
   );
 
-  // ─── Lead: create session + share ─────────────────────────────────────────
-  console.log('\n── Lead: create session + share ──');
+  // ─── Lead: create session ─────────────────────────────────────────────────
+  console.log('\n── Lead: create session ──');
   const create = await call<{ sessionId: string; status: string }>(lead, 'POST', '/v1/sessions', {
     body: { billId },
   });
@@ -161,43 +161,51 @@ async function main() {
   const sessionId = create.body.sessionId;
   console.log(`  ✓ sessionId=${sessionId.slice(0, 8)}… status=${create.body.status}`);
 
+  // Round-robin claim distribution computed up front so we can claim in the
+  // right order: lead-before-share, guests-after-join.
+  const buckets: Record<string, string[]> = { [lead.id]: [], [guest1.id]: [], [guest2.id]: [] };
+  const order = [lead, guest1, guest2];
+  items.forEach((it, i) => buckets[order[i % 3]!.id]!.push(it.itemId));
+  const summarize = (userId: string) =>
+    items
+      .filter((it) => buckets[userId]!.includes(it.itemId))
+      .map((it) => it.name)
+      .join(', ');
+
+  // ─── Lead: claim BEFORE sharing (creator claims freeze on share) ─────────
+  console.log('\n── Lead: claim (pre-share) ──');
+  const leadClaim = await call(lead, 'POST', `/v1/sessions/${sessionId}/claims`, {
+    body: { claimedItemIds: buckets[lead.id]! },
+  });
+  expect(leadClaim.status === 200, 'lead setClaims failed', leadClaim);
+  console.log(`  ✓ lead claimed ${buckets[lead.id]!.length}: ${summarize(lead.id)}`);
+
+  // ─── Lead: share ──────────────────────────────────────────────────────────
+  console.log('\n── Lead: share ──');
   const share = await call<{ joinCode: string }>(lead, 'POST', `/v1/sessions/${sessionId}/share`);
   expect(share.status === 200, 'shareSession failed', share);
   const joinCode = share.body.joinCode;
   console.log(`  ✓ joinCode=${joinCode}`);
 
-  // ─── Guests: resolve + join ───────────────────────────────────────────────
-  console.log('\n── Guests: resolve code + join ──');
+  // ─── Guests: resolve + join + claim ───────────────────────────────────────
+  console.log('\n── Guests: resolve code + join + claim ──');
   for (const guest of [guest1, guest2]) {
-    const lookup = await call<{ sessionId: string }>(
-      guest,
-      'GET',
-      `/v1/sessions/by-code?code=${joinCode}`,
-    );
+    const lookup = await call<{ sessionId: string }>(guest, 'POST', '/v1/sessions/by-code', {
+      body: { code: joinCode },
+    });
     expect(lookup.status === 200, `${guest.name} resolveJoinCode failed`, lookup);
     expect(lookup.body.sessionId === sessionId, `${guest.name} got wrong sessionId`, lookup.body);
 
     const join = await call(guest, 'POST', `/v1/sessions/${sessionId}/join`);
     expect(join.status === 200, `${guest.name} joinSession failed`, join);
-    console.log(`  ✓ ${guest.name} joined`);
-  }
 
-  // ─── Distribute claims (round-robin) ──────────────────────────────────────
-  console.log('\n── Claims (round-robin) ──');
-  const buckets: Record<string, string[]> = { [lead.id]: [], [guest1.id]: [], [guest2.id]: [] };
-  const order = [lead, guest1, guest2];
-  items.forEach((it, i) => buckets[order[i % 3]!.id]!.push(it.itemId));
-  for (const user of order) {
-    const myItems = buckets[user.id]!;
-    const claim = await call(user, 'POST', `/v1/sessions/${sessionId}/claims`, {
-      body: { claimedItemIds: myItems },
+    const claim = await call(guest, 'POST', `/v1/sessions/${sessionId}/claims`, {
+      body: { claimedItemIds: buckets[guest.id]! },
     });
-    expect(claim.status === 200, `${user.name} setClaims failed`, claim);
-    const itemSummary = items
-      .filter((it) => myItems.includes(it.itemId))
-      .map((it) => it.name)
-      .join(', ');
-    console.log(`  ✓ ${user.name} claimed ${myItems.length}: ${itemSummary}`);
+    expect(claim.status === 200, `${guest.name} setClaims failed`, claim);
+    console.log(
+      `  ✓ ${guest.name} joined + claimed ${buckets[guest.id]!.length}: ${summarize(guest.id)}`,
+    );
   }
 
   // ─── Lead: lock-claims ────────────────────────────────────────────────────
@@ -230,14 +238,18 @@ async function main() {
   );
   console.log('  ✓ owedPence reconciles to bill.totalPence');
 
+  // Pre-payment state: guests are 'unpaid' (haven't sent money to the lead),
+  // lead is 'self_paid' (creator is the collector, doesn't pay themselves).
   for (const p of lock.body.participants) {
+    const isLead = p.userId === lead.id;
+    const expected = isLead ? 'self_paid' : 'unpaid';
     expect(
-      p.payment.status === 'pending' || p.payment.status === 'unpaid',
-      `${p.userId} unexpected payment.status: ${p.payment.status}`,
+      p.payment.status === expected,
+      `${isLead ? 'lead' : 'guest'} ${p.userId} payment.status: expected ${expected}, got ${p.payment.status}`,
       p,
     );
   }
-  console.log('  ✓ all participants in pre-payment state');
+  console.log('  ✓ pre-payment state verified (lead=self_paid, guests=unpaid)');
 
   console.log('\n✅ MULTI-DINER E2E PASSED');
 }

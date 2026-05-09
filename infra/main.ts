@@ -237,10 +237,151 @@ class GdpBackendStack extends cdk.Stack {
     });
     ddbThrottleAlarm.addAlarmAction(snsAction);
 
+    // ---------------- Observability: dashboard ----------------
+
+    const dashboard = new cw.Dashboard(this, 'Dashboard', {
+      dashboardName: `gdp-${envName}`,
+      defaultInterval: cdk.Duration.hours(3),
+    });
+
+    const apiDimensions = { ApiId: httpApi.apiId, Stage: '$default' };
+    const tableDimensions = { TableName: table.tableName };
+    const sumP5m = { period: period5m, statistic: 'Sum' as const };
+
+    const apiCount = new cw.Metric({
+      namespace: 'AWS/ApiGateway',
+      metricName: 'Count',
+      dimensionsMap: apiDimensions,
+      ...sumP5m,
+    });
+    const api4xx = new cw.Metric({
+      namespace: 'AWS/ApiGateway',
+      metricName: '4xx',
+      dimensionsMap: apiDimensions,
+      ...sumP5m,
+    });
+    const api5xx = new cw.Metric({
+      namespace: 'AWS/ApiGateway',
+      metricName: '5xx',
+      dimensionsMap: apiDimensions,
+      ...sumP5m,
+    });
+
+    dashboard.addWidgets(
+      new cw.GraphWidget({
+        title: 'API requests / 5min',
+        width: 8,
+        height: 6,
+        left: [apiCount],
+      }),
+      new cw.GraphWidget({
+        title: 'API 4xx / 5min',
+        width: 8,
+        height: 6,
+        left: [api4xx],
+      }),
+      new cw.GraphWidget({
+        title: 'API 5xx / 5min',
+        width: 8,
+        height: 6,
+        left: [api5xx],
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cw.GraphWidget({
+        title: 'Lambda invocations + errors / 5min',
+        width: 8,
+        height: 6,
+        left: [
+          fn.metricInvocations({ ...sumP5m, label: 'Invocations' }),
+          fn.metricErrors({ ...sumP5m, label: 'Errors' }),
+        ],
+      }),
+      new cw.GraphWidget({
+        title: 'Lambda duration p50 / p99 (ms)',
+        width: 8,
+        height: 6,
+        left: [
+          fn.metricDuration({ period: period5m, statistic: 'p50', label: 'p50' }),
+          fn.metricDuration({ period: period5m, statistic: 'p99', label: 'p99' }),
+        ],
+      }),
+      new cw.GraphWidget({
+        title: 'Lambda throttles + concurrency',
+        width: 8,
+        height: 6,
+        left: [fn.metricThrottles({ ...sumP5m, label: 'Throttles' })],
+        right: [
+          new cw.Metric({
+            namespace: 'AWS/Lambda',
+            metricName: 'ConcurrentExecutions',
+            dimensionsMap: { FunctionName: fn.functionName },
+            period: period5m,
+            statistic: 'Maximum',
+            label: 'Concurrent (max)',
+          }),
+        ],
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cw.GraphWidget({
+        title: 'DDB consumed read units / 5min',
+        width: 8,
+        height: 6,
+        left: [
+          new cw.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'ConsumedReadCapacityUnits',
+            dimensionsMap: tableDimensions,
+            ...sumP5m,
+          }),
+        ],
+      }),
+      new cw.GraphWidget({
+        title: 'DDB consumed write units / 5min',
+        width: 8,
+        height: 6,
+        left: [
+          new cw.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'ConsumedWriteCapacityUnits',
+            dimensionsMap: tableDimensions,
+            ...sumP5m,
+          }),
+        ],
+      }),
+      new cw.GraphWidget({
+        title: 'DDB throttles + system errors / 5min',
+        width: 8,
+        height: 6,
+        left: [
+          new cw.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'ThrottledRequests',
+            dimensionsMap: tableDimensions,
+            ...sumP5m,
+            label: 'Throttled',
+          }),
+          new cw.Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName: 'SystemErrors',
+            dimensionsMap: tableDimensions,
+            ...sumP5m,
+            label: 'System errors',
+          }),
+        ],
+      }),
+    );
+
     new cdk.CfnOutput(this, 'ApiUrlOutput', { value: httpApi.apiEndpoint });
     new cdk.CfnOutput(this, 'TableNameOutput', { value: table.tableName });
     new cdk.CfnOutput(this, 'BillsBucketOutput', { value: billsBucket.bucketName });
     new cdk.CfnOutput(this, 'AlertTopicArnOutput', { value: alertTopic.topicArn });
+    new cdk.CfnOutput(this, 'DashboardUrlOutput', {
+      value: `https://${this.region}.console.aws.amazon.com/cloudwatch/home?region=${this.region}#dashboards:name=${dashboard.dashboardName}`,
+    });
   }
 }
 

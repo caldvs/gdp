@@ -4,12 +4,10 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
+import type { VerifiedCaller } from '../../context/caller.js';
 import type { Session, Participant, ClaimsRequest } from '../../types/sessions.js';
 
-export interface VerifiedCaller {
-  userId: string;
-  displayName: string;
-}
+export type { VerifiedCaller };
 
 const CODE_COLLISION_RETRIES = 3;
 
@@ -124,8 +122,7 @@ export const sessionService = {
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'claiming' };
 
-    await sessionStore.putParticipant(session.sessionId, updatedCreator);
-    await sessionStore.putMeta(updatedMeta);
+    await sessionStore.applyShare({ sessionMeta: updatedMeta, creator: updatedCreator });
 
     return projectForCaller(
       {

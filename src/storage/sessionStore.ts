@@ -155,10 +155,49 @@ export const sessionStore = {
   },
 
   /**
+   * Atomically transition setup → claiming: write the updated meta row
+   * with status='claiming' AND the updated creator participant row
+   * (payment.status = 'self_paid', claims frozen) in one TransactWrite.
+   */
+  async applyShare(input: {
+    sessionMeta: Omit<Session, 'participants'>;
+    creator: Participant;
+  }): Promise<void> {
+    const ttlAt = ttlEpochSeconds();
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: TABLE_NAME,
+              Item: {
+                pk: sessionPk(input.sessionMeta.sessionId),
+                sk: META_SK,
+                ttlAt,
+                ...input.sessionMeta,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: TABLE_NAME,
+              Item: {
+                pk: sessionPk(input.sessionMeta.sessionId),
+                sk: partSk(input.creator.userId),
+                ttlAt,
+                ...input.creator,
+              },
+            },
+          },
+        ],
+      }),
+    );
+  },
+
+  /**
    * Apply lock-claims atomically: write all participant rows with their
-   * computed owedPence + the meta row in `paying` state, plus a bill-lock
-   * marker. Single TransactWrite so the bill-lock and session-state can never
-   * disagree.
+   * computed owedPence + the meta row in `paying` state. The bill lock
+   * is already in place from session-create.
    */
   async applyLockClaims(input: {
     sessionMeta: Omit<Session, 'participants'>;

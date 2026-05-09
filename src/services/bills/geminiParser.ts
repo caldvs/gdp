@@ -57,7 +57,7 @@ export class GeminiBillParser implements BillParser {
         }),
       });
     } catch {
-      throw new AppError('PAYMENT_PROVIDER_ERROR', 'Failed to reach Gemini API');
+      throw new AppError('PARSE_FAILED', 'Failed to reach Gemini API');
     }
 
     if (!response.ok) {

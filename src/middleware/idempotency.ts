@@ -3,7 +3,9 @@ import { createHash } from 'node:crypto';
 import { AppError } from '../errors/AppError.js';
 import { idempotencyStore } from '../storage/idempotencyStore.js';
 
-const KEY_PATTERN = /^[A-Za-z0-9-]{8,128}$/;
+// UUID v1-v8 — matches the openapi `format: uuid` declaration.
+const KEY_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
 
 export const requireIdempotency = (): MiddlewareHandler => async (c, next) => {
   const key = c.req.header('idempotency-key');

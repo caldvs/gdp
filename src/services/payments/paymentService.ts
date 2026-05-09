@@ -4,13 +4,10 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
 import { isAlreadyApplied, nextStatus } from './stateMachine.js';
 import type { Logger } from '../../logging/logger.js';
+import type { VerifiedCaller } from '../../context/caller.js';
 import type { Participant, Session } from '../../types/sessions.js';
 import type { Payment, PaymentEvent } from '../../types/payments.js';
 import type { PaymentProvider, WebhookEvent } from './provider.js';
-
-export interface VerifiedCaller {
-  userId: string;
-}
 
 export const paymentService = {
   async initiate(input: {

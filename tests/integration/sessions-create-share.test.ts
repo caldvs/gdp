@@ -75,7 +75,7 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(session.collectorUserId).toBe(creator);
     expect(session.billId).toBe(bill.billId);
     expect(session.pinnedBillVersion).toBe(1);
-    expect(session.joinCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(session.joinCode).toBeUndefined(); // hidden in setup, visible after /share
     expect(session.participants).toHaveLength(1);
     expect(session.participants[0]?.userId).toBe(creator);
     expect(session.participants[0]?.payment.status).toBe('unpaid');
@@ -150,6 +150,51 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
       headers: makeAuth(interloper),
     });
     expect(res.status).toBe(404);
+  });
+
+  it('amending a bill is rejected once a session has been created from it (any state)', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    // Session is in setup. Bill should already be locked.
+    const amend = await app.request(`/v1/bills/${bill.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({
+        items: [{ name: 'changed', unitPricePence: 100, quantity: 1, category: 'food' }],
+        taxPence: 0,
+        serviceChargePence: 0,
+      }),
+    });
+    expect(amend.status).toBe(409);
+    const body = (await amend.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('SESSION_INVALID_STATE');
+  });
+
+  it('cannot create a second session for the same bill while the first is active', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    const first = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('SESSION_INVALID_STATE');
   });
 
   it('a stranger cannot read a session they are not part of (404)', async () => {

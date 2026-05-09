@@ -61,6 +61,22 @@ export const sessionStore = {
       });
     }
 
+    // Lock the bill to this session for the entire session lifetime so the
+    // bill cannot be amended while in use. Released on abandon.
+    transactItems.push({
+      Put: {
+        TableName: TABLE_NAME,
+        Item: {
+          pk: billLockPk(session.billId),
+          sk: billLockPk(session.billId),
+          sessionId: session.sessionId,
+          lockedAt: new Date().toISOString(),
+          ttlAt,
+        },
+        ConditionExpression: 'attribute_not_exists(pk)',
+      },
+    });
+
     await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
   },
 
@@ -167,19 +183,8 @@ export const sessionStore = {
           Item: { pk: sessionPk(input.sessionMeta.sessionId), sk: partSk(p.userId), ttlAt, ...p },
         },
       })),
-      {
-        Put: {
-          TableName: TABLE_NAME,
-          Item: {
-            pk: billLockPk(input.sessionMeta.billId),
-            sk: billLockPk(input.sessionMeta.billId),
-            sessionId: input.sessionMeta.sessionId,
-            lockedAt: new Date().toISOString(),
-            ttlAt,
-          },
-        },
-      },
     ];
+    // Bill lock is already in place from session create; no need to write again.
 
     await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
   },

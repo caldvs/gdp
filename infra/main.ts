@@ -100,6 +100,16 @@ class GdpBackendStack extends cdk.Stack {
         // can resolve them at module load.
         banner:
           "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+        // Ship openapi.yaml alongside the bundled lambda.js so the
+        // /docs and /openapi.yaml routes can resolve it at runtime
+        // (routes/docs.ts already looks for it next to import.meta.url).
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (inputDir: string, outputDir: string) => [
+            `cp ${inputDir}/openapi.yaml ${outputDir}/openapi.yaml`,
+          ],
+        },
       },
       logGroup: new logs.LogGroup(this, 'ApiHandlerLogs', {
         retention:

@@ -2,7 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { billStore } from '../../storage/billStore.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { AppError } from '../../errors/AppError.js';
-import type { Bill, BillItem, AmendBillRequest } from '../../types/bills.js';
+import { BillSchema, type Bill, type BillItem, type AmendBillRequest } from '../../types/bills.js';
 
 export const amendService = {
   async amend(input: {
@@ -40,16 +40,17 @@ export const amendService = {
     const totalPence =
       subtotalPence + input.amendment.taxPence + input.amendment.serviceChargePence;
 
-    const newVersion: Bill = {
+    const newVersion: Bill = BillSchema.parse({
       ...current,
       versionNumber: current.versionNumber + 1,
+      previousVersionId: current.billId,
       items,
       subtotalPence,
       taxPence: input.amendment.taxPence,
       serviceChargePence: input.amendment.serviceChargePence,
       totalPence,
       createdAt: new Date().toISOString(),
-    };
+    });
 
     await billStore.putVersion(newVersion);
     return newVersion;

@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
-import { AppError } from '../errors/AppError.js';
-import { sessionService, type VerifiedCaller } from '../services/sessions/sessionService.js';
+import { callerOf } from '../context/caller.js';
+import { sessionService } from '../services/sessions/sessionService.js';
 import { paymentService } from '../services/payments/paymentService.js';
 import {
   ClaimsRequestSchema,
@@ -17,11 +17,6 @@ export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   paymentProvider: PaymentProvider;
 }
-
-const callerOf = (c: { var: { userId?: string; userName?: string } }): VerifiedCaller => {
-  if (!c.var.userId) throw new AppError('AUTH_MISSING', 'No verified user');
-  return { userId: c.var.userId, displayName: c.var.userName ?? c.var.userId };
-};
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   const r = new Hono();
@@ -108,10 +103,8 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
-      const idempotencyKey = c.req.header('idempotency-key');
-      if (!idempotencyKey) {
-        throw new AppError('INVALID_INPUT', 'Idempotency-Key required');
-      }
+      // requireIdempotency has already validated the header is present.
+      const idempotencyKey = c.req.header('idempotency-key')!;
       const result = await paymentService.initiate({
         caller,
         sessionId,

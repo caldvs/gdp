@@ -24,11 +24,11 @@ export const buildWebhookRoutes = (deps: WebhookRoutesDeps): Hono => {
     }
 
     const event = deps.provider.parseWebhookEvent(rawBody);
-
-    const result = await paymentService.applyWebhookEvent({ event, logger: log });
-    if (result.status === 'noop' || result.status === 'invalid_transition') {
-      return c.body(null, 200);
-    }
+    // applyWebhookEvent returns 'applied' | 'noop' | 'invalid_transition'.
+    // All three are 200 acks — webhooks must be idempotent and resilient
+    // to out-of-order delivery, so an unchanged state is still a success
+    // from the provider's perspective.
+    await paymentService.applyWebhookEvent({ event, logger: log });
     return c.body(null, 200);
   });
 

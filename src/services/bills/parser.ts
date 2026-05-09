@@ -16,12 +16,23 @@ export const ParsedBillFromImageSchema = z.object({
   serviceChargePence: z.number().int().nonnegative(),
   totalPence: z.number().int().nonnegative().optional(),
   currency: z.literal('GBP'),
+  // Gemini sometimes returns `null` for an unknown venue rather than omitting
+  // the field. Accept both, but normalize the output type to undefined so
+  // downstream code (typed `string | undefined`) doesn't have to know.
   venue: z
     .object({
-      name: z.string().optional(),
-      address: z.string().optional(),
+      name: z
+        .string()
+        .nullish()
+        .transform((v) => v ?? undefined),
+      address: z
+        .string()
+        .nullish()
+        .transform((v) => v ?? undefined),
     })
-    .optional(),
+    .nullable()
+    .optional()
+    .transform((v) => v ?? undefined),
 });
 export type ParsedBillFromImage = z.infer<typeof ParsedBillFromImageSchema>;
 

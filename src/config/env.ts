@@ -17,7 +17,10 @@ const EnvSchema = z.object({
 
   TRUELAYER_CLIENT_ID: z.string().optional(),
   TRUELAYER_CLIENT_SECRET: z.string().optional(),
+  TRUELAYER_WEBHOOK_SECRET: z.string().optional(),
   TRUELAYER_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
+
+  PAYMENT_PROVIDER: z.enum(['mock', 'truelayer']).default('mock'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

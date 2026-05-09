@@ -1,17 +1,21 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth } from '../middleware/auth.js';
+import { requireIdempotency } from '../middleware/idempotency.js';
 import { AppError } from '../errors/AppError.js';
 import { sessionService, type VerifiedCaller } from '../services/sessions/sessionService.js';
+import { paymentService } from '../services/payments/paymentService.js';
 import {
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
   JoinByCodeRequestSchema,
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
+import type { PaymentProvider } from '../services/payments/provider.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
+  paymentProvider: PaymentProvider;
 }
 
 const callerOf = (c: { var: { userId?: string; userName?: string } }): VerifiedCaller => {
@@ -96,6 +100,31 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const session = await sessionService.abandon({ caller, sessionId });
     return c.json(session);
   });
+
+  r.post(
+    '/:sessionId/payments',
+    requireAuth(deps.idTokenVerifier),
+    requireIdempotency(),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const idempotencyKey = c.req.header('idempotency-key');
+      if (!idempotencyKey) {
+        throw new AppError('INVALID_INPUT', 'Idempotency-Key required');
+      }
+      const result = await paymentService.initiate({
+        caller,
+        sessionId,
+        idempotencyKey,
+        provider: deps.paymentProvider,
+        logger: c.var.logger,
+      });
+      return c.json(
+        { payment: result.payment, providerRedirectUrl: result.providerRedirectUrl },
+        201,
+      );
+    },
+  );
 
   return r;
 };

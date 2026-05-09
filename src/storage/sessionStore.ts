@@ -70,6 +70,7 @@ export const sessionStore = {
         TableName: TABLE_NAME,
         KeyConditionExpression: 'pk = :pk',
         ExpressionAttributeValues: { ':pk': sessionPk(sessionId) },
+        ConsistentRead: true,
       }),
     );
     if (!result.Items || result.Items.length === 0) return null;

@@ -97,10 +97,10 @@ describe('POST /v1/bills/parse', () => {
     expect(bill.versionNumber).toBe(1);
     expect(bill.creatorUserId).toBe(userId);
     expect(bill.currency).toBe('GBP');
-    // sum(items) = 2*1450 + 3*650 + 1*750 = 2900 + 1950 + 750 = 5600
-    expect(bill.subtotalPence).toBe(5600);
-    expect(bill.serviceChargePence).toBe(575);
-    expect(bill.totalPence).toBe(5600 + 0 + 575);
+    // sum(items) = 1450 + 650 + 750 = 2850 (all qty=1 in the simplified fixture)
+    expect(bill.subtotalPence).toBe(2850);
+    expect(bill.serviceChargePence).toBe(356);
+    expect(bill.totalPence).toBe(2850 + 0 + 356);
     expect(bill.items).toHaveLength(3);
     expect(bill.items[0]?.itemId).toMatch(/^[0-9a-f-]{36}$/);
     expect(bill.parsedFrom.parser).toBe('fixture');

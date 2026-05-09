@@ -38,7 +38,10 @@ async function createBill(app: ReturnType<typeof buildApp>, userId: string) {
     },
     body: JSON.stringify({ uploadId }),
   });
-  return (await res.json()) as { billId: string; items: { itemId: string }[] };
+  return (await res.json()) as {
+    billId: string;
+    items: { itemId: string; quantity: number; unitPricePence: number; name: string }[];
+  };
 }
 
 async function buildSharedSession(app: ReturnType<typeof buildApp>, creator: string) {
@@ -269,5 +272,180 @@ describe('POST /v1/sessions/:id/claims', () => {
       body: JSON.stringify({ claimedItemIds: [bill.items[0]?.itemId] }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Per-unit claims (multi-quantity items)', () => {
+  beforeAll(async () => {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: BILLS_BUCKET }));
+    } catch {
+      await s3.send(new CreateBucketCommand({ Bucket: BILLS_BUCKET }));
+    }
+  });
+
+  // Local app instance with a 6× Guinness fixture so we exercise units-per-item.
+  const sixGuinnessFixture = {
+    items: [{ name: 'Guinness', unitPricePence: 600, quantity: 6, category: 'drink' as const }],
+    taxPence: 0,
+    serviceChargePence: 0,
+    totalPence: 3600,
+    currency: 'GBP' as const,
+  };
+  const buildSixApp = () =>
+    createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(sixGuinnessFixture),
+    });
+
+  async function setUpSixApp() {
+    const app = buildSixApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const { sessionId } = (await create.json()) as { sessionId: string };
+    return { app, creator, guest, bill, sessionId };
+  }
+
+  it('lets the same itemId appear multiple times to claim multiple units', async () => {
+    const { app, creator, sessionId, bill } = await setUpSixApp();
+    const guinnessId = bill.items[0]!.itemId;
+
+    const res = await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: [guinnessId, guinnessId, guinnessId, guinnessId] }),
+    });
+    expect(res.status).toBe(200);
+    const session = (await res.json()) as {
+      participants: { userId: string; claimedItemIds: string[] }[];
+    };
+    const me = session.participants.find((p) => p.userId === creator)!;
+    expect(me.claimedItemIds.filter((id) => id === guinnessId)).toHaveLength(4);
+  });
+
+  it('rejects when caller claims more units of an item than exist', async () => {
+    const { app, creator, sessionId, bill } = await setUpSixApp();
+    const guinnessId = bill.items[0]!.itemId;
+
+    const res = await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: Array(7).fill(guinnessId) }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as {
+      error: { code: string; details?: { available?: number } };
+    };
+    expect(body.error.code).toBe('INVALID_INPUT');
+    expect(body.error.details?.available).toBe(6);
+  });
+
+  it('rejects a guest claiming a unit already exhausted by others', async () => {
+    const { app, creator, guest, sessionId, bill } = await setUpSixApp();
+    const guinnessId = bill.items[0]!.itemId;
+
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: Array(6).fill(guinnessId) }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+
+    const res = await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [guinnessId] }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: { code: string; details?: { available?: number } };
+    };
+    expect(body.error.code).toBe('SESSION_INVALID_STATE');
+    expect(body.error.details?.available).toBe(0);
+  });
+
+  it('lock-claims requires every unit to be claimed', async () => {
+    const { app, creator, guest, sessionId, bill } = await setUpSixApp();
+    const guinnessId = bill.items[0]!.itemId;
+
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: Array(4).fill(guinnessId) }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [guinnessId] }),
+    });
+
+    const res = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: { code: string; details?: { unclaimedItemIds?: string[] } };
+    };
+    expect(body.error.code).toBe('CLAIMS_INCOMPLETE');
+    expect(body.error.details?.unclaimedItemIds).toContain(guinnessId);
+  });
+
+  it('owedPence reflects per-unit claim counts (creator 4, guest 2 of 6× £6)', async () => {
+    const { app, creator, guest, sessionId, bill } = await setUpSixApp();
+    const guinnessId = bill.items[0]!.itemId;
+
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: Array(4).fill(guinnessId) }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: Array(2).fill(guinnessId) }),
+    });
+
+    const lock = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
+    });
+    expect(lock.status).toBe(200);
+    const session = (await lock.json()) as {
+      participants: { userId: string; owedPence: number }[];
+    };
+    expect(session.participants.find((p) => p.userId === creator)!.owedPence).toBe(2400);
+    expect(session.participants.find((p) => p.userId === guest)!.owedPence).toBe(1200);
   });
 });

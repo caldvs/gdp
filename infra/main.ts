@@ -15,7 +15,13 @@ interface GdpStackProps extends cdk.StackProps {
   envName: EnvName;
 }
 
-const nodeEnvFor = (e: EnvName): string => (e === 'prod' ? 'production' : e);
+// Map our short env names to the values the runtime zod schema expects
+// (env.ts EnvSchema NODE_ENV: 'development' | 'test' | 'staging' | 'production').
+const nodeEnvFor = (e: EnvName): 'development' | 'staging' | 'production' => {
+  if (e === 'prod') return 'production';
+  if (e === 'staging') return 'staging';
+  return 'development';
+};
 
 class GdpBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GdpStackProps) {

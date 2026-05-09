@@ -22,6 +22,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src/**/*", "tests/**/*", "infra/**/*"],
+  "include": ["src/**/*", "tests/**/*", "infra/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist", "cdk.out"]
 }

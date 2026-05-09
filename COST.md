@@ -36,10 +36,11 @@ These are paid even if nobody uses the API.
 | API Gateway HTTP API         | free at rest                   | 1                                    | $0.00            |
 | **Total constant**           |                                |                                      | **~$1.60/month** |
 
-The £1 zero-spend AWS Budget alert will fire once spending crosses $1
-forecasted, which means it'll start firing this month from the secrets
-alone. Either raise the threshold to $5 or accept the noise as a
-deliberate "any spend at all" tripwire.
+A $5 monthly AWS Budget alert is configured at the account level — it
+sits comfortably above the $1.60 constant baseline and the variable
+costs at v0 traffic, so it should only fire if traffic ramps unexpectedly
+or a misconfiguration starts burning resources. If we approach $5/month
+sustained, revisit the cost-levers section below before raising it.
 
 ## Per-session variable costs
 

@@ -138,7 +138,8 @@ describe('POST /v1/sessions/:id/lock-claims', () => {
 
     const lock = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
       method: 'POST',
-      headers: makeAuth(creator),
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
     });
     expect(lock.status).toBe(200);
     const session = (await lock.json()) as {
@@ -176,11 +177,13 @@ describe('POST /v1/sessions/:id/lock-claims', () => {
     });
     await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
       method: 'POST',
-      headers: makeAuth(creator),
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
     });
     const second = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
       method: 'POST',
-      headers: makeAuth(creator),
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
     });
     expect(second.status).toBe(409);
   });
@@ -204,7 +207,8 @@ describe('POST /v1/sessions/:id/lock-claims', () => {
     });
     await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
       method: 'POST',
-      headers: makeAuth(creator),
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
     });
 
     const amend = await app.request(`/v1/bills/${bill.billId}/amend`, {
@@ -289,7 +293,8 @@ describe('POST /v1/sessions/:id/abandon', () => {
     });
     await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
       method: 'POST',
-      headers: makeAuth(creator),
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
     });
 
     await app.request(`/v1/sessions/${sessionId}/abandon`, {
@@ -307,5 +312,189 @@ describe('POST /v1/sessions/:id/abandon', () => {
       }),
     });
     expect(amend.status).toBe(200);
+  });
+});
+
+describe('Hybrid claim model: /ready + lock-claims precondition', () => {
+  beforeAll(async () => {
+    try {
+      await s3.send(new HeadBucketCommand({ Bucket: BILLS_BUCKET }));
+    } catch {
+      await s3.send(new CreateBucketCommand({ Bucket: BILLS_BUCKET }));
+    }
+  });
+
+  it('lock-claims rejects PARTICIPANTS_NOT_READY when guests have not signalled', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guestA = `a-${uuidv7()}`;
+    const guestB = `b-${uuidv7()}`;
+    const { sessionId, bill } = await setUpClaiming(app, creator, [guestA, guestB]);
+
+    // Guests claim everything but neither signals ready
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guestA) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId] }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guestB) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[2]?.itemId] }),
+    });
+
+    const res = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as {
+      error: { code: string; details?: { notReadyUserIds?: string[] } };
+    };
+    expect(body.error.code).toBe('PARTICIPANTS_NOT_READY');
+    const notReady = body.error.details?.notReadyUserIds ?? [];
+    expect(notReady).toContain(guestA);
+    expect(notReady).toContain(guestB);
+    expect(notReady).not.toContain(creator);
+  });
+
+  it('lock-claims succeeds once all non-creator participants are ready', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guestA = `a-${uuidv7()}`;
+    const guestB = `b-${uuidv7()}`;
+    const { sessionId, bill } = await setUpClaiming(app, creator, [guestA, guestB]);
+
+    for (const [g, idx] of [
+      [guestA, 1],
+      [guestB, 2],
+    ] as const) {
+      await app.request(`/v1/sessions/${sessionId}/claims`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(g) },
+        body: JSON.stringify({ claimedItemIds: [bill.items[idx]?.itemId] }),
+      });
+      const ready = await app.request(`/v1/sessions/${sessionId}/ready`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(g) },
+        body: JSON.stringify({ ready: true }),
+      });
+      expect(ready.status).toBe(200);
+    }
+
+    const res = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string };
+    expect(body.status).toBe('paying');
+  });
+
+  it('setClaims after readying un-readies the participant', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, bill } = await setUpClaiming(app, creator, [guest]);
+
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId, bill.items[2]?.itemId] }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/ready`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ ready: true }),
+    });
+    // Edit claims again — should un-ready the guest
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId] }),
+    });
+
+    // Lock attempt should now report PARTICIPANTS_NOT_READY (and CLAIMS_INCOMPLETE
+    // since item[2] is now unclaimed — items check fires first)
+    const res = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string } };
+    // Items check is first; user can re-claim item[2] then will hit ready check
+    expect(body.error.code).toBe('CLAIMS_INCOMPLETE');
+
+    // Re-claim everything (still not ready), then lock should hit ready check
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId, bill.items[2]?.itemId] }),
+    });
+    const res2 = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    const body2 = (await res2.json()) as { error: { code: string } };
+    expect(res2.status).toBe(409);
+    expect(body2.error.code).toBe('PARTICIPANTS_NOT_READY');
+  });
+
+  it('force=true bypasses readiness check', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, bill } = await setUpClaiming(app, creator, [guest]);
+
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId, bill.items[2]?.itemId] }),
+    });
+    // Note: no /ready called
+
+    const res = await app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ force: true }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('creator cannot call /ready (use lock-claims directly)', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await setUpClaiming(app, creator, [guest]);
+
+    const res = await app.request(`/v1/sessions/${sessionId}/ready`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ ready: true }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('SESSION_INVALID_STATE');
+  });
+
+  it('/ready rejects when session is not in claiming', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const stranger = `s-${uuidv7()}`;
+    // Setup phase only — don't share, so no joinable session
+    const bill = await createBill(app, creator);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const { sessionId } = (await create.json()) as { sessionId: string };
+
+    const res = await app.request(`/v1/sessions/${sessionId}/ready`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(stranger) },
+      body: JSON.stringify({ ready: true }),
+    });
+    expect([404, 409]).toContain(res.status); // session not found or invalid state
   });
 });

@@ -9,6 +9,8 @@ import {
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
   JoinByCodeRequestSchema,
+  LockClaimsRequestSchema,
+  SetReadyRequestSchema,
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { PaymentProvider } from '../services/payments/provider.js';
@@ -82,12 +84,39 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     },
   );
 
-  r.post('/:sessionId/lock-claims', requireAuth(deps.idTokenVerifier), async (c) => {
-    const caller = callerOf(c);
-    const sessionId = c.req.param('sessionId');
-    const session = await sessionService.lockClaims({ caller, sessionId });
-    return c.json(session);
-  });
+  r.post(
+    '/:sessionId/ready',
+    requireAuth(deps.idTokenVerifier),
+    zValidator('json', SetReadyRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const { ready } = c.req.valid('json');
+      const session = await sessionService.setReady({ caller, sessionId, ready });
+      return c.json(session);
+    },
+  );
+
+  r.post(
+    '/:sessionId/lock-claims',
+    requireAuth(deps.idTokenVerifier),
+    // Body is optional ({ force: true } to override the all-ready precondition).
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      let body: unknown = {};
+      try {
+        const text = await c.req.text();
+        if (text.trim().length > 0) body = JSON.parse(text);
+      } catch {
+        /* empty/invalid body — treat as no force */
+      }
+      const parsed = LockClaimsRequestSchema.safeParse(body);
+      const force = parsed.success ? (parsed.data.force ?? false) : false;
+      const session = await sessionService.lockClaims({ caller, sessionId, force });
+      return c.json(session);
+    },
+  );
 
   r.post('/:sessionId/abandon', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);

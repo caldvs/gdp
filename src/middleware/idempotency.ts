@@ -21,7 +21,13 @@ export const requireIdempotency = (): MiddlewareHandler => async (c, next) => {
 
   const endpoint = `${c.req.method} ${c.req.routePath}`;
   const bodyText = await c.req.text();
-  const bodyHash = createHash('sha256').update(bodyText).digest('hex');
+  // Hash includes the actual path so the same key against two different
+  // sessionIds (or any path-param value) produces distinct cache entries.
+  const bodyHash = createHash('sha256')
+    .update(c.req.path)
+    .update('\n')
+    .update(bodyText)
+    .digest('hex');
 
   const cached = await idempotencyStore.get(userId, endpoint, key);
   if (cached) {

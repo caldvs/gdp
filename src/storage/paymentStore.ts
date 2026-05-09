@@ -9,10 +9,15 @@ import { ddb, TABLE_NAME } from './ddb.js';
 import type { Payment } from '../types/payments.js';
 import type { Participant } from '../types/sessions.js';
 
+const SESSION_TTL_DAYS = 30;
+
 const paymentPk = (paymentId: string) => `PAY#${paymentId}`;
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const partSk = (userId: string) => `PART#${userId}`;
 const provIdx = (providerPaymentId: string) => `PROVPAY#${providerPaymentId}`;
+
+const ttlEpochSeconds = (): number =>
+  Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
 
 const stripKeys = (item: Record<string, unknown>): Record<string, unknown> => {
   const { pk: _pk, sk: _sk, GSI2PK: _gsi, ...rest } = item;
@@ -83,6 +88,7 @@ export const paymentStore = {
           Item: {
             pk: sessionPk(input.payment.sessionId),
             sk: partSk(input.participant.userId),
+            ttlAt: ttlEpochSeconds(),
             ...input.participant,
           },
         },

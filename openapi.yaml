@@ -103,6 +103,35 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/me/sessions:
+    get:
+      tags: [identity]
+      operationId: listMySessions
+      summary: List sessions the caller has been part of, most recent first
+      description: |
+        Returns lightweight summaries (no participants list) for sessions where the caller is the
+        creator or a joined diner. Sessions are sorted by sessionId descending — UUIDv7 is time-ordered
+        so the newest comes first. The full session can be fetched via GET /v1/sessions/{id}.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: Maximum number of summaries to return (1–100, defaults to 20).
+      responses:
+        '200':
+          description: List of session summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/SessionSummary' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/bills/uploads:
     post:
       tags: [bills]
@@ -850,6 +879,44 @@ components:
           items: { $ref: '#/components/schemas/Participant' }
         createdAt: { type: string, format: date-time }
         ttlAt: { type: string, format: date-time }
+
+    SessionSummary:
+      type: object
+      required:
+        [
+          sessionId,
+          status,
+          creatorUserId,
+          collectorUserId,
+          billId,
+          pinnedBillVersion,
+          createdAt,
+          role,
+          myPaymentStatus,
+        ]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        creatorUserId: { type: string }
+        collectorUserId: { type: string }
+        billId: { type: string, format: uuid }
+        pinnedBillVersion: { type: integer, minimum: 1 }
+        joinCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+        createdAt: { type: string, format: date-time }
+        ttlAt: { type: string, format: date-time }
+        role:
+          type: string
+          enum: [lead, diner]
+          description: Whether the caller created this session or joined as a diner.
+        myOwedPence:
+          type: integer
+          minimum: 0
+          description: The caller's locked-in share, present once the session has been locked into paying.
+        myPaymentStatus:
+          type: string
+          enum: [unpaid, self_paid, pending, succeeded, failed]
 
     PaymentStatus:
       type: string

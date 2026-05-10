@@ -179,17 +179,12 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
 
-    // Creator claims their items in setup; others claim in claiming.
-    // Once shared, the creator's claims are frozen.
-    const allowed =
-      (session.status === 'setup' && isCreator) || (session.status === 'claiming' && !isCreator);
+    // Creator can claim in setup (pre-share priming) or claiming (alongside
+    // guests, in case they missed something). Guests can only claim in
+    // claiming. Nobody claims in paying/settled/abandoned.
+    const allowed = (session.status === 'setup' && isCreator) || session.status === 'claiming';
     if (!allowed) {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        isCreator
-          ? 'Creator claims are frozen once the session has been shared'
-          : 'Claims cannot be modified in this state',
-      );
+      throw new AppError('SESSION_INVALID_STATE', 'Claims cannot be modified in this state');
     }
 
     const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);

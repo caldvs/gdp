@@ -98,6 +98,14 @@ class GdpBackendStack extends cdk.Stack {
       this,
       `/gdp-${envName}/truelayer-client-id`,
     );
+    const trueLayerSigningKid = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/truelayer-signing-kid`,
+    );
+    const trueLayerMerchantAccountId = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/truelayer-merchant-account-id`,
+    );
 
     // Secrets — Secrets Manager. Values resolved at deploy time via friendly-
     // name dynamic CloudFormation references and land as Lambda env vars.
@@ -115,6 +123,9 @@ class GdpBackendStack extends cdk.Stack {
     );
     const trueLayerWebhookSecret = cdk.SecretValue.secretsManager(
       `gdp-${envName}/truelayer-webhook-secret`,
+    );
+    const trueLayerSigningPrivateKey = cdk.SecretValue.secretsManager(
+      `gdp-${envName}/truelayer-signing-private-key`,
     );
 
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
@@ -143,7 +154,11 @@ class GdpBackendStack extends cdk.Stack {
         TRUELAYER_CLIENT_ID: trueLayerClientId,
         TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.unsafeUnwrap(),
         TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.unsafeUnwrap(),
+        TRUELAYER_SIGNING_KID: trueLayerSigningKid,
+        TRUELAYER_SIGNING_PRIVATE_KEY_PEM: trueLayerSigningPrivateKey.unsafeUnwrap(),
+        TRUELAYER_MERCHANT_ACCOUNT_ID: trueLayerMerchantAccountId,
         TRUELAYER_ENVIRONMENT: 'sandbox',
+        PAYMENT_PROVIDER: 'truelayer',
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,
@@ -181,6 +196,12 @@ class GdpBackendStack extends cdk.Stack {
       apiName: `gdp-${envName}`,
       defaultIntegration: new integrations.HttpLambdaIntegration('LambdaIntegration', fn),
     });
+
+    // The TrueLayer return URL has to match what's registered in the Console.
+    // We resolve it from the API endpoint so a stack re-create still produces
+    // a coherent value in the Lambda env — but the Console-side URL must be
+    // updated by hand if the API endpoint ever changes.
+    fn.addEnvironment('TRUELAYER_RETURN_URI', `${httpApi.apiEndpoint}/v1/payments/return`);
 
     // ---------------- Observability: alarms ----------------
 

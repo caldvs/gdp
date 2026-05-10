@@ -20,6 +20,15 @@ export interface WebhookEvent {
   reason?: string;
 }
 
+export interface VerifyWebhookInput {
+  method: 'POST';
+  /** Path the webhook was POSTed to, e.g. "/webhooks/truelayer". */
+  path: string;
+  /** All request headers, lowercased keys. Real TL signs a subset of these. */
+  headers: Record<string, string>;
+  rawBody: string;
+}
+
 export interface PaymentProvider {
   /** The wire identifier; must match Payment.provider in the response. */
   readonly name: 'truelayer';
@@ -32,7 +41,7 @@ export interface PaymentProvider {
    * not returned to the caller — webhook senders should not learn anything
    * about why their request was rejected.
    */
-  verifyWebhookSignature(input: { rawBody: string; signature: string | undefined }): void;
+  verifyWebhookSignature(input: VerifyWebhookInput): Promise<void> | void;
 
   parseWebhookEvent(rawBody: string): WebhookEvent;
 }

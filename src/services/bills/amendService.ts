@@ -3,6 +3,7 @@ import { billStore } from '../../storage/billStore.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { BillSchema, type Bill, type BillItem, type AmendBillRequest } from '../../types/bills.js';
+import type { Participant } from '../../types/sessions.js';
 
 export const amendService = {
   async amend(input: {
@@ -19,15 +20,21 @@ export const amendService = {
       throw new AppError('BILL_NOT_FOUND', 'Bill not found');
     }
 
-    // Reject if a session has locked this bill (status >= paying).
+    // If the bill is locked into a session, gate by session status.
+    // - paying / settled: bill is frozen, totals are committed.
+    // - setup / claiming: amend is allowed; session reconciles in lockstep.
     const lock = await sessionStore.getBillLock(input.billId);
-    if (lock) {
+    let session = lock ? await sessionStore.get(lock.sessionId) : null;
+    if (session && (session.status === 'paying' || session.status === 'settled')) {
       throw new AppError(
         'SESSION_INVALID_STATE',
         'Bill is locked: a session has entered the paying state',
-        { sessionId: lock.sessionId },
+        { sessionId: session.sessionId },
       );
     }
+    // Defensive: an abandoned session shouldn't keep its bill lock (abandon
+    // releases it), but if it somehow lingers, treat as unlocked.
+    if (session && session.status === 'abandoned') session = null;
 
     const items: BillItem[] = input.amendment.items.map((it) => ({
       itemId: it.itemId ?? uuidv7(),
@@ -52,7 +59,58 @@ export const amendService = {
       createdAt: new Date().toISOString(),
     });
 
-    await billStore.putVersion(newVersion);
+    if (!session) {
+      // No active session — simple version write.
+      await billStore.putVersion(newVersion);
+      return newVersion;
+    }
+
+    // Active session: reconcile claims and readiness against the new items.
+    const newItemIds = new Set(items.map((i) => i.itemId));
+    const newQty = new Map(items.map((i) => [i.itemId, i.quantity]));
+
+    // Reject if any preserved itemId would have its quantity drop below the
+    // total claim count for that item — the lead must clear those claims
+    // first (or raise the quantity). This is a 409 the UI can explain.
+    const wholeClaimsForItem = new Map<string, number>();
+    for (const p of session.participants) {
+      for (const id of p.claimedItemIds) {
+        if (newItemIds.has(id)) {
+          wholeClaimsForItem.set(id, (wholeClaimsForItem.get(id) ?? 0) + 1);
+        }
+      }
+    }
+    for (const [id, claimed] of wholeClaimsForItem) {
+      const qty = newQty.get(id) ?? 0;
+      if (claimed > qty) {
+        throw new AppError(
+          'CLAIMS_EXCEED_QUANTITY',
+          'New quantity is below the number of claims for this item',
+          { itemId: id, claimed, newQuantity: qty },
+        );
+      }
+    }
+
+    // Drop claims for removed items; un-ready non-creator participants so
+    // they re-confirm against the new bill. Creator's readyToLock convention
+    // stays true.
+    const updatedParticipants: Participant[] = session.participants.map((p) => {
+      const isCreator = p.userId === session.creatorUserId;
+      return {
+        ...p,
+        claimedItemIds: p.claimedItemIds.filter((id) => newItemIds.has(id)),
+        readyToLock: isCreator ? p.readyToLock : false,
+      };
+    });
+
+    const { participants: _droppedParticipants, ...sessionMeta } = session;
+    const updatedMeta = { ...sessionMeta, pinnedBillVersion: newVersion.versionNumber };
+
+    await billStore.applyAmendWithSession({
+      bill: newVersion,
+      sessionMeta: updatedMeta,
+      participants: updatedParticipants,
+    });
     return newVersion;
   },
 };

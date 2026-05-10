@@ -24,5 +24,10 @@ export const localStubVerifier: IdTokenVerifier = (token) => {
     userId,
     email: `${userId}@dev.local`,
     name: userId,
+    // DiceBear renders a deterministic illustrated PNG keyed by the userId.
+    // Real images render fine in the small avatar slot on the session screen;
+    // initials are awkward and crowded at that size. Personas style is
+    // friendly-cartoon and PNG (RN Image can't render SVG natively).
+    picture: `https://api.dicebear.com/7.x/personas/png?seed=${encodeURIComponent(userId)}&size=128`,
   });
 };

@@ -155,16 +155,18 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(res.status).toBe(404);
   });
 
-  it('amending a bill is rejected once a session has been created from it (any state)', async () => {
+  it('amending a bill while the session is in setup bumps the session pinnedBillVersion', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const bill = await createBill(app, creator);
-    await app.request('/v1/sessions', {
+    const sessionRes = await app.request('/v1/sessions', {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({ billId: bill.billId }),
     });
-    // Session is in setup. Bill should already be locked.
+    const session = (await sessionRes.json()) as { sessionId: string; pinnedBillVersion: number };
+    expect(session.pinnedBillVersion).toBe(1);
+
     const amend = await app.request(`/v1/bills/${bill.billId}/amend`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
@@ -174,9 +176,14 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
         serviceChargePence: 0,
       }),
     });
-    expect(amend.status).toBe(409);
-    const body = (await amend.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('SESSION_INVALID_STATE');
+    expect(amend.status).toBe(200);
+
+    // Session should now be pinned to v2.
+    const sessionGet = await app.request(`/v1/sessions/${session.sessionId}`, {
+      headers: makeAuth(creator),
+    });
+    const refreshed = (await sessionGet.json()) as { pinnedBillVersion: number };
+    expect(refreshed.pinnedBillVersion).toBe(2);
   });
 
   it('cannot create a second session for the same bill while the first is active', async () => {

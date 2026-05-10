@@ -45,6 +45,7 @@ describe('TrueLayerSandboxProvider.parseWebhookEvent', () => {
     const event = provider.parseWebhookEvent(
       JSON.stringify({ type: tlType, payment_id: 'tl-pay-1', event_version: 1 }),
     );
+    if (!event) throw new Error('expected event, got null');
     expect(event.type).toBe(ourType);
     expect(event.providerPaymentId).toBe('tl-pay-1');
   });
@@ -58,6 +59,7 @@ describe('TrueLayerSandboxProvider.parseWebhookEvent', () => {
         failure_reason: 'user_cancelled',
       }),
     );
+    if (!event) throw new Error('expected event, got null');
     expect(event.reason).toBe('user_cancelled');
   });
 
@@ -65,10 +67,18 @@ describe('TrueLayerSandboxProvider.parseWebhookEvent', () => {
     expect(() => provider.parseWebhookEvent('not json')).toThrow(/JSON/);
   });
 
-  it('rejects unknown event types', () => {
-    expect(() =>
-      provider.parseWebhookEvent(JSON.stringify({ type: 'payment_pending', payment_id: 'x' })),
-    ).toThrow(/Unhandled/);
+  it('returns null for explicitly-ignored event types (so TL stops retrying)', () => {
+    const result = provider.parseWebhookEvent(
+      JSON.stringify({ type: 'payment_creditable', payment_id: 'tl-pay-x' }),
+    );
+    expect(result).toBeNull();
+  });
+
+  it('returns null for unknown event types instead of throwing', () => {
+    const result = provider.parseWebhookEvent(
+      JSON.stringify({ type: 'payment_some_future_event', payment_id: 'x' }),
+    );
+    expect(result).toBeNull();
   });
 
   it('rejects missing payment_id', () => {

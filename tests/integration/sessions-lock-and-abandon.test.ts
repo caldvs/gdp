@@ -9,6 +9,7 @@ import {
   makeAuth,
   newIdempotencyKey,
   sampleParsedBill,
+  setPayoutFor,
   uniqueImageBytes,
 } from './helpers.js';
 
@@ -60,6 +61,7 @@ async function setUpClaiming(app: ReturnType<typeof buildApp>, creator: string, 
     body: JSON.stringify({ claimedItemIds: [bill.items[0]?.itemId] }),
   });
 
+  await setPayoutFor(app, creator);
   await app.request(`/v1/sessions/${initial.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),

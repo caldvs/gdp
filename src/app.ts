@@ -32,11 +32,10 @@ const defaultPaymentProvider = (): PaymentProvider => {
       !env.TRUELAYER_CLIENT_SECRET ||
       !env.TRUELAYER_SIGNING_KID ||
       !env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM ||
-      !env.TRUELAYER_MERCHANT_ACCOUNT_ID ||
       !env.TRUELAYER_RETURN_URI
     ) {
       throw new Error(
-        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_MERCHANT_ACCOUNT_ID, TRUELAYER_RETURN_URI',
+        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_RETURN_URI',
       );
     }
     return new TrueLayerSandboxProvider({
@@ -45,7 +44,6 @@ const defaultPaymentProvider = (): PaymentProvider => {
       clientSecret: env.TRUELAYER_CLIENT_SECRET,
       signingKid: env.TRUELAYER_SIGNING_KID,
       signingPrivateKeyPem: env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM,
-      merchantAccountId: env.TRUELAYER_MERCHANT_ACCOUNT_ID,
       returnUri: env.TRUELAYER_RETURN_URI,
     });
   }

@@ -7,7 +7,6 @@ const cfg = {
   clientSecret: 'test-secret',
   signingKid: 'test-kid',
   signingPrivateKeyPem: '-----BEGIN EC PRIVATE KEY-----\nfake\n-----END EC PRIVATE KEY-----',
-  merchantAccountId: 'merch-1',
   returnUri: 'https://example.test/return',
 };
 
@@ -20,9 +19,6 @@ describe('TrueLayerSandboxProvider — config', () => {
     expect(() => new TrueLayerSandboxProvider({ ...cfg, signingKid: '' })).toThrow(/signingKid/);
     expect(() => new TrueLayerSandboxProvider({ ...cfg, signingPrivateKeyPem: '' })).toThrow(
       /signingPrivateKeyPem/,
-    );
-    expect(() => new TrueLayerSandboxProvider({ ...cfg, merchantAccountId: '' })).toThrow(
-      /merchantAccountId/,
     );
     expect(() => new TrueLayerSandboxProvider({ ...cfg, returnUri: '' })).toThrow(/returnUri/);
   });

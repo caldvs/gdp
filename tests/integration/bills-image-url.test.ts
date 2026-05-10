@@ -8,6 +8,7 @@ import {
   makeAuth,
   createBillFor,
   sampleParsedBill,
+  setPayoutFor,
 } from './helpers.js';
 
 const buildApp = () =>
@@ -59,6 +60,7 @@ describe('GET /v1/bills/:billId/image-url', () => {
       body: JSON.stringify({ billId: bill.billId }),
     });
     const session = (await sessionRes.json()) as { sessionId: string };
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${session.sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),

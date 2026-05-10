@@ -9,9 +9,12 @@
  *   TRUELAYER_CLIENT_SECRET
  *   TRUELAYER_SIGNING_KID
  *   TRUELAYER_SIGNING_PRIVATE_KEY_PEM   (or path via _PEM_FILE)
- *   TRUELAYER_MERCHANT_ACCOUNT_ID
  *   TRUELAYER_RETURN_URI
  *   TRUELAYER_ENVIRONMENT               (defaults to "sandbox")
+ *
+ * Smoke beneficiary defaults to the sandbox merchant account
+ * (sort 040668 / acct 00079660 / Callum Davies). Override with
+ *   --sort-code, --account-number, --account-holder-name.
  *
  * Usage:
  *   AWS_PROFILE=gdp-dev tsx scripts/smoke-truelayer.ts                # 1234p default
@@ -55,6 +58,17 @@ const parseAmount = (): number => {
   return n;
 };
 
+const argString = (flag: string, fallback: string): string => {
+  const i = argv.indexOf(flag);
+  if (i === -1) return fallback;
+  const v = argv[i + 1];
+  if (!v) {
+    console.error(`✗ ${flag} requires a value`);
+    exit(1);
+  }
+  return v;
+};
+
 async function main(): Promise<void> {
   const provider = new TrueLayerSandboxProvider({
     environment: (env.TRUELAYER_ENVIRONMENT as 'sandbox' | 'live') ?? 'sandbox',
@@ -62,14 +76,20 @@ async function main(): Promise<void> {
     clientSecret: required('TRUELAYER_CLIENT_SECRET'),
     signingKid: required('TRUELAYER_SIGNING_KID'),
     signingPrivateKeyPem: loadPem(),
-    merchantAccountId: required('TRUELAYER_MERCHANT_ACCOUNT_ID'),
     returnUri: required('TRUELAYER_RETURN_URI'),
   });
 
   const paymentId = uuidv7();
   const amountPence = parseAmount();
+  const beneficiary = {
+    sortCode: argString('--sort-code', '040668'),
+    accountNumber: argString('--account-number', '00079660'),
+    accountHolderName: argString('--account-holder-name', 'Callum Davies'),
+  };
 
-  console.log(`→ creating sandbox payment ${paymentId} for ${amountPence}p…`);
+  console.log(
+    `→ creating sandbox payment ${paymentId} for ${amountPence}p → ${beneficiary.accountHolderName} (${beneficiary.sortCode}/${beneficiary.accountNumber})…`,
+  );
   const result = await provider.initiate({
     paymentId,
     amountPence,
@@ -77,6 +97,7 @@ async function main(): Promise<void> {
     payerUserId: `smoke-payer-${paymentId.slice(0, 8)}`,
     collectorUserId: `smoke-collector-${paymentId.slice(0, 8)}`,
     reference: `smoke-${paymentId.slice(0, 8)}`,
+    beneficiary,
   });
 
   console.log('');

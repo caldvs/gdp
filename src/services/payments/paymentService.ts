@@ -112,6 +112,51 @@ export const paymentService = {
   },
 
   /**
+   * Payer claims they've sent the money via their bank app. Idempotent —
+   * concurrent claims both end up with the same canonical timestamp (the
+   * earlier write wins via DDB's `if_not_exists`). Doesn't advance state;
+   * it's purely a UX signal so the lead knows which pending payments are
+   * awaiting confirmation. Available for any provider, but really only
+   * meaningful in manual mode (TL-mediated payments advance via webhook).
+   */
+  async markPaidByPayer(input: { caller: VerifiedCaller; paymentId: string }): Promise<Payment> {
+    // Read first to enforce auth + state guards. The actual write is a
+    // separate atomic UpdateExpression so two concurrent claims can't
+    // race past the `payerClaimedPaidAt` check and write different
+    // timestamps.
+    const payment = await paymentStore.get(input.paymentId);
+    if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+    if (payment.payerUserId !== input.caller.userId) {
+      throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+    }
+    if (payment.status !== 'pending') {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        `Cannot mark a payment as paid in status ${payment.status}`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    // Atomic: SET payerClaimedPaidAt = if_not_exists(payerClaimedPaidAt, :now).
+    // Returned value is the canonical timestamp — ours if we won the
+    // race, the earlier writer's if we lost.
+    const updated = await paymentStore.setPayerClaimedPaidAt(input.paymentId, now);
+    // Mirror the canonical timestamp onto the participant's payment
+    // subdocument so the lead's session view shows it without re-fetching
+    // the payment row. The mirror is condition-gated on participant still
+    // being `pending` — if they've already moved on, the mirror is a
+    // no-op. The payment row is the truth; the mirror is best-effort UX.
+    if (updated.payerClaimedPaidAt) {
+      await paymentStore.setParticipantPayerClaimedPaidAt({
+        sessionId: payment.sessionId,
+        userId: payment.payerUserId,
+        ts: updated.payerClaimedPaidAt,
+      });
+    }
+    return updated;
+  },
+
+  /**
    * Manual mode only: collector marks a guest payment as received. Drives
    * the same DDB updates that a webhook would, plus runs session settlement.
    * Rejected for non-manual payments — those advance via webhook only.

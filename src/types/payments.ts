@@ -36,6 +36,13 @@ export const PaymentSchema = z.object({
   idempotencyKey: z.string(),
   events: z.array(PaymentEventSchema),
   createdAt: z.string().datetime(),
+  /**
+   * Set when the payer hits POST /v1/payments/:id/mark-paid to claim
+   * "I've sent the money via my bank". Surfaced in the lead's UI so they
+   * know which pending payments are awaiting their confirmation. Does not
+   * itself advance status — only the lead's /confirm does that.
+   */
+  payerClaimedPaidAt: z.string().datetime().optional(),
 });
 export type Payment = z.infer<typeof PaymentSchema>;
 

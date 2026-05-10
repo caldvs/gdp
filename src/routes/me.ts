@@ -10,6 +10,7 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
       userId: c.var.userId,
       displayName: c.var.userName ?? 'Unknown',
       ...(c.var.userEmail ? { email: c.var.userEmail } : {}),
+      ...(c.var.userPicture ? { avatarUrl: c.var.userPicture } : {}),
     });
   });
 

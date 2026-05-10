@@ -87,7 +87,7 @@ describe('manual payment mode — initiate returns bank details + optional links
     };
     const expectedAmount = (body.instructions.amountPence / 100).toFixed(2);
     expect(body.instructions.links.monzo).toBe(
-      `https://monzo.me/callum.davies/${expectedAmount}?d=${encodeURIComponent(body.instructions.reference)}`,
+      `https://monzo.me/callum.davies/${expectedAmount}?d=${encodeURIComponent(body.instructions.reference)}&account_type=personal`,
     );
   });
 

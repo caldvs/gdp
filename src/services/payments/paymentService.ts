@@ -316,17 +316,19 @@ function buildManualInstructions(args: {
   reference: string;
   amountPence: number;
 }): PaymentInstructions {
-  // monzo.me / revolut.me both take amount as decimal pounds in the path:
-  //   https://monzo.me/<handle>/<amount>?d=<description>
-  //   https://revolut.me/<tag>/<amount>
-  // Reference goes on Monzo as `?d=` (visible to the lead in their feed);
-  // Revolut doesn't take a description in its public link format.
+  // monzo.me / revolut.me both take amount as decimal pounds in the path.
+  //   Monzo:   https://monzo.me/<handle>/<amount>?d=<desc>&account_type=personal
+  //   Revolut: https://revolut.me/<tag>/<amount>
+  // We default account_type=personal because Monzo users with a Business
+  // account on the same handle would otherwise see a disambiguation prompt.
+  // The `d=` description shows in the payer's confirm screen + the lead's
+  // feed. Revolut's public link format doesn't accept a description.
   const amountMajor = (args.amountPence / 100).toFixed(2);
   const links: { monzo?: string; revolut?: string } = {};
   if (args.payoutAccount.monzoHandle) {
     const handle = encodeURIComponent(args.payoutAccount.monzoHandle);
     const desc = encodeURIComponent(args.reference);
-    links.monzo = `https://monzo.me/${handle}/${amountMajor}?d=${desc}`;
+    links.monzo = `https://monzo.me/${handle}/${amountMajor}?d=${desc}&account_type=personal`;
   }
   if (args.payoutAccount.revolutTag) {
     const tag = encodeURIComponent(args.payoutAccount.revolutTag);

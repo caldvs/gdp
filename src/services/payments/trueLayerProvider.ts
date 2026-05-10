@@ -72,6 +72,14 @@ const TYPE_MAP: Record<string, WebhookEventType> = {
   payment_refunded: 'refunded',
 };
 
+// Events TL fires that we don't act on. Listed explicitly (rather than
+// silently swallowing every unknown type) so anything new from TL surfaces
+// in the warn log instead of being silently dropped.
+const IGNORED_TYPES = new Set<string>([
+  // Funds available for crediting; informational, fires after `settled`.
+  'payment_creditable',
+]);
+
 const JWKS_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // TrueLayer requires `user.id` to be a UUID, but our payer ids are Google
@@ -196,7 +204,7 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
     }
   }
 
-  parseWebhookEvent(rawBody: string): WebhookEvent {
+  parseWebhookEvent(rawBody: string): WebhookEvent | null {
     let parsed: unknown;
     try {
       parsed = JSON.parse(rawBody);
@@ -207,9 +215,18 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
     if (!env.success) {
       throw new AppError('INVALID_INPUT', 'Webhook payload schema invalid');
     }
+    if (IGNORED_TYPES.has(env.data.type)) {
+      return null;
+    }
     const mapped = TYPE_MAP[env.data.type];
     if (!mapped) {
-      throw new AppError('INVALID_INPUT', `Unhandled TrueLayer event type: ${env.data.type}`);
+      // Unknown event — ack so TL doesn't retry forever, but log so we can
+      // notice if TL adds something we should be handling.
+      this.config.logger?.warn(
+        { eventType: env.data.type },
+        'truelayer webhook: unknown event type, ignoring',
+      );
+      return null;
     }
     if (!env.data.payment_id) {
       throw new AppError('INVALID_INPUT', 'Webhook missing payment_id');

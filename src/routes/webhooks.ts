@@ -32,6 +32,11 @@ export const buildWebhookRoutes = (deps: WebhookRoutesDeps): Hono => {
     }
 
     const event = deps.provider.parseWebhookEvent(rawBody);
+    // null = recognised-but-uninteresting event (e.g. TL `payment_creditable`).
+    // Ack with 200 so the provider stops retrying.
+    if (event === null) {
+      return c.body(null, 200);
+    }
     // applyWebhookEvent returns 'applied' | 'noop' | 'invalid_transition'.
     // All three are 200 acks — webhooks must be idempotent and resilient
     // to out-of-order delivery, so an unchanged state is still a success

@@ -59,5 +59,16 @@ export const buildPaymentGetRoute = (deps: PaymentGetRouteDeps): Hono => {
     return c.json(payment);
   });
 
+  // Payer-only: claim "I've sent the money via my bank". Idempotent.
+  // Doesn't change payment status — only the lead's /confirm does that.
+  // Sets payerClaimedPaidAt so the lead's UI knows which pending payments
+  // are awaiting confirmation.
+  r.post('/:paymentId/mark-paid', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    const paymentId = c.req.param('paymentId');
+    const payment = await paymentService.markPaidByPayer({ caller, paymentId });
+    return c.json(payment);
+  });
+
   return r;
 };

@@ -6,7 +6,13 @@ export type SessionStatus = z.infer<typeof SessionStatusSchema>;
 export const ParticipantPaymentSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('unpaid') }),
   z.object({ status: z.literal('self_paid') }),
-  z.object({ status: z.literal('pending'), paymentId: z.string().uuid() }),
+  z.object({
+    status: z.literal('pending'),
+    paymentId: z.string().uuid(),
+    /** Mirrors Payment.payerClaimedPaidAt; surfaced here so the lead's
+     * session view can flag "they say they've paid, awaiting your confirm". */
+    payerClaimedPaidAt: z.string().datetime().optional(),
+  }),
   z.object({
     status: z.literal('succeeded'),
     paymentId: z.string().uuid(),

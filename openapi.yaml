@@ -103,6 +103,34 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/me/payout-account:
+    put:
+      tags: [identity]
+      operationId: setMyPayoutAccount
+      summary: Set or update the caller's UK bank account for receiving guest payments
+      description: |
+        Required before the caller can `/share` a session — the lead diner is the collector,
+        and TrueLayer needs a beneficiary to route guest payments to. The fields are kept
+        on the User record only; they're never returned to other diners.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutAccount' }
+      responses:
+        '200':
+          description: The saved payout account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payoutAccount]
+                properties:
+                  payoutAccount: { $ref: '#/components/schemas/PayoutAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/me/sessions:
     get:
       tags: [identity]
@@ -377,6 +405,9 @@ paths:
         Creator-only. Transitions the session from `setup` to `claiming`. Freezes the creator's
         `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
         (subsequent calls to `/by-code` will resolve it).
+
+        Requires the creator to have set their `payoutAccount` (`PUT /v1/me/payout-account`) — TrueLayer
+        needs a beneficiary to route guest payments to. Returns `PAYOUT_ACCOUNT_REQUIRED` (409) if not set.
       responses:
         '200':
           description: Session, now in `claiming` with the join code visible
@@ -391,7 +422,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Session is not in `setup`
+          description: Session is not in `setup`, OR the creator has no `payoutAccount` (`PAYOUT_ACCOUNT_REQUIRED`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -752,6 +783,7 @@ components:
                 - PARSE_LOW_CONFIDENCE
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
+                - PAYOUT_ACCOUNT_REQUIRED
                 - INTERNAL_ERROR
             message: { type: string, description: Human-safe explanation }
             requestId: { type: string, description: Server request ID; cross-reference in support }
@@ -768,6 +800,31 @@ components:
         displayName: { type: string }
         email: { type: string, format: email }
         avatarUrl: { type: string, format: uri }
+        payoutAccount:
+          $ref: '#/components/schemas/PayoutAccount'
+          description: |
+            Where guest payments are routed when the caller is the lead diner of a session.
+            Only ever returned to the owning user. Required before /share — see PAYOUT_ACCOUNT_REQUIRED.
+
+    PayoutAccount:
+      type: object
+      required: [sortCode, accountNumber, accountHolderName]
+      properties:
+        sortCode:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: UK sort code, 6 digits, no separators
+          example: '040668'
+        accountNumber:
+          type: string
+          pattern: '^[0-9]{8}$'
+          description: UK account number, 8 digits
+          example: '00079660'
+        accountHolderName:
+          type: string
+          minLength: 1
+          maxLength: 150
+          example: Callum Davies
 
     Venue:
       type: object

@@ -5,6 +5,8 @@ export interface VerifiedCaller {
   userId: string;
   displayName: string;
   email?: string;
+  /** Profile picture URL from the IdP. Optional. */
+  avatarUrl?: string;
 }
 
 /**
@@ -22,5 +24,6 @@ export function callerOf(c: Context): VerifiedCaller {
     userId,
     displayName: c.var.userName ?? userId,
     ...(c.var.userEmail ? { email: c.var.userEmail } : {}),
+    ...(c.var.userPicture ? { avatarUrl: c.var.userPicture } : {}),
   };
 }

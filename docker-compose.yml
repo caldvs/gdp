@@ -15,4 +15,7 @@ services:
     environment:
       - MINIO_ROOT_USER=local
       - MINIO_ROOT_PASSWORD=local-secret
+      # Allow browser-side PUTs from the dev mobile (LAN IP, cloudflared, etc.).
+      # Permissive in dev only.
+      - MINIO_API_CORS_ALLOW_ORIGIN=*
     command: ['server', '/data', '--address', ':9000', '--console-address', ':9001']

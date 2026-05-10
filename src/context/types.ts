@@ -8,5 +8,6 @@ declare module 'hono' {
     userId?: string;
     userEmail?: string;
     userName?: string;
+    userPicture?: string;
   }
 }

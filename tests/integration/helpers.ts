@@ -26,6 +26,7 @@ export const fakeVerifier: IdTokenVerifier = (token) => {
       userId,
       email: `${userId}@example.com`,
       name: userId,
+      picture: `https://avatar.example/${userId}.png`,
     });
   }
   return Promise.reject(new AppError('AUTH_INVALID', 'invalid'));

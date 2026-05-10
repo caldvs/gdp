@@ -9,6 +9,7 @@ import {
   makeAuth,
   newIdempotencyKey,
   sampleParsedBill,
+  setPayoutFor,
   uniqueImageBytes,
 } from './helpers.js';
 
@@ -119,6 +120,7 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
       body: JSON.stringify({ claimedItemIds: [bill.items[0]?.itemId] }),
     });
 
+    await setPayoutFor(app, creator);
     const share = await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),
@@ -227,6 +229,34 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(body.error.code).toBe('SESSION_NOT_FOUND');
   });
 
+  it('share requires the creator to have a payout account on file', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const sessionId = ((await create.json()) as { sessionId: string }).sessionId;
+
+    const denied = await app.request(`/v1/sessions/${sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(denied.status).toBe(409);
+    const body = (await denied.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('PAYOUT_ACCOUNT_REQUIRED');
+
+    // After setting payout, share succeeds.
+    await setPayoutFor(app, creator);
+    const ok = await app.request(`/v1/sessions/${sessionId}/share`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(ok.status).toBe(200);
+  });
+
   it('cannot share twice (state must be setup)', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
@@ -238,6 +268,7 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     });
     const sessionId = ((await create.json()) as { sessionId: string }).sessionId;
 
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),

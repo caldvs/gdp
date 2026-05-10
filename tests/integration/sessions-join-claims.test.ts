@@ -10,6 +10,7 @@ import {
   makeAuth,
   newIdempotencyKey,
   sampleParsedBill,
+  setPayoutFor,
   uniqueImageBytes,
 } from './helpers.js';
 
@@ -59,6 +60,7 @@ async function buildSharedSession(app: ReturnType<typeof buildApp>, creator: str
     body: JSON.stringify({ claimedItemIds: [bill.items[0]?.itemId] }),
   });
   // Share returns the activated joinCode.
+  await setPayoutFor(app, creator);
   const shareRes = await app.request(`/v1/sessions/${initial.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),
@@ -357,6 +359,7 @@ describe('Per-unit claims (multi-quantity items)', () => {
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({ claimedItemIds: Array(6).fill(guinnessId) }),
     });
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),
@@ -388,6 +391,7 @@ describe('Per-unit claims (multi-quantity items)', () => {
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({ claimedItemIds: Array(4).fill(guinnessId) }),
     });
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),
@@ -424,6 +428,7 @@ describe('Per-unit claims (multi-quantity items)', () => {
       headers: { 'content-type': 'application/json', ...makeAuth(creator) },
       body: JSON.stringify({ claimedItemIds: Array(4).fill(guinnessId) }),
     });
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),

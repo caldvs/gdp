@@ -38,6 +38,23 @@ export const makeAuth = (userId: string): { authorization: string } => ({
 
 export const newIdempotencyKey = (): string => uuidv7();
 
+/**
+ * Set a payout account on a user. Required before /share — see
+ * sessionService.share. Tests that go through buildPayingSession get this
+ * for free; tests that drive /share directly must call this first.
+ */
+export async function setPayoutFor(app: Hono, userId: string): Promise<void> {
+  await app.request('/v1/me/payout-account', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+    body: JSON.stringify({
+      sortCode: '040668',
+      accountNumber: '00079660',
+      accountHolderName: 'Test Lead',
+    }),
+  });
+}
+
 export async function ensureBillsBucket(): Promise<void> {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: BILLS_BUCKET }));
@@ -121,6 +138,7 @@ export async function buildPayingSession(
     headers: { 'content-type': 'application/json', ...makeAuth(creator) },
     body: JSON.stringify({ claimedItemIds: buckets.get(creator)! }),
   });
+  await setPayoutFor(app, creator);
   await app.request(`/v1/sessions/${initial.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),

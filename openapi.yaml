@@ -657,6 +657,39 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/payments/{paymentId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [payments]
+      operationId: confirmManualPayment
+      summary: Collector confirms a manual payment was received
+      description: |
+        Manual mode only. The collector marks a guest payment as `succeeded` after seeing
+        the funds arrive in their bank account. Idempotent — confirming a payment already
+        in `succeeded` returns the same payment unchanged. When this is the last unpaid
+        guest, the session transitions to `settled` automatically.
+
+        Rejected for `provider != manual` payments (those advance via webhook from
+        TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+      responses:
+        '200':
+          description: Payment, now in `succeeded`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Payment not found, or caller is not the collector
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Payment is non-manual, or in a state that can't be confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /webhooks/truelayer:
     post:
       tags: [webhooks]
@@ -825,6 +858,20 @@ components:
           minLength: 1
           maxLength: 150
           example: Callum Davies
+        monzoHandle:
+          type: string
+          pattern: '^[a-zA-Z0-9._-]{1,30}$'
+          description: |
+            Optional monzo.me username (without the leading `@` or domain). When set,
+            guest payment instructions include a one-tap `https://monzo.me/<handle>/...` link.
+          example: callum.davies
+        revolutTag:
+          type: string
+          pattern: '^[a-z0-9]{1,32}$'
+          description: |
+            Optional Revolut tag (without the leading `@`). When set, guest payment
+            instructions include a one-tap `https://revolut.me/<tag>/...` link.
+          example: callumd
 
     Venue:
       type: object
@@ -1036,7 +1083,7 @@ components:
         collectorUserId: { type: string }
         amountPence: { type: integer, format: int64, minimum: 0 }
         currency: { type: string, enum: [GBP] }
-        provider: { type: string, enum: [truelayer] }
+        provider: { type: string, enum: [truelayer, manual] }
         providerPaymentId: { type: string }
         status: { $ref: '#/components/schemas/PaymentStatus' }
         idempotencyKey: { type: string, format: uuid }
@@ -1149,10 +1196,58 @@ components:
 
     InitiatePaymentResponse:
       type: object
-      required: [payment, providerRedirectUrl]
+      required: [payment, instructions]
       properties:
         payment: { $ref: '#/components/schemas/Payment' }
-        providerRedirectUrl:
+        instructions: { $ref: '#/components/schemas/PaymentInstructions' }
+
+    PaymentInstructions:
+      description: |
+        Discriminated union telling the client how to actually complete the payment.
+        - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
+        - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
+          the guest pays via their own banking app, then the lead confirms receipt
+          via `POST /v1/payments/{paymentId}/confirm`.
+      oneOf:
+        - $ref: '#/components/schemas/RedirectInstructions'
+        - $ref: '#/components/schemas/ManualTransferInstructions'
+      discriminator:
+        propertyName: type
+        mapping:
+          redirect: '#/components/schemas/RedirectInstructions'
+          manual_transfer: '#/components/schemas/ManualTransferInstructions'
+
+    RedirectInstructions:
+      type: object
+      required: [type, url]
+      properties:
+        type: { type: string, enum: [redirect] }
+        url: { type: string, format: uri }
+
+    ManualTransferInstructions:
+      type: object
+      required: [type, bankDetails, reference, amountPence, links]
+      properties:
+        type: { type: string, enum: [manual_transfer] }
+        bankDetails:
+          type: object
+          required: [sortCode, accountNumber, accountHolderName]
+          properties:
+            sortCode: { type: string, pattern: '^[0-9]{6}$' }
+            accountNumber: { type: string, pattern: '^[0-9]{8}$' }
+            accountHolderName: { type: string }
+        reference:
           type: string
-          format: uri
-          description: TrueLayer authentication URL the client should open
+          description: Short reference the guest should put on their bank transfer (≤18 chars)
+        amountPence: { type: integer, minimum: 1 }
+        links:
+          type: object
+          description: One-tap deep links into popular banking apps; populated only if the lead has the matching handle saved on `payoutAccount`.
+          properties:
+            monzo:
+              {
+                type: string,
+                format: uri,
+                example: 'https://monzo.me/callum.davies/12.34?d=gdp-019e137a',
+              }
+            revolut: { type: string, format: uri, example: 'https://revolut.me/callumd/12.34' }

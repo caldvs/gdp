@@ -53,7 +53,7 @@ describe('POST /v1/sessions/:id/payments', () => {
         provider: string;
         status: string;
       };
-      providerRedirectUrl: string;
+      instructions: { type: string; url?: string };
     };
     expect(body.payment.payerUserId).toBe(guestA);
     expect(body.payment.collectorUserId).toBe(creator);
@@ -62,7 +62,8 @@ describe('POST /v1/sessions/:id/payments', () => {
     expect(body.payment.currency).toBe('GBP');
     expect(body.payment.provider).toBe('truelayer');
     expect(body.payment.status).toBe('pending');
-    expect(body.providerRedirectUrl).toMatch(/^https:\/\//);
+    expect(body.instructions.type).toBe('redirect');
+    expect(body.instructions.url).toMatch(/^https:\/\//);
   });
 
   it('after initiate, the session shows the participant as payment.pending with the paymentId', async () => {

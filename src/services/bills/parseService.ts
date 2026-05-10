@@ -59,7 +59,13 @@ export const parseService = {
 
     const parsed = await input.parser.parse(bytes, input.requestId);
     const bill = BillSchema.parse(
-      buildBillV1({ parsed, userId: input.userId, sha256, parser: input.parser }),
+      buildBillV1({
+        parsed,
+        userId: input.userId,
+        uploadId: input.uploadId,
+        sha256,
+        parser: input.parser,
+      }),
     );
     await billStore.putVersion(bill, {
       indexImageHash: { userId: input.userId, sha256 },
@@ -71,6 +77,7 @@ export const parseService = {
 function buildBillV1(args: {
   parsed: ParsedBillFromImage;
   userId: string;
+  uploadId: string;
   sha256: string;
   parser: BillParser;
 }): Bill {
@@ -99,6 +106,7 @@ function buildBillV1(args: {
       parser: args.parser.model,
       parserVersion: args.parser.version,
       parsedAt: new Date().toISOString(),
+      uploadId: args.uploadId,
     },
     ...(args.parsed.venue ? { venue: args.parsed.venue } : {}),
     createdAt: new Date().toISOString(),

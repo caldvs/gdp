@@ -79,3 +79,24 @@ export const ClaimsRequestSchema = z.object({
   claimedItemIds: z.array(z.string().uuid()),
 });
 export type ClaimsRequest = z.infer<typeof ClaimsRequestSchema>;
+
+// Lightweight session summary returned by GET /v1/me/sessions. Distinct from
+// `Session` because it doesn't include the full participants list — just the
+// caller's role, share, and payment status.
+export const SessionSummarySchema = z.object({
+  sessionId: z.string().uuid(),
+  status: SessionStatusSchema,
+  creatorUserId: z.string(),
+  collectorUserId: z.string(),
+  billId: z.string().uuid(),
+  pinnedBillVersion: z.number().int().min(1),
+  joinCode: z
+    .string()
+    .regex(/^[A-HJ-NP-Z2-9]{6}$/)
+    .optional(),
+  createdAt: z.string().datetime(),
+  role: z.enum(['lead', 'diner']),
+  myOwedPence: z.number().int().nonnegative().optional(),
+  myPaymentStatus: z.enum(['unpaid', 'self_paid', 'pending', 'succeeded', 'failed']),
+});
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;

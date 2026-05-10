@@ -93,6 +93,60 @@ describe('POST /v1/payments/:id/mark-paid — payer claims they paid', () => {
     expect(t1).toBe(t2);
   });
 
+  it('is concurrency-safe — parallel claims all return the canonical timestamp', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await buildPayingSession(app, creator, [guest]);
+    const paymentId = await initiate(app, sessionId, guest);
+
+    // Pre-fix: each request did its own read-then-write and stamped its
+    // own timestamp; the participant mirror could diverge from the
+    // payment row. Post-fix: if_not_exists on both rows guarantees one
+    // canonical value across all writers.
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, async () =>
+        app.request(`/v1/payments/${paymentId}/mark-paid`, {
+          method: 'POST',
+          headers: makeAuth(guest),
+        }),
+      ),
+    );
+    const bodies = await Promise.all(responses.map((r) => r.json()));
+    const timestamps = bodies.map((b) => (b as { payerClaimedPaidAt: string }).payerClaimedPaidAt);
+    expect(new Set(timestamps).size).toBe(1);
+
+    // Participant mirror must reflect the same canonical timestamp.
+    const sess = await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(creator) });
+    const body = (await sess.json()) as {
+      participants: { userId: string; payment: { payerClaimedPaidAt?: string } }[];
+    };
+    const part = body.participants.find((p) => p.userId === guest);
+    expect(part?.payment.payerClaimedPaidAt).toBe(timestamps[0]);
+  });
+
+  it("preserves the participant's GSI1 entry across writes (listForUser regression)", async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await buildPayingSession(app, creator, [guest]);
+    const paymentId = await initiate(app, sessionId, guest);
+
+    // Pre-fix: paymentStore.applyUpdate's Put on the participant row
+    // dropped GSI1PK/GSI1SK (sessionStore.get strips them on read), so
+    // every webhook + initiate + mark-paid + confirm silently removed
+    // the session from the participant's /v1/me/sessions list.
+    await app.request(`/v1/payments/${paymentId}/mark-paid`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+
+    const list = await app.request('/v1/me/sessions', { headers: makeAuth(guest) });
+    expect(list.status).toBe(200);
+    const body = (await list.json()) as { sessions: { sessionId: string }[] };
+    expect(body.sessions.map((s) => s.sessionId)).toContain(sessionId);
+  });
+
   it('does not gate or trigger session settlement on its own', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;

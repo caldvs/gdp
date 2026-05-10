@@ -7,7 +7,8 @@ import { isAlreadyApplied, nextStatus } from './stateMachine.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Participant, Session } from '../../types/sessions.js';
-import type { Payment, PaymentEvent } from '../../types/payments.js';
+import type { Payment, PaymentEvent, PaymentInstructions } from '../../types/payments.js';
+import type { PayoutAccount } from '../../types/users.js';
 import type { PaymentProvider, WebhookEvent } from './provider.js';
 
 export const paymentService = {
@@ -15,9 +16,10 @@ export const paymentService = {
     caller: VerifiedCaller;
     sessionId: string;
     idempotencyKey: string;
-    provider: PaymentProvider;
+    /** null = manual mode (guest pays via their own banking app, lead confirms). */
+    provider: PaymentProvider | null;
     logger?: Logger;
-  }): Promise<{ payment: Payment; providerRedirectUrl: string }> {
+  }): Promise<{ payment: Payment; instructions: PaymentInstructions }> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     const participant = session.participants.find((p) => p.userId === input.caller.userId);
@@ -50,15 +52,38 @@ export const paymentService = {
     }
 
     const paymentId = uuidv7();
-    const initiated = await initiateOrTranslate(input.provider, {
-      paymentId,
-      amountPence: participant.owedPence,
-      currency: 'GBP',
-      payerUserId: participant.userId,
-      collectorUserId: session.collectorUserId,
-      reference: `gdp-${session.sessionId.slice(0, 8)}`,
-      beneficiary: collector.payoutAccount,
-    });
+    const reference = `gdp-${session.sessionId.slice(0, 8)}`;
+    const amountPence = participant.owedPence;
+
+    let providerPaymentId: string;
+    let providerName: 'truelayer' | 'manual';
+    let instructions: PaymentInstructions;
+
+    if (input.provider) {
+      const initiated = await initiateOrTranslate(input.provider, {
+        paymentId,
+        amountPence,
+        currency: 'GBP',
+        payerUserId: participant.userId,
+        collectorUserId: session.collectorUserId,
+        reference,
+        beneficiary: collector.payoutAccount,
+      });
+      providerPaymentId = initiated.providerPaymentId;
+      providerName = input.provider.name;
+      instructions = { type: 'redirect', url: initiated.authorizationUrl };
+    } else {
+      // Manual mode: no external provider call. The "providerPaymentId" is
+      // synthetic — it just satisfies the schema. Guest pays via their own
+      // banking app; the lead drives the state transition via /confirm.
+      providerPaymentId = `manual-${paymentId}`;
+      providerName = 'manual';
+      instructions = buildManualInstructions({
+        payoutAccount: collector.payoutAccount,
+        reference,
+        amountPence,
+      });
+    }
 
     const now = new Date().toISOString();
     const payment: Payment = {
@@ -66,10 +91,10 @@ export const paymentService = {
       sessionId: session.sessionId,
       payerUserId: participant.userId,
       collectorUserId: session.collectorUserId,
-      amountPence: participant.owedPence,
+      amountPence,
       currency: 'GBP',
-      provider: input.provider.name,
-      providerPaymentId: initiated.providerPaymentId,
+      provider: providerName,
+      providerPaymentId,
       status: 'pending',
       idempotencyKey: input.idempotencyKey,
       events: [{ at: now, from: 'pending', to: 'pending', source: 'system', note: 'created' }],
@@ -83,7 +108,71 @@ export const paymentService = {
 
     await paymentStore.applyUpdate({ payment, participant: updatedParticipant });
 
-    return { payment, providerRedirectUrl: initiated.authorizationUrl };
+    return { payment, instructions };
+  },
+
+  /**
+   * Manual mode only: collector marks a guest payment as received. Drives
+   * the same DDB updates that a webhook would, plus runs session settlement.
+   * Rejected for non-manual payments — those advance via webhook only.
+   */
+  async confirmManual(input: {
+    caller: VerifiedCaller;
+    paymentId: string;
+    logger?: Logger;
+  }): Promise<Payment> {
+    const payment = await paymentStore.get(input.paymentId);
+    if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+    if (payment.collectorUserId !== input.caller.userId) {
+      throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+    }
+    if (payment.provider !== 'manual') {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        'Only manual payments can be confirmed by the collector; provider-mediated payments advance via webhook',
+      );
+    }
+    if (payment.status === 'succeeded') {
+      // Idempotent: already confirmed.
+      return payment;
+    }
+    if (payment.status !== 'pending') {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        `Cannot confirm a payment in status ${payment.status}`,
+      );
+    }
+
+    const session = await sessionStore.get(payment.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    const participant = session.participants.find((p) => p.userId === payment.payerUserId);
+    if (!participant) throw new AppError('SESSION_NOT_FOUND', 'Participant not found');
+
+    const now = new Date().toISOString();
+    const event: PaymentEvent = {
+      at: now,
+      from: payment.status,
+      to: 'succeeded',
+      source: 'api',
+      note: 'collector confirmed manual receipt',
+    };
+    const updatedPayment: Payment = {
+      ...payment,
+      status: 'succeeded',
+      events: [...payment.events, event],
+    };
+    const updatedParticipant: Participant = {
+      ...participant,
+      payment: { status: 'succeeded', paymentId: payment.paymentId, paidAt: now },
+    };
+    await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
+
+    await maybeSettleSession(
+      { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
+      input.logger,
+    );
+
+    return updatedPayment;
   },
 
   async get(input: { caller: VerifiedCaller; paymentId: string }): Promise<Payment> {
@@ -220,4 +309,38 @@ async function maybeSettleSession(session: Session, logger?: Logger): Promise<vo
   const { participants: _participants, ...meta } = session;
   await sessionStore.putMeta({ ...meta, status: 'settled' });
   logger?.info({ sessionId: session.sessionId }, 'session settled');
+}
+
+function buildManualInstructions(args: {
+  payoutAccount: PayoutAccount;
+  reference: string;
+  amountPence: number;
+}): PaymentInstructions {
+  // monzo.me / revolut.me both take amount as decimal pounds in the path:
+  //   https://monzo.me/<handle>/<amount>?d=<description>
+  //   https://revolut.me/<tag>/<amount>
+  // Reference goes on Monzo as `?d=` (visible to the lead in their feed);
+  // Revolut doesn't take a description in its public link format.
+  const amountMajor = (args.amountPence / 100).toFixed(2);
+  const links: { monzo?: string; revolut?: string } = {};
+  if (args.payoutAccount.monzoHandle) {
+    const handle = encodeURIComponent(args.payoutAccount.monzoHandle);
+    const desc = encodeURIComponent(args.reference);
+    links.monzo = `https://monzo.me/${handle}/${amountMajor}?d=${desc}`;
+  }
+  if (args.payoutAccount.revolutTag) {
+    const tag = encodeURIComponent(args.payoutAccount.revolutTag);
+    links.revolut = `https://revolut.me/${tag}/${amountMajor}`;
+  }
+  return {
+    type: 'manual_transfer',
+    bankDetails: {
+      sortCode: args.payoutAccount.sortCode,
+      accountNumber: args.payoutAccount.accountNumber,
+      accountHolderName: args.payoutAccount.accountHolderName,
+    },
+    reference: args.reference,
+    amountPence: args.amountPence,
+    links,
+  };
 }

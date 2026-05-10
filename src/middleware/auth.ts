@@ -21,6 +21,7 @@ export const requireAuth =
     c.set('userId', identity.userId);
     c.set('userEmail', identity.email);
     c.set('userName', identity.name);
+    c.set('userPicture', identity.picture);
 
     await next();
   };

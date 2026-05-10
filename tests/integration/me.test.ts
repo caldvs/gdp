@@ -5,7 +5,15 @@ import type { IdTokenVerifier } from '../../src/services/auth.js';
 
 const fakeVerifier: IdTokenVerifier = (token) => {
   if (token === 'good-token') {
-    return Promise.resolve({ userId: 'sub-123', email: 'alice@example.com', name: 'Alice' });
+    return Promise.resolve({
+      userId: 'sub-123',
+      email: 'alice@example.com',
+      name: 'Alice',
+      picture: 'https://lh3.googleusercontent.com/a/alice.jpg',
+    });
+  }
+  if (token === 'good-token-no-pic') {
+    return Promise.resolve({ userId: 'sub-456', email: 'bob@example.com', name: 'Bob' });
   }
   if (token === 'expired-token') return Promise.reject(new AppError('AUTH_EXPIRED', 'expired'));
   return Promise.reject(new AppError('AUTH_INVALID', 'invalid'));
@@ -44,7 +52,7 @@ describe('GET /v1/me', () => {
     expect(body.error.code).toBe('AUTH_EXPIRED');
   });
 
-  it('returns the verified user for a valid token', async () => {
+  it('returns the verified user for a valid token (with avatar)', async () => {
     const res = await app.request('/v1/me', {
       headers: { authorization: 'Bearer good-token' },
     });
@@ -53,7 +61,18 @@ describe('GET /v1/me', () => {
       userId: 'sub-123',
       displayName: 'Alice',
       email: 'alice@example.com',
+      avatarUrl: 'https://lh3.googleusercontent.com/a/alice.jpg',
     });
+  });
+
+  it('omits avatarUrl when the token has no picture claim', async () => {
+    const res = await app.request('/v1/me', {
+      headers: { authorization: 'Bearer good-token-no-pic' },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('avatarUrl');
+    expect(body.userId).toBe('sub-456');
   });
 
   it('ignores any userId in headers — only the verified sub claim is trusted', async () => {

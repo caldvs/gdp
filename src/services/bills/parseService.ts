@@ -47,7 +47,21 @@ export const parseService = {
     const existing = await billStore.findByImageHash(input.userId, sha256);
     if (existing) {
       const bill = await billStore.getLatest(existing.billId);
-      if (bill) return bill;
+      if (bill) {
+        // Legacy bills (parsed before uploadId tracking landed) won't have
+        // parsedFrom.uploadId, so /image-url returns 404. We DO have a fresh
+        // uploadId from this attempt and the bytes are in S3 — adopt them so
+        // the image becomes viewable going forward.
+        if (!bill.parsedFrom.uploadId) {
+          const adopted: Bill = {
+            ...bill,
+            parsedFrom: { ...bill.parsedFrom, uploadId: input.uploadId },
+          };
+          await billStore.putVersion(adopted);
+          return adopted;
+        }
+        return bill;
+      }
       // Index pointed somewhere we can't read — partial write or external
       // mutation. Don't silently re-parse: that would overwrite the index
       // and orphan the original billId. Surface as internal error instead.

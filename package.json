@@ -11,6 +11,7 @@
     "build": "esbuild src/lambda.ts --bundle --platform=node --target=node22 --format=esm --outdir=dist --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "dev": "docker compose up -d && tsx scripts/dev-bootstrap.ts && tsx watch src/local.ts",
     "dev:bootstrap": "tsx scripts/dev-bootstrap.ts",
+    "dev:tunneled": "bash scripts/dev-tunneled.sh",
     "test:e2e:multi": "tsx scripts/e2e-multi-diner.ts",
     "test": "vitest run",
     "test:int": "vitest run --config vitest.integration.config.ts",

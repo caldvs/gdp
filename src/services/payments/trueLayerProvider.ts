@@ -1,4 +1,5 @@
 import { sign, verify, SignatureError, type HttpMethod } from 'truelayer-signing';
+import { v5 as uuidv5 } from 'uuid';
 import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import type { Logger } from '../../logging/logger.js';
@@ -73,6 +74,11 @@ const TYPE_MAP: Record<string, WebhookEventType> = {
 
 const JWKS_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// TrueLayer requires `user.id` to be a UUID, but our payer ids are Google
+// `sub` claims (numeric strings) or synthetic ids in tests. Derive a stable
+// UUIDv5 from our id so TL sees the same value per user across payments.
+const TL_USER_ID_NAMESPACE = '6d1e7a8a-0f3c-4d5b-8e2a-9c1f7e2a4d3b';
+
 export class TrueLayerSandboxProvider implements PaymentProvider {
   readonly name = 'truelayer' as const;
   private readonly urls: (typeof ENV_URLS)[keyof typeof ENV_URLS];
@@ -112,9 +118,11 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
         },
       },
       user: {
-        // Sandbox doesn't validate; real prod will need actual payer name/email.
-        id: input.payerUserId,
+        // Sandbox doesn't validate the name/email; prod will want the
+        // payer's User.displayName + verified email instead.
+        id: uuidv5(input.payerUserId, TL_USER_ID_NAMESPACE),
         name: `GDP user ${input.payerUserId.slice(0, 8)}`,
+        email: `gdp-${input.payerUserId.slice(0, 8)}@example.test`,
       },
       metadata: {
         gdp_payment_id: input.paymentId,
@@ -151,7 +159,10 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
         { status: res.status, errBody: errBody.slice(0, 500) },
         'truelayer create payment failed',
       );
-      throw new AppError('PAYMENT_PROVIDER_ERROR', `TrueLayer responded ${res.status}`);
+      throw new AppError('PAYMENT_PROVIDER_ERROR', `TrueLayer responded ${res.status}`, {
+        status: res.status,
+        body: errBody.slice(0, 2000),
+      });
     }
 
     const created = PaymentCreatedSchema.parse(await res.json());

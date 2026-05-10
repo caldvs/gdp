@@ -88,7 +88,11 @@ async function main(): Promise<void> {
   console.log('');
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
   console.error('✗ smoke failed:', err);
+  if (err && typeof err === 'object' && 'details' in err) {
+    const details = (err as { details?: unknown }).details;
+    if (details) console.error('  details:', JSON.stringify(details, null, 2));
+  }
   exit(1);
 });

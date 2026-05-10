@@ -19,6 +19,10 @@ const EnvSchema = z.object({
   TRUELAYER_CLIENT_SECRET: z.string().optional(),
   TRUELAYER_WEBHOOK_SECRET: z.string().optional(),
   TRUELAYER_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
+  TRUELAYER_SIGNING_KID: z.string().optional(),
+  TRUELAYER_SIGNING_PRIVATE_KEY_PEM: z.string().optional(),
+  TRUELAYER_MERCHANT_ACCOUNT_ID: z.string().optional(),
+  TRUELAYER_RETURN_URI: z.string().url().optional(),
 
   PAYMENT_PROVIDER: z.enum(['mock', 'truelayer']).default('mock'),
 });

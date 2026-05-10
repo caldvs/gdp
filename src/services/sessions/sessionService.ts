@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
+import { userStore } from '../../storage/userStore.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
 import type { VerifiedCaller } from '../../context/caller.js';
@@ -117,6 +118,16 @@ export const sessionService = {
     }
     if (session.status !== 'setup') {
       throw new AppError('SESSION_INVALID_STATE', 'Session is not in setup');
+    }
+
+    // Lead must have payout details before guests are invited — otherwise
+    // we'd happily collect claims and then have nowhere to send the money.
+    const collector = await userStore.get(session.collectorUserId);
+    if (!collector?.payoutAccount) {
+      throw new AppError(
+        'PAYOUT_ACCOUNT_REQUIRED',
+        'Set your payout account on /v1/me/payout-account before sharing',
+      );
     }
 
     const creator = session.participants.find((p) => p.userId === session.creatorUserId);

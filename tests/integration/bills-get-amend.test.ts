@@ -9,6 +9,7 @@ import {
   makeAuth,
   newIdempotencyKey,
   sampleParsedBill,
+  setPayoutFor,
   uniqueImageBytes,
 } from './helpers.js';
 
@@ -97,6 +98,7 @@ describe('GET /v1/bills/:billId', () => {
       body: JSON.stringify({ billId: created.billId }),
     });
     const session = (await sessionRes.json()) as { sessionId: string };
+    await setPayoutFor(app, creator);
     await app.request(`/v1/sessions/${session.sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),

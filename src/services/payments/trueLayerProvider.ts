@@ -18,7 +18,6 @@ export interface TrueLayerSandboxProviderConfig {
   clientSecret: string;
   signingKid: string;
   signingPrivateKeyPem: string;
-  merchantAccountId: string;
   /** Where TL bounces the user-agent after the hosted payment page completes. */
   returnUri: string;
   logger?: Logger;
@@ -100,9 +99,6 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
     if (!config.signingPrivateKeyPem) {
       throw new Error('TrueLayer: signingPrivateKeyPem required');
     }
-    if (!config.merchantAccountId) {
-      throw new Error('TrueLayer: merchantAccountId required');
-    }
     if (!config.returnUri) throw new Error('TrueLayer: returnUri required');
     this.urls = ENV_URLS[config.environment];
   }
@@ -115,14 +111,16 @@ export class TrueLayerSandboxProvider implements PaymentProvider {
       currency: input.currency,
       payment_method: {
         type: 'bank_transfer',
-        provider_selection: {
-          type: 'user_selected',
-          scheme_selection: { type: 'instant_only', allow_remitter_fee: false },
-        },
+        provider_selection: { type: 'user_selected' },
         beneficiary: {
-          type: 'merchant_account',
-          merchant_account_id: this.config.merchantAccountId,
+          type: 'external_account',
+          account_holder_name: input.beneficiary.accountHolderName,
           reference: input.reference,
+          account_identifier: {
+            type: 'sort_code_account_number',
+            sort_code: input.beneficiary.sortCode,
+            account_number: input.beneficiary.accountNumber,
+          },
         },
       },
       user: {

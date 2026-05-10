@@ -12,11 +12,19 @@ export const buildWebhookRoutes = (deps: WebhookRoutesDeps): Hono => {
 
   r.post('/truelayer', async (c) => {
     const rawBody = await c.req.text();
-    const signature = c.req.header('tl-signature');
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(c.req.header())) {
+      if (typeof v === 'string') headers[k.toLowerCase()] = v;
+    }
     const log = c.var.logger;
 
     try {
-      deps.provider.verifyWebhookSignature({ rawBody, signature });
+      await deps.provider.verifyWebhookSignature({
+        method: 'POST',
+        path: '/webhooks/truelayer',
+        headers,
+        rawBody,
+      });
     } catch (err) {
       // Always log signature failures; never reveal why to the caller.
       log?.warn({ err }, 'webhook signature rejected');

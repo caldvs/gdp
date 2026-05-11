@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VenueSchema } from './bills.js';
 
 export const SessionStatusSchema = z.enum(['setup', 'claiming', 'paying', 'settled', 'abandoned']);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
@@ -63,6 +64,11 @@ export const SessionSchema = z.object({
     .regex(/^[A-HJ-NP-Z2-9]{6}$/)
     .optional(),
   participants: z.array(ParticipantSchema),
+  // Denormalised from the pinned bill at session-create time so the
+  // frontend can render a venue strapline without a second round-trip.
+  // Optional both because old sessions predate this field and because
+  // not every bill has a venue Gemini could extract.
+  venue: VenueSchema.optional(),
   createdAt: z.string().datetime(),
   ttlAt: z.string().datetime().optional(),
 });

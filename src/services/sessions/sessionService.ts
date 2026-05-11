@@ -47,6 +47,7 @@ export const sessionService = {
       pinnedBillVersion: bill.versionNumber,
       joinCode: generateJoinCode(),
       participants: [creatorParticipant],
+      ...(bill.venue ? { venue: bill.venue } : {}),
       createdAt: new Date().toISOString(),
     };
 

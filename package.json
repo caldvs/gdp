@@ -26,6 +26,7 @@
     "ddb:down": "docker compose down",
     "cdk": "cdk",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:bill": "tsx scripts/smoke-bill.ts",
     "validate:bundle": "tsx scripts/validate-bundle.ts",
     "deploy:dev": "npm run validate:bundle && cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
     "prepare": "husky"

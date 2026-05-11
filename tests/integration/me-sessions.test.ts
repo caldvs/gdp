@@ -61,6 +61,44 @@ describe('GET /v1/me/sessions', () => {
     expect(dinerBody.sessions[0]?.role).toBe('diner');
   });
 
+  it('includes slimmed venue { name } for list-view strapline', async () => {
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const bill = await createBillFor(app, userId);
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+
+    const res = await app.request('/v1/me/sessions', { headers: makeAuth(userId) });
+    const body = (await res.json()) as {
+      sessions: Array<{ venue?: { name?: string; placeId?: string; lat?: number } }>;
+    };
+    const summary = body.sessions[0];
+    expect(summary?.venue).toEqual({ name: sampleParsedBill.venue!.name });
+    // Slim shape only — no placeId / coords / address in list view.
+    expect(summary?.venue).not.toHaveProperty('placeId');
+    expect(summary?.venue).not.toHaveProperty('lat');
+  });
+
+  it('omits venue from summary when the bill had none', async () => {
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser({ ...sampleParsedBill, venue: undefined }),
+    });
+    const userId = `u-no-venue-${uuidv7()}`;
+    const bill = await createBillFor(app, userId);
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const res = await app.request('/v1/me/sessions', { headers: makeAuth(userId) });
+    const body = (await res.json()) as { sessions: Array<{ venue?: unknown }> };
+    expect(body.sessions[0]?.venue).toBeUndefined();
+  });
+
   it('returns sessions most recent first', async () => {
     const app = buildApp();
     const userId = `u-${uuidv7()}`;

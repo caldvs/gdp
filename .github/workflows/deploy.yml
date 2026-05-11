@@ -1,0 +1,107 @@
+name: Deploy
+
+# Push to main → deploy dev automatically.
+# Manual dispatch → choose any environment (dev / staging / prod).
+#
+# Required setup (one-off, per AWS account/environment):
+#   1. Create a GitHub OIDC IAM role in each AWS account with a trust
+#      policy that allows token.actions.githubusercontent.com to assume
+#      the role from this repo + the matching `environment` claim.
+#   2. In GitHub → Settings → Environments, create `dev`, `staging`,
+#      `prod`. For each, set these *variables* (not secrets — ARNs are
+#      not sensitive):
+#        - AWS_DEPLOY_ROLE_ARN   arn:aws:iam::<acct>:role/<role-name>
+#        - AWS_REGION            eu-west-2
+#      Recommended: add required reviewers to `prod` (and `staging`).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        default: dev
+        options: [dev, staging, prod]
+
+concurrency:
+  # Serialise deploys per environment, but allow dev and prod to deploy in parallel.
+  group: deploy-${{ github.event.inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ github.event.inputs.environment || 'dev' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    env:
+      ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Re-run the cheap safety nets before touching AWS. Catches the
+      # case where someone bypassed branch protection or a flaky CI run
+      # was overridden.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run validate:bundle
+
+      - name: Resolve stack name
+        id: stack
+        run: |
+          case "$ENV_NAME" in
+            dev)     echo "name=GdpBackendDev"     >>"$GITHUB_OUTPUT" ;;
+            staging) echo "name=GdpBackendStaging" >>"$GITHUB_OUTPUT" ;;
+            prod)    echo "name=GdpBackendProd"    >>"$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: gh-actions-${{ env.ENV_NAME }}-${{ github.run_id }}
+
+      - name: CDK deploy
+        run: |
+          npx cdk deploy "${{ steps.stack.outputs.name }}" \
+            --require-approval never \
+            --outputs-file "cdk-outputs.${ENV_NAME}.json"
+
+      - name: Extract API URL
+        id: api
+        run: |
+          url=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \
+            '.[$s].ApiUrlOutput' "cdk-outputs.${ENV_NAME}.json")
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            echo "::error::ApiUrlOutput missing from cdk-outputs.${ENV_NAME}.json"
+            cat "cdk-outputs.${ENV_NAME}.json"
+            exit 1
+          fi
+          echo "url=$url" >>"$GITHUB_OUTPUT"
+
+      - name: Smoke test
+        run: npx tsx scripts/smoke.ts "${{ steps.api.outputs.url }}"
+
+      - name: Upload CDK outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cdk-outputs-${{ env.ENV_NAME }}
+          path: cdk-outputs.${{ env.ENV_NAME }}.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -5,8 +5,9 @@ import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { uploadKey } from './uploadService.js';
-import { BillSchema, type Bill, type BillItem } from '../../types/bills.js';
+import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
 import type { BillParser, ParsedBillFromImage } from './parser.js';
+import type { VenueResolver } from './venueResolver.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -16,6 +17,7 @@ export const parseService = {
     uploadId: string;
     requestId: string;
     parser: BillParser;
+    venueResolver: VenueResolver;
   }): Promise<Bill> {
     const key = uploadKey(input.userId, input.uploadId);
 
@@ -72,9 +74,11 @@ export const parseService = {
     }
 
     const parsed = await input.parser.parse(bytes, input.requestId);
+    const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
     const bill = BillSchema.parse(
       buildBillV1({
         parsed,
+        venue,
         userId: input.userId,
         uploadId: input.uploadId,
         sha256,
@@ -90,6 +94,7 @@ export const parseService = {
 
 function buildBillV1(args: {
   parsed: ParsedBillFromImage;
+  venue: Venue | undefined;
   userId: string;
   uploadId: string;
   sha256: string;
@@ -122,7 +127,7 @@ function buildBillV1(args: {
       parsedAt: new Date().toISOString(),
       uploadId: args.uploadId,
     },
-    ...(args.parsed.venue ? { venue: args.parsed.venue } : {}),
+    ...(args.venue ? { venue: args.venue } : {}),
     createdAt: new Date().toISOString(),
   };
 }

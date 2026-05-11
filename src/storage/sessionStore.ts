@@ -248,7 +248,8 @@ export const sessionStore = {
     limit: number,
   ): Promise<
     Array<
-      Omit<Session, 'participants'> & {
+      Omit<Session, 'participants' | 'venue'> & {
+        venue?: { name: string };
         role: 'lead' | 'diner';
         myOwedPence?: number;
         myPaymentStatus: Participant['payment']['status'];
@@ -294,6 +295,9 @@ export const sessionStore = {
 
     // Preserve the index order; drop sessions whose meta is missing
     // (TTL-expired or partial data). Augment with the caller's PART# row.
+    // The full Venue lives on the stored meta; project it down to just
+    // `{ name }` here so list-view consumers don't pull placeId / coords
+    // they don't need (and clients can rely on the slim shape).
     const out = sessionIds
       .map((id) => {
         const meta = metaBySessionId.get(id);
@@ -301,8 +305,10 @@ export const sessionStore = {
         const partRow = partRows.find((r) => r.GSI1SK === id) as
           | (Participant & { GSI1SK?: string })
           | undefined;
+        const { venue: fullVenue, ...metaWithoutVenue } = meta;
         return {
-          ...meta,
+          ...metaWithoutVenue,
+          ...(fullVenue?.name ? { venue: { name: fullVenue.name } } : {}),
           role: meta.creatorUserId === userId ? ('lead' as const) : ('diner' as const),
           ...(partRow?.owedPence !== undefined ? { myOwedPence: partRow.owedPence } : {}),
           myPaymentStatus: partRow?.payment.status ?? ('unpaid' as const),

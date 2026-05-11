@@ -229,7 +229,9 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     expect(body.error.code).toBe('SESSION_NOT_FOUND');
   });
 
-  it('share requires the creator to have a payout account on file', async () => {
+  it('share succeeds even without a server-side payout account (ADR-0002)', async () => {
+    // Per ADR-0002 the lead's bank details are device-local and reach
+    // guests via the QR. The server no longer requires (or stores) them.
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const bill = await createBill(app, creator);
@@ -240,21 +242,12 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
     });
     const sessionId = ((await create.json()) as { sessionId: string }).sessionId;
 
-    const denied = await app.request(`/v1/sessions/${sessionId}/share`, {
+    // No call to setPayoutFor. Share should still succeed.
+    const res = await app.request(`/v1/sessions/${sessionId}/share`, {
       method: 'POST',
       headers: makeAuth(creator),
     });
-    expect(denied.status).toBe(409);
-    const body = (await denied.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('PAYOUT_ACCOUNT_REQUIRED');
-
-    // After setting payout, share succeeds.
-    await setPayoutFor(app, creator);
-    const ok = await app.request(`/v1/sessions/${sessionId}/share`, {
-      method: 'POST',
-      headers: makeAuth(creator),
-    });
-    expect(ok.status).toBe(200);
+    expect(res.status).toBe(200);
   });
 
   it('cannot share twice (state must be setup)', async () => {

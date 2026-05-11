@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import { TrueLayerSandboxProvider } from './trueLayerProvider.js';
 
@@ -114,7 +114,7 @@ describe('TrueLayerSandboxProvider.initiate', () => {
   const liveCfg = { ...cfg, signingPrivateKeyPem: realPem };
 
   // Capture every fetch call so we can assert on the second one (POST /v3/payments).
-  let fetchSpy: ReturnType<typeof vi.fn>;
+  let fetchSpy: Mock<typeof fetch>;
 
   // Provider always passes strings to fetch, so this narrowing matches reality.
   const urlOf = (input: string | URL | Request): string =>
@@ -272,7 +272,7 @@ describe('TrueLayerSandboxProvider.initiate', () => {
     };
     await provider.initiate(input);
     await provider.initiate({ ...input, paymentId: '019e137b-9999-75e4-8f74-90e657d09250' });
-    const tokenCalls = fetchSpy.mock.calls.filter(([u]) => String(u).endsWith('/connect/token'));
+    const tokenCalls = fetchSpy.mock.calls.filter(([u]) => urlOf(u).endsWith('/connect/token'));
     expect(tokenCalls).toHaveLength(1);
   });
 

@@ -14,6 +14,7 @@ import { AppError } from '../errors/AppError.js';
 import type { Bill } from '../types/bills.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { BillParser } from '../services/bills/parser.js';
+import type { VenueResolver } from '../services/bills/venueResolver.js';
 import { AmendBillRequestSchema, ParseRequestSchema, UploadRequestSchema } from '../types/bills.js';
 
 async function loadBillForReader(billId: string, userId: string): Promise<Bill> {
@@ -34,6 +35,7 @@ async function loadBillForReader(billId: string, userId: string): Promise<Bill> 
 export interface BillRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   billParser: BillParser;
+  venueResolver: VenueResolver;
 }
 
 export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
@@ -81,6 +83,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
         uploadId,
         requestId: c.var.requestId,
         parser: deps.billParser,
+        venueResolver: deps.venueResolver,
       });
       return c.json(bill);
     },

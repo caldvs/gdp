@@ -15,6 +15,9 @@ import { buildWebhookRoutes } from './routes/webhooks.js';
 import type { IdTokenVerifier } from './services/auth.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createDefaultBillParser } from './services/bills/geminiParser.js';
+import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
+import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
+import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
 import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
@@ -22,12 +25,21 @@ import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.
 export interface AppDeps {
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
+  venueResolver?: VenueResolver;
   /**
    * Pass a concrete provider for tests. Pass `null` to force manual mode.
    * Omit to fall back to env-driven default.
    */
   paymentProvider?: PaymentProvider | null;
 }
+
+const defaultVenueResolver = (): VenueResolver => {
+  if (!env.GOOGLE_PLACES_API_KEY) return new NoopVenueResolver();
+  return new GooglePlacesVenueResolver({
+    apiKey: env.GOOGLE_PLACES_API_KEY,
+    logger: baseLogger,
+  });
+};
 
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
@@ -59,6 +71,7 @@ const defaultPaymentProvider = (): PaymentProvider | null => {
 export const createApp = (deps: AppDeps = {}): Hono => {
   const app = new Hono();
   const billParser = deps.billParser ?? createDefaultBillParser(env.GEMINI_API_KEY);
+  const venueResolver = deps.venueResolver ?? defaultVenueResolver();
   // `paymentProvider: undefined` (omitted) → use env default (which may itself be null).
   // `paymentProvider: null` → explicit "manual mode" override (used in tests).
   const paymentProvider =
@@ -84,7 +97,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   app.route('/', opsRoutes);
   app.route('/', docsRoutes);
   app.route('/v1', deps.idTokenVerifier ? buildMeRoutes(deps.idTokenVerifier) : meRoutes);
-  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier: deps.idTokenVerifier, billParser }));
+  app.route(
+    '/v1/bills',
+    buildBillRoutes({ idTokenVerifier: deps.idTokenVerifier, billParser, venueResolver }),
+  );
   app.route(
     '/v1/sessions',
     buildSessionRoutes({

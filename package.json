@@ -38,7 +38,7 @@
     "@hono/node-server": "^1.13.0",
     "@hono/zod-validator": "^0.4.1",
     "aws-xray-sdk-core": "^3.10.0",
-    "google-auth-library": "^9.15.0",
+    "google-auth-library": "^10.6.2",
     "hono": "^4.6.0",
     "pino": "^9.5.0",
     "truelayer-signing": "^0.2.1",

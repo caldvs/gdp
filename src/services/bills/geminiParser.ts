@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { ParsedBillFromImageSchema, type BillParser, type ParsedBillFromImage } from './parser.js';
 
@@ -88,7 +89,7 @@ export class GeminiBillParser implements BillParser {
     const result = ParsedBillFromImageSchema.safeParse(parsed);
     if (!result.success) {
       throw new AppError('PARSE_FAILED', 'Gemini output failed schema validation', {
-        issues: result.error.flatten(),
+        issues: z.flattenError(result.error),
       });
     }
     if (result.data.items.length === 0) {

@@ -31,8 +31,8 @@ export const ParsedBillFromImageSchema = z.object({
         .transform((v) => v ?? undefined),
     })
     .nullable()
-    .optional()
-    .transform((v) => v ?? undefined),
+    .transform((v) => v ?? undefined)
+    .optional(),
 });
 export type ParsedBillFromImage = z.infer<typeof ParsedBillFromImageSchema>;
 

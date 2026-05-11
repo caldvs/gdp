@@ -107,11 +107,16 @@ paths:
     put:
       tags: [identity]
       operationId: setMyPayoutAccount
-      summary: Set or update the caller's UK bank account for receiving guest payments
+      deprecated: true
+      summary: '[DEPRECATED] Accepted but no longer persisted'
       description: |
-        Required before the caller can `/share` a session — the lead diner is the collector,
-        and TrueLayer needs a beneficiary to route guest payments to. The fields are kept
-        on the User record only; they're never returned to other diners.
+        **Deprecated.** Per ADR-0002, the lead's bank details are now device-local
+        and exchanged peer-to-peer via QR — never stored server-side. This endpoint
+        still validates the body and returns 200 echoing the supplied account for
+        compatibility with older clients, but it no longer persists anything.
+
+        New clients should not call this. The endpoint will be removed in a future
+        release.
       requestBody:
         required: true
         content:
@@ -119,7 +124,9 @@ paths:
             schema: { $ref: '#/components/schemas/PayoutAccount' }
       responses:
         '200':
-          description: The saved payout account
+          description: |
+            Always returned for valid bodies. The supplied account is echoed back
+            but **not** persisted.
           content:
             application/json:
               schema:
@@ -406,8 +413,9 @@ paths:
         `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
         (subsequent calls to `/by-code` will resolve it).
 
-        Requires the creator to have set their `payoutAccount` (`PUT /v1/me/payout-account`) — TrueLayer
-        needs a beneficiary to route guest payments to. Returns `PAYOUT_ACCOUNT_REQUIRED` (409) if not set.
+        Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
+        those live device-local and reach guests via the join QR. The previous
+        `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
       responses:
         '200':
           description: Session, now in `claiming` with the join code visible
@@ -422,7 +430,7 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: Session is not in `setup`, OR the creator has no `payoutAccount` (`PAYOUT_ACCOUNT_REQUIRED`)
+          description: Session is not in `setup`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -867,10 +875,14 @@ components:
         email: { type: string, format: email }
         avatarUrl: { type: string, format: uri }
         payoutAccount:
-          $ref: '#/components/schemas/PayoutAccount'
+          allOf:
+            - $ref: '#/components/schemas/PayoutAccount'
+          deprecated: true
           description: |
-            Where guest payments are routed when the caller is the lead diner of a session.
-            Only ever returned to the owning user. Required before /share — see PAYOUT_ACCOUNT_REQUIRED.
+            **Deprecated** per ADR-0002. Bank details are now device-local and
+            exchanged peer-to-peer via QR. The field may still be returned for
+            users created before the migration but new clients should ignore it
+            and read the lead's payout from the QR fragment.
 
     PayoutAccount:
       type: object

@@ -28,6 +28,11 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
     });
   });
 
+  // Deprecated per ADR-0002. Bank details are device-local; we no longer
+  // persist them server-side. Still validates the body and echoes 200
+  // for compatibility with clients on the old code path, and emits a
+  // structured log line so we can track when traffic to this endpoint
+  // drops to zero.
   r.put('/me/payout-account', requireAuth(verifier), async (c) => {
     const { userId } = callerOf(c);
     let body: unknown;
@@ -42,8 +47,11 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
         issues: z.flattenError(parsed.error).fieldErrors,
       });
     }
-    const updated = await userStore.setPayoutAccount(userId, parsed.data);
-    return c.json({ payoutAccount: updated.payoutAccount });
+    c.var.logger.info(
+      { event: 'payoutAccount.write.ignored', userId, userAgent: c.req.header('user-agent') },
+      'deprecated payout-account write ignored',
+    );
+    return c.json({ payoutAccount: parsed.data });
   });
 
   r.get('/me/sessions', requireAuth(verifier), async (c) => {

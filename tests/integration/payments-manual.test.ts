@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
 import { createApp } from '../../src/app.js';
+import { userStore } from '../../src/storage/userStore.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import {
   buildPayingSession,
@@ -18,20 +19,20 @@ const buildApp = () =>
     paymentProvider: null, // explicit manual mode
   });
 
+// The HTTP PUT is deprecated and no-ops per ADR-0002. Tests that
+// exercise the legacy manual-payment path (which still reads
+// server-side payoutAccount via paymentService) seed the store
+// directly.
 const setPayoutWith = async (
-  app: ReturnType<typeof buildApp>,
+  _app: ReturnType<typeof buildApp>,
   userId: string,
   extra: { monzoHandle?: string; revolutTag?: string } = {},
 ): Promise<void> => {
-  await app.request('/v1/me/payout-account', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', ...makeAuth(userId) },
-    body: JSON.stringify({
-      sortCode: '040668',
-      accountNumber: '00079660',
-      accountHolderName: 'Test Lead',
-      ...extra,
-    }),
+  await userStore.setPayoutAccount(userId, {
+    sortCode: '040668',
+    accountNumber: '00079660',
+    accountHolderName: 'Test Lead',
+    ...extra,
   });
 };
 

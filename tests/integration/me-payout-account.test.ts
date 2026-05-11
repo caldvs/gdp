@@ -21,15 +21,15 @@ describe('PUT /v1/me/payout-account', () => {
     expect(res.status).toBe(401);
   });
 
-  it('persists, then GET /v1/me hydrates payoutAccount from DDB', async () => {
+  it('returns 200 echoing the body but does NOT persist (deprecated per ADR-0002)', async () => {
     const userId = `u-${uuidv7()}`;
 
-    // First /me — no payoutAccount yet.
+    // First /me — no payoutAccount.
     const before = await app.request('/v1/me', { headers: makeAuth(userId) });
     expect(before.status).toBe(200);
     expect(await before.json()).not.toHaveProperty('payoutAccount');
 
-    // PUT it.
+    // PUT — accepted but ignored.
     const put = await app.request('/v1/me/payout-account', {
       method: 'PUT',
       headers: { 'content-type': 'application/json', ...makeAuth(userId) },
@@ -38,13 +38,13 @@ describe('PUT /v1/me/payout-account', () => {
     expect(put.status).toBe(200);
     expect(await put.json()).toEqual({ payoutAccount: validBody });
 
-    // /me now reflects it.
+    // /me must still NOT have a payoutAccount — the write was a no-op.
     const after = await app.request('/v1/me', { headers: makeAuth(userId) });
     const body = (await after.json()) as { payoutAccount?: typeof validBody };
-    expect(body.payoutAccount).toEqual(validBody);
+    expect(body.payoutAccount).toBeUndefined();
   });
 
-  it('overwrites previous payoutAccount on subsequent PUT', async () => {
+  it('subsequent PUTs continue to be no-ops (no persistence across calls)', async () => {
     const userId = `u-${uuidv7()}`;
     await app.request('/v1/me/payout-account', {
       method: 'PUT',
@@ -59,6 +59,10 @@ describe('PUT /v1/me/payout-account', () => {
     });
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ payoutAccount: newAcct });
+
+    const after = await app.request('/v1/me', { headers: makeAuth(userId) });
+    const body = (await after.json()) as { payoutAccount?: typeof validBody };
+    expect(body.payoutAccount).toBeUndefined();
   });
 
   it.each([

@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { AppError } from '../../src/errors/AppError.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
+import { userStore } from '../../src/storage/userStore.js';
 import type { Hono } from 'hono';
 import type { IdTokenVerifier } from '../../src/services/auth.js';
 import type { ParsedBillFromImage } from '../../src/services/bills/parser.js';
@@ -39,19 +40,21 @@ export const makeAuth = (userId: string): { authorization: string } => ({
 export const newIdempotencyKey = (): string => uuidv7();
 
 /**
- * Set a payout account on a user. Required before /share — see
- * sessionService.share. Tests that go through buildPayingSession get this
- * for free; tests that drive /share directly must call this first.
+ * Persist a payout account on a user record directly via the store.
+ *
+ * The HTTP endpoint (PUT /v1/me/payout-account) is deprecated per
+ * ADR-0002 and no longer persists. paymentService.initiate still reads
+ * server-side payoutAccount from existing user records though, so tests
+ * that exercise the manual-payment flow seed it here.
+ *
+ * Used by buildPayingSession and any test that asserts pay-flow paths
+ * which still depend on the legacy server-side value.
  */
-export async function setPayoutFor(app: Hono, userId: string): Promise<void> {
-  await app.request('/v1/me/payout-account', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json', ...makeAuth(userId) },
-    body: JSON.stringify({
-      sortCode: '040668',
-      accountNumber: '00079660',
-      accountHolderName: 'Test Lead',
-    }),
+export async function setPayoutFor(_app: Hono, userId: string): Promise<void> {
+  await userStore.setPayoutAccount(userId, {
+    sortCode: '040668',
+    accountNumber: '00079660',
+    accountHolderName: 'Test Lead',
   });
 }
 

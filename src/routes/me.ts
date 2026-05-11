@@ -4,6 +4,7 @@ import { callerOf } from '../context/caller.js';
 import { AppError } from '../errors/AppError.js';
 import { sessionStore } from '../storage/sessionStore.js';
 import { userStore } from '../storage/userStore.js';
+import { z } from 'zod';
 import { SetPayoutAccountRequestSchema } from '../types/users.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 
@@ -38,7 +39,7 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
     const parsed = SetPayoutAccountRequestSchema.safeParse(body);
     if (!parsed.success) {
       throw new AppError('INVALID_INPUT', 'Invalid payout account', {
-        issues: parsed.error.flatten().fieldErrors,
+        issues: z.flattenError(parsed.error).fieldErrors,
       });
     }
     const updated = await userStore.setPayoutAccount(userId, parsed.data);

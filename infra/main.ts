@@ -114,12 +114,18 @@ class GdpBackendStack extends cdk.Stack {
     // sometimes refuses to resolve; the friendly-name form is what AWS docs
     // describe as canonical.
     const geminiKey = cdk.SecretValue.secretsManager(`gdp-${envName}/gemini-api-key`);
-    // Google Places key lives in SSM Parameter Store (SecureString) rather
-    // than Secrets Manager. No rotation infrastructure is wanted for this
-    // key, so we skip the $0.40/secret/month Secrets Manager surcharge —
-    // Parameter Store Standard tier is free, encryption uses the
-    // AWS-managed KMS key (also free).
-    const googlePlacesKey = cdk.SecretValue.ssmSecure(`/gdp-${envName}/google-places-api-key`);
+    // Google Places key lives in SSM Parameter Store as a plain String.
+    // SecureString would be tighter at rest but CFN's
+    // `{{resolve:ssm-secure}}` reference is NOT supported in Lambda env
+    // vars (it errors at change-set creation). Matches the existing
+    // posture for googleClientId etc.: plaintext key landing in the
+    // Lambda env, visible in the console to anyone with read access.
+    // Acceptable for dev — switch to a runtime SDK fetch before prod if
+    // tightening is wanted.
+    const googlePlacesKey = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/google-places-api-key`,
+    );
     const trueLayerClientSecret = cdk.SecretValue.secretsManager(
       `gdp-${envName}/truelayer-client-secret`,
     );
@@ -152,7 +158,7 @@ class GdpBackendStack extends cdk.Stack {
         GOOGLE_CLIENT_ID: googleClientId,
 
         GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
-        GOOGLE_PLACES_API_KEY: googlePlacesKey.unsafeUnwrap(),
+        GOOGLE_PLACES_API_KEY: googlePlacesKey,
 
         TRUELAYER_CLIENT_ID: trueLayerClientId,
         TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.unsafeUnwrap(),

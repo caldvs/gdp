@@ -1093,6 +1093,15 @@ components:
         joinCode:
           type: string
           pattern: '^[A-HJ-NP-Z2-9]{6}$'
+        venue:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+          description: |
+            Slim venue projection (just `name`) for list-view straplines. The full
+            Venue with placeId/lat/lng/address is available on `GET /v1/sessions/{id}`.
+            Absent when the bill's parsed venue had no name.
         createdAt: { type: string, format: date-time }
         ttlAt: { type: string, format: date-time }
         role:

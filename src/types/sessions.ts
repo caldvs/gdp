@@ -95,6 +95,10 @@ export type ClaimsRequest = z.infer<typeof ClaimsRequestSchema>;
 // Lightweight session summary returned by GET /v1/me/sessions. Distinct from
 // `Session` because it doesn't include the full participants list — just the
 // caller's role, share, and payment status.
+//
+// `venue` is intentionally a slim projection of the bill's Venue with just
+// `name` — enough for a list-view strapline. The full Venue (placeId, lat,
+// lng, address) is on GET /v1/sessions/{id}.
 export const SessionSummarySchema = z.object({
   sessionId: z.string().uuid(),
   status: SessionStatusSchema,
@@ -106,6 +110,7 @@ export const SessionSummarySchema = z.object({
     .string()
     .regex(/^[A-HJ-NP-Z2-9]{6}$/)
     .optional(),
+  venue: z.object({ name: z.string() }).optional(),
   createdAt: z.string().datetime(),
   role: z.enum(['lead', 'diner']),
   myOwedPence: z.number().int().nonnegative().optional(),

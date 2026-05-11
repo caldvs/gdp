@@ -5,8 +5,16 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   ci:
+    name: lint • typecheck • unit • build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,10 +23,51 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run openapi:lint
       - run: npm test
       - run: npm run build
+      - name: Validate Lambda bundle (cdk synth + handler load)
+        run: npm run validate:bundle
       - run: npm audit --audit-level=high
         continue-on-error: true
+
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Start DynamoDB Local + MinIO
+        run: docker compose up -d
+      - name: Wait for services
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8000 >/dev/null 2>&1 \
+               || curl -s http://localhost:8000 | grep -qi dynamodb; then
+              echo "ddb up"; break
+            fi
+            sleep 1
+          done
+          for i in {1..30}; do
+            if curl -sf http://localhost:9000/minio/health/live >/dev/null; then
+              echo "minio up"; break
+            fi
+            sleep 1
+          done
+      - run: npm run test:int
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          S3_ENDPOINT: http://localhost:9000
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

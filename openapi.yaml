@@ -1058,6 +1058,14 @@ components:
         participants:
           type: array
           items: { $ref: '#/components/schemas/Participant' }
+        venue:
+          allOf:
+            - $ref: '#/components/schemas/Venue'
+          description: |
+            Denormalised from the pinned bill at session-create time so the
+            frontend can render a venue strapline without a second round-trip.
+            Optional — predates this field on old sessions, and not every bill
+            has a venue Gemini could extract.
         createdAt: { type: string, format: date-time }
         ttlAt: { type: string, format: date-time }
 

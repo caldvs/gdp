@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
@@ -44,7 +45,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     zValidator('json', UploadRequestSchema, (result, c) => {
       if (!result.success) {
         const error = new AppError('INVALID_INPUT', 'Validation failed', {
-          fieldErrors: result.error.flatten().fieldErrors,
+          fieldErrors: z.flattenError(result.error).fieldErrors,
         });
         return c.json(
           {

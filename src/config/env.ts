@@ -30,7 +30,7 @@ export type Env = z.infer<typeof EnvSchema>;
 
 const parsed = EnvSchema.safeParse(process.env);
 if (!parsed.success) {
-  console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
+  console.error('Invalid environment variables:', z.flattenError(parsed.error).fieldErrors);
   throw new Error('Invalid environment configuration');
 }
 

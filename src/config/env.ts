@@ -15,6 +15,12 @@ const EnvSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
 
+  // Google Places (New) — used by GooglePlacesVenueResolver to enrich
+  // the venue Gemini extracts from a bill image with a stable placeId
+  // and coordinates. Optional: when unset, the app falls back to a
+  // no-op resolver that just passes the parsed text through.
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
+
   TRUELAYER_CLIENT_ID: z.string().optional(),
   TRUELAYER_CLIENT_SECRET: z.string().optional(),
   TRUELAYER_WEBHOOK_SECRET: z.string().optional(),

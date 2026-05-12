@@ -11,7 +11,10 @@ const EnvSchema = z.object({
   DDB_TABLE_NAME: z.string().default('gdp-dev'),
   S3_BUCKET_BILLS: z.string().default('gdp-bills-raw-dev'),
 
-  GOOGLE_CLIENT_ID: z.string().optional(),
+  // HS256 secret used to mint + verify session JWTs after a successful
+  // email-OTP verify. Set via CDK from Secrets Manager. Optional only so
+  // local dev / tests can wire a deterministic value via AppDeps.
+  SESSION_JWT_SECRET: z.string().min(16).optional(),
 
   GEMINI_API_KEY: z.string().optional(),
 

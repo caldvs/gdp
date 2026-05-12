@@ -11,7 +11,7 @@ info:
     - **All money is integer pence (GBP).** No floats anywhere on the wire.
     - **All identifiers are UUIDv7** unless documented otherwise.
     - **Timestamps are RFC 3339** strings.
-    - **Auth** uses Google ID tokens (`Authorization: Bearer <jwt>`). The server verifies the token signature, audience, and expiry on every request to a `/v1/*` endpoint and trusts only the verified `sub` claim. Any `userId` in a request body is ignored.
+    - **Auth** uses session JWTs issued by `POST /v1/auth/email/verify` after a successful email OTP. Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
     - **Errors** use a single envelope (`ErrorResponse`). `error.code` is the stable identifier; `error.message` is human-safe.
     - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body returns `409 IDEMPOTENCY_CONFLICT`.
     - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
@@ -85,6 +85,97 @@ paths:
                       s3: { type: string, enum: [ok, fail] }
         '503':
           description: One or more dependencies are unhealthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/email/start:
+    post:
+      tags: [identity]
+      operationId: startEmailOtp
+      security: []
+      summary: Request a one-time sign-in code for an email
+      description: |
+        Generates a 6-digit code, stores its hash, and emails the plaintext
+        code to the supplied address. The code expires in 10 minutes and
+        allows up to 5 verification attempts.
+
+        Response is uniform regardless of whether the email belongs to an
+        existing user — this prevents address enumeration. Email delivery
+        failures (e.g. SES bounce) also return `200` and are logged
+        server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '200':
+          description: Code dispatched (or treated as dispatched).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/auth/email/verify:
+    post:
+      tags: [identity]
+      operationId: verifyEmailOtp
+      security: []
+      summary: Exchange a valid OTP for a session JWT
+      description: |
+        Verifies a 6-digit code against the most recent OTP issued for the
+        email. On success: looks up (or creates) an opaque userId, persists
+        the user profile if new, and mints a session JWT. The JWT is
+        carried in `Authorization: Bearer ...` on every subsequent request.
+
+        On failure (wrong code, expired, used, no OTP, too many attempts)
+        returns `401 AUTH_INVALID` uniformly so failure modes don't leak.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: Verified. Token is good for 30 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token:
+                    type: string
+                    description: Session JWT — pass on every subsequent request.
+                  user:
+                    type: object
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      email: { type: string, format: email }
+                      displayName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: |
+            Code didn't match, expired, was already used, or the attempt
+            cap was hit. Response is `AUTH_INVALID` in every failure mode
+            so callers can't distinguish them.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -856,7 +947,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Google ID token (verified server-side on every request)
+      description: Session JWT minted by `POST /v1/auth/email/verify`. Verified server-side on every request.
 
   parameters:
     BillId:

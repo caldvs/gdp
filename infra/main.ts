@@ -7,6 +7,7 @@ import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
@@ -102,6 +103,16 @@ class GdpBackendStack extends cdk.Stack {
       this,
       `/gdp-${envName}/truelayer-signing-kid`,
     );
+    // Verified SES sender address. Set once via:
+    //   aws ssm put-parameter --name /gdp-{env}/ses-from-email --type String ...
+    //   aws ses verify-email-identity --email-address <same address>
+    // When unset the runtime ConsoleEmailSender takes over and logs would-
+    // be emails instead of sending. We keep this required at the SSM level
+    // for deployed envs so missing config fails the deploy, not at runtime.
+    const sesFromEmail = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/gdp-${envName}/ses-from-email`,
+    );
 
     // Secrets — Secrets Manager. Values resolved at deploy time via friendly-
     // name dynamic CloudFormation references and land as Lambda env vars.
@@ -159,6 +170,7 @@ class GdpBackendStack extends cdk.Stack {
 
         GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
         GOOGLE_PLACES_API_KEY: googlePlacesKey,
+        SES_FROM_EMAIL: sesFromEmail,
 
         TRUELAYER_CLIENT_ID: trueLayerClientId,
         TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.unsafeUnwrap(),
@@ -203,6 +215,17 @@ class GdpBackendStack extends cdk.Stack {
 
     table.grantReadWriteData(fn);
     billsBucket.grantReadWrite(fn);
+
+    // SES send permission for the EmailSender. Scoped to the verified-
+    // identity ARN pattern we provisioned out-of-band; covers SendEmail
+    // (templated + simple) and SendRawEmail. Cheap, no resource refs in
+    // the IAM policy because the verified identity is account-wide.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+        resources: ['*'],
+      }),
+    );
 
     const httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: `gdp-${envName}`,

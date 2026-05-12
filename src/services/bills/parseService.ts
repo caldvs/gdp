@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { AppError } from '../../errors/AppError.js';
+import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
 import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
 import type { BillParser, ParsedBillFromImage } from './parser.js';
@@ -85,6 +86,30 @@ export const parseService = {
         parser: input.parser,
       }),
     );
+
+    // Sanity-check: the printed total on the receipt should match what
+    // we computed from items + tax + service. A discrepancy usually
+    // means one of:
+    //  - OCR misread an item price (computed is wrong, printed is right)
+    //  - restaurant arithmetic error (computed is right, printed is wrong)
+    //  - undisclosed discount / tip baked into the printed total
+    // We don't fail the parse on a mismatch — the client surfaces it as
+    // a soft warning so the lead can review before sharing. Logged
+    // server-side as a structured event for later analytics.
+    if (parsed.totalPence !== undefined && parsed.totalPence !== bill.totalPence) {
+      baseLogger.info(
+        {
+          event: 'bill.total.mismatch',
+          billId: bill.billId,
+          requestId: input.requestId,
+          parsedTotalPence: parsed.totalPence,
+          computedTotalPence: bill.totalPence,
+          deltaPence: bill.totalPence - parsed.totalPence,
+        },
+        'parsed/computed total mismatch on bill',
+      );
+    }
+
     await billStore.putVersion(bill, {
       indexImageHash: { userId: input.userId, sha256 },
     });
@@ -119,6 +144,10 @@ function buildBillV1(args: {
     taxPence: args.parsed.taxPence,
     serviceChargePence: args.parsed.serviceChargePence,
     totalPence,
+    // Persist Gemini's read-of-the-printed-total alongside the computed
+    // total. If they disagree the client surfaces a "check this bill"
+    // hint; we don't gate the parse on it.
+    ...(args.parsed.totalPence !== undefined ? { parsedTotalPence: args.parsed.totalPence } : {}),
     items,
     parsedFrom: {
       imageHash: args.sha256,

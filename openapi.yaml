@@ -1139,6 +1139,17 @@ components:
         taxPence: { type: integer, format: int64, minimum: 0 }
         serviceChargePence: { type: integer, format: int64, minimum: 0 }
         totalPence: { type: integer, format: int64, minimum: 0 }
+        parsedTotalPence:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            The total printed on the receipt itself, as read by OCR.
+            Kept alongside the computed `totalPence` so the client can
+            flag a mismatch — typical causes are OCR misreading an item
+            price, a restaurant arithmetic error, or an undisclosed
+            discount/tip baked into the printed total. Optional because
+            old bills predate this field and not every parser surfaces it.
         items:
           type: array
           items: { $ref: '#/components/schemas/BillItem' }

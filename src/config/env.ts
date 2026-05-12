@@ -21,6 +21,12 @@ const EnvSchema = z.object({
   // no-op resolver that just passes the parsed text through.
   GOOGLE_PLACES_API_KEY: z.string().optional(),
 
+  // Verified SES sender address. When unset, transactional email is
+  // logged to stdout via ConsoleEmailSender instead of being sent.
+  // For dev the value comes from SSM (/gdp-{env}/ses-from-email),
+  // pre-verified once via `aws ses verify-email-identity`.
+  SES_FROM_EMAIL: z.string().email().optional(),
+
   TRUELAYER_CLIENT_ID: z.string().optional(),
   TRUELAYER_CLIENT_SECRET: z.string().optional(),
   TRUELAYER_WEBHOOK_SECRET: z.string().optional(),

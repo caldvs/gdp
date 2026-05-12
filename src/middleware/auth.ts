@@ -1,10 +1,17 @@
 import type { MiddlewareHandler } from 'hono';
 import { AppError } from '../errors/AppError.js';
-import { verifyGoogleIdToken, type IdTokenVerifier } from '../services/auth.js';
+import type { IdTokenVerifier } from '../services/auth.js';
 
 export const requireAuth =
-  (verifier: IdTokenVerifier = verifyGoogleIdToken): MiddlewareHandler =>
+  (verifier?: IdTokenVerifier): MiddlewareHandler =>
   async (c, next) => {
+    if (!verifier) {
+      // No verifier wired in this app instance. Either app.ts didn't
+      // configure one (e.g. SESSION_JWT_SECRET missing in dev) or this
+      // is a degraded local boot. Refuse the request rather than letting
+      // it through with no identity.
+      throw new AppError('INTERNAL_ERROR', 'Auth verifier not configured');
+    }
     const header = c.req.header('authorization');
     if (!header) {
       throw new AppError('AUTH_MISSING', 'Authorization header required');

@@ -32,6 +32,11 @@ export const ParticipantSchema = z.object({
   displayName: z.string(),
   avatarUrl: z.string().url().optional(),
   claimedItemIds: z.array(z.string().uuid()),
+  // Items the participant is *sharing* with other diners (ADR-0006).
+  // Distinct from claimedItemIds: a share is one unit divided across the
+  // sharers, not a per-unit claim. Items may only appear in one of the
+  // two lists session-wide (v1 simplification). Default [].
+  sharedItemIds: z.array(z.string().uuid()).default([]),
   owedPence: z.number().int().nonnegative().optional(),
   payment: ParticipantPaymentSchema,
   // True once the diner has signalled they're done claiming. Lock-claims
@@ -52,6 +57,13 @@ export const LockClaimsRequestSchema = z.object({
 });
 export type LockClaimsRequest = z.infer<typeof LockClaimsRequestSchema>;
 
+// POST /v1/sessions/:id/shares body — caller joins the splitter set
+// for a single item (ADR-0006).
+export const AddShareRequestSchema = z.object({
+  itemId: z.string().uuid(),
+});
+export type AddShareRequest = z.infer<typeof AddShareRequestSchema>;
+
 export const SessionSchema = z.object({
   sessionId: z.string().uuid(),
   status: SessionStatusSchema,
@@ -69,6 +81,17 @@ export const SessionSchema = z.object({
   // Optional both because old sessions predate this field and because
   // not every bill has a venue Gemini could extract.
   venue: VenueSchema.optional(),
+  // Computed at read time from participants' sharedItemIds (ADR-0006).
+  // One entry per shared item; userIds is the splitter set. Empty when
+  // no items are shared. Server-only — clients never set this.
+  shares: z
+    .array(
+      z.object({
+        itemId: z.string().uuid(),
+        userIds: z.array(z.string()),
+      }),
+    )
+    .optional(),
   createdAt: z.string().datetime(),
   ttlAt: z.string().datetime().optional(),
 });

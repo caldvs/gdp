@@ -79,7 +79,7 @@ function setLambdaEnv(): void {
     DDB_TABLE_NAME: 'gdp-validator',
     S3_BUCKET_BILLS: 'gdp-bills-validator',
     LOG_LEVEL: 'silent',
-    GOOGLE_CLIENT_ID: 'validator-fake-client-id.apps.googleusercontent.com',
+    SESSION_JWT_SECRET: 'validator-fake-session-jwt-secret-32-bytes-long',
     GEMINI_API_KEY: 'validator-fake-gemini-key',
     TRUELAYER_CLIENT_ID: 'validator-fake-tl-client',
     TRUELAYER_CLIENT_SECRET: 'validator-fake-tl-secret',

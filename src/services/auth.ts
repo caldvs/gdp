@@ -1,47 +1,32 @@
-import { OAuth2Client } from 'google-auth-library';
-import { env } from '../config/env.js';
 import { AppError } from '../errors/AppError.js';
+import { verifySessionToken } from './auth/sessionToken.js';
 
 export interface VerifiedIdentity {
   userId: string;
   email?: string;
   name?: string;
-  /** Google `picture` claim — profile photo URL. Optional. */
+  /** Profile photo URL. Reserved for future use; OTP flow doesn't capture one. */
   picture?: string;
 }
 
 export type IdTokenVerifier = (token: string) => Promise<VerifiedIdentity>;
 
-const client = new OAuth2Client();
-
-export const verifyGoogleIdToken: IdTokenVerifier = async (token) => {
-  if (!env.GOOGLE_CLIENT_ID) {
-    throw new AppError('INTERNAL_ERROR', 'GOOGLE_CLIENT_ID not configured');
-  }
-
-  let ticket;
-  try {
-    ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: env.GOOGLE_CLIENT_ID,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'unknown';
-    if (msg.toLowerCase().includes('expired')) {
-      throw new AppError('AUTH_EXPIRED', 'Token expired');
-    }
-    throw new AppError('AUTH_INVALID', 'Token verification failed');
-  }
-
-  const payload = ticket.getPayload();
-  if (!payload?.sub) {
-    throw new AppError('AUTH_INVALID', 'Token missing sub claim');
-  }
-
-  return {
-    userId: payload.sub,
-    email: payload.email,
-    name: payload.name,
-    picture: payload.picture,
+/**
+ * Verify a session JWT minted by the email-OTP flow.
+ *
+ * The verifier is intentionally simple — all the auth work happens at
+ * /v1/auth/email/verify, which mints the token after a successful OTP.
+ * Every subsequent request just decodes the JWT here, validates the
+ * signature + expiry, and trusts the embedded claims.
+ */
+export const createSessionTokenVerifier =
+  (secret: Uint8Array): IdTokenVerifier =>
+  async (token) => {
+    if (!token) throw new AppError('AUTH_INVALID', 'Empty token');
+    const claims = await verifySessionToken(token, secret);
+    return {
+      userId: claims.userId,
+      email: claims.email,
+      ...(claims.name ? { name: claims.name } : {}),
+    };
   };
-};

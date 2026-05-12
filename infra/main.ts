@@ -91,10 +91,6 @@ class GdpBackendStack extends cdk.Stack {
     });
 
     // Public-ish config — SSM Parameter Store, resolved at deploy time.
-    const googleClientId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/gdp-${envName}/google-client-id`,
-    );
     const trueLayerClientId = ssm.StringParameter.valueForStringParameter(
       this,
       `/gdp-${envName}/truelayer-client-id`,
@@ -125,6 +121,7 @@ class GdpBackendStack extends cdk.Stack {
     // sometimes refuses to resolve; the friendly-name form is what AWS docs
     // describe as canonical.
     const geminiKey = cdk.SecretValue.secretsManager(`gdp-${envName}/gemini-api-key`);
+    const sessionJwtSecret = cdk.SecretValue.secretsManager(`gdp-${envName}/session-jwt-secret`);
     // Google Places key lives in SSM Parameter Store as a plain String.
     // SecureString would be tighter at rest but CFN's
     // `{{resolve:ssm-secure}}` reference is NOT supported in Lambda env
@@ -166,7 +163,7 @@ class GdpBackendStack extends cdk.Stack {
         S3_BUCKET_BILLS: billsBucket.bucketName,
         LOG_LEVEL: envName === 'prod' ? 'info' : 'debug',
 
-        GOOGLE_CLIENT_ID: googleClientId,
+        SESSION_JWT_SECRET: sessionJwtSecret.unsafeUnwrap(),
 
         GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
         GOOGLE_PLACES_API_KEY: googlePlacesKey,

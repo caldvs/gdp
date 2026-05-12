@@ -227,4 +227,64 @@ describe('POST /v1/bills/parse', () => {
 
     expect(secondBody.billId).toBe(firstBody.billId);
   });
+
+  it('persists parsedTotalPence when the parser provided a printed total', async () => {
+    // sampleParsedBill has totalPence: 3206 and the computed total
+    // (subtotal 2850 + service 356 + tax 0) also lands at 3206, so no
+    // mismatch — we just verify the field surfaces.
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const uploadId = uuidv7();
+    await putObject(userId, uploadId, uniqueImageBytes());
+    const res = await app.request('/v1/bills/parse', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': newIdempotencyKey(),
+        ...makeAuth(userId),
+      },
+      body: JSON.stringify({ uploadId }),
+    });
+    expect(res.status).toBe(200);
+    const bill = (await res.json()) as { totalPence: number; parsedTotalPence?: number };
+    expect(bill.parsedTotalPence).toBe(sampleParsedBill.totalPence);
+    expect(bill.totalPence).toBe(sampleParsedBill.totalPence);
+  });
+
+  it('surfaces parsedTotalPence diverging from the computed totalPence', async () => {
+    // Pretend Gemini misread the receipt: the printed total it returned
+    // is £35.00 (3500) but the items + service + tax compute to £32.06
+    // (3206). The bill's totalPence is the computed value; the printed
+    // value lives alongside it so the client can flag the discrepancy.
+    const divergent = { ...sampleParsedBill, totalPence: 3500 };
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(divergent),
+    });
+    const userId = `u-${uuidv7()}`;
+    const uploadId = uuidv7();
+    await putObject(userId, uploadId, uniqueImageBytes());
+    const res = await app.request('/v1/bills/parse', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': newIdempotencyKey(),
+        ...makeAuth(userId),
+      },
+      body: JSON.stringify({ uploadId }),
+    });
+    const bill = (await res.json()) as {
+      billId: string;
+      totalPence: number;
+      parsedTotalPence?: number;
+    };
+    expect(bill.parsedTotalPence).toBe(3500);
+    expect(bill.totalPence).toBe(3206);
+    // GET surfaces both as well.
+    const got = await app.request(`/v1/bills/${bill.billId}`, {
+      headers: makeAuth(userId),
+    });
+    const fetched = (await got.json()) as { totalPence: number; parsedTotalPence?: number };
+    expect(fetched.parsedTotalPence).toBe(3500);
+  });
 });

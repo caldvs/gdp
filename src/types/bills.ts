@@ -41,6 +41,12 @@ const BillBaseSchema = z.object({
   taxPence: z.number().int().nonnegative(),
   serviceChargePence: z.number().int().nonnegative(),
   totalPence: z.number().int().nonnegative(),
+  // The total printed on the receipt itself, as read by the OCR parser.
+  // Kept alongside the computed totalPence so the client can flag a
+  // mismatch (typical causes: OCR misread an item price, restaurant
+  // arithmetic error, undisclosed discount/tip). Optional because old
+  // bills predate this field and not every parser surfaces it.
+  parsedTotalPence: z.number().int().nonnegative().optional(),
   items: z.array(BillItemSchema).min(1),
   parsedFrom: ParsedFromSchema,
   venue: VenueSchema.optional(),

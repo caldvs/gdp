@@ -13,6 +13,8 @@ export const ErrorCodes = {
   SESSION_INVALID_STATE: { http: 409 },
   CLAIMS_INCOMPLETE: { http: 409 },
   CLAIMS_EXCEED_QUANTITY: { http: 409 },
+  CLAIM_SHARE_CONFLICT: { http: 409 },
+  ITEM_NOT_SHAREABLE: { http: 409 },
   PARTICIPANTS_NOT_READY: { http: 409 },
   PAYOUT_ACCOUNT_REQUIRED: { http: 409 },
   PARSE_FAILED: { http: 422 },

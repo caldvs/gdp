@@ -487,6 +487,85 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/shares:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: addShare
+      summary: Caller joins the splitter set for a shared item (ADR-0006)
+      description: |
+        Adds the caller to the share set for `itemId`. Idempotent — calling
+        twice has no effect on the second call. The shared item's unit price
+        is split equally across all sharers at lock-claims time, with
+        deterministic largest-remainder rounding on the lowest userId.
+
+        v1 simplification: only items with `quantity: 1` are shareable, and
+        an item is in exactly one mode session-wide — claim-mode (unit
+        claims via `/claims`) or share-mode. Either:
+        - `409 ITEM_NOT_SHAREABLE` if the item has quantity > 1, or
+        - `409 CLAIM_SHARE_CONFLICT` if any participant is currently
+          claiming this item.
+
+        Editing the caller's share set un-readies them (same rule as
+        `/claims`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId]
+              properties:
+                itemId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated session, with the caller now in the splitter set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Session is not in setup/claiming, item has quantity > 1
+            (`ITEM_NOT_SHAREABLE`), or the item is currently claimed
+            (`CLAIM_SHARE_CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/shares/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - in: path
+        name: itemId
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [sessions]
+      operationId: removeShare
+      summary: Caller leaves the splitter set for a shared item (ADR-0006)
+      description: |
+        Removes the caller from the share set for `itemId`. Idempotent —
+        no-op if not in the set. If the caller is the last sharer, the
+        item reverts to no-share-at-all and will require unit claims at
+        lock-claims time.
+      responses:
+        '200':
+          description: Updated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is in a state where shares cannot be modified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/ready:
     parameters:
       - $ref: '#/components/parameters/SessionId'
@@ -853,6 +932,8 @@ components:
                 - PAYMENT_NOT_FOUND
                 - SESSION_INVALID_STATE
                 - CLAIMS_INCOMPLETE
+                - CLAIM_SHARE_CONFLICT
+                - ITEM_NOT_SHAREABLE
                 - PARSE_FAILED
                 - PARSE_LOW_CONFIDENCE
                 - RATE_LIMITED
@@ -1030,7 +1111,7 @@ components:
 
     Participant:
       type: object
-      required: [userId, displayName, claimedItemIds, payment, readyToLock]
+      required: [userId, displayName, claimedItemIds, sharedItemIds, payment, readyToLock]
       properties:
         userId: { type: string }
         displayName: { type: string }
@@ -1038,6 +1119,14 @@ components:
         claimedItemIds:
           type: array
           items: { type: string, format: uuid }
+        sharedItemIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: |
+            Items this participant is sharing with other diners (ADR-0006).
+            Distinct from `claimedItemIds`: a share is one unit of a
+            quantity-1 item divided equally across all sharers, with
+            deterministic largest-remainder rounding.
         owedPence:
           type: integer
           format: int64
@@ -1078,6 +1167,21 @@ components:
             frontend can render a venue strapline without a second round-trip.
             Optional — predates this field on old sessions, and not every bill
             has a venue Gemini could extract.
+        shares:
+          type: array
+          description: |
+            Computed view of share state per ADR-0006. One entry per item
+            with at least one sharer; `userIds` is the splitter set. Server
+            derives this from participants' `sharedItemIds` on every read.
+            Absent when no items are shared.
+          items:
+            type: object
+            required: [itemId, userIds]
+            properties:
+              itemId: { type: string, format: uuid }
+              userIds:
+                type: array
+                items: { type: string }
         createdAt: { type: string, format: date-time }
         ttlAt: { type: string, format: date-time }
 

@@ -6,6 +6,7 @@ import { callerOf } from '../context/caller.js';
 import { sessionService } from '../services/sessions/sessionService.js';
 import { paymentService } from '../services/payments/paymentService.js';
 import {
+  AddShareRequestSchema,
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
   JoinByCodeRequestSchema,
@@ -84,6 +85,27 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       return c.json(session);
     },
   );
+
+  r.post(
+    '/:sessionId/shares',
+    requireAuth(deps.idTokenVerifier),
+    zValidator('json', AddShareRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const { itemId } = c.req.valid('json');
+      const session = await sessionService.addShare({ caller, sessionId, itemId });
+      return c.json(session);
+    },
+  );
+
+  r.delete('/:sessionId/shares/:itemId', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    const sessionId = c.req.param('sessionId');
+    const itemId = c.req.param('itemId');
+    const session = await sessionService.removeShare({ caller, sessionId, itemId });
+    return c.json(session);
+  });
 
   r.post(
     '/:sessionId/ready',

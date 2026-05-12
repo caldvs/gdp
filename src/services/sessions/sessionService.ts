@@ -32,6 +32,7 @@ export const sessionService = {
       displayName: input.caller.displayName,
       ...(input.caller.avatarUrl ? { avatarUrl: input.caller.avatarUrl } : {}),
       claimedItemIds: [],
+      sharedItemIds: [],
       payment: { status: 'unpaid' },
       // Creator's "ready" doesn't gate lock-claims — they ARE the locker.
       // Mark them ready by default so the all-ready check is just about guests.
@@ -159,6 +160,7 @@ export const sessionService = {
       displayName: input.caller.displayName,
       ...(input.caller.avatarUrl ? { avatarUrl: input.caller.avatarUrl } : {}),
       claimedItemIds: [],
+      sharedItemIds: [],
       payment: { status: 'unpaid' },
       readyToLock: false,
     };
@@ -231,6 +233,18 @@ export const sessionService = {
           { itemId: id, claimed: count, available: item.quantity - othersCount },
         );
       }
+      // ADR-0006 v1: an item is in claim-mode or share-mode, not both.
+      // If anyone (including the caller) currently shares this item we
+      // refuse the claim — they must leave the share first via DELETE
+      // /v1/sessions/:id/shares/:itemId.
+      const isShared = session.participants.some((p) => p.sharedItemIds.includes(id));
+      if (isShared) {
+        throw new AppError(
+          'CLAIM_SHARE_CONFLICT',
+          `"${item.name}" is currently being shared; leave the share before claiming`,
+          { itemId: id },
+        );
+      }
     }
 
     const target = session.participants.find((p) => p.userId === input.caller.userId);
@@ -244,6 +258,97 @@ export const sessionService = {
     };
     await sessionStore.putParticipant(session.sessionId, updated);
 
+    return projectForCaller(
+      {
+        ...session,
+        participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
+      },
+      input.caller.userId,
+    );
+  },
+
+  /**
+   * Caller joins the splitter set for `itemId` (ADR-0006). Idempotent —
+   * a no-op if already in the set. Returns the updated session.
+   *
+   * v1 simplification: item must have `quantity === 1` and must not be
+   * in anyone's `claimedItemIds`. Either condition → 409.
+   */
+  async addShare(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    itemId: string;
+  }): Promise<Session> {
+    const session = await assertEditableSession(input.sessionId, input.caller.userId);
+    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    const item = bill.items.find((it) => it.itemId === input.itemId);
+    if (!item) {
+      throw new AppError('INVALID_INPUT', 'Unknown itemId', { itemId: input.itemId });
+    }
+    if (item.quantity !== 1) {
+      throw new AppError(
+        'ITEM_NOT_SHAREABLE',
+        `"${item.name}" has quantity ${item.quantity}; only quantity-1 items are shareable in v1`,
+        { itemId: input.itemId, quantity: item.quantity },
+      );
+    }
+    const claimedByAnyone = session.participants.some((p) =>
+      p.claimedItemIds.includes(input.itemId),
+    );
+    if (claimedByAnyone) {
+      throw new AppError(
+        'CLAIM_SHARE_CONFLICT',
+        `"${item.name}" has been claimed; the claimer must release it before it can be shared`,
+        { itemId: input.itemId },
+      );
+    }
+
+    const target = session.participants.find((p) => p.userId === input.caller.userId);
+    if (!target) throw new Error('Invariant: caller participant missing');
+    if (target.sharedItemIds.includes(input.itemId)) {
+      // Idempotent: already a sharer.
+      return projectForCaller(session, input.caller.userId);
+    }
+    const isCreator = session.creatorUserId === input.caller.userId;
+    const updated: Participant = {
+      ...target,
+      sharedItemIds: [...target.sharedItemIds, input.itemId],
+      // Same logic as setClaims: editing my share set un-readies me.
+      readyToLock: isCreator ? target.readyToLock : false,
+    };
+    await sessionStore.putParticipant(session.sessionId, updated);
+    return projectForCaller(
+      {
+        ...session,
+        participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
+      },
+      input.caller.userId,
+    );
+  },
+
+  /**
+   * Caller leaves the splitter set for `itemId`. Idempotent — no-op if
+   * not currently in the set. Returns the updated session.
+   */
+  async removeShare(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    itemId: string;
+  }): Promise<Session> {
+    const session = await assertEditableSession(input.sessionId, input.caller.userId);
+    const target = session.participants.find((p) => p.userId === input.caller.userId);
+    if (!target) throw new Error('Invariant: caller participant missing');
+    if (!target.sharedItemIds.includes(input.itemId)) {
+      return projectForCaller(session, input.caller.userId);
+    }
+    const isCreator = session.creatorUserId === input.caller.userId;
+    const updated: Participant = {
+      ...target,
+      sharedItemIds: target.sharedItemIds.filter((id) => id !== input.itemId),
+      readyToLock: isCreator ? target.readyToLock : false,
+    };
+    await sessionStore.putParticipant(session.sessionId, updated);
     return projectForCaller(
       {
         ...session,
@@ -380,12 +485,54 @@ export const sessionService = {
  * (including the creator) while the session is in `setup`; it becomes visible
  * once `share` activates the code.
  */
-function projectForCaller(session: Session, _callerUserId: string): Session {
-  if (session.status === 'setup') {
-    const { joinCode: _hidden, ...rest } = session;
-    return rest;
+/**
+ * Common preamble for endpoints that mutate a participant's claims or
+ * shares: fetch the session, assert the caller is a participant, and
+ * assert the session is in a state where claims/shares can be edited
+ * (creator in `setup`, anyone in `claiming`). Returns the fresh session.
+ */
+async function assertEditableSession(sessionId: string, userId: string): Promise<Session> {
+  const session = await sessionStore.get(sessionId);
+  if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+  const isCreator = session.creatorUserId === userId;
+  const isParticipant = session.participants.some((p) => p.userId === userId);
+  if (!isParticipant) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+  const allowed = (session.status === 'setup' && isCreator) || session.status === 'claiming';
+  if (!allowed) {
+    throw new AppError(
+      'SESSION_INVALID_STATE',
+      'Claims and shares cannot be modified in this state',
+    );
   }
   return session;
+}
+
+function projectForCaller(session: Session, _callerUserId: string): Session {
+  const withShares: Session = { ...session, shares: computeShares(session.participants) };
+  if (withShares.status === 'setup') {
+    const { joinCode: _hidden, ...rest } = withShares;
+    return rest;
+  }
+  return withShares;
+}
+
+/**
+ * Derive the `shares` view from participants' sharedItemIds. One entry
+ * per item that has at least one sharer; userIds is the splitter set.
+ * Server-only; never stored.
+ */
+function computeShares(
+  participants: ReadonlyArray<{ userId: string; sharedItemIds: string[] }>,
+): { itemId: string; userIds: string[] }[] {
+  const byItem = new Map<string, string[]>();
+  for (const p of participants) {
+    for (const itemId of p.sharedItemIds) {
+      const list = byItem.get(itemId) ?? [];
+      list.push(p.userId);
+      byItem.set(itemId, list);
+    }
+  }
+  return [...byItem.entries()].map(([itemId, userIds]) => ({ itemId, userIds }));
 }
 
 function isConditionalCheckFailed(err: unknown): boolean {

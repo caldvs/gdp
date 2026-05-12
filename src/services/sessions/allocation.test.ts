@@ -259,4 +259,64 @@ describe('computeOwed', () => {
       expect(sumValues(owed)).toBe(bill.totalPence);
     }
   });
+
+  describe('shared items (ADR-0006)', () => {
+    it('splits a £22 bottle equally between 2 sharers', () => {
+      const bill = billOf([item('wine', 2200)], 0, 0);
+      const participants = [
+        { userId: 'a', claimedItemIds: [], sharedItemIds: ['wine'] },
+        { userId: 'b', claimedItemIds: [], sharedItemIds: ['wine'] },
+      ];
+      const owed = computeOwed(bill, participants);
+      expect(owed.get('a')).toBe(1100);
+      expect(owed.get('b')).toBe(1100);
+      expect(sumValues(owed)).toBe(2200);
+    });
+
+    it('splits a £22 bottle between 3 sharers with deterministic remainder', () => {
+      const bill = billOf([item('wine', 2200)], 0, 0);
+      const participants = [
+        { userId: 'a', claimedItemIds: [], sharedItemIds: ['wine'] },
+        { userId: 'b', claimedItemIds: [], sharedItemIds: ['wine'] },
+        { userId: 'c', claimedItemIds: [], sharedItemIds: ['wine'] },
+      ];
+      const owed = computeOwed(bill, participants);
+      // 2200 / 3 = 733.33; one of them gets +1p to make 2200 exactly.
+      const values = [owed.get('a')!, owed.get('b')!, owed.get('c')!].sort();
+      expect(values).toEqual([733, 733, 734]);
+      expect(sumValues(owed)).toBe(2200);
+    });
+
+    it('mixes a shared item with unit claims and apportions service correctly', () => {
+      const bill = billOf(
+        [item('wine', 2200), item('pizza', 1500, 1), item('pasta', 1200, 1)],
+        0,
+        490, // ~10% on 4900 subtotal
+      );
+      const participants = [
+        { userId: 'a', claimedItemIds: ['pizza'], sharedItemIds: ['wine'] },
+        { userId: 'b', claimedItemIds: ['pasta'], sharedItemIds: ['wine'] },
+      ];
+      const owed = computeOwed(bill, participants);
+      expect(sumValues(owed)).toBe(bill.totalPence);
+      // Subtotals: a = 1500 + 1100 = 2600; b = 1200 + 1100 = 2300.
+      // a gets a slightly bigger slice of service charge than b.
+      expect(owed.get('a')!).toBeGreaterThan(owed.get('b')!);
+    });
+
+    it('treats an empty share entry (no sharers) as no-share — unit claim path applies', () => {
+      const bill = billOf([item('wine', 2200)], 0, 0);
+      // No participant has wine in their sharedItemIds → wine has no sharers.
+      const participants = [{ userId: 'a', claimedItemIds: [], sharedItemIds: [] as string[] }];
+      // Wine quantity 1 still requires a unit claim → CLAIMS_INCOMPLETE.
+      expect(() => computeOwed(bill, participants)).toThrow('CLAIMS_INCOMPLETE');
+    });
+
+    it('does not require unit claims for items covered by shares', () => {
+      const bill = billOf([item('wine', 2200)], 0, 0);
+      const participants = [{ userId: 'a', claimedItemIds: [], sharedItemIds: ['wine'] }];
+      const owed = computeOwed(bill, participants);
+      expect(owed.get('a')).toBe(2200);
+    });
+  });
 });

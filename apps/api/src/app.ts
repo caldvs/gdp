@@ -1,0 +1,154 @@
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import './context/types.js';
+import { env } from './config/env.js';
+import { requestId } from './middleware/requestId.js';
+import { requestLogger } from './middleware/requestLogger.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { opsRoutes } from './routes/ops.js';
+import { docsRoutes } from './routes/docs.js';
+import { buildMeRoutes, meRoutes } from './routes/me.js';
+import { buildBillRoutes } from './routes/bills.js';
+import { buildSessionRoutes } from './routes/sessions.js';
+import { buildPaymentGetRoute } from './routes/payments.js';
+import { buildWebhookRoutes } from './routes/webhooks.js';
+import { buildAuthRoutes } from './routes/auth.js';
+import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
+import { createDefaultEmailSender } from './services/email/factory.js';
+import type { EmailSender } from './services/email/sender.js';
+import type { BillParser } from './services/bills/parser.js';
+import { createDefaultBillParser } from './services/bills/geminiParser.js';
+import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
+import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
+import { baseLogger } from './logging/logger.js';
+import type { PaymentProvider } from './services/payments/provider.js';
+import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
+import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
+
+export interface AppDeps {
+  idTokenVerifier?: IdTokenVerifier;
+  billParser?: BillParser;
+  venueResolver?: VenueResolver;
+  emailSender?: EmailSender;
+  /** Override the JWT secret for tests (use a deterministic value). */
+  sessionJwtSecret?: Uint8Array;
+  /**
+   * Pass a concrete provider for tests. Pass `null` to force manual mode.
+   * Omit to fall back to env-driven default.
+   */
+  paymentProvider?: PaymentProvider | null;
+}
+
+const sessionJwtSecretFromEnv = (): Uint8Array => {
+  if (!env.SESSION_JWT_SECRET) {
+    throw new Error('SESSION_JWT_SECRET not configured');
+  }
+  return new TextEncoder().encode(env.SESSION_JWT_SECRET);
+};
+
+const defaultIdTokenVerifier = (): IdTokenVerifier =>
+  createSessionTokenVerifier(sessionJwtSecretFromEnv());
+
+const defaultVenueResolver = (): VenueResolver => {
+  if (!env.GOOGLE_PLACES_API_KEY) return new NoopVenueResolver();
+  return new GooglePlacesVenueResolver({
+    apiKey: env.GOOGLE_PLACES_API_KEY,
+    logger: baseLogger,
+  });
+};
+
+const defaultPaymentProvider = (): PaymentProvider | null => {
+  if (env.PAYMENT_PROVIDER === 'manual') return null;
+  if (env.PAYMENT_PROVIDER === 'truelayer') {
+    if (
+      !env.TRUELAYER_CLIENT_ID ||
+      !env.TRUELAYER_CLIENT_SECRET ||
+      !env.TRUELAYER_SIGNING_KID ||
+      !env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM ||
+      !env.TRUELAYER_RETURN_URI
+    ) {
+      throw new Error(
+        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_RETURN_URI',
+      );
+    }
+    return new TrueLayerSandboxProvider({
+      environment: env.TRUELAYER_ENVIRONMENT,
+      clientId: env.TRUELAYER_CLIENT_ID,
+      clientSecret: env.TRUELAYER_CLIENT_SECRET,
+      signingKid: env.TRUELAYER_SIGNING_KID,
+      signingPrivateKeyPem: env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM,
+      returnUri: env.TRUELAYER_RETURN_URI,
+    });
+  }
+  const secret = env.TRUELAYER_WEBHOOK_SECRET ?? 'local-mock-secret';
+  return new MockTrueLayerProvider(secret);
+};
+
+export const createApp = (deps: AppDeps = {}): Hono => {
+  const app = new Hono();
+  const billParser = deps.billParser ?? createDefaultBillParser(env.GEMINI_API_KEY);
+  const venueResolver = deps.venueResolver ?? defaultVenueResolver();
+  const emailSender = deps.emailSender ?? createDefaultEmailSender();
+  const sessionJwtSecret =
+    deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);
+  const idTokenVerifier =
+    deps.idTokenVerifier ?? (env.SESSION_JWT_SECRET ? defaultIdTokenVerifier() : undefined);
+  // `paymentProvider: undefined` (omitted) → use env default (which may itself be null).
+  // `paymentProvider: null` → explicit "manual mode" override (used in tests).
+  const paymentProvider =
+    deps.paymentProvider === undefined ? defaultPaymentProvider() : deps.paymentProvider;
+
+  app.use('*', requestId());
+  app.use('*', requestLogger());
+
+  // CORS for browser clients (Expo web dev). Permissive in dev — tighten before prod.
+  app.use(
+    '*',
+    cors({
+      origin: '*',
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
+      exposeHeaders: ['x-request-id'],
+      maxAge: 600,
+    }),
+  );
+
+  app.onError(errorHandler);
+
+  app.route('/', opsRoutes);
+  app.route('/', docsRoutes);
+  if (sessionJwtSecret) {
+    app.route('/v1/auth', buildAuthRoutes({ emailSender, jwtSecret: sessionJwtSecret }));
+  }
+  app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
+  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver }));
+  app.route(
+    '/v1/sessions',
+    buildSessionRoutes({
+      idTokenVerifier,
+      paymentProvider,
+    }),
+  );
+  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
+  // No webhook route in manual mode — there's no provider sending events.
+  if (paymentProvider) {
+    app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
+  }
+
+  app.notFound((c) =>
+    c.json(
+      {
+        error: {
+          code: 'NOT_FOUND' as const,
+          message: 'Route not found',
+          requestId: c.var.requestId ?? 'unknown',
+        },
+      },
+      404,
+    ),
+  );
+
+  return app;
+};
+
+export const app = createApp();

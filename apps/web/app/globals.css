@@ -874,3 +874,12 @@ img { max-width: 100%; }
 }
 .course-pick__opt:hover { border-color: var(--mute-2); }
 .course-pick__opt--on { background: var(--surface-2); border-color: var(--ink-2); color: var(--ink); font-weight: 600; }
+
+/* ---------- Pay screen: Monzo / Revolut links ---------- */
+.quick-pay { display: flex; flex-direction: column; gap: 8px; }
+.quick-pay__btn { text-decoration: none; }
+/* Brand-neutral: the lead's own bank, not ours, so these stay quiet
+   (ghost) and the bank name carries the meaning. */
+.quick-pay__btn--monzo, .quick-pay__btn--revolut { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.quick-pay__btn--monzo:hover, .quick-pay__btn--revolut:hover { background: var(--surface-2); filter: none; }
+.quick-pay__or { margin-top: 4px; }

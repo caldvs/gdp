@@ -71,6 +71,30 @@ describe('manual payment mode — initiate returns bank details + optional links
     expect(body.instructions.links).toEqual({}); // no Monzo/Revolut handles set
   });
 
+  it('works without server-side bank details (ADR-0002) — omits bankDetails', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await buildPayingSession(app, creator, [guest], {
+      serverPayoutAccount: false,
+    });
+
+    const res = await app.request(`/v1/sessions/${sessionId}/payments`, {
+      method: 'POST',
+      headers: { 'idempotency-key': newIdempotencyKey(), ...makeAuth(guest) },
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      payment: { status: string };
+      instructions: { type: string; bankDetails?: unknown; reference: string; links: object };
+    };
+    expect(body.payment.status).toBe('pending');
+    expect(body.instructions.type).toBe('manual_transfer');
+    expect(body.instructions.bankDetails).toBeUndefined();
+    expect(body.instructions.reference).toMatch(/^gdp-[0-9a-f]{8}$/);
+    expect(body.instructions.links).toEqual({});
+  });
+
   it('builds monzo.me link when collector has a monzoHandle', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;

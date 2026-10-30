@@ -54,6 +54,8 @@ export interface AppDeps {
   emailSender?: EmailSender;
   /** Override the JWT secret for tests (use a deterministic value). */
   sessionJwtSecret?: Uint8Array;
+  /** Honour `skipCache` on bill uploads and reads. Defaults to APP_ENV=local. */
+  allowSkipCache?: boolean;
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
   devEmailSignIn?: boolean;
   /**
@@ -191,7 +193,16 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     );
   }
   app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
-  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver, reads }));
+  app.route(
+    '/v1/bills',
+    buildBillRoutes({
+      idTokenVerifier,
+      billParser,
+      venueResolver,
+      reads,
+      allowSkipCache: deps.allowSkipCache ?? env.APP_ENV === 'local',
+    }),
+  );
   app.route(
     '/v1/sessions',
     buildSessionRoutes({

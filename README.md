@@ -38,7 +38,7 @@ Put a `GEMINI_API_KEY` in `apps/api/.env.local` so bill reading works locally (s
 
 | Command | |
 | --- | --- |
-| `npm run dev:local` | API + web, web pointed at the local API |
+| `npm run dev:local` | API + web (web pointed at the local API) + Stripe webhook forwarding, so the table fee completes locally. Needs the [Stripe CLI](https://stripe.com/docs/stripe-cli) logged in; without it, payments are off and everything else still runs. `DEV_NO_STRIPE=1` skips the forwarder. |
 | `npm run dev` / `npm run dev:api` | Web only / API only |
 | `npm run typecheck` | All workspaces (the pre-commit hook runs it) |
 | `npm test` | Unit tests (`packages/core`, `apps/api`) |

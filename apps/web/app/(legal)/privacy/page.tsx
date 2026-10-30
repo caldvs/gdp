@@ -61,7 +61,7 @@ export default function PrivacyPage() {
         <h2>Who helps us</h2>
         <ul>
           <li>Amazon Web Services hosts the app and stores data in London.</li>
-          <li>Amazon Web Services reads bill photos (Claude, on Amazon Bedrock), in the EU.</li>
+          <li>Amazon Web Services reads bill photos (Claude, on Amazon Bedrock) in the EU, and looks up the restaurant (Amazon Location Service).</li>
           <li>Stripe takes fee payments.</li>
           <li>Amazon SES sends sign-in emails.</li>
         </ul>

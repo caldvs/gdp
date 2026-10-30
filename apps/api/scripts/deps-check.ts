@@ -2,7 +2,7 @@
 
 /**
  * Post-deploy dependency check: invokes the deployed Lambda with
- * `{ "gdpSelfCheck": true }` so it checks Stripe, Bedrock and SES with
+ * `{ "gdpSelfCheck": true }` so it checks Stripe, Bedrock, Amazon Location and SES with
  * its own config and IAM role (see src/ops/selfCheck.ts).
  * Exits 1 if a required dependency fails. In GitHub Actions, failures and
  * warnings also appear as annotations and in the job summary.

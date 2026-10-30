@@ -60,7 +60,7 @@ New item in the single table:
 pk: ANALYSIS#<sha256>
 sk: P#<parserFingerprint>          e.g. P#eu.anthropic.claude-haiku-4-5:v2:3f9a1c2e
 parsed:        ParsedBillFromImage  (the validated parser output, as-is)
-venue?:        Venue                (as read off the bill)
+venue?:        Venue                (as read, then looked up with Amazon Location)
 analysedAt:    ISO datetime
 parser, parserVersion, promptHash
 ttlAt:         epoch seconds        (analysedAt + 30 days)

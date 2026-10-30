@@ -195,6 +195,7 @@ class GdpBackendStack extends cdk.Stack {
         SECRET_SOURCES: JSON.stringify(secretSources),
 
         BEDROCK_MODEL_ID: bedrockModelId,
+        VENUE_LOOKUP: 'amazon-location',
         SES_FROM_EMAIL: sesFromEmail,
 
         ...trueLayerEnv,
@@ -210,7 +211,18 @@ class GdpBackendStack extends cdk.Stack {
         target: 'node22',
         minify: envName === 'prod',
         sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
+        // The AWS SDK clients the Lambda runtime already ships. The Amazon
+        // Location Places client is bundled instead: it's newer than the
+        // runtime's pinned SDK may be.
+        externalModules: [
+          '@aws-sdk/client-bedrock-runtime',
+          '@aws-sdk/client-dynamodb',
+          '@aws-sdk/client-s3',
+          '@aws-sdk/client-secrets-manager',
+          '@aws-sdk/client-sesv2',
+          '@aws-sdk/lib-dynamodb',
+          '@aws-sdk/s3-request-presigner',
+        ],
         // pino + some transitive deps still use `require()` even when
         // bundled as ESM. Provide a CJS-compatible require so the bundle
         // can resolve them at module load.
@@ -269,6 +281,15 @@ class GdpBackendStack extends cdk.Stack {
       }),
     );
     billsBucket.grantReadWrite(fn);
+
+    // Venue lookup (src/services/bills/locationVenueResolver.ts): Amazon
+    // Location Service Places, which has no resources of its own.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['geo-places:SearchText'],
+        resources: [`arn:aws:geo-places:${this.region}::provider/default`],
+      }),
+    );
 
     // SES send permission for the EmailSender. Scoped to the verified-
     // identity ARN pattern we provisioned out-of-band; covers SendEmail
@@ -573,7 +594,7 @@ class GdpBackendStack extends cdk.Stack {
     );
 
     dashboard.addWidgets(
-      logsWidget('Calls out: Bedrock, Stripe, SES', 24, 6, [
+      logsWidget('Calls out: Bedrock, Location, Stripe, SES', 24, 6, [
         "filter event = 'dep.call'",
         'stats count(*) as calls, sum(ok = 0) as failed, avg(ms) as avgMs, pct(ms, 95) as p95Ms, max(ms) as maxMs by dep, op',
         'sort p95Ms desc',

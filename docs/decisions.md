@@ -52,5 +52,6 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).
 - **One Lambda** behind API Gateway serves every route. `apps/api/openapi.yaml` is the contract; client types are generated from it.
 - **Bills are versioned.** Every edit writes a new `V#nnn` row plus a `LATEST` mirror. A session pins the version it started with.
-- **Bill reading** is Claude Haiku 4.5 on Bedrock, and nothing else: no fallback reader and no Google services (decided 1 Nov 2026). The venue's name and address are what Bedrock reads off the bill; an address that isn't printed is left blank rather than looked up or guessed.
+- **Bill reading** is Claude Haiku 4.5 on Bedrock, and nothing else: no fallback reader and no Google services (decided 1 Nov 2026). Bedrock reads the venue's name and printed address off the bill and never guesses one.
+- **Venue lookup** is Amazon Location Service (Places), which fills in the full address and coordinates from what Bedrock read. Answers are cached in `VENUEQ#` rows with no expiry (decided 1 Nov 2026), so it's queried with `IntendedUse: Storage` as AWS's terms require. A failed or vague lookup leaves the venue as read off the bill.
 - **Polling, not push.** Session screens poll; there are no websockets or notifications.

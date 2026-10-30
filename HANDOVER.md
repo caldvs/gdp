@@ -37,5 +37,4 @@ _Last updated 1 Nov 2026._
 
 ## Housekeeping
 
-- About 30 old branches on GitHub (`ux/*`, `redesign/*`, `e2e/*`, feature branches) are already merged or abandoned. Delete them.
-- `pr-screenshots` is an orphan branch holding PR images; keep it.
+- `pr-screenshots` is an orphan branch holding PR images; keep it. Delete other branches once their PR is merged.

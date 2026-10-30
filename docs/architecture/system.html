@@ -99,22 +99,22 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Group Dine Pay architecture</h1>
-    <div class="stats"><span><b>34</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>5</b> third parties</span></div>
+    <div class="stats"><span><b>34</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>3</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1225" role="img" aria-label="Group Dine Pay system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 34 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill parser), Secrets Manager and CloudWatch, and calls Gemini as a fallback parser, Google Places, TrueLayer and Stripe, which send webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1245" role="img" aria-label="Group Dine Pay system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 34 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill parser), Secrets Manager and CloudWatch, and calls Gemini as a fallback parser, Google Places, TrueLayer and Stripe, which send webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
-<rect class="zone" x="20" y="20" width="220" height="1160" rx="14"/>
+<rect class="zone" x="20" y="20" width="220" height="1180" rx="14"/>
 <text class="zone-label" x="38" y="48">Clients</text>
-<rect class="zone" x="270" y="20" width="240" height="1160" rx="14"/>
+<rect class="zone" x="270" y="20" width="240" height="1180" rx="14"/>
 <text class="zone-label" x="288" y="48">Frontend · apps/web</text>
-<rect class="zone aws" x="530" y="20" width="870" height="1160" rx="14"/>
+<rect class="zone aws" x="530" y="20" width="870" height="1180" rx="14"/>
 <text class="zone-label" x="548" y="48">AWS · eu-west-2 · CDK stack gdp-{env}</text>
-<rect class="zone" x="1420" y="20" width="200" height="1160" rx="14"/>
+<rect class="zone" x="1420" y="20" width="200" height="1180" rx="14"/>
 <text class="zone-label" x="1435" y="48">Third parties</text>
 <g class="edge "><path d="M220,120 L288,120" marker-end="url(#ah)"/>
 <text x="254" y="112" text-anchor="middle">HTTPS</text>
@@ -133,40 +133,37 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <g class="edge "><path d="M1080,210 L1148,210" marker-end="url(#ah)" marker-start="url(#ah)"/>
 <text x="1115" y="202" text-anchor="middle">SDK</text>
 </g>
-<g class="edge "><path d="M1080,536 L1148,536" marker-end="url(#ah)"/>
-<text x="1115" y="528" text-anchor="middle">send</text>
+<g class="edge "><path d="M1080,514 L1148,514" marker-end="url(#ah)"/>
+<text x="1115" y="506" text-anchor="middle">send</text>
 </g>
-<g class="edge dashed"><path d="M1148,652 L1082,652" marker-end="url(#ah)"/>
-<text x="1115" y="644" text-anchor="middle">deploy</text>
+<g class="edge "><path d="M1148,608 L1082,608" marker-end="url(#ah)"/>
+<text x="1115" y="600" text-anchor="middle">read</text>
 </g>
-<g class="edge "><path d="M1080,773 L1148,773" marker-end="url(#ah)"/>
-<text x="1115" y="765" text-anchor="middle">logs</text>
+<g class="edge "><path d="M1080,729 L1148,729" marker-end="url(#ah)"/>
+<text x="1115" y="721" text-anchor="middle">logs</text>
 </g>
-<g class="edge "><path d="M1260,833 L1260,845" marker-end="url(#ah)"/>
+<g class="edge "><path d="M1260,789 L1260,801" marker-end="url(#ah)"/>
 </g>
-<g class="edge "><path d="M1080,978 L1148,978" marker-end="url(#ah)"/>
-<text x="1115" y="970" text-anchor="middle">parse</text>
+<g class="edge "><path d="M1080,934 L1148,934" marker-end="url(#ah)"/>
+<text x="1115" y="926" text-anchor="middle">parse</text>
 </g>
-<g class="edge "><path d="M1080,1082 L1148,1082" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1115" y="1074" text-anchor="middle">SDK</text>
+<g class="edge "><path d="M1080,1032 L1148,1032" marker-end="url(#ah)"/>
+<text x="1115" y="1024" text-anchor="middle">look up</text>
 </g>
-<g class="edge "><path d="M1080,483 L1433,483" marker-end="url(#ah)"/>
-<text x="1260" y="476" text-anchor="middle">Fallback parse</text>
+<g class="edge "><path d="M1080,1126 L1148,1126" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1115" y="1118" text-anchor="middle">SDK</text>
 </g>
-<g class="edge "><path d="M1080,589 L1433,589" marker-end="url(#ah)"/>
-<text x="1260" y="582" text-anchor="middle">Resolve venue</text>
+<g class="edge "><path d="M1080,671 L1433,671" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1260" y="664" text-anchor="middle">Create payment · webhooks</text>
 </g>
-<g class="edge "><path d="M1080,715 L1433,715" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1260" y="708" text-anchor="middle">Create payment · webhooks</text>
+<g class="edge "><path d="M1080,881 L1433,881" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1260" y="874" text-anchor="middle">Checkout · webhooks</text>
 </g>
-<g class="edge "><path d="M1080,925 L1433,925" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1260" y="918" text-anchor="middle">Checkout · webhooks</text>
+<g class="edge dashed"><path d="M1435,1116 L1402,1116" marker-end="url(#ah)"/>
+<text x="1418" y="1108" text-anchor="middle">OIDC</text>
 </g>
-<g class="edge dashed"><path d="M1435,1072 L1402,1072" marker-end="url(#ah)"/>
-<text x="1418" y="1064" text-anchor="middle">OIDC</text>
-</g>
-<g class="edge "><path d="M390,470 L390,1205 L1260,1205 L1260,1129" marker-end="url(#ah)"/>
-<text x="760" y="1199" text-anchor="middle">Presigned PUT / GET · bill photo</text>
+<g class="edge "><path d="M390,470 L390,1225 L1260,1225 L1260,1169" marker-end="url(#ah)"/>
+<text x="760" y="1219" text-anchor="middle">Presigned PUT / GET · bill photo</text>
 </g>
 <rect class="node key" x="40" y="70" width="180" height="118" rx="10"/>
 <text class="t-title" x="56" y="98">Lead diner</text>
@@ -206,7 +203,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <rect class="node key" x="560" y="70" width="520" height="64" rx="10"/>
 <text class="t-title" x="576" y="98">API Gateway · HTTP API</text>
 <text class="t-sub" x="576" y="120">Every route → one Lambda integration · CORS · x-request-id</text>
-<rect class="node key" x="560" y="160" width="520" height="990" rx="10"/>
+<rect class="node key" x="560" y="160" width="520" height="1010" rx="10"/>
 <text class="t-title" x="576" y="188">Lambda · ApiHandler</text>
 <text class="t-sub" x="1064" y="188" text-anchor="end">Node 22 · Hono · apps/api</text>
 <rect class="inner" x="576" y="206" width="488" height="64" rx="7"/>
@@ -222,42 +219,43 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="588" y="385"><tspan class="m m-get">GET</tspan><tspan x="644">/docs</tspan></text>
 <text class="t-ep" x="588" y="403"><tspan class="m m-get">GET</tspan><tspan x="644">/swagger</tspan></text>
 <text class="t-ep" x="588" y="421"><tspan class="m m-get">GET</tspan><tspan x="644">/openapi.yaml</tspan></text>
-<rect class="inner" x="576" y="446" width="246" height="74" rx="7"/>
+<rect class="inner" x="576" y="446" width="246" height="92" rx="7"/>
 <text class="t-inner" x="588" y="467">Auth</text>
 <text class="t-base" x="810" y="467" text-anchor="end">/v1/auth/email</text>
 <text class="t-ep" x="588" y="487"><tspan class="m m-post">POST</tspan><tspan x="644">/start</tspan></text>
 <text class="t-ep" x="588" y="505"><tspan class="m m-post">POST</tspan><tspan x="644">/verify</tspan></text>
-<rect class="inner" x="576" y="530" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="551">Me</text>
-<text class="t-base" x="810" y="551" text-anchor="end">/v1/me</text>
-<text class="t-ep" x="588" y="571"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="589"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
-<text class="t-ep" x="588" y="607"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
-<rect class="inner" x="576" y="632" width="246" height="128" rx="7"/>
-<text class="t-inner" x="588" y="653">Bills</text>
-<text class="t-base" x="810" y="653" text-anchor="end">/v1/bills</text>
-<text class="t-ep" x="588" y="673"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
-<text class="t-ep" x="588" y="691"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
-<text class="t-ep" x="588" y="709"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<text class="t-ep" x="588" y="727"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
-<text class="t-ep" x="588" y="745"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
-<rect class="inner" x="576" y="770" width="246" height="110" rx="7"/>
-<text class="t-inner" x="588" y="791">Payments</text>
-<text class="t-base" x="810" y="791" text-anchor="end">/v1/payments</text>
-<text class="t-ep" x="588" y="811"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
-<text class="t-ep" x="588" y="829"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
-<text class="t-ep" x="588" y="847"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
-<text class="t-ep" x="588" y="865"><tspan class="m m-get">GET</tspan><tspan x="644">/return</tspan></text>
-<rect class="inner" x="576" y="890" width="246" height="74" rx="7"/>
-<text class="t-inner" x="588" y="911">Billing</text>
-<text class="t-base" x="810" y="911" text-anchor="end">/v1/billing/table-fee</text>
-<text class="t-ep" x="588" y="931"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="949"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<rect class="inner" x="576" y="974" width="246" height="74" rx="7"/>
-<text class="t-inner" x="588" y="995">Webhooks</text>
-<text class="t-base" x="810" y="995" text-anchor="end">/webhooks</text>
-<text class="t-ep" x="588" y="1015"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
-<text class="t-ep" x="588" y="1033"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<text class="t-ep" x="588" y="523"><tspan class="m m-post">POST</tspan><tspan x="644">/test-sign-in</tspan></text>
+<rect class="inner" x="576" y="548" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="569">Me</text>
+<text class="t-base" x="810" y="569" text-anchor="end">/v1/me</text>
+<text class="t-ep" x="588" y="589"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="607"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
+<text class="t-ep" x="588" y="625"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
+<rect class="inner" x="576" y="650" width="246" height="128" rx="7"/>
+<text class="t-inner" x="588" y="671">Bills</text>
+<text class="t-base" x="810" y="671" text-anchor="end">/v1/bills</text>
+<text class="t-ep" x="588" y="691"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
+<text class="t-ep" x="588" y="709"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
+<text class="t-ep" x="588" y="727"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<text class="t-ep" x="588" y="745"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
+<text class="t-ep" x="588" y="763"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
+<rect class="inner" x="576" y="788" width="246" height="110" rx="7"/>
+<text class="t-inner" x="588" y="809">Payments</text>
+<text class="t-base" x="810" y="809" text-anchor="end">/v1/payments</text>
+<text class="t-ep" x="588" y="829"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
+<text class="t-ep" x="588" y="847"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
+<text class="t-ep" x="588" y="865"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
+<text class="t-ep" x="588" y="883"><tspan class="m m-get">GET</tspan><tspan x="644">/return</tspan></text>
+<rect class="inner" x="576" y="908" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="929">Billing</text>
+<text class="t-base" x="810" y="929" text-anchor="end">/v1/billing/table-fee</text>
+<text class="t-ep" x="588" y="949"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="967"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<rect class="inner" x="576" y="992" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="1013">Webhooks</text>
+<text class="t-base" x="810" y="1013" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="1033"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
+<text class="t-ep" x="588" y="1051"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
 <rect class="inner" x="834" y="308" width="230" height="308" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
@@ -276,7 +274,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
 <text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
 <text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="626" width="230" height="422" rx="7"/>
+<rect class="inner" x="834" y="626" width="230" height="440" rx="7"/>
 <text class="t-inner" x="846" y="647">Services</text>
 <text class="t-base" x="1052" y="647" text-anchor="end">src/services</text>
 <text class="t-mono" x="846" y="670">auth</text>
@@ -295,11 +293,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="846" y="927">sender (SES or console)</text>
 <text class="t-mono" x="846" y="950">storage</text>
 <text class="t-sub" x="846" y="967">one store per entity</text>
-<rect class="inner" x="576" y="1058" width="488" height="76" rx="7"/>
-<text class="t-inner" x="588" y="1080">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1102">Parser: Bedrock → Gemini fallback · fixture</text>
-<text class="t-mono" x="588" y="1120">Payments: TrueLayer · mock · manual</text>
-<text class="t-mono" x="588" y="1138">Email: SES · console     Venue: Google Places</text>
+<rect class="inner" x="576" y="1076" width="488" height="78" rx="7"/>
+<text class="t-inner" x="588" y="1098">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1120">Parser: Bedrock · fixture</text>
+<text class="t-mono" x="588" y="1138">Payments: TrueLayer · mock · manual</text>
+<text class="t-mono" x="588" y="1156">Email: SES · console     Venue: Location · none</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>
@@ -319,48 +317,46 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-mono" x="1166" y="384">FEE#</text>
 <text class="t-sub" x="1166" y="401">Table fees</text>
 <text class="t-mono" x="1166" y="420">IDMP# KEY#  VENUEQ#</text>
-<text class="t-sub" x="1166" y="437">Idempotency, venue cache</text>
-<rect class="node" x="1150" y="501" width="220" height="70" rx="10"/>
-<text class="t-title" x="1166" y="529">Amazon SES</text>
-<text class="t-sub" x="1166" y="551">Sign-in codes, bill reports</text>
-<rect class="node" x="1150" y="607" width="220" height="90" rx="10"/>
-<text class="t-title" x="1166" y="635">Secrets Manager + SSM</text>
-<text class="t-sub" x="1166" y="657">Gemini, JWT, TrueLayer,</text>
-<text class="t-sub" x="1166" y="676">Stripe, Places keys</text>
-<rect class="node" x="1150" y="733" width="220" height="100" rx="10"/>
-<text class="t-title" x="1166" y="761">CloudWatch</text>
-<text class="t-sub" x="1166" y="783">Logs, dashboard</text>
-<text class="t-sub" x="1166" y="802">Alarms: errors, p99,</text>
-<text class="t-sub" x="1166" y="821">5xx, DDB throttles</text>
-<rect class="node" x="1150" y="847" width="220" height="60" rx="10"/>
-<text class="t-title" x="1166" y="875">SNS</text>
-<text class="t-sub" x="1166" y="897">Alert topic</text>
-<rect class="node" x="1150" y="943" width="220" height="70" rx="10"/>
-<text class="t-title" x="1166" y="971">Bedrock</text>
-<text class="t-sub" x="1166" y="993">Claude Haiku 4.5 reads the bill</text>
-<rect class="node" x="1150" y="1027" width="220" height="100" rx="10"/>
-<text class="t-title" x="1166" y="1055">S3</text>
-<text class="t-sub" x="1166" y="1077">gdp-bills-raw-{env}</text>
-<text class="t-sub" x="1166" y="1096">Private · Glacier IR at 30 d</text>
-<text class="t-sub" x="1166" y="1115">Deleted at 365 d</text>
-<rect class="node ext" x="1435" y="451" width="185" height="64" rx="10"/>
-<text class="t-title" x="1451" y="479">Gemini</text>
-<text class="t-sub" x="1451" y="501">Fallback bill parser</text>
-<rect class="node ext" x="1435" y="557" width="185" height="64" rx="10"/>
-<text class="t-title" x="1451" y="585">Google Places</text>
-<text class="t-sub" x="1451" y="607">Venue name + address</text>
-<rect class="node ext" x="1435" y="674" width="185" height="82" rx="10"/>
-<text class="t-title" x="1451" y="702">TrueLayer</text>
-<text class="t-sub" x="1451" y="724">Open-banking pay-ins</text>
-<text class="t-sub" x="1451" y="743">Webhooks back</text>
-<rect class="node ext" x="1435" y="884" width="185" height="82" rx="10"/>
-<text class="t-title" x="1451" y="912">Stripe</text>
-<text class="t-sub" x="1451" y="934">Table-fee Checkout</text>
-<text class="t-sub" x="1451" y="953">Webhooks back</text>
-<rect class="node ext" x="1435" y="1017" width="185" height="92" rx="10"/>
-<text class="t-title" x="1451" y="1045">GitHub Actions</text>
-<text class="t-sub" x="1451" y="1067">CI, e2e, typecheck</text>
-<text class="t-sub" x="1451" y="1086">Deploys dev from main</text>
+<text class="t-sub" x="1166" y="437">Idempotency, venue lookups</text>
+<rect class="node" x="1150" y="479" width="220" height="70" rx="10"/>
+<text class="t-title" x="1166" y="507">Amazon SES</text>
+<text class="t-sub" x="1166" y="529">Sign-in codes, bill reports</text>
+<rect class="node" x="1150" y="563" width="220" height="90" rx="10"/>
+<text class="t-title" x="1166" y="591">Secrets Manager + SSM</text>
+<text class="t-sub" x="1166" y="613">JWT, Stripe, TrueLayer secrets</text>
+<text class="t-sub" x="1166" y="632">read at cold start</text>
+<rect class="node" x="1150" y="689" width="220" height="100" rx="10"/>
+<text class="t-title" x="1166" y="717">CloudWatch</text>
+<text class="t-sub" x="1166" y="739">Logs, dashboard</text>
+<text class="t-sub" x="1166" y="758">Alarms: errors, p99,</text>
+<text class="t-sub" x="1166" y="777">5xx, DDB throttles</text>
+<rect class="node" x="1150" y="803" width="220" height="60" rx="10"/>
+<text class="t-title" x="1166" y="831">SNS</text>
+<text class="t-sub" x="1166" y="853">Alert topic</text>
+<rect class="node" x="1150" y="899" width="220" height="84" rx="10"/>
+<text class="t-title" x="1166" y="927">Bedrock</text>
+<text class="t-sub" x="1166" y="949">Claude Haiku 4.5 reads the bill,</text>
+<text class="t-sub" x="1166" y="968">venue name and address</text>
+<rect class="node" x="1150" y="997" width="220" height="60" rx="10"/>
+<text class="t-title" x="1166" y="1025">Amazon Location</text>
+<text class="t-sub" x="1166" y="1047">Venue lookup, cached for good</text>
+<rect class="node" x="1150" y="1071" width="220" height="96" rx="10"/>
+<text class="t-title" x="1166" y="1099">S3</text>
+<text class="t-sub" x="1166" y="1121">gdp-bills-raw-{env}</text>
+<text class="t-sub" x="1166" y="1140">Private · Glacier IR at 30 d</text>
+<text class="t-sub" x="1166" y="1159">Deleted at 365 d</text>
+<rect class="node ext" x="1435" y="630" width="185" height="82" rx="10"/>
+<text class="t-title" x="1451" y="658">TrueLayer</text>
+<text class="t-sub" x="1451" y="680">Open-banking pay-ins</text>
+<text class="t-sub" x="1451" y="699">Webhooks back</text>
+<rect class="node ext" x="1435" y="840" width="185" height="82" rx="10"/>
+<text class="t-title" x="1451" y="868">Stripe</text>
+<text class="t-sub" x="1451" y="890">Table-fee Checkout</text>
+<text class="t-sub" x="1451" y="909">Webhooks back</text>
+<rect class="node ext" x="1435" y="1061" width="185" height="92" rx="10"/>
+<text class="t-title" x="1451" y="1089">GitHub Actions</text>
+<text class="t-sub" x="1451" y="1111">CI, e2e, typecheck</text>
+<text class="t-sub" x="1451" y="1130">Deploys dev from main</text>
     </svg>
   </div>
 

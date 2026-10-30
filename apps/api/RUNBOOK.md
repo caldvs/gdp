@@ -18,7 +18,7 @@ Commands use the `gdp-dev` profile and the `GdpBackendDev` stack. Production doe
 - **One request:** every response carries `x-request-id`, and error bodies include `requestId`. Search the logs for it.
 - **Traces:** X-Ray tracing is on; the service map shows which downstream call was slow.
 - **Smoke test:** `npm run smoke -w apps/api -- <api-url>` shows which routes fail.
-- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Gemini, Places and SES from inside the deployed function (CI runs it after every deploy). The dashboard's _Calls out_ panel shows each one's failures and timings (`event: dep.call`).
+- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Amazon Location and SES from inside the deployed function (CI runs it after every deploy). The dashboard's _Calls out_ panel shows each one's failures and timings (`event: dep.call`).
 
 ## Getting alerts
 
@@ -49,7 +49,7 @@ More than 3 Lambda errors in 5 minutes. Open the _Errors and warnings_ and _Cras
 
 p99 over 10 seconds for 5 minutes. Bill reading is almost always the cause: a parse takes 3–10 seconds normally, and the Lambda and API Gateway both stop at 30.
 
-- Check the _Bill reading_ panel. `bill.parse.fallback` means Bedrock failed and Gemini answered, so that request paid for two reads.
+- Check the _Bill reading_ panel for slow or failing Bedrock calls.
 - If it's every request, look at the X-Ray map for the slow span.
 
 ### api-5xx
@@ -66,13 +66,16 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 ### Bills won't read
 
-`PARSE_FAILED` or slow parses, with `bill.parse.fallback` in the logs:
+`PARSE_FAILED` or slow parses:
 
 - `AccessDeniedException` from Bedrock: model access for Claude Haiku 4.5 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
-- `ThrottlingException`: Bedrock quota. Gemini picks these up until it hits its own limit. Ask for a quota increase.
-- Both failing: check the Gemini key in `gdp-dev/gemini-api-key`.
+- `ThrottlingException`: Bedrock quota. There's no fallback reader, so bills fail until it clears. Ask for a quota increase.
 
-`PARSE_LOW_CONFIDENCE` isn't an outage: the photo was unreadable, and it isn't retried on Gemini.
+`PARSE_LOW_CONFIDENCE` isn't an outage: the photo was unreadable.
+
+### Venues have no full address
+
+Venue lookup (Amazon Location) only fills in what the bill didn't print, and never fails a bill. Search the logs for `venue lookup failed`: `AccessDeniedException` means the function's `geo-places:SearchText` permission is missing. A wrong match is cached for good in its `VENUEQ#` row; delete that row to look it up again.
 
 ### Sign-in codes don't arrive
 

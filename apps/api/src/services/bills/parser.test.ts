@@ -32,7 +32,7 @@ describe('ParsedBillFromImageSchema course', () => {
 
 describe('bill prompt: venue name', () => {
   it('asks for the printed trading name and nothing else in venue.name', async () => {
-    const { PROMPT } = await import('./geminiParser.js');
+    const { PROMPT } = await import('./billPrompt.js');
     expect(PROMPT).toMatch(/venue\.name" is the restaurant/);
     expect(PROMPT).toMatch(/Never put anything else in venue\.name/);
     expect(PROMPT).not.toMatch(/explain in venue\.name/);

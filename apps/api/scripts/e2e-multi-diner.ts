@@ -2,7 +2,7 @@
  * Multi-diner end-to-end test against a locally-running gdp-backend.
  *
  * Walks the full lifecycle:
- *   lead   → upload + parse (REAL Gemini)
+ *   lead   → upload + parse (REAL Bedrock)
  *          → createSession + shareSession
  *          → setClaims (some items)
  *   guest1 → resolveJoinCode + joinSession + setClaims (some items)
@@ -12,7 +12,7 @@
  *           sum reconciles to bill.totalPence
  *
  * Prereqs:
- *   - `npm run dev` (with AUTH_BYPASS_LOCAL=true and GEMINI_API_KEY set)
+ *   - `npm run dev` (with AUTH_BYPASS_LOCAL=true, BEDROCK_MODEL_ID and AWS credentials)
  *   - Fixture image at ../gdp-mobile/test-fixtures/receipt.jpg
  *
  * Usage:

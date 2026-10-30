@@ -91,6 +91,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/email/test-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to a test account without a code (local and dev only)
+         * @description For trying the app as several people at once. Only `@test.invalid`
+         *     addresses (reserved, so never a real person's), and only where the
+         *     server enables it: local and dev, never prod (404 there). A known
+         *     address gets its existing account; a new one gets a new account.
+         */
+        post: operations["testAccountSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -192,7 +215,7 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Gemini 2.5 Flash for v0), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
          *     the image hash. Idempotent via `Idempotency-Key`.
          */
         post: operations["parseBill"];
@@ -838,7 +861,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -948,7 +971,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example gemini-2.5-flash */
+                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;
@@ -1046,7 +1069,7 @@ export interface components {
              * @description Denormalised from the pinned bill at session-create time so the
              *     frontend can render a venue strapline without a second round-trip.
              *     Optional — predates this field on old sessions, and not every bill
-             *     has a venue Gemini could extract.
+             *     has a venue the reader could extract.
              */
             venue?: components["schemas"]["Venue"];
             /**
@@ -1485,6 +1508,52 @@ export interface operations {
             };
         };
     };
+    testAccountSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. Same shape as `verifyEmailOtp`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Test accounts are off on this server. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getCurrentUser: {
         parameters: {
             query?: never;
@@ -1639,6 +1708,15 @@ export interface operations {
             429: components["responses"]["RateLimited"];
             /** @description Upstream parser provider error */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

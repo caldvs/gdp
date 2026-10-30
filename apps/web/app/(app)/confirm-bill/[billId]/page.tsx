@@ -12,7 +12,7 @@ import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
-  ActionBar, BackLink, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Spinner, Title, TotalLine, Totals,
+  ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalLine, Totals,
 } from '@/components/ui';
 
 type Bill = components['schemas']['Bill'];
@@ -38,8 +38,18 @@ function existingSessionIdFromError(err: unknown): string | undefined {
   return typeof d?.sessionId === 'string' ? d.sessionId : undefined;
 }
 
+function BillLoading() {
+  return (
+    <Page sub>
+      <Title title="Review bill" />
+      <div role="status" className="vh">Loading the bill</div>
+      <BillSkeleton />
+    </Page>
+  );
+}
+
 export default function ConfirmBillPage() {
-  return <Suspense fallback={<Centre><Spinner /></Centre>}><CheckBill /></Suspense>;
+  return <Suspense fallback={<BillLoading />}><CheckBill /></Suspense>;
 }
 
 /**
@@ -179,7 +189,7 @@ function CheckBill() {
     } catch { /* shown inline */ }
   };
 
-  if (bill.isPending || (bill.isSuccess && !hydrated)) return <Centre><Spinner /></Centre>;
+  if (bill.isPending || (bill.isSuccess && !hydrated)) return <BillLoading />;
   if (bill.isError) {
     return <Centre><Notice tone="error" title="Couldn’t load the bill.">{bill.error.message}</Notice><Button tone="secondary" href="/" replace>Back to bills</Button></Centre>;
   }

@@ -28,6 +28,13 @@ export default tseslint.config(
     },
   },
   {
+    // CLI scripts: printing is their job.
+    files: ['scripts/**'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['**/*.test.ts', 'tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unused-expressions': 'off',

@@ -1,5 +1,3 @@
-/* eslint-disable no-console -- CLI script, console is the whole point */
-
 /**
  * Post-deploy smoke test.
  *

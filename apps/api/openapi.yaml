@@ -1510,10 +1510,13 @@ components:
 
     ManualTransferInstructions:
       type: object
-      required: [type, bankDetails, reference, amountPence, links]
+      required: [type, reference, amountPence, links]
       properties:
         type: { type: string, enum: [manual_transfer] }
         bankDetails:
+          description: >-
+            The collector's bank details, when stored server-side. Omitted when they only live on
+            the lead's device (ADR-0002); clients then use the details from the join QR fragment.
           type: object
           required: [sortCode, accountNumber, accountHolderName]
           properties:

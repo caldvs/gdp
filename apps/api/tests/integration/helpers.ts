@@ -108,6 +108,7 @@ export async function buildPayingSession(
   app: Hono,
   creator: string,
   guests: string[],
+  opts: { serverPayoutAccount?: boolean } = {},
 ): Promise<{
   sessionId: string;
   bill: {
@@ -141,7 +142,9 @@ export async function buildPayingSession(
     headers: { 'content-type': 'application/json', ...makeAuth(creator) },
     body: JSON.stringify({ claimedItemIds: buckets.get(creator)! }),
   });
-  await setPayoutFor(app, creator);
+  // ADR-0002: bank details normally stay on the lead's device. Seed the
+  // legacy server-side copy unless a test opts out.
+  if (opts.serverPayoutAccount !== false) await setPayoutFor(app, creator);
   await app.request(`/v1/sessions/${initial.sessionId}/share`, {
     method: 'POST',
     headers: makeAuth(creator),

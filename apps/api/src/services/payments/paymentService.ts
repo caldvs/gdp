@@ -32,10 +32,7 @@ export const paymentService = {
     // We accept both `claiming` (no lock yet) and `paying` (post-lock).
     // Setup / settled / abandoned remain hard-rejected.
     if (session.status !== 'paying' && session.status !== 'claiming') {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        `Session is ${session.status}; can't pay`,
-      );
+      throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't pay`);
     }
     if (participant.payment.status !== 'unpaid' && participant.payment.status !== 'failed') {
       throw new AppError(
@@ -62,12 +59,14 @@ export const paymentService = {
       }
     }
 
-    // Beneficiary = the collector's saved bank details. The /share gate
-    // means a session can't reach `paying` without these set, so this
-    // load should always succeed; the explicit error preserves a clean
-    // failure mode if data has been deleted out from under us.
+    // Beneficiary = the collector's saved bank details. Per ADR-0002 the
+    // lead's bank details normally live on their device and reach guests
+    // inside the join QR, so in manual mode they're optional here: if we
+    // have them we echo them back (plus Monzo/Revolut links), otherwise
+    // the client shows the details it got from the QR. A real provider
+    // (TrueLayer) needs a beneficiary, so it still requires them.
     const collector = await userStore.get(session.collectorUserId);
-    if (!collector?.payoutAccount) {
+    if (input.provider && !collector?.payoutAccount) {
       throw new AppError('PAYOUT_ACCOUNT_REQUIRED', 'Collector has no payout account on file');
     }
 
@@ -87,7 +86,7 @@ export const paymentService = {
         payerUserId: participant.userId,
         collectorUserId: session.collectorUserId,
         reference,
-        beneficiary: collector.payoutAccount,
+        beneficiary: collector!.payoutAccount!,
       });
       providerPaymentId = initiated.providerPaymentId;
       providerName = input.provider.name;
@@ -99,7 +98,7 @@ export const paymentService = {
       providerPaymentId = `manual-${paymentId}`;
       providerName = 'manual';
       instructions = buildManualInstructions({
-        payoutAccount: collector.payoutAccount,
+        payoutAccount: collector?.payoutAccount,
         reference,
         amountPence,
       });
@@ -378,7 +377,12 @@ function replaceParticipant(participants: Participant[], updated: Participant): 
 // the simpler ratio approach and accept slight rounding drift across
 // participants (a few pennies, well within manual-mode tolerance).
 function computeOwedForParticipant(
-  bill: { items: ReadonlyArray<{ itemId: string; unitPricePence: number }>; subtotalPence: number; serviceChargePence: number; taxPence: number },
+  bill: {
+    items: ReadonlyArray<{ itemId: string; unitPricePence: number }>;
+    subtotalPence: number;
+    serviceChargePence: number;
+    taxPence: number;
+  },
   session: Session,
   participant: Participant,
 ): number {
@@ -423,7 +427,7 @@ async function maybeSettleSession(session: Session, logger?: Logger): Promise<vo
 }
 
 function buildManualInstructions(args: {
-  payoutAccount: PayoutAccount;
+  payoutAccount: PayoutAccount | undefined;
   reference: string;
   amountPence: number;
 }): PaymentInstructions {
@@ -436,22 +440,24 @@ function buildManualInstructions(args: {
   // feed. Revolut's public link format doesn't accept a description.
   const amountMajor = (args.amountPence / 100).toFixed(2);
   const links: { monzo?: string; revolut?: string } = {};
-  if (args.payoutAccount.monzoHandle) {
+  if (args.payoutAccount?.monzoHandle) {
     const handle = encodeURIComponent(args.payoutAccount.monzoHandle);
     const desc = encodeURIComponent(args.reference);
     links.monzo = `https://monzo.me/${handle}/${amountMajor}?d=${desc}&account_type=personal`;
   }
-  if (args.payoutAccount.revolutTag) {
+  if (args.payoutAccount?.revolutTag) {
     const tag = encodeURIComponent(args.payoutAccount.revolutTag);
     links.revolut = `https://revolut.me/${tag}/${amountMajor}`;
   }
   return {
     type: 'manual_transfer',
-    bankDetails: {
-      sortCode: args.payoutAccount.sortCode,
-      accountNumber: args.payoutAccount.accountNumber,
-      accountHolderName: args.payoutAccount.accountHolderName,
-    },
+    ...(args.payoutAccount && {
+      bankDetails: {
+        sortCode: args.payoutAccount.sortCode,
+        accountNumber: args.payoutAccount.accountNumber,
+        accountHolderName: args.payoutAccount.accountHolderName,
+      },
+    }),
     reference: args.reference,
     amountPence: args.amountPence,
     links,

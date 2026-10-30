@@ -36,6 +36,8 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **The lead can edit the bill at any time before close, including lines a guest has paid for** (decided 1 Nov 2026). No freeze on paid lines; the only edit refused is lowering a quantity below what's been claimed. Removing a line drops claims and splits on it.
 - **Only the lead closes a bill.** Everyone paying doesn't settle it, because a late guest may still take a split seat or a leftover item. Unclaimed items go on the lead. Payments are still accepted after closing. Closing releases the bill, so the lead can edit it or share it again; the closed table keeps the version it was pinned to.
 - **Bills keep their shape.** Every line stays in place and changes state as it's claimed.
+- **Discount lines go into the item they came from** (decided 1 Nov 2026). A minus line on the bill ("Coffee & Cannoli LRG −4.00") lowers the price of the item it belongs to, so whoever claims that item gets the discount. If the reader can't tell which item, the discount is shared across every line by price. No line is ever below £0.
+- **Deposits are left out of the split** (decided 1 Nov 2026). The lead usually paid the deposit, so the lead has paid the whole bill (deposit plus balance) and guests owe their full share. The bill's total is the total before the deposit comes off.
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:

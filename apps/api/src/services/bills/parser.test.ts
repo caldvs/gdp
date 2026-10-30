@@ -30,6 +30,30 @@ describe('ParsedBillFromImageSchema course', () => {
   });
 });
 
+describe('ParsedBillFromImageSchema category', () => {
+  it('reads a course given as the category as a food item with that course', () => {
+    const r = ParsedBillFromImageSchema.parse({
+      ...base,
+      items: [item({ category: 'main' }), item({ category: 'Starter', course: 'side' })],
+    });
+    expect(r.items.map((i) => [i.category, i.course])).toEqual([
+      ['food', 'main'],
+      ['food', 'side'],
+    ]);
+  });
+
+  it('accepts a category in the wrong case', () => {
+    const r = ParsedBillFromImageSchema.parse({ ...base, items: [item({ category: 'Drink' })] });
+    expect(r.items[0]?.category).toBe('drink');
+  });
+
+  it('still rejects a category it cannot place', () => {
+    expect(() =>
+      ParsedBillFromImageSchema.parse({ ...base, items: [item({ category: 'cutlery' })] }),
+    ).toThrow();
+  });
+});
+
 describe('bill prompt: venue name', () => {
   it('asks for the printed trading name and nothing else in venue.name', async () => {
     const { PROMPT } = await import('./billPrompt.js');

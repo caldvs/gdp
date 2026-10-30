@@ -60,6 +60,46 @@ describe('validateParsedBill', () => {
     expect(validateParsedBill(text, 'Bedrock').items[0]?.name).toBe('Pizza');
   });
 
+  it('folds a discount into the item it names (the Gusto cannoli deal)', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [
+        { name: 'LGR Cannoli', unitPricePence: 350, quantity: 2, category: 'food' },
+        { name: 'Espresso', unitPricePence: 325, quantity: 1, category: 'drink' },
+      ],
+      discounts: [{ name: 'Coffee & Cannoli LRG', amountPence: 400, appliesTo: 'LGR Cannoli' }],
+    });
+    const out = validateParsedBill(text, 'Bedrock');
+    expect(out.items.map((i) => [i.name, i.unitPricePence, i.quantity])).toEqual([
+      ['LGR Cannoli', 150, 2],
+      ['Espresso', 325, 1],
+    ]);
+    expect(out).not.toHaveProperty('discounts');
+  });
+
+  it('reads a bill whose model still gave a line a minus price', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [
+        { name: 'Pizza', unitPricePence: 1500, quantity: 1, category: 'food' },
+        { name: 'Beer', unitPricePence: 500, quantity: 1, category: 'drink' },
+        { name: 'Promo', unitPricePence: -200, quantity: 1, category: 'other' },
+      ],
+    });
+    const out = validateParsedBill(text, 'Bedrock');
+    expect(out.items.map((i) => [i.name, i.unitPricePence])).toEqual([
+      ['Pizza', 1350],
+      ['Beer', 450],
+    ]);
+  });
+
+  it('ignores a malformed discount rather than failing the read', () => {
+    const text = JSON.stringify({ ...bill, discounts: [{ name: 'x' }, 'junk'] });
+    expect(validateParsedBill(text, 'Bedrock').items[0]?.unitPricePence).toBe(
+      bill.items[0]!.unitPricePence,
+    );
+  });
+
   it('names the reader in its errors', () => {
     expect(() => validateParsedBill('not json', 'Bedrock')).toThrow(/Bedrock returned non-JSON/);
   });

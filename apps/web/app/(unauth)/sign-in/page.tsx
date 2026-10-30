@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { useDevEmailSignIn, useStartEmailOtp, useVerifyEmailOtp } from '@gdp/core/api/hooks/useEmailOtp';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
+import { decodePayoutFromQR, readPayoutFragment } from '@gdp/core/lib/qrPayload';
+import { peekJoinFragment } from '@/lib/joinFragment';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { BodyText, Button, DisplayText, LinkButton, Mini, Spinner, TextField } from '@/components/ui';
 
@@ -17,18 +19,67 @@ const RESEND_LOCKOUT_SECONDS = 30;
 export default function SignInPage() {
   return (
     <div className="screen screen--narrow signin">
-      <div>
-        <Image src="/logo.png" alt="Group Dine Pay" width={64} height={64} className="signin__logo" priority />
-        <DisplayText size="lg">Sort the bill.</DisplayText>
-        <DisplayText size="lg" as="p">Go home.</DisplayText>
-        <BodyText className="mt-md">
-          Snap the bill, share a QR, get paid direct. Your friends don&apos;t install anything.
-        </BodyText>
-      </div>
+      <Suspense fallback={<SignInIntro invite={null} />}>
+        <Intro />
+      </Suspense>
       <Suspense fallback={null}>
         <EmailOtpFlow />
         {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
       </Suspense>
+    </div>
+  );
+}
+
+type Invite = { code: string; hostName: string | null };
+
+/**
+ * Someone who scanned a lead's QR lands here with ?from=/join/CODE. Tell
+ * them why: whose bill, and that it's a quick sign-in, not an app. The
+ * host's name comes from the bank details in the stashed #p= fragment
+ * (read locally, never sent anywhere); without it we still say it's an
+ * invite.
+ */
+function useInvite(): Invite | null {
+  const from = useSearchParams().get('from');
+  const [hostName, setHostName] = useState<string | null>(null);
+  const code = from?.match(/^\/join\/([A-Za-z0-9]{4,12})/)?.[1]?.toUpperCase() ?? null;
+  useEffect(() => {
+    if (!code) return;
+    const decoded = decodePayoutFromQR(readPayoutFragment(peekJoinFragment()));
+    // Expired or not, the name is still the right person to credit.
+    if (decoded.ok) setHostName(decoded.account.accountHolderName.trim() || null);
+  }, [code]);
+  return code ? { code, hostName } : null;
+}
+
+function Intro() {
+  return <SignInIntro invite={useInvite()} />;
+}
+
+function SignInIntro({ invite }: { invite: Invite | null }) {
+  if (invite) {
+    const first = invite.hostName?.split(' ')[0];
+    return (
+      <div>
+        <Image src="/logo.png" alt="Group Dine Pay" width={64} height={64} className="signin__logo" priority />
+        <Mini>invite · code {invite.code}</Mini>
+        <DisplayText size="lg" className="mt-xs">
+          {invite.hostName ? `${invite.hostName} invited you to split the bill.` : "You've been invited to split the bill."}
+        </DisplayText>
+        <BodyText className="mt-md">
+          Sign in with your email, tick off what you had, and pay {first ?? 'them'} back straight to their bank. Nothing to install.
+        </BodyText>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <Image src="/logo.png" alt="Group Dine Pay" width={64} height={64} className="signin__logo" priority />
+      <DisplayText size="lg">Sort the bill.</DisplayText>
+      <DisplayText size="lg" as="p">Go home.</DisplayText>
+      <BodyText className="mt-md">
+        Snap the bill, share a QR, get paid direct. Your friends don&apos;t install anything.
+      </BodyText>
     </div>
   );
 }

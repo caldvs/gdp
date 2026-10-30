@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { checkReceipt } from './golden-receipts.js';
+import { checkLines, checkReceipt } from './golden-receipts.js';
 
 const read = {
   items: [
-    { unitPricePence: 1200, quantity: 2 },
-    { unitPricePence: 550, quantity: 1 },
+    { name: 'Pizza', unitPricePence: 1200, quantity: 2 },
+    { name: 'Beer', unitPricePence: 550, quantity: 1 },
   ],
   serviceChargePence: 369,
   taxPence: 0,
@@ -25,5 +25,41 @@ describe('golden receipt check', () => {
     expect(
       checkReceipt({ totalPence: 3319, lines: 3, servicePence: 300, taxPence: 1 }, read),
     ).toHaveLength(3);
+  });
+});
+
+describe('golden line check', () => {
+  const printed = [
+    { name: 'Aperol Spritz', quantity: 1, lineTotalPence: 1150 },
+    { name: 'Menabrea 0.0', quantity: 2, lineTotalPence: 950 },
+    { name: 'Bottega Prosecco 125ml', quantity: 2, lineTotalPence: 1800 },
+    { name: 'Angi Secco Cider', quantity: 3, lineTotalPence: 1845 },
+  ];
+
+  it('counts lines read right, whatever the order, case or size spelling', () => {
+    const out = checkLines(printed, [
+      { name: '125 ml Bottega Prosecco', unitPricePence: 900, quantity: 2 },
+      { name: 'aperol spritz', unitPricePence: 1150, quantity: 1 },
+      { name: 'Menabrea 0.0', unitPricePence: 475, quantity: 2 },
+      // An uneven split comes back as two lines with the same name.
+      { name: 'Angi Secco Cider', unitPricePence: 615, quantity: 3 },
+    ]);
+    expect(out).toEqual({ right: 4, problems: [] });
+  });
+
+  it('reports a wrong quantity, a missing line and an extra one', () => {
+    const out = checkLines(printed, [
+      { name: 'Aperol Spritz', unitPricePence: 575, quantity: 2 },
+      { name: 'Menabrea 0.0', unitPricePence: 950, quantity: 1 },
+      { name: 'Angi Secco Cider', unitPricePence: 615, quantity: 3 },
+      { name: 'Garlic Bread', unitPricePence: 500, quantity: 1 },
+    ]);
+    expect(out.right).toBe(1);
+    expect(out.problems).toEqual([
+      'Aperol Spritz: read 2 for £11.50, printed 1 for £11.50',
+      'Menabrea 0.0: read 1 for £9.50, printed 2 for £9.50',
+      'missing 2 × Bottega Prosecco 125ml (£18.00)',
+      'extra 1 × Garlic Bread (£5.00)',
+    ]);
   });
 });

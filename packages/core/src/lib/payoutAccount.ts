@@ -1,14 +1,10 @@
-// PayoutAccount lives in the lead's browser only — never on the GDP
-// server. See apps/api/docs and the gdp-mobile ADRs:
-//   0002-ephemeral-bank-details-via-qr.md
-//   0003-client-storage-strategy.md
+// PayoutAccount lives in the lead's browser only, never on the GDP
+// server (ADR-0002 in docs/decisions.md).
 //
 // Web: sessionStorage by default, so it's cleared when the tab closes.
 // The lead can opt in to "Remember on this device", which keeps it in
 // localStorage instead (still this browser only, never our server).
-// There's no real encryption here (ADR-0003 Phase 2 plans a
-// PIN-derived WebCrypto layer). Ported from gdp-mobile minus the
-// native expo-secure-store / biometric path.
+// It isn't encrypted at rest.
 export type PayoutAccount = {
   sortCode: string;
   accountNumber: string;

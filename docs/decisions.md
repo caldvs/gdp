@@ -33,7 +33,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Up to about 10 people** per bill.
 - **The lead collects.** Guests pay the lead by their own bank transfer. The app never holds money. The deployed API runs `PAYMENT_PROVIDER=manual`; the TrueLayer code stays but needs a live contract.
 - **Trust-based payments.** Guests pay while the bill is still open for claiming. There's no lock-claims step in the UI.
-- **Only the lead closes a bill.** Everyone paying doesn't settle it, because a late guest may still take a split seat or a leftover item. Unclaimed items go on the lead. Payments are still accepted after closing.
+- **Only the lead closes a bill.** Everyone paying doesn't settle it, because a late guest may still take a split seat or a leftover item. Unclaimed items go on the lead. Payments are still accepted after closing. Closing releases the bill, so the lead can edit it or share it again; the closed table keeps the version it was pinned to.
 - **Bills keep their shape.** Every line stays in place and changes state as it's claimed.
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.

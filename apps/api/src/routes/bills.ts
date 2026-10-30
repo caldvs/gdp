@@ -21,7 +21,9 @@ async function loadBillForReader(billId: string, userId: string): Promise<Bill> 
   const bill = await billStore.getLatest(billId);
   if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
   if (bill.creatorUserId === userId) return bill;
-  // Session participants can read the bill they're pinned to.
+  // Session participants can read the bill they're pinned to: the live
+  // session holds the bill lock; once it's closed (lock released) guests
+  // still get in through their own sessions.
   const lock = await sessionStore.getBillLock(billId);
   if (lock) {
     const session = await sessionStore.get(lock.sessionId);
@@ -29,6 +31,7 @@ async function loadBillForReader(billId: string, userId: string): Promise<Bill> 
       return bill;
     }
   }
+  if (await sessionStore.userHasSessionForBill(userId, billId)) return bill;
   throw new AppError('BILL_NOT_FOUND', 'Bill not found');
 }
 

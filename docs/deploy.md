@@ -24,7 +24,7 @@ the checks below fail a deploy or build that crosses rows.
 | dev   | Vercel Preview, `test.paymeback.dev` | `GdpBackendDev`, `api.test.paymeback.dev` | Sandbox | `dev`  |
 | prod  | Vercel Production, `paymeback.dev`   | `GdpBackendProd`, `api.paymeback.dev`     | Live    | `prod` |
 
-Until the cut-over (#78), Vercel Production also runs as `dev` against the dev API.
+Vercel Production has no Stripe key until Stripe goes live (#79), so it shows no table fee.
 
 ## Domains
 
@@ -54,7 +54,7 @@ Vercel DNS, so this part is by hand:
 
 **CORS.** The API and the bills bucket accept only the origins in
 `apps/api/src/config/allowedOrigins.ts`: for prod, `paymeback.dev` and
-`web-nqib.vercel.app`; for dev, also `test.paymeback.dev`, preview URLs and
+`web-nqib.vercel.app`; for dev, `test.paymeback.dev`, preview URLs and
 `localhost:8081`. Local runs (no `ALLOWED_ORIGINS`) allow any origin.
 
 Dev and prod share one AWS account (eu-west-2). Every resource is named per

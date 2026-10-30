@@ -175,6 +175,13 @@ class GdpBackendStack extends cdk.Stack {
         }
       : {};
 
+    // The bill reader: Claude Haiku on Bedrock through the EU cross-region
+    // inference profile (requests stay in EU regions). Gemini stays as the
+    // fallback. Override with `-c bedrockModelId=…`.
+    const bedrockModelId =
+      (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
+      'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(API_DIR, 'src/lambda.ts'),
@@ -199,6 +206,7 @@ class GdpBackendStack extends cdk.Stack {
         SESSION_JWT_SECRET: sessionJwtSecret.unsafeUnwrap(),
 
         GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
+        BEDROCK_MODEL_ID: bedrockModelId,
         GOOGLE_PLACES_API_KEY: googlePlacesKey,
         SES_FROM_EMAIL: sesFromEmail,
 
@@ -254,6 +262,18 @@ class GdpBackendStack extends cdk.Stack {
     });
 
     table.grantReadWriteData(fn);
+
+    // Bedrock: the inference profile and the models it routes to, in any EU
+    // region the profile picks.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
+        resources: [
+          `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+          'arn:aws:bedrock:*::foundation-model/*',
+        ],
+      }),
+    );
     billsBucket.grantReadWrite(fn);
 
     // SES send permission for the EmailSender. Scoped to the verified-

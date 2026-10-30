@@ -24,7 +24,7 @@ export function humanizeScanError(err: unknown): ScanError {
         const d = (err.details ?? {}) as { status?: number };
         if (/reach Gemini/i.test(err.message)) return { title: 'Couldn’t reach the bill reader.', body: 'Is the API online? Check its terminal.' };
         if (/Gemini returned/i.test(err.message)) {
-          const why = d.status === 400 || d.status === 403 ? 'The Gemini API key was rejected.' : d.status === 429 ? 'Gemini is rate-limiting us.' : `Gemini answered ${d.status ?? '?'}.`;
+          const why = d.status === 400 || d.status === 403 ? 'The bill reader turned us away.' : d.status === 429 ? 'The bill reader is busy.' : `The bill reader answered ${d.status ?? '?'}.`;
           return { title: 'The bill reader said no.', body: `${why} Not the photo’s fault.` };
         }
         return { title: 'Couldn’t read that one.', body: 'Try better light, or a flatter shot.' };

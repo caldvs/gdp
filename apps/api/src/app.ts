@@ -18,7 +18,7 @@ import { createDefaultEmailSender } from './services/email/factory.js';
 import { createReportService } from './services/sessions/reportService.js';
 import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
-import { createDefaultBillParser } from './services/bills/geminiParser.js';
+import { createBillParser } from './services/bills/bedrockParser.js';
 import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
 import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
 import { baseLogger } from './logging/logger.js';
@@ -102,7 +102,13 @@ const defaultPaymentProvider = (): PaymentProvider | null => {
 
 export const createApp = (deps: AppDeps = {}): Hono => {
   const app = new Hono();
-  const billParser = deps.billParser ?? createDefaultBillParser(env.GEMINI_API_KEY);
+  const billParser =
+    deps.billParser ??
+    createBillParser({
+      bedrockModelId: env.BEDROCK_MODEL_ID,
+      region: env.AWS_REGION,
+      geminiApiKey: env.GEMINI_API_KEY,
+    });
   const venueResolver = deps.venueResolver ?? defaultVenueResolver();
   const emailSender = deps.emailSender ?? createDefaultEmailSender();
   const sessionJwtSecret =

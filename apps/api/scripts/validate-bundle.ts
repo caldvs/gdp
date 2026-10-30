@@ -18,7 +18,7 @@
  *   - CFN dynamic-reference resolution (Secrets Manager / SSM lookup
  *     happens server-side at deploy time)
  *   - IAM permission issues at runtime
- *   - Real network calls to DDB/S3/Gemini/TrueLayer
+ *   - Real network calls to DDB/S3/Bedrock/TrueLayer
  */
 import { execSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -81,7 +81,6 @@ function setLambdaEnv(): void {
     S3_BUCKET_BILLS: 'gdp-bills-validator',
     LOG_LEVEL: 'silent',
     SESSION_JWT_SECRET: 'validator-fake-session-jwt-secret-32-bytes-long',
-    GEMINI_API_KEY: 'validator-fake-gemini-key',
     TRUELAYER_CLIENT_ID: 'validator-fake-tl-client',
     TRUELAYER_CLIENT_SECRET: 'validator-fake-tl-secret',
     TRUELAYER_WEBHOOK_SECRET: 'validator-fake-webhook-secret',

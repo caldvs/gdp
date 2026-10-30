@@ -127,8 +127,8 @@ jobs:
         run: npx tsx scripts/smoke.ts "${{ steps.api.outputs.url }}"
 
       # Runs inside the deployed Lambda: Stripe keys and prices, Bedrock
-      # model access, Gemini and Places keys, SES sender. Fails the deploy if
-      # a required one is broken; optional ones show as warnings.
+      # model access, SES sender. Fails the deploy if a required one is
+      # broken; optional ones show as warnings.
       - name: Dependency check
         run: |
           fn=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \

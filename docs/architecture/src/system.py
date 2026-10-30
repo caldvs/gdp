@@ -61,8 +61,8 @@ zones = S[nodes_start:]; del S[nodes_start:]
 
 # ---- Column 4: AWS services, sequential with gaps for external lines
 c4 = [
-    ('ddb', 395), ('gap', 'gemini'), ('ses', 70), ('gap', 'places'), ('sec', 90),
-    ('gap', 'truelayer'), ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 70), ('s3', 100),
+    ('ddb', 395), ('ses', 70), ('sec', 90),
+    ('gap', 'truelayer'), ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('location', 60), ('s3', 96),
 ]
 y = 70; pos = {}; gaps = {}; prev = None
 for k, v in c4:
@@ -160,9 +160,9 @@ for mod, desc in svc:
 py = colA_end
 rect(AX, py, LW - 32, LAMBDA_BOTTOM - 16 - py, 'inner', 7)
 text(AX + 12, py + 22, 'Swappable providers (env)', 't-inner')
-text(AX + 12, py + 44, 'Parser: Bedrock → Gemini fallback · fixture', 't-mono')
+text(AX + 12, py + 44, 'Parser: Bedrock · fixture', 't-mono')
 text(AX + 12, py + 62, 'Payments: TrueLayer · mock · manual', 't-mono')
-text(AX + 12, py + 80, 'Email: SES · console     Venue: Google Places', 't-mono')
+text(AX + 12, py + 80, 'Email: SES · console     Venue: Location · none', 't-mono')
 
 # ---- Column 4 nodes
 def c4card(k, title, lines, cls='node'):
@@ -176,20 +176,19 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# OTP#', 'Accounts, sign-in codes'), ('BILL# IMGHASH#', 'Bill versions, photo dedupe'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY# PROVPAY#', 'Payments, provider index'),
-                   ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue cache')]:
+                   ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports'])
-c4card('sec', 'Secrets Manager + SSM', ['Gemini, JWT, TrueLayer,', 'Stripe, Places keys'])
+c4card('sec', 'Secrets Manager + SSM', ['JWT, Stripe, TrueLayer secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
 c4card('sns', 'SNS', ['Alert topic'])
-c4card('bedrock', 'Bedrock', ['Claude Haiku 4.5 reads the bill'])
+c4card('bedrock', 'Bedrock', ['Claude Haiku 4.5 reads the bill,', 'venue name and address'])
+c4card('location', 'Amazon Location', ['Venue lookup, cached for good'])
 c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
 
 # ---- Column 5 externals at gap y's
 def ext(key, title, lines, h=72):
     cy = gaps[key]; card(C5X, cy - h // 2, C5W, h, title, lines, 'node ext')
-ext('gemini', 'Gemini', ['Fallback bill parser'], 64)
-ext('places', 'Google Places', ['Venue name + address'], 64)
 ext('truelayer', 'TrueLayer', ['Open-banking pay-ins', 'Webhooks back'], 82)
 ext('stripe', 'Stripe', ['Table-fee Checkout', 'Webhooks back'], 82)
 s3y = pos['s3'][0]
@@ -205,13 +204,13 @@ E(f'M490,102 L{LX-2},102', [(525, 94, 'REST /v1', 'middle')])
 E(f'M820,134 L820,{LAMBDA_TOP-2}')
 E(f'M1080,{ddb_y+140} L{C4X-2},{ddb_y+140}', [(1115, ddb_y+132, 'SDK', 'middle')], both=True)
 E(f'M1080,{pos["ses"][0]+35} L{C4X-2},{pos["ses"][0]+35}', [(1115, pos["ses"][0]+27, 'send', 'middle')])
-E(f'M{C4X-2},{pos["sec"][0]+45} L1082,{pos["sec"][0]+45}', [(1115, pos["sec"][0]+37, 'deploy', 'middle')], cls='dashed')
+E(f'M{C4X-2},{pos["sec"][0]+45} L1082,{pos["sec"][0]+45}', [(1115, pos["sec"][0]+37, 'read', 'middle')])
 E(f'M1080,{pos["cw"][0]+40} L{C4X-2},{pos["cw"][0]+40}', [(1115, pos["cw"][0]+32, 'logs', 'middle')])
 E(f'M1260,{pos["cw"][0]+pos["cw"][1]} L1260,{pos["sns"][0]-2}')
 E(f'M1080,{pos["bedrock"][0]+35} L{C4X-2},{pos["bedrock"][0]+35}', [(1115, pos["bedrock"][0]+27, 'parse', 'middle')])
+E(f'M1080,{pos["location"][0]+35} L{C4X-2},{pos["location"][0]+35}', [(1115, pos["location"][0]+27, 'look up', 'middle')])
 E(f'M1080,{pos["s3"][0]+55} L{C4X-2},{pos["s3"][0]+55}', [(1115, pos["s3"][0]+47, 'SDK', 'middle')], both=True)
-for key, lab, both in [('gemini', 'Fallback parse', False), ('places', 'Resolve venue', False),
-                       ('truelayer', 'Create payment · webhooks', True), ('stripe', 'Checkout · webhooks', True)]:
+for key, lab, both in [('truelayer', 'Create payment · webhooks', True), ('stripe', 'Checkout · webhooks', True)]:
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')

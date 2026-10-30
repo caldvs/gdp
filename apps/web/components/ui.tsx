@@ -58,11 +58,13 @@ type RowProps = {
   card?: boolean;
   muted?: boolean;
   chevron?: boolean;
+  lead?: ReactNode;
 };
 
-function RowInner({ title, sub, end, strong, chevron }: RowProps) {
+function RowInner({ title, sub, end, strong, chevron, lead }: RowProps) {
   return (
     <>
+      {lead}
       <span className="row__main">
         <span className={cx('row__title', strong && 'row__title--strong')}>{title}</span>
         {sub ? <span className="row__sub">{sub}</span> : null}
@@ -139,6 +141,31 @@ export function ActionBar({ children, stack }: { children: ReactNode; stack?: bo
   );
 }
 
+/* ---------- People ---------- */
+
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
+
+export function Avatar({ name, you }: { name: string; you?: boolean }) {
+  return <span className={cx('avatar', you && 'avatar--you')} aria-hidden>{initials(name)}</span>;
+}
+
+/** Who's at the table: an initial and first name each, in the order they joined. */
+export function Diners({ people, hostId, meId }: { people: { userId: string; displayName?: string }[]; hostId: string; meId?: string }) {
+  return (
+    <ul className="diners" aria-label="At the table">
+      {people.map((p) => {
+        const name = p.userId === meId ? 'You' : firstName(p.displayName, 'Guest');
+        return (
+          <li key={p.userId} className="diner">
+            <Avatar name={p.displayName || name} you={p.userId === meId} />
+            <span>{name}{p.userId === hostId ? <span className="muted"> · host</span> : null}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /* ---------- Dialog ---------- */
 
 /** A modal panel: bottom sheet on phones, centred box on wider screens. */
@@ -190,6 +217,9 @@ export const PlusIcon = () => <I d="M12 5v14M5 12h14" size={18} w={2.2} />;
 export const TickIcon = ({ size = 22 }: { size?: number }) => <I d="m5 12 5 5 9-10" size={size} w={2.5} />;
 export const CopyIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+);
+export const PhotoIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z" /><path d="M9 10h7M9 14h7M9 18h4" /></svg>
 );
 export const ShareIcon = () => <I d="M12 3v12M7 8l5-5 5 5M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" />;
 export const QrIcon = () => (

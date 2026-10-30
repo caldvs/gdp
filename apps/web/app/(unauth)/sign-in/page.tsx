@@ -205,8 +205,10 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     }
   };
 
-  const handleVerify = async () => {
-    const trimmed = code.trim();
+  // Takes the code as an argument because the auto-submit on the sixth
+  // digit fires from the change handler, before `code` state has caught up.
+  const handleVerify = async (value: string = code) => {
+    const trimmed = value.trim();
     if (trimmed.length !== 6 || verifyOtp.isPending) return;
     try {
       await verifyOtp.mutateAsync({ email, code: trimmed });
@@ -263,7 +265,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
         className="g-input g-input--mono"
         aria-label="6-digit code"
         value={code}
-        onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) setTimeout(() => void handleVerify(), 0); }}
+        onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) void handleVerify(v); }}
         placeholder="123456"
         inputMode="numeric"
         autoComplete="one-time-code"

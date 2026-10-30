@@ -67,13 +67,14 @@ col2_end = y
 
 # ---- Column 3: sessions
 y = 80
-y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('sk', 'same as pk')], ['sessionId, lockedAt', 'create-if-absent; deleted on abandon']) + GAP
+y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('sk', 'same as pk')], ['sessionId, lockedAt', 'create-if-absent; deleted on close or abandon']) + GAP
 # Session item collection (custom)
 sx, sy = COLS[2], y
 rows = [
     ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue']),
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId, paidAt }', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
+    ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),
 ]
 ih = [26 + len(r[2]) * LH + 8 for r in rows]
 sh = 44 + 22 + 10 + sum(ih) + 10 * len(rows) + 4

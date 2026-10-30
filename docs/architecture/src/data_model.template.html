@@ -100,11 +100,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>13</b> item types</span><span><b>2</b> GSIs</span><span><b>7</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>9</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -133,13 +133,14 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
             <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
             <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
-            <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE#)</td><td class="op">Query</td></tr>
+            <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
             <tr><td>Payment from webhook</td><td>GSI2 <code>GSI2PK = PROVPAY#{providerId}</code></td><td class="op">Query</td></tr>
             <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
+            <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
             <tr><td>Replay a request</td><td><code>IDMP#{user}#{endpoint}</code> / <code>KEY#{key}</code></td><td class="op">Get</td></tr>
           </tbody>
         </table>
@@ -151,19 +152,19 @@ ul.plain strong { color: var(--ink); }
       <ul class="plain">
         <li><strong>New bill version:</strong> put <code>V#nnn</code> and <code>LATEST</code>, and the <code>IMGHASH#</code> row on first parse.</li>
         <li><strong>Create session:</strong> META + every <code>PART#</code> row, plus <code>JCODE#</code> and <code>BILLLOCK#</code>, both create-if-absent.</li>
-        <li><strong>Amend mid-session:</strong> new bill version + <code>LATEST</code> + reconciled META and participant rows.</li>
+        <li><strong>Claim:</strong> the diner's <code>PART#</code> row, conditional on <code>CLAIMS</code>' <code>version</code>; on a clash the API re-reads and re-checks.</li>
+        <li><strong>Amend mid-session:</strong> new bill version + <code>LATEST</code> + reconciled META and participant rows, removed lines' <code>SHARE#</code> rows deleted, <code>CLAIMS</code> bumped.</li>
         <li><strong>Lock claims:</strong> META to <code>claiming</code> and the creator's <code>PART#</code> row together.</li>
-        <li><strong>Split change:</strong> <code>SHARE#</code> row (guarded by <code>version</code>) and the diner's <code>PART#</code> row.</li>
+        <li><strong>Split change:</strong> <code>SHARE#</code> row (guarded by <code>version</code>), the diner's <code>PART#</code> row, and <code>CLAIMS</code> (guarded when joining or leaving).</li>
         <li><strong>Payment update:</strong> <code>PAY#</code> row and the payer's <code>PART#</code> row; mark-paid is conditional on <code>pending</code>.</li>
-        <li><strong>Abandon:</strong> deletes <code>BILLLOCK#</code>. Close does not.</li>
+        <li><strong>Close and abandon:</strong> delete <code>BILLLOCK#</code>. Guests keep reading a closed bill through their GSI1 sessions.</li>
       </ul>
 
       <h2>Lifetimes</h2>
       <ul class="plain">
         <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees.</li>
-        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#), join codes, bill locks.</li>
-        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h.</li>
-        <li class="note"><strong>Check:</strong> <code>sessionStore.create</code> writes META's <code>ttlAt</code> as an ISO string. DynamoDB TTL ignores non-numbers, so a session that never gets a later META write keeps its META row while its other rows expire.</li>
+        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks.</li>
+        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, venue cache 90 days.</li>
       </ul>
     </section>
   </div>

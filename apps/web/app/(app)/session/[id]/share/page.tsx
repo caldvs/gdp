@@ -22,7 +22,7 @@ export default function SharePage() {
   const { id } = useParams<{ id: string }>();
   const session = useSession(id);
   const me = useMe();
-  const bill = useBill(session.data?.billId);
+  const bill = useBill(session.data?.billId, session.data?.pinnedBillVersion);
   const isHost = !!session.data && session.data.creatorUserId === me.data?.userId;
   const ownPayout = usePayoutAccount();
   const fromLink = useSessionPayout(id);

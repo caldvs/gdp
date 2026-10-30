@@ -38,7 +38,7 @@ _Last updated 1 Nov 2026._
 ## Decided, not built
 
 - Accounts optional: guests join with just a name (needs API work).
-- Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
+- Top-ups: a guest who forgot something adds it after paying and pays again for the extra (confirmed 1 Nov). Adding claims after paying already works; a second payment per guest doesn't yet.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
 - Table fee: one free bill a month per lead, then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).

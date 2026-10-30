@@ -39,6 +39,15 @@ const EnvSchema = z.object({
   TRUELAYER_RETURN_URI: z.string().url().optional(),
 
   PAYMENT_PROVIDER: z.enum(['mock', 'truelayer', 'manual']).default('mock'),
+
+  // Stripe takes the lead's table fee (not diner money). Both optional:
+  // without STRIPE_SECRET_KEY the billing and Stripe webhook routes aren't
+  // mounted. For dev the values come from SSM per stage.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Where the web app lives; Stripe sends the lead back here if a payment
+  // method needs a redirect (most don't: cards and wallets complete in place).
+  APP_BASE_URL: z.string().url().default('http://localhost:8081'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

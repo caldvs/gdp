@@ -54,12 +54,11 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 ## From a Claude cloud session
 
 - `gh` GraphQL is blocked: use `gh api` REST.
-- To merge, run `scripts/merge-pr.sh <pr>` (see below). It merges locally with `--no-ff` and pushes `main`, so Callum stays the committer.
 - Callum's Mac shell has no GitHub credentials; move work to it with git bundles.
 
 ## Merging and coverage
 
-The repo is private on GitHub's free plan, so GitHub can't stop a red PR being merged. `scripts/merge-pr.sh <pr>` is the gate: it refuses unless the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and the branch is up to date with main. Don't use GitHub's merge button, and never pass `--force` unless Callum says so.
+Never merge a PR with a failing build. Before merging, check that the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and that the branch is up to date with main. The repo is private on GitHub's free plan, so GitHub won't stop a red PR being merged: this rule is the only gate. Merge with a merge commit (GitHub's button, or `gh api -X PUT repos/caldvs/gdp/pulls/<n>/merge -f merge_method=merge`).
 
 Coverage: lines and branches may not drop more than 1 point below main (the `coverage` job, against the `coverage-baseline` branch), and each package's `vitest.config.ts` thresholds are hard floors. Raise floors as tests land; never lower them to get a PR through. A deliberate drop needs the `coverage-drop-ok` label.
 

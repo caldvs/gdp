@@ -65,4 +65,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   console.log(
     `gdp-backend listening on http://localhost:${info.port}${bypass ? ' (auth-bypass)' : ''}${devEmailSignIn ? ' (dev email sign-in)' : ''}`,
   );
+  // eslint-disable-next-line no-console
+  console.log(
+    process.env.STRIPE_SECRET_KEY
+      ? `stripe: table fee on${process.env.STRIPE_WEBHOOK_SECRET ? '' : ' (no STRIPE_WEBHOOK_SECRET: /webhooks/stripe off)'}`
+      : 'stripe: table fee off (no STRIPE_SECRET_KEY in apps/api/.env.local)',
+  );
 });

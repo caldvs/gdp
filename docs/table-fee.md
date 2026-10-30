@@ -1,0 +1,43 @@
+# Table fee
+
+The lead pays £2 (£3 when the bill is over £100) before getting the QR code, in Stripe's embedded form (`ui_mode: "form"`): Apple Pay, Google Pay or card. Card details never leave Stripe's iframe.
+
+The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it, *Continue* on the bill goes straight to the QR.
+
+## How it works
+
+1. On the bill page, *Pay £x fee & get QR code* re-checks the fee with the API (an edit may have crossed £100) and goes to `/table-fee/<billId>` if it's unpaid.
+2. `POST /v1/billing/table-fee` checks the bill is the caller's and unpaid, picks the price by lookup key (`table_fee_2` or `table_fee_3`), and creates a Checkout Session with `client_reference_id` and `metadata.billId`.
+3. The page mounts the form. Cards and wallets finish in place; anything that needs a redirect comes back to the same page with `?session_id=`.
+4. Stripe calls `POST /webhooks/stripe`. After the signature check, `checkout.session.completed` with `payment_status: paid` writes `FEE#<billId>` (once; repeats write nothing). The row has no TTL: it's a tax record.
+5. The page polls `GET /v1/billing/table-fee/<billId>` until it's `paid`, then continues to the QR.
+
+Code: `apps/api/src/services/billing/tableFee.ts`, `routes/billing.ts`, `routes/stripeWebhook.ts`, `storage/tableFeeStore.ts`, `packages/core/src/api/hooks/useTableFee.ts`, `apps/web/app/(app)/table-fee/[billId]/page.tsx`.
+
+## Running it locally
+
+1. `apps/api/.env.local`: `STRIPE_SECRET_KEY=sk_test_…`
+2. `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:3000/webhooks/stripe`, and put the `whsec_…` it prints in `STRIPE_WEBHOOK_SECRET`.
+3. `apps/web/.env.local`: `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_…`
+4. `npm run dev:local`.
+
+Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secure, `4000 0000 0000 9995` is declined. Wallet buttons need HTTPS and a registered domain, so try them on the deployed site.
+
+## Deploying
+
+1. Secrets Manager (eu-west-2): `gdp-dev/stripe-secret-key` and `gdp-dev/stripe-webhook-secret`.
+2. GitHub → Environments → `dev`: variables `STRIPE_ENABLED=true` and `APP_BASE_URL` (the web app's URL).
+3. Stripe webhook endpoint `<API URL>/webhooks/stripe` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+4. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in the Vercel build environment.
+5. Register the web domain under Payment method domains (sandbox and live), or the wallets won't show.
+6. In Payment methods, turn off Link and Amazon Pay. Keep Cards on: the wallets run on it.
+
+## Before it takes real money
+
+- [ ] Live product *Table fee* with two one-time GBP prices, lookup keys `table_fee_2` (£2.00) and `table_fee_3` (£3.00). The sandbox has them.
+- [ ] Live keys, live webhook endpoint, live domain registration.
+- [ ] One free bill a month.
+- [ ] The server doesn't require the fee yet: `POST /v1/sessions` should need a paid fee or the free bill.
+- [ ] Guests repay their share of the fee in what they owe, shown as "App fee".
+- [ ] Refund automatically when a bill is closed or abandoned before anyone joins.
+- [ ] e2e: stub the form in `FakeApi` and cover pay → share.

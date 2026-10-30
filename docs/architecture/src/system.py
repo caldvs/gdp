@@ -88,7 +88,7 @@ card(40, 520, 180, 100, 'Guest’s bank app', ['Approves TrueLayer', 'pay-in, or
 rect(290, 70, 200, 400, 'node key')
 text(306, 98, 'Web app', 't-title')
 text(306, 118, 'Next.js 16 · React 19')
-text(306, 137, 'Hosting not set up yet')
+text(306, 137, 'Hosted on Vercel')
 for i, (t, l1, l2) in enumerate([
     ('Pages + UI', 'App Router, Option D', 'components/ui.tsx'),
     ('Server state', 'TanStack Query', 'cache + refetch'),
@@ -193,7 +193,7 @@ ext('places', 'Google Places', ['Venue name + address'], 64)
 ext('truelayer', 'TrueLayer', ['Open-banking pay-ins', 'Webhooks back'], 82)
 ext('stripe', 'Stripe', ['Table-fee Checkout', 'Webhooks back'], 82)
 s3y = pos['s3'][0]
-card(C5X, s3y - 10, C5W, 110, 'GitHub Actions', ['CI, e2e, typecheck', 'CDK deploy via OIDC', ('Deploy dev failing', 't-warn')], 'node warn')
+card(C5X, s3y - 10, C5W, 92, 'GitHub Actions', ['CI, e2e, typecheck', 'Deploys dev from main'], 'node ext')
 
 nodes = S[:]; S.clear()
 
@@ -214,7 +214,7 @@ for key, lab, both in [('gemini', 'Fallback parse', False), ('places', 'Resolve 
                        ('truelayer', 'Create payment · webhooks', True), ('stripe', 'Checkout · webhooks', True)]:
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
-E(f'M{C5X},{s3y+45} L1402,{s3y+45}', cls='dashed fail', marker='ahw')
+E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')
 E(f'M390,470 L390,1205 L1260,1205 L1260,{s3y+pos["s3"][1]+2}', [(760, 1199, 'Presigned PUT / GET · bill photo', 'middle')])
 
 svg = '\n'.join(zones + edges + nodes)

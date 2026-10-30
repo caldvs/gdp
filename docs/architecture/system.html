@@ -162,7 +162,8 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <g class="edge "><path d="M1080,925 L1433,925" marker-end="url(#ah)" marker-start="url(#ah)"/>
 <text x="1260" y="918" text-anchor="middle">Checkout · webhooks</text>
 </g>
-<g class="edge dashed fail"><path d="M1435,1072 L1402,1072" marker-end="url(#ahw)"/>
+<g class="edge dashed"><path d="M1435,1072 L1402,1072" marker-end="url(#ah)"/>
+<text x="1418" y="1064" text-anchor="middle">OIDC</text>
 </g>
 <g class="edge "><path d="M390,470 L390,1205 L1260,1205 L1260,1129" marker-end="url(#ah)"/>
 <text x="760" y="1199" text-anchor="middle">Presigned PUT / GET · bill photo</text>
@@ -186,7 +187,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <rect class="node key" x="290" y="70" width="200" height="400" rx="10"/>
 <text class="t-title" x="306" y="98">Web app</text>
 <text class="t-sub" x="306" y="118">Next.js 16 · React 19</text>
-<text class="t-sub" x="306" y="137">Hosting not set up yet</text>
+<text class="t-sub" x="306" y="137">Hosted on Vercel</text>
 <rect class="inner" x="306" y="156" width="168" height="68" rx="7"/>
 <text class="t-inner" x="318" y="178">Pages + UI</text>
 <text class="t-sub" x="318" y="198">App Router, Option D</text>
@@ -355,18 +356,16 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-title" x="1451" y="912">Stripe</text>
 <text class="t-sub" x="1451" y="934">Table-fee Checkout</text>
 <text class="t-sub" x="1451" y="953">Webhooks back</text>
-<rect class="node warn" x="1435" y="1017" width="185" height="110" rx="10"/>
+<rect class="node ext" x="1435" y="1017" width="185" height="92" rx="10"/>
 <text class="t-title" x="1451" y="1045">GitHub Actions</text>
 <text class="t-sub" x="1451" y="1067">CI, e2e, typecheck</text>
-<text class="t-sub" x="1451" y="1086">CDK deploy via OIDC</text>
-<text class="t-warn" x="1451" y="1105">Deploy dev failing</text>
+<text class="t-sub" x="1451" y="1086">Deploys dev from main</text>
     </svg>
   </div>
 
   <div class="legend">
     <span><i></i>Runtime call</span>
     <span><i class="d"></i>Deploy-time</span>
-    <span><i class="w"></i>Failing today</span>
     <span><i class="x"></i>Outside AWS or the app</span>
     <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="r">DELETE</code></span>
   </div>

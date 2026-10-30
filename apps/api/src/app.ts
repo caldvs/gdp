@@ -13,6 +13,7 @@ import { buildSessionRoutes } from './routes/sessions.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
+import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
 import { createReportService } from './services/sessions/reportService.js';
@@ -20,7 +21,18 @@ import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
 import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
-import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
+import {
+  AmazonLocationVenueResolver,
+  amazonLocationSearch,
+} from './services/bills/locationVenueResolver.js';
+import {
+  createReadRunner,
+  createReadService,
+  inProcessDispatcher,
+  lambdaSelfDispatcher,
+  type ReadDispatcher,
+  type ReadJob,
+} from './services/bills/readService.js';
 import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
@@ -42,6 +54,11 @@ export interface AppDeps {
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
   devEmailSignIn?: boolean;
   /**
+   * Enable POST /v1/auth/email/test-sign-in (@test.invalid accounts, no
+   * code). Defaults to AUTH_TEST_ACCOUNTS. Ignored when APP_ENV=prod.
+   */
+  testAccountSignIn?: boolean;
+  /**
    * Pass a concrete provider for tests. Pass `null` to force manual mode.
    * Omit to fall back to env-driven default.
    */
@@ -53,6 +70,8 @@ export interface AppDeps {
   stripe?: Stripe | null;
   stripeWebhookSecret?: string;
   tableFeeStore?: TableFeeStore;
+  /** How a background bill read is started. Omit: a self-invoke on Lambda, in-process elsewhere. */
+  readDispatcher?: ReadDispatcher;
 }
 
 const sessionJwtSecretFromEnv = (): Uint8Array => {
@@ -65,13 +84,12 @@ const sessionJwtSecretFromEnv = (): Uint8Array => {
 const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
-const defaultVenueResolver = (): VenueResolver => {
-  if (!env.GOOGLE_PLACES_API_KEY) return new NoopVenueResolver();
-  return new GooglePlacesVenueResolver({
-    apiKey: env.GOOGLE_PLACES_API_KEY,
-    logger: baseLogger,
-  });
-};
+// The venue Bedrock read off the bill, looked up with Amazon Location
+// Service when VENUE_LOOKUP=amazon-location (deployed), else used as read.
+const defaultVenueResolver = (): VenueResolver =>
+  env.VENUE_LOOKUP === 'amazon-location'
+    ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
+    : new NoopVenueResolver();
 
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
@@ -100,16 +118,29 @@ const defaultPaymentProvider = (): PaymentProvider | null => {
   return new MockTrueLayerProvider(secret);
 };
 
+const defaultBillParser = (): BillParser =>
+  createBillParser({
+    bedrockModelId: env.BEDROCK_MODEL_ID,
+    region: env.AWS_REGION,
+  });
+
+/**
+ * On Lambda the read must run in its own invocation: once the response is
+ * sent, this one is frozen. Elsewhere (local dev, tests) it runs in-process.
+ */
+const defaultReadDispatcher = (run: (job: ReadJob) => Promise<void>): ReadDispatcher => {
+  const fn = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  return fn ? lambdaSelfDispatcher(fn, env.AWS_REGION) : inProcessDispatcher(run);
+};
+
 export const createApp = (deps: AppDeps = {}): Hono => {
   const app = new Hono();
-  const billParser =
-    deps.billParser ??
-    createBillParser({
-      bedrockModelId: env.BEDROCK_MODEL_ID,
-      region: env.AWS_REGION,
-      geminiApiKey: env.GEMINI_API_KEY,
-    });
+  const billParser = deps.billParser ?? defaultBillParser();
   const venueResolver = deps.venueResolver ?? defaultVenueResolver();
+  const runRead = createReadRunner({ parser: billParser, venueResolver });
+  const reads = createReadService({
+    dispatch: deps.readDispatcher ?? defaultReadDispatcher(runRead),
+  });
   const emailSender = deps.emailSender ?? createDefaultEmailSender();
   const sessionJwtSecret =
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);
@@ -146,11 +177,15 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         emailSender,
         jwtSecret: sessionJwtSecret,
         devEmailSignIn: deps.devEmailSignIn === true,
+        testAccountSignIn: testAccountsAllowed(
+          env.APP_ENV,
+          deps.testAccountSignIn ?? env.AUTH_TEST_ACCOUNTS === 'true',
+        ),
       }),
     );
   }
   app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
-  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver }));
+  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver, reads }));
   app.route(
     '/v1/sessions',
     buildSessionRoutes({
@@ -203,3 +238,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
 };
 
 export const app = createApp();
+
+/** Runs a background bill read sent to this Lambda (see lambda.ts). */
+export const runBillRead = createReadRunner({
+  parser: defaultBillParser(),
+  venueResolver: defaultVenueResolver(),
+});

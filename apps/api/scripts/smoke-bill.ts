@@ -3,14 +3,13 @@
 /**
  * Ad-hoc bill smoke test.
  *
- * Sends a real bill image to a running gdp-backend, parses it (real
- * Gemini), resolves the venue (real Places if GOOGLE_PLACES_API_KEY
- * is configured), creates a session, and prints what the frontend
- * would see — items, totals, and the venue strapline.
+ * Sends a real bill image to a running gdp-backend, reads it (real
+ * Bedrock), creates a session, and prints what the frontend would see —
+ * items, totals, and the venue strapline.
  *
  * Prereqs:
- *   - `npm run dev` (with AUTH_BYPASS_LOCAL=true, GEMINI_API_KEY,
- *     and GOOGLE_PLACES_API_KEY in .env.local)
+ *   - `npm run dev` (with AUTH_BYPASS_LOCAL=true, BEDROCK_MODEL_ID and
+ *     AWS credentials that can call Bedrock in .env.local)
  *
  * Usage:
  *   npm run smoke:bill -- <path-to-image>
@@ -137,7 +136,7 @@ async function main(): Promise<void> {
   const bytes = readFileSync(imagePath);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
 
-  // Sniff the mime type from the magic bytes. Gemini + S3 are picky.
+  // Sniff the mime type from the magic bytes. Bedrock + S3 are picky.
   let mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     mimeType = 'image/jpeg';
@@ -178,7 +177,7 @@ async function main(): Promise<void> {
     if (!put.ok) fail(`S3 PUT failed: ${put.status}`);
     ok('uploaded to S3');
 
-    console.log(`${DIM}  parsing (Gemini, may take 5-15s)…${RESET}`);
+    console.log(`${DIM}  reading (Bedrock, may take 5-15s)…${RESET}`);
     const t0 = Date.now();
     const parse = await call<ParsedBill>(
       token,
@@ -214,21 +213,11 @@ async function main(): Promise<void> {
 
   console.log(`\n${BOLD}Venue (from session response, what the frontend sees)${RESET}`);
   if (sess.body.venue) {
-    const { placeId, name, address, lat, lng } = sess.body.venue;
+    const { name, address } = sess.body.venue;
     console.log(`  name:    ${name ?? DIM + '(none)' + RESET}`);
     console.log(`  address: ${address ?? DIM + '(none)' + RESET}`);
-    if (placeId) {
-      console.log(`  placeId: ${placeId}`);
-      console.log(`  coords:  ${lat?.toFixed(4)}, ${lng?.toFixed(4)}`);
-      console.log(`  ${GREEN}✓ Google Places enrichment worked${RESET}`);
-    } else {
-      console.log(
-        `  ${DIM}(no placeId — Places API may have no GOOGLE_PLACES_API_KEY, no match,` +
-          ` or hit an error; fallback to Gemini's parsed text)${RESET}`,
-      );
-    }
   } else {
-    console.log(`  ${DIM}(none — Gemini didn't extract a venue from this image)${RESET}`);
+    console.log(`  ${DIM}(none — no venue could be read from this image)${RESET}`);
   }
 
   console.log();

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AppError } from '../../errors/AppError.js';
 import { BillItemCategory, BillItemCourse } from '../../types/bills.js';
 
 export const ParsedBillFromImageSchema = z.object({
@@ -9,7 +10,7 @@ export const ParsedBillFromImageSchema = z.object({
         unitPricePence: z.number().int().nonnegative(),
         quantity: z.number().int().positive(),
         category: BillItemCategory,
-        // Gemini may send null or an unexpected label; treat those as unknown
+        // The model may send null or an unexpected label; treat those as unknown
         // rather than failing the whole parse over a display hint.
         course: z
           .unknown()
@@ -25,7 +26,7 @@ export const ParsedBillFromImageSchema = z.object({
   serviceChargePence: z.number().int().nonnegative(),
   totalPence: z.number().int().nonnegative().optional(),
   currency: z.literal('GBP'),
-  // Gemini sometimes returns `null` for an unknown venue rather than omitting
+  // The model sometimes returns `null` for an unknown venue rather than omitting
   // the field. Accept both, but normalize the output type to undefined so
   // downstream code (typed `string | undefined`) doesn't have to know.
   venue: z
@@ -55,11 +56,32 @@ export type ReadBy = { model: string; version: string };
  */
 export type ParseResult = ParsedBillFromImage & { readBy?: ReadBy };
 
+export type ParseOptions = {
+  /** Aborted when the read has run out of time. Parsers pass it to their HTTP call. */
+  signal?: AbortSignal;
+};
+
 export interface BillParser {
   readonly model: string;
   readonly version: string;
-  parse(image: Uint8Array, requestId: string): Promise<ParseResult>;
+  parse(image: Uint8Array, requestId: string, opts?: ParseOptions): Promise<ParseResult>;
 }
+
+/**
+ * Time limits for reading a bill. API Gateway gives up on the Lambda at
+ * 30s and answers with a bare 503, so the whole read must finish well
+ * before that: S3, the model calls and the venue lookup all fit in it.
+ */
+export const PARSE_BUDGET_MS = 22_000;
+/**
+ * A background read (POST /v1/bills/reads) isn't behind API Gateway, so it
+ * gets longer: the Lambda's own timeout (60s) is the limit there.
+ */
+export const BACKGROUND_READ_BUDGET_MS = 45_000;
+
+/** The error a parser throws when its signal aborted the call. */
+export const parseTimeout = (who: string) =>
+  new AppError('PARSE_TIMEOUT', `${who} took too long to read the bill`);
 
 /** The model and version to record on a bill for this parse. */
 export const readByOf = (parser: BillParser, result: ParseResult): ReadBy =>

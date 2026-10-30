@@ -111,20 +111,7 @@ class GdpBackendStack extends cdk.Stack {
     // in the post-deploy smoke test and dependency check, not at deploy time.
     const secretSources: Record<string, string> = {
       SESSION_JWT_SECRET: `gdp-${envName}/session-jwt-secret`,
-      GEMINI_API_KEY: `gdp-${envName}/gemini-api-key`,
     };
-    // Google Places key lives in SSM Parameter Store as a plain String.
-    // SecureString would be tighter at rest but CFN's
-    // `{{resolve:ssm-secure}}` reference is NOT supported in Lambda env
-    // vars (it errors at change-set creation). Matches the existing
-    // posture for googleClientId etc.: plaintext key landing in the
-    // Lambda env, visible in the console to anyone with read access.
-    // Acceptable for dev — switch to a runtime SDK fetch before prod if
-    // tightening is wanted.
-    const googlePlacesKey = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/gdp-${envName}/google-places-api-key`,
-    );
     // TrueLayer (pay-by-bank) is off: PAYMENT_PROVIDER is `manual`. Its
     // settings are only used with TRUELAYER_ENABLED=true (a GitHub
     // environment variable, or `-c truelayer=true` locally), so a new
@@ -170,8 +157,8 @@ class GdpBackendStack extends cdk.Stack {
     }
 
     // The bill reader: Claude Haiku on Bedrock through the EU cross-region
-    // inference profile (requests stay in EU regions). Gemini stays as the
-    // fallback. Override with `-c bedrockModelId=…`.
+    // inference profile (requests stay in EU regions). Override with
+    // `-c bedrockModelId=…`.
     const bedrockModelId =
       (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
       'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
@@ -188,12 +175,11 @@ class GdpBackendStack extends cdk.Stack {
       depsLockFilePath: path.join(REPO_ROOT, 'package-lock.json'),
       handler: 'handler',
       memorySize: 1024,
-      // 30s is the API Gateway HTTP API integration timeout cap. Bumped
-      // from 25s after a complex receipt (HEIC source, large JPEG after
-      // conversion) made Gemini parse take 25001ms and the Lambda was
-      // killed mid-flight. Most parses come back in 6-15s; the buffer
-      // covers cold-start + complex images.
-      timeout: cdk.Duration.seconds(30),
+      // API Gateway gives up on a request at 30s whatever this says, and the
+      // synchronous /v1/bills/parse budgets itself under that. 60s is for
+      // background bill reads (POST /v1/bills/reads), which this function
+      // runs by invoking itself, outside API Gateway, with a 45s budget.
+      timeout: cdk.Duration.seconds(60),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         // Node and libraries run in production mode everywhere deployed;
@@ -204,11 +190,13 @@ class GdpBackendStack extends cdk.Stack {
         DDB_TABLE_NAME: table.tableName,
         S3_BUCKET_BILLS: billsBucket.bucketName,
         LOG_LEVEL: envName === 'prod' ? 'info' : 'debug',
+        // Test accounts (@test.invalid, no code) on dev only.
+        AUTH_TEST_ACCOUNTS: envName === 'dev' ? 'true' : 'false',
 
         SECRET_SOURCES: JSON.stringify(secretSources),
 
         BEDROCK_MODEL_ID: bedrockModelId,
-        GOOGLE_PLACES_API_KEY: googlePlacesKey,
+        VENUE_LOOKUP: 'amazon-location',
         SES_FROM_EMAIL: sesFromEmail,
 
         ...trueLayerEnv,
@@ -224,7 +212,18 @@ class GdpBackendStack extends cdk.Stack {
         target: 'node22',
         minify: envName === 'prod',
         sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
+        // The AWS SDK clients the Lambda runtime already ships. The Amazon
+        // Location Places client is bundled instead: it's newer than the
+        // runtime's pinned SDK may be.
+        externalModules: [
+          '@aws-sdk/client-bedrock-runtime',
+          '@aws-sdk/client-dynamodb',
+          '@aws-sdk/client-s3',
+          '@aws-sdk/client-secrets-manager',
+          '@aws-sdk/client-sesv2',
+          '@aws-sdk/lib-dynamodb',
+          '@aws-sdk/s3-request-presigner',
+        ],
         // pino + some transitive deps still use `require()` even when
         // bundled as ESM. Provide a CJS-compatible require so the bundle
         // can resolve them at module load.
@@ -284,6 +283,15 @@ class GdpBackendStack extends cdk.Stack {
     );
     billsBucket.grantReadWrite(fn);
 
+    // Venue lookup (src/services/bills/locationVenueResolver.ts): Amazon
+    // Location Service Places, which has no resources of its own.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['geo-places:SearchText'],
+        resources: [`arn:aws:geo-places:${this.region}::provider/default`],
+      }),
+    );
+
     // SES send permission for the EmailSender. Scoped to the verified-
     // identity ARN pattern we provisioned out-of-band; covers SendEmail
     // (templated + simple) and SendRawEmail. Cheap, no resource refs in
@@ -302,6 +310,21 @@ class GdpBackendStack extends cdk.Stack {
         resources: ['*'],
       }),
     );
+    // Background bill reads: the function invokes itself asynchronously.
+    // Named by pattern rather than fn.functionArn, which would make the
+    // role's policy depend on the function that depends on the role.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:${this.region}:${this.account}:function:${this.stackName}-ApiHandler*`,
+        ],
+      }),
+    );
+    // A read records its own failure, so Lambda shouldn't retry it, and one
+    // that waited minutes in the queue is no use to someone at the table.
+    fn.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: cdk.Duration.minutes(2) });
+
     // Lets this environment's GitHub deploy role (infra/githubDeploy.ts)
     // invoke the function directly for that check. Granted here rather than
     // in that stack so the normal CI deploy keeps it in step with the function.
@@ -572,7 +595,7 @@ class GdpBackendStack extends cdk.Stack {
     );
 
     dashboard.addWidgets(
-      logsWidget('Bill reading (scan, Bedrock, Gemini)', 12, 8, [
+      logsWidget('Bill reading (scan, Bedrock)', 12, 8, [
         'fields @timestamp, level, event, msg, path, status, latencyMs, err.message, requestId',
         'filter event like /^bill\\./ or path like /bills\\/(parse|uploads)/',
         'sort @timestamp desc',
@@ -587,7 +610,7 @@ class GdpBackendStack extends cdk.Stack {
     );
 
     dashboard.addWidgets(
-      logsWidget('Calls out: Bedrock, Gemini, Places, Stripe, SES', 24, 6, [
+      logsWidget('Calls out: Bedrock, Location, Stripe, SES', 24, 6, [
         "filter event = 'dep.call'",
         'stats count(*) as calls, sum(ok = 0) as failed, avg(ms) as avgMs, pct(ms, 95) as p95Ms, max(ms) as maxMs by dep, op',
         'sort p95Ms desc',

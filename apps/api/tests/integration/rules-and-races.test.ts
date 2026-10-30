@@ -1,5 +1,5 @@
 /**
- * Rules the product depends on, known bugs pinned as `it.fails`, and races.
+ * Rules the product depends on, and races.
  *
  * `it.fails` marks a known bug: the test states the behaviour we want and
  * currently fails. When a fix lands it starts passing, Vitest reports the
@@ -155,16 +155,19 @@ describe('payments', () => {
   });
 });
 
-describe('known bugs (it.fails until fixed)', () => {
-  it.fails("a guest who has paid can't change what they claimed", async () => {
+describe('after paying', () => {
+  // Decided 1 Nov 2026: a guest who forgot something can add it after
+  // paying and pay again for the extra (top-ups; the second payment isn't
+  // built yet, see "one payment per guest" above).
+  it('a guest who has paid can still add something they forgot', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     const g = t.guests[0]!;
     await claim(app, t.sessionId, g, [t.pizza.itemId]);
     await payAndConfirm(app, t.sessionId, g, t.lead);
 
-    const change = await claim(app, t.sessionId, g, [t.tiramisu.itemId]);
-    expect(change.status).toBe(409);
+    const more = await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]);
+    expect(more.status).toBe(200);
   });
 });
 

@@ -193,94 +193,10 @@ export const sessionService = {
     sessionId: string;
     claims: ClaimsRequest;
   }): Promise<Session> {
-    const session = await sessionStore.get(input.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-
-    const isCreator = session.creatorUserId === input.caller.userId;
-    const isParticipant = session.participants.some((p) => p.userId === input.caller.userId);
-    if (!isParticipant) {
-      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    }
-
-    // Creator can claim in setup (pre-share priming) or claiming (alongside
-    // guests, in case they missed something). Guests can only claim in
-    // claiming. Nobody claims in paying/settled/abandoned.
-    const allowed = (session.status === 'setup' && isCreator) || session.status === 'claiming';
-    if (!allowed) {
-      throw new AppError('SESSION_INVALID_STATE', 'Claims cannot be modified in this state');
-    }
-
-    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
-    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
-
-    // Per-unit semantics: claimedItemIds may contain the same itemId multiple
-    // times — once per unit claimed. e.g. "I had 3 of the 6 Guinness" sends
-    // the Guinness uuid three times. Validate each claim references a real
-    // item, that the caller hasn't over-claimed beyond item.quantity, and
-    // that the caller's claim plus claims from other participants doesn't
-    // exceed item.quantity.
-    const itemById = new Map(bill.items.map((it) => [it.itemId, it]));
-    const claims = input.claims.claimedItemIds;
-    const myCounts = new Map<string, number>();
-    for (const id of claims) {
-      const item = itemById.get(id);
-      if (!item) {
-        throw new AppError('INVALID_INPUT', 'Unknown itemId in claim list', { itemId: id });
-      }
-      myCounts.set(id, (myCounts.get(id) ?? 0) + 1);
-    }
-    for (const [id, count] of myCounts) {
-      const item = itemById.get(id)!;
-      if (count > item.quantity) {
-        throw new AppError(
-          'INVALID_INPUT',
-          `You claimed ${count} of "${item.name}" but the bill only has ${item.quantity}`,
-          { itemId: id, claimed: count, available: item.quantity },
-        );
-      }
-      // Other-participants check: sum existing (excluding caller) + my new count must not exceed quantity
-      const othersCount = session.participants
-        .filter((p) => p.userId !== input.caller.userId)
-        .reduce((acc, p) => acc + p.claimedItemIds.filter((c) => c === id).length, 0);
-      if (othersCount + count > item.quantity) {
-        throw new AppError(
-          'SESSION_INVALID_STATE',
-          `Only ${item.quantity - othersCount} of "${item.name}" left to claim`,
-          { itemId: id, claimed: count, available: item.quantity - othersCount },
-        );
-      }
-      // ADR-0006 v1: an item is in claim-mode or share-mode, not both.
-      // If anyone (including the caller) currently shares this item we
-      // refuse the claim — they must leave the share first via DELETE
-      // /v1/sessions/:id/shares/:itemId.
-      const isShared = session.participants.some((p) => p.sharedItemIds.includes(id));
-      if (isShared) {
-        throw new AppError(
-          'CLAIM_SHARE_CONFLICT',
-          `"${item.name}" is currently being shared; leave the share before claiming`,
-          { itemId: id },
-        );
-      }
-    }
-
-    const target = session.participants.find((p) => p.userId === input.caller.userId);
-    if (!target) throw new Error('Invariant: caller participant missing');
-    // Editing claims un-readies the participant — "I'm done" should mean
-    // "I'm done with my CURRENT claims". Creator stays implicitly ready.
-    const updated: Participant = {
-      ...target,
-      claimedItemIds: claims,
-      readyToLock: isCreator ? target.readyToLock : false,
-    };
-    await sessionStore.putParticipant(session.sessionId, updated);
-
-    return projectForCaller(
-      {
-        ...session,
-        participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
-      },
-      input.caller.userId,
-    );
+    // Read, validate, then write only if nobody changed who-has-what in
+    // between (two guests taking the last unit at once). On a clash,
+    // re-read and validate again: the loser then sees the item is gone.
+    return withClaimsRetry(() => setClaimsOnce(input));
   },
 
   /**
@@ -298,7 +214,10 @@ export const sessionService = {
     ways?: number;
   }): Promise<Session> {
     return withShareRetry(async () => {
-      const session = await assertEditableSession(input.sessionId, input.caller.userId);
+      const { session, claimsVersion } = await assertEditableSession(
+        input.sessionId,
+        input.caller.userId,
+      );
       const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
       if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
       const item = bill.items.find((it) => it.itemId === input.itemId);
@@ -390,6 +309,7 @@ export const sessionService = {
         itemId: input.itemId,
         settings,
         expectedVersion: existing?.version ?? null,
+        expectedClaimsVersion: claimsVersion,
       });
       return projectForCaller(
         withSettings(
@@ -416,7 +336,10 @@ export const sessionService = {
     itemId: string;
   }): Promise<Session> {
     return withShareRetry(async () => {
-      const session = await assertEditableSession(input.sessionId, input.caller.userId);
+      const { session, claimsVersion } = await assertEditableSession(
+        input.sessionId,
+        input.caller.userId,
+      );
       const target = session.participants.find((p) => p.userId === input.caller.userId);
       if (!target) throw new Error('Invariant: caller participant missing');
       if (!target.sharedItemIds.includes(input.itemId)) {
@@ -451,6 +374,7 @@ export const sessionService = {
         itemId: input.itemId,
         settings,
         expectedVersion: existing?.version ?? null,
+        expectedClaimsVersion: claimsVersion,
       });
       return projectForCaller(
         withSettings(
@@ -481,7 +405,7 @@ export const sessionService = {
     ways: number;
   }): Promise<Session> {
     return withShareRetry(async () => {
-      const session = await assertEditableSession(input.sessionId, input.caller.userId);
+      const { session } = await assertEditableSession(input.sessionId, input.caller.userId);
       const sharers = sharersOf(session, input.itemId);
       if (!sharers.includes(input.caller.userId)) {
         throw new AppError(
@@ -659,6 +583,9 @@ export const sessionService = {
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'settled' };
     await sessionStore.putMeta(updatedMeta);
+    // A closed bill is done with: release it so the lead can amend it or
+    // share it again. Guests keep reading it through their sessions.
+    await sessionStore.deleteBillLock(session.billId).catch(() => undefined);
     await input.onClosed?.(session.sessionId);
     return projectForCaller(
       { ...updatedMeta, participants: session.participants },
@@ -702,9 +629,13 @@ export const sessionService = {
  * assert the session is in a state where claims/shares can be edited
  * (creator in `setup`, anyone in `claiming`). Returns the fresh session.
  */
-async function assertEditableSession(sessionId: string, userId: string): Promise<Session> {
-  const session = await sessionStore.get(sessionId);
-  if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+async function assertEditableSession(
+  sessionId: string,
+  userId: string,
+): Promise<{ session: Session; claimsVersion: number }> {
+  const loaded = await sessionStore.getWithClaimsVersion(sessionId);
+  if (!loaded) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+  const { session } = loaded;
   const isCreator = session.creatorUserId === userId;
   const isParticipant = session.participants.some((p) => p.userId === userId);
   if (!isParticipant) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
@@ -715,7 +646,7 @@ async function assertEditableSession(sessionId: string, userId: string): Promise
       'Claims and shares cannot be modified in this state',
     );
   }
-  return session;
+  return loaded;
 }
 
 function projectForCaller(session: Session, _callerUserId: string): Session {
@@ -791,6 +722,127 @@ function pushActivity(
   return [...(prev ?? []), next].slice(-SHARE_ACTIVITY_KEEP);
 }
 
+async function setClaimsOnce(input: {
+  caller: VerifiedCaller;
+  sessionId: string;
+  claims: ClaimsRequest;
+}): Promise<Session> {
+  const loaded = await sessionStore.getWithClaimsVersion(input.sessionId);
+  if (!loaded) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+  const { session, claimsVersion } = loaded;
+
+  const isCreator = session.creatorUserId === input.caller.userId;
+  const isParticipant = session.participants.some((p) => p.userId === input.caller.userId);
+  if (!isParticipant) {
+    throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+  }
+
+  // Creator can claim in setup (pre-share priming) or claiming (alongside
+  // guests, in case they missed something). Guests can only claim in
+  // claiming. Nobody claims in paying/settled/abandoned.
+  const allowed = (session.status === 'setup' && isCreator) || session.status === 'claiming';
+  if (!allowed) {
+    throw new AppError('SESSION_INVALID_STATE', 'Claims cannot be modified in this state');
+  }
+
+  const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+  if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+
+  // Per-unit semantics: claimedItemIds may contain the same itemId multiple
+  // times — once per unit claimed. e.g. "I had 3 of the 6 Guinness" sends
+  // the Guinness uuid three times. Validate each claim references a real
+  // item, that the caller hasn't over-claimed beyond item.quantity, and
+  // that the caller's claim plus claims from other participants doesn't
+  // exceed item.quantity.
+  const itemById = new Map(bill.items.map((it) => [it.itemId, it]));
+  const claims = input.claims.claimedItemIds;
+  const myCounts = new Map<string, number>();
+  for (const id of claims) {
+    const item = itemById.get(id);
+    if (!item) {
+      throw new AppError('INVALID_INPUT', 'Unknown itemId in claim list', { itemId: id });
+    }
+    myCounts.set(id, (myCounts.get(id) ?? 0) + 1);
+  }
+  for (const [id, count] of myCounts) {
+    const item = itemById.get(id)!;
+    if (count > item.quantity) {
+      throw new AppError(
+        'INVALID_INPUT',
+        `You claimed ${count} of "${item.name}" but the bill only has ${item.quantity}`,
+        { itemId: id, claimed: count, available: item.quantity },
+      );
+    }
+    // Other-participants check: sum existing (excluding caller) + my new count must not exceed quantity
+    const othersCount = session.participants
+      .filter((p) => p.userId !== input.caller.userId)
+      .reduce((acc, p) => acc + p.claimedItemIds.filter((c) => c === id).length, 0);
+    if (othersCount + count > item.quantity) {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        `Only ${item.quantity - othersCount} of "${item.name}" left to claim`,
+        { itemId: id, claimed: count, available: item.quantity - othersCount },
+      );
+    }
+    // ADR-0006 v1: an item is in claim-mode or share-mode, not both.
+    // If anyone (including the caller) currently shares this item we
+    // refuse the claim — they must leave the share first via DELETE
+    // /v1/sessions/:id/shares/:itemId.
+    const isShared = session.participants.some((p) => p.sharedItemIds.includes(id));
+    if (isShared) {
+      throw new AppError(
+        'CLAIM_SHARE_CONFLICT',
+        `"${item.name}" is currently being shared; leave the share before claiming`,
+        { itemId: id },
+      );
+    }
+  }
+
+  const target = session.participants.find((p) => p.userId === input.caller.userId);
+  if (!target) throw new Error('Invariant: caller participant missing');
+  // Editing claims un-readies the participant — "I'm done" should mean
+  // "I'm done with my CURRENT claims". Creator stays implicitly ready.
+  const updated: Participant = {
+    ...target,
+    claimedItemIds: claims,
+    readyToLock: isCreator ? target.readyToLock : false,
+  };
+  await sessionStore.putClaimsGuarded(session.sessionId, updated, claimsVersion);
+
+  return projectForCaller(
+    {
+      ...session,
+      participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
+    },
+    input.caller.userId,
+  );
+}
+
+const CLAIM_RETRIES = 8;
+
+/**
+ * Claim writes are conditional on the session's claims version. A clash
+ * means someone else's claim, split or bill edit landed first: back off a
+ * moment, re-read and try again. Simultaneous claims for different things
+ * all succeed after a retry or two.
+ */
+async function withClaimsRetry<T>(fn: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isConditionalCheckFailed(err)) throw err;
+      if (attempt >= CLAIM_RETRIES) {
+        throw new AppError(
+          'SESSION_INVALID_STATE',
+          'The bill changed while you were choosing — try again',
+        );
+      }
+      await new Promise((r) => setTimeout(r, 5 + Math.random() * 20 * (attempt + 1)));
+    }
+  }
+}
+
 /**
  * Split edits are read-modify-write on the split's settings row, guarded
  * by its version. If someone else changed the same split in between,
@@ -802,12 +854,13 @@ async function withShareRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (err) {
       if (!isConditionalCheckFailed(err)) throw err;
-      if (attempt >= 3) {
+      if (attempt >= CLAIM_RETRIES) {
         throw new AppError(
           'SHARE_CONFLICT',
           'Someone else changed this split at the same moment — try again',
         );
       }
+      await new Promise((r) => setTimeout(r, 5 + Math.random() * 20 * (attempt + 1)));
     }
   }
 }

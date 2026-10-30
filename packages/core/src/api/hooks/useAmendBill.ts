@@ -10,7 +10,10 @@ export function useAmendBill(billId: string) {
     mutationFn: (body) =>
       api<Bill>(`/v1/bills/${billId}/amend`, { method: 'POST', body }),
     onSuccess: (bill) => {
-      qc.setQueryData(['bill', billId], bill);
+      qc.setQueryData(['bill', billId, 'latest'], bill);
+      qc.setQueryData(['bill', billId, bill.versionNumber], bill);
+      // Sessions pin a version; refetch so the table moves to the new one.
+      void qc.invalidateQueries({ queryKey: ['session'] });
       // The table fee depends on the total (£2, or £3 over £100).
       void qc.invalidateQueries({ queryKey: ['tableFee', billId] });
     },

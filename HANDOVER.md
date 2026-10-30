@@ -29,12 +29,7 @@ _Last updated 1 Nov 2026._
 
 ## Known problems
 
-- `close` doesn't release `BILLLOCK#` (only `abandon` does), so a closed bill can't be shared again. (`it.fails` test.)
-- Two guests claiming the last unit at the same moment can both get it: `setClaims` is read-check-write with no condition on the write. (`it.fails` test.)
-- Removing a split line from the bill leaves its split behind. (`it.fails` test.)
-- Amending the bill while guests are claiming can remove or re-price a line a guest has already paid for. Proposed rule, waiting on Callum: a guest's lines freeze once they've paid (see `claude/test-and-coverage-plan.md` in the Claude project).
 - The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
-- `sessionStore.create` writes META's `ttlAt` as an ISO string; DynamoDB TTL ignores it until a later META write.
 - The API still accepts claim changes after a guest has paid. (`it.fails` test.)
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.

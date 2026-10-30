@@ -92,17 +92,25 @@ export const amendService = {
       }
     }
 
-    // Drop claims for removed items; un-ready non-creator participants so
-    // they re-confirm against the new bill. Creator's readyToLock convention
-    // stays true.
+    // Drop claims and splits for removed items; un-ready non-creator
+    // participants so they re-confirm against the new bill. Creator's
+    // readyToLock convention stays true.
     const updatedParticipants: Participant[] = session.participants.map((p) => {
       const isCreator = p.userId === session.creatorUserId;
       return {
         ...p,
         claimedItemIds: p.claimedItemIds.filter((id) => newItemIds.has(id)),
+        sharedItemIds: p.sharedItemIds.filter((id) => newItemIds.has(id)),
         readyToLock: isCreator ? p.readyToLock : false,
       };
     });
+    // A split's settings row goes with its line.
+    const removedSplitItemIds = [
+      ...new Set([
+        ...(session.shareSettings ?? []).map((s) => s.itemId),
+        ...session.participants.flatMap((p) => p.sharedItemIds),
+      ]),
+    ].filter((id) => !newItemIds.has(id));
 
     const { participants: _droppedParticipants, ...sessionMeta } = session;
     const updatedMeta = { ...sessionMeta, pinnedBillVersion: newVersion.versionNumber };
@@ -111,6 +119,7 @@ export const amendService = {
       bill: newVersion,
       sessionMeta: updatedMeta,
       participants: updatedParticipants,
+      removedSplitItemIds,
     });
     return newVersion;
   },

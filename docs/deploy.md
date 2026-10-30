@@ -1,0 +1,66 @@
+# Deploying
+
+Both halves are served over HTTPS with no certificates to manage:
+
+| Part | Host                                         | URL                                                |
+| ---- | -------------------------------------------- | -------------------------------------------------- |
+| API  | API Gateway + Lambda (CDK, `apps/api/infra`) | `https://<id>.execute-api.eu-west-2.amazonaws.com` |
+| Web  | Vercel (Next.js, `apps/web`)                 | `https://<project>.vercel.app`                     |
+
+HTTPS matters for more than looks: the camera (`getUserMedia`) and the Web
+Share/Clipboard APIs only work in a secure context, so the app can't be tried
+on a phone over plain HTTP.
+
+## API
+
+### Deploy now, from your Mac
+
+```bash
+npm run deploy:dev -w apps/api   # validate → cdk deploy GdpBackendDev → smoke
+```
+
+Uses the `gdp-dev` AWS profile. The SSM parameters and Secrets Manager
+secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
+
+### Let CI deploy on every push to main (one-off)
+
+`.github/workflows/api-deploy.yml` deploys with GitHub OIDC. To give it a role:
+
+1. `cd apps/api && npx cdk deploy GdpGithubDeploy --profile gdp-dev`
+   - If the account already has a GitHub OIDC provider (the deploy fails
+     with "already exists"), add
+     `-c githubOidcProviderArn=arn:aws:iam::<acct>:oidc-provider/token.actions.githubusercontent.com`.
+2. GitHub → caldvs/gdp → Settings → Environments → **New environment** `dev`,
+   then add two variables:
+   - `AWS_DEPLOY_ROLE_ARN` = the stack's `DeployRoleArnOutput`
+     (`arn:aws:iam::<acct>:role/gdp-github-deploy`)
+   - `AWS_REGION` = `eu-west-2`
+3. Actions → **API Deploy** → Run workflow (`dev`) to check it.
+
+The role can only assume the CDK bootstrap roles (`cdk-*`), and only from
+the `dev`, `staging` and `prod` environments of this repo.
+
+## Web (Vercel)
+
+One-off, in the Vercel dashboard:
+
+1. **Add New → Project**, import `caldvs/gdp`.
+2. **Root Directory:** `apps/web`. Framework is detected as Next.js; leave
+   build and install commands as default (Vercel installs from the repo root
+   because of the npm workspaces).
+3. **Environment variables** (Production and Preview):
+   - `NEXT_PUBLIC_API_BASE_URL` = the API's `ApiUrlOutput` (no trailing slash)
+4. Deploy. Every push to `main` then deploys production; every PR gets a
+   preview URL.
+
+`NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back
+to the page's own origin, which is right on Vercel.
+
+## After the first deploy
+
+- **SES sandbox.** New SES accounts only send to verified addresses, so
+  guests can't receive sign-in codes. Request production access (SES console
+  → Account dashboard), or verify each tester's address meanwhile.
+- **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
+- **Real-device check.** Scan a real bill on a phone against the deployed
+  API: nothing has been run against a real Gemini parse since the redesign.

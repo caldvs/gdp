@@ -180,7 +180,34 @@ const sesCheck: Check = {
   },
 };
 
-export const CHECKS: readonly Check[] = [stripeCheck, bedrockCheck, venueCheck, sesCheck];
+/** Test accounts let anyone sign in without a code, so they must be off in prod. */
+export const testAccountsProblem = (
+  appEnv: 'local' | 'dev' | 'prod',
+  flag: string,
+): string | null =>
+  appEnv === 'prod' && flag === 'true' ? 'AUTH_TEST_ACCOUNTS=true in prod: turn it off' : null;
+
+const testAccountsCheck: Check = {
+  name: 'Test accounts',
+  required: true,
+  run: () => {
+    const problem = testAccountsProblem(env.APP_ENV, env.AUTH_TEST_ACCOUNTS);
+    if (problem) return Promise.reject(new Error(problem));
+    return Promise.resolve(
+      env.AUTH_TEST_ACCOUNTS === 'true' && env.APP_ENV !== 'prod'
+        ? 'on (@test.invalid sign-in without a code)'
+        : 'off',
+    );
+  },
+};
+
+export const CHECKS: readonly Check[] = [
+  stripeCheck,
+  bedrockCheck,
+  venueCheck,
+  sesCheck,
+  testAccountsCheck,
+];
 
 const runOne = async (check: Check): Promise<CheckResult> => {
   const start = performance.now();

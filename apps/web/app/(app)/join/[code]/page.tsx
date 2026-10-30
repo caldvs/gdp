@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { api, ApiError, type components } from '@gdp/core/api';
 import { scrubFragmentFromUrl, storeSessionPayoutFromFragment } from '@gdp/core/lib/sessionPayout';
 import { takeJoinFragment } from '@/lib/joinFragment';
-import { Button, DisplayText, Mini, Notice, Spinner } from '@/components/ui';
+import { Backdrop, Btn, Notice, Screen, Sheet, Spin } from '@/components/glass';
 
 type Session = components['schemas']['Session'];
 
@@ -65,21 +65,15 @@ export default function JoinPage() {
   }, [code, router]);
 
   return (
-    <div className="screen stack gap-base" style={{ paddingTop: 48 }}>
-      <DisplayText size="md">Joining session…</DisplayText>
-      <Mini>code · {code ? decodeURIComponent(code).toUpperCase() : '(none)'}</Mini>
-      {state.kind === 'resolving' || state.kind === 'joining' ? (
-        <div className="gdp-row" style={{ justifyContent: 'flex-start' }}>
-          <Spinner />
-          <Mini>{state.kind === 'resolving' ? 'looking up the session…' : 'joining…'}</Mini>
-        </div>
-      ) : null}
-      {state.kind === 'error' ? (
-        <div className="stack gap-sm">
-          <Notice title="Couldn't join the session." detail={state.message} />
-          <Button variant="ghost" href="/" replace>Back to home</Button>
-        </div>
-      ) : null}
-    </div>
+    <Screen>
+      <Backdrop tone="deep" />
+      <Sheet
+        title={state.kind === 'error' ? 'Couldn’t join' : 'Joining…'}
+        sub={code ? decodeURIComponent(code).toUpperCase() : undefined}
+        foot={state.kind === 'error' ? <Btn href="/" replace>Home</Btn> : undefined}
+      >
+        {state.kind === 'error' ? <Notice error>{state.message}</Notice> : <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}><Spin /></div>}
+      </Sheet>
+    </Screen>
   );
 }

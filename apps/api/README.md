@@ -1,4 +1,6 @@
-# gdp-backend
+# Group Dine Pay API (`apps/api`)
+
+> Part of the Group Dine Pay monorepo — run `npm install` from the repo root, not here.
 
 Group Dine Pay backend API. TypeScript on Node 22, AWS Lambda + DynamoDB + S3, deployed via CDK.
 

@@ -31,6 +31,7 @@ npm run dev                    # docker compose up (DynamoDB Local :8000, MinIO 
 Locally:
 
 - `POST /v1/auth/email/dev-sign-in` lets you sign in with just an email. It only exists against a local DynamoDB; turn it off with `AUTH_DEV_EMAIL_SIGNIN=false`.
+- `POST /v1/auth/email/test-sign-in` signs in to a test account (`@test.invalid` only) without a code. On locally and on dev (`AUTH_TEST_ACCOUNTS=true`, set by CDK); never in prod, where the dependency check fails if it's on. The web app's test bar uses it.
 - Bill reading uses Gemini unless `BEDROCK_MODEL_ID` is set (and you have AWS credentials).
 - Emails go to the console instead of SES.
 - Payments use the `mock` provider by default.

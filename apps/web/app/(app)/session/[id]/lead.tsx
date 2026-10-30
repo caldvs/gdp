@@ -7,20 +7,22 @@
  */
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { components } from '@gdp/core/api';
-import { useAbandonSession, useCloseSession, useSetClaims, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { ApiError, type components } from '@gdp/core/api';
+import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
-import { projectOwedPence } from '@gdp/core/lib/owed';
+import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  Avatar, Back, Backdrop, Btn, Check, Fab, Hero, KV, Label, List, Notice, Paid, Price, QrIcon, Row, RowBody, Screen, Sheet, Tick, TopBar, firstName,
+  Avatar, Back, Backdrop, Btn, Check, Fab, Faces, Hero, KV, Label, List, Notice, Paid, Price, QrIcon, Row, RowBody, Screen, Sheet, Tick, TopBar, firstName,
 } from '@/components/glass';
-import { Stepper, itemStatuses } from './guest';
+import { PickRow, SplitSheet, Stepper, itemStatuses } from './guest';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
 type Participant = components['schemas']['Participant'];
+type BillItem = components['schemas']['BillItem'];
+type Share = NonNullable<Session['shares']>[number];
 
 function owedFor(s: Session, b: Bill, p: Participant): number {
   return p.owedPence ?? projectOwedPence(s, b, p.userId);
@@ -61,6 +63,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const abandon = useAbandonSession(s.sessionId);
   const confirm = useConfirmPayment(s.sessionId);
   const setClaims = useSetClaims(s.sessionId);
+  const addShare = useAddShare(s.sessionId);
+  const removeShare = useRemoveShare(s.sessionId);
+  const setWays = useSetShareWays(s.sessionId);
+  const [splitting, setSplitting] = useState<{ item: BillItem; ways: number; share?: Share } | null>(null);
   const [closing, setClosing] = useState(false);
   const [binning, setBinning] = useState(false);
 
@@ -123,9 +129,29 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 
         <Label>{unclaimed.length > 0 ? `Unclaimed · ${formatGBP(unclaimedPence)}` : 'Everything’s claimed'}</Label>
         <List>
-          {statuses.map(({ item, left, mine, who }) => {
+          {statuses.map(({ item, left, mine, who, share }) => {
             const others = who.filter((n) => n !== 'you');
             const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
+            if (share) {
+              // A split: anyone can join, the lead included. Tick = in it.
+              const inIt = share.userIds.includes(meUserId);
+              const seats = Math.max(0, share.ways - share.userIds.length);
+              const myWays = inIt || seats > 0 ? share.ways : share.ways + 1;
+              const people = share.userIds.map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
+              return (
+                <PickRow
+                  key={item.itemId}
+                  on={inIt}
+                  busy={addShare.isPending || removeShare.isPending}
+                  label={inIt ? `Leave the split for ${item.name}` : `Join the split for ${item.name}`}
+                  onTap={() => (inIt ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
+                  name={name}
+                  sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Faces people={people.map((p) => ({ name: p.displayName, seed: p.userId }))} spare={seats} /> {share.ways} ways</span>}
+                  price={<Price mute={!inIt} note="each">{formatGBP(sharePence(item.unitPricePence, share.userIds, myWays, meUserId))}</Price>}
+                  aside={inIt ? <button type="button" className="g-mini-btn" onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways}</button> : undefined}
+                />
+              );
+            }
             if (mine > 0 && item.quantity > 1) {
               // Yours, more than one on the line: a − n + stepper, so you
               // can go from 3 to 0 and not just bounce between 3 and 2.
@@ -136,6 +162,20 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   <Stepper n={mine} max={mine + left} busy={setClaims.isPending} onDec={() => dropOne(item.itemId)} onInc={() => takeOne(item.itemId)} name={item.name} />
                   <Price>{formatGBP(item.unitPricePence * mine)}</Price>
                 </div>
+              );
+            }
+            if (left > 0 && item.quantity === 1) {
+              // Still open: tap takes it, or split it with the table.
+              return (
+                <PickRow
+                  key={item.itemId}
+                  busy={setClaims.isPending}
+                  label={`Take ${item.name}`}
+                  onTap={() => takeOne(item.itemId)}
+                  name={name}
+                  price={<Price>{formatGBP(item.unitPricePence)}</Price>}
+                  aside={<button type="button" className="g-mini-btn" onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</button>}
+                />
               );
             }
             if (left > 0) {
@@ -171,6 +211,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         </List>
         {unclaimed.length > 0 ? <p className="g-foot-note">Tap to take one yourself. Anything left is yours when you close.</p> : null}
         {setClaims.isError ? <Notice error>{setClaims.error.message}</Notice> : null}
+        {addShare.isError ? <Notice error>{addShare.error.message}</Notice> : null}
+        {removeShare.isError ? <Notice error>{removeShare.error.message}</Notice> : null}
 
         <List>
           <KV k="Bill" v={formatGBP(b.totalPence)} />
@@ -179,6 +221,22 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <button type="button" className="g-btn g-btn--ghost g-btn--sm" style={{ color: 'var(--g-mute)' }} onClick={() => setBinning(true)}>Bin this bill</button>
       </Sheet>
 
+      {splitting ? (
+        <SplitSheet
+          item={splitting.item}
+          ways={splitting.ways}
+          min={Math.max(2, splitting.share?.userIds.length ?? 1)}
+          busy={addShare.isPending || setWays.isPending}
+          error={setWays.error instanceof ApiError ? setWays.error.message : undefined}
+          onChange={(ways) => setSplitting({ ...splitting, ways })}
+          onCancel={() => { setSplitting(null); setWays.reset(); }}
+          onOk={() => {
+            const done = () => setSplitting(null);
+            if (splitting.share) setWays.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
+            else addShare.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
+          }}
+        />
+      ) : null}
       {closing ? (
         <Confirm
           title="Close the bill?"

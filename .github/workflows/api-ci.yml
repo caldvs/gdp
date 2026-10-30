@@ -1,9 +1,11 @@
-name: CI
+name: API CI
 
 on:
   push:
     branches: [main]
+    paths: ['apps/api/**', 'package-lock.json', '.github/workflows/api-*.yml']
   pull_request:
+    paths: ['apps/api/**', 'package-lock.json', '.github/workflows/api-*.yml']
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +18,9 @@ jobs:
   ci:
     name: lint • typecheck • unit • build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -23,6 +28,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+        working-directory: .
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -37,6 +43,9 @@ jobs:
   integration:
     name: integration tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -44,6 +53,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+        working-directory: .
       - name: Start DynamoDB Local + MinIO
         run: docker compose up -d
       - name: Wait for services

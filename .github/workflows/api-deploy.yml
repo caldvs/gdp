@@ -1,4 +1,4 @@
-name: Deploy
+name: API Deploy
 
 # Push to main → deploy dev automatically.
 # Manual dispatch → choose any environment (dev / staging / prod).
@@ -17,6 +17,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+    paths: ['apps/api/**', 'package-lock.json', '.github/workflows/api-*.yml']
   workflow_dispatch:
     inputs:
       environment:
@@ -39,6 +40,9 @@ jobs:
   deploy:
     name: Deploy ${{ github.event.inputs.environment || 'dev' }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
     environment: ${{ github.event.inputs.environment || 'dev' }}
     env:
       ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
@@ -51,6 +55,7 @@ jobs:
           cache: npm
 
       - run: npm ci
+        working-directory: .
 
       # Re-run the cheap safety nets before touching AWS. Catches the
       # case where someone bypassed branch protection or a flaky CI run
@@ -102,6 +107,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: cdk-outputs-${{ env.ENV_NAME }}
-          path: cdk-outputs.${{ env.ENV_NAME }}.json
+          path: apps/api/cdk-outputs.${{ env.ENV_NAME }}.json
           if-no-files-found: ignore
           retention-days: 14

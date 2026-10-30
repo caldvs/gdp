@@ -1,0 +1,116 @@
+<title>Group Dine Pay Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one wide whiteboard, left-to-right tiers: clients → frontend → AWS (gateway, Lambda, data, ops) → third parties. */
+:root {
+  --bg: #F3F6FA;
+  --grid: #DDE4EE;
+  --card: #FFFFFF;
+  --inner: #F1F5FB;
+  --ink: #142033;
+  --muted: #5B6A82;
+  --line: #C9D3E1;
+  --zone: #E9EEF5;
+  --aws: #EEF1F7;
+  --accent: #0B57D0;
+  --edge: #46566F;
+  --get: #0F7B4A;
+  --post: #0B57D0;
+  --put: #8A5A00;
+  --del: #B42318;
+  --warn: #B45309;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+    --line: #2C3750; --zone: #121A2B; --aws: #111829; --accent: #82A9FF; --edge: #9AA8C2;
+    --get: #5CD39A; --post: #82A9FF; --put: #F2C25B; --del: #FF8A80; --warn: #F0A85A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+  --line: #2C3750; --zone: #121A2B; --aws: #111829; --accent: #82A9FF; --edge: #9AA8C2;
+  --get: #5CD39A; --post: #82A9FF; --put: #F2C25B; --del: #FF8A80; --warn: #F0A85A; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1680px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+  display: grid; gap: 14px;
+}
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
+h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.board {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 14px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+.board svg { display: block; width: 100%; min-width: 1240px; height: auto; }
+.zone { fill: var(--zone); stroke: var(--line); stroke-dasharray: 5 5; }
+.zone.aws { fill: var(--aws); }
+.zone-label { font: 600 11px var(--body); fill: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.node { fill: var(--card); stroke: var(--line); stroke-width: 1.2; }
+.node.key { stroke: var(--accent); stroke-width: 1.6; }
+.node.ext { stroke-dasharray: 4 4; }
+.node.warn { stroke: var(--warn); }
+.inner { fill: var(--inner); stroke: var(--line); }
+.t-title { font: 700 16px var(--display); fill: var(--ink); }
+.t-inner { font: 700 13.5px var(--body); fill: var(--ink); }
+.t-sub { font: 400 12.5px var(--body); fill: var(--muted); }
+.t-mono { font: 400 11.5px var(--mono); fill: var(--ink); }
+.t-base { font: 400 11px var(--mono); fill: var(--muted); }
+.t-ep { font: 400 11.5px var(--mono); fill: var(--ink); }
+.t-warn { font: 700 12.5px var(--body); fill: var(--warn); }
+.m { font-weight: 600; font-size: 10.5px; }
+.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put { fill: var(--put); } .m-delete { fill: var(--del); }
+.edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.edge.dashed path { stroke-dasharray: 6 5; }
+.edge.fail path { stroke: var(--warn); }
+.edge text { font: 600 11.5px var(--body); fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+.arrow { fill: var(--edge); }
+.arrow-warn { fill: var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge); vertical-align: middle; margin-right: 6px; }
+.legend i.d { border-top-style: dashed; }
+.legend i.w { border-top: 2px dashed var(--warn); }
+.legend i.x { border: 1.5px dashed var(--line); height: 12px; width: 18px; border-radius: 3px; }
+.legend code { font: 600 11.5px var(--mono); }
+.legend .g { color: var(--get); } .legend .p { color: var(--post); } .legend .u { color: var(--put); } .legend .r { color: var(--del); }
+.foot { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 90ch; }
+.foot code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Group Dine Pay architecture</h1>
+    <div class="stats"><span><b>34</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>5</b> third parties</span></div>
+  </header>
+
+  <div class="board">
+    <svg viewBox="0 0 1640 %%VBH%%" role="img" aria-label="Group Dine Pay system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 34 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill parser), Secrets Manager and CloudWatch, and calls Gemini as a fallback parser, Google Places, TrueLayer and Stripe, which send webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+%%SVG%%
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i></i>Runtime call</span>
+    <span><i class="d"></i>Deploy-time</span>
+    <span><i class="x"></i>Outside AWS or the app</span>
+    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="r">DELETE</code></span>
+  </div>
+
+  <p class="foot">Built from <code>apps/api/openapi.yaml</code>, <code>apps/api/infra/main.ts</code> and <code>apps/api/src</code> on main. Locally, <code>npm run dev:local</code> runs the same Hono app on Node with DynamoDB Local and MinIO in Docker, a console email sender and the mock payment provider.</p>
+</div>

@@ -1,225 +1,93 @@
 # Runbook
 
-What to do when something breaks. Each section is named so the alarm
-descriptions in `infra/main.ts` can refer to it directly.
+What to do when something breaks in the deployed API. The alarm descriptions in `infra/main.ts` point at the section names below, so keep them.
 
-This is the dev-environment runbook. Production gets stricter thresholds,
-on-call rotation, and post-incident reviews — none of that exists yet.
+Commands use the `gdp-dev` profile and the `GdpBackendDev` stack. Production doesn't exist yet.
 
-## Subscribing to alerts
+## Start here
 
-The CDK stack creates an SNS topic but does not bake in any subscribers.
-Add yourself once per environment:
+- **Dashboard:** CloudWatch → Dashboards → `gdp-dev` (or the stack's `DashboardUrlOutput`). The top rows are API, Lambda and DynamoDB metrics. The log panels below show errors and warnings, recent requests, requests by route, bill reading, emails/sign-in/payments, and crashes and timeouts.
+- **Logs:**
+
+  ```bash
+  LG=$(aws cloudformation describe-stack-resources --profile gdp-dev --stack-name GdpBackendDev \
+    --query "StackResources[?ResourceType=='AWS::Logs::LogGroup'].PhysicalResourceId" --output text)
+  aws logs tail "$LG" --profile gdp-dev --since 15m --follow
+  ```
+
+- **One request:** every response carries `x-request-id`, and error bodies include `requestId`. Search the logs for it.
+- **Traces:** X-Ray tracing is on; the service map shows which downstream call was slow.
+- **Smoke test:** `npm run smoke -w apps/api -- <api-url>` shows which routes fail.
+- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Gemini, Places and SES from inside the deployed function (CI runs it after every deploy). The dashboard's *Calls out* panel shows each one's failures and timings (`event: dep.call`).
+
+## Getting alerts
+
+The stack creates the SNS topic `gdp-dev-alerts` with no subscribers. Subscribe once:
 
 ```bash
-aws sns subscribe --profile gdp-dev \
-  --topic-arn "$(aws cloudformation describe-stacks --profile gdp-dev \
-    --stack-name GdpBackendDev \
-    --query 'Stacks[0].Outputs[?OutputKey==`AlertTopicArnOutput`].OutputValue' \
-    --output text)" \
-  --protocol email --notification-endpoint "you@example.com"
+aws sns subscribe --profile gdp-dev --protocol email --notification-endpoint you@example.com \
+  --topic-arn "$(aws cloudformation describe-stacks --profile gdp-dev --stack-name GdpBackendDev \
+    --query "Stacks[0].Outputs[?OutputKey=='AlertTopicArnOutput'].OutputValue" --output text)"
 ```
 
-Confirm the email AWS sends you (subject "AWS Notification — Subscription
-Confirmation"). After that, every alarm will arrive in your inbox.
-
-To unsubscribe later: open the email and click the unsubscribe link, or
-`aws sns unsubscribe --subscription-arn …`.
+Then confirm the email AWS sends.
 
 ## Alarms
 
-### `lambda-errors`
+### lambda-errors
 
-**What it means.** The API Lambda threw or crashed in ≥4 invocations
-within 5 minutes. Could be runtime exceptions, init failures, or
-unhandled rejections.
+More than 3 Lambda errors in 5 minutes. Open the *Errors and warnings* and *Crashes and timeouts* panels.
 
-**Where to look.**
+| In the logs | Likely cause | Fix |
+| --- | --- | --- |
+| `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts` | Fix the env block in `infra/main.ts`, redeploy |
+| `Dynamic require of …` | Bundle banner missing | Check `bundling.banner` in `infra/main.ts` |
+| `Task timed out after 30` | A downstream call hung (usually bill reading) | See lambda-duration |
+| `PAYMENT_PROVIDER_ERROR` | Only with TrueLayer, which isn't in use | Check `PAYMENT_PROVIDER` is `manual` |
 
-```bash
-# Latest log stream
-LG="GdpBackendDev-ApiHandlerLogs7BF57C16-Z068uvDbxqWd"
-STREAM=$(aws logs describe-log-streams --profile gdp-dev \
-  --log-group-name "$LG" --order-by LastEventTime --descending \
-  --limit 1 --query 'logStreams[0].logStreamName' --output text)
+### lambda-duration
 
-aws logs get-log-events --profile gdp-dev \
-  --log-group-name "$LG" --log-stream-name "$STREAM" \
-  --limit 50 --query 'events[].message' --output text | tail -50
-```
+p99 over 10 seconds for 5 minutes. Bill reading is almost always the cause: a parse takes 3–10 seconds normally, and the Lambda and API Gateway both stop at 30.
 
-Or open CloudWatch Logs Insights for the same log group:
+- Check the *Bill reading* panel. `bill.parse.fallback` means Bedrock failed and Gemini answered, so that request paid for two reads.
+- If it's every request, look at the X-Ray map for the slow span.
 
-```
-fields @timestamp, level, requestId, route, msg, err.message
-| filter level = "error"
-| sort @timestamp desc
-| limit 100
-```
+### api-5xx
 
-**Common causes & mitigation.**
+More than 5 server errors in 5 minutes. Usually the same cause as lambda-errors; it also fires when a request passes API Gateway's 30-second limit. Use *Requests by route and status* to see which route.
 
-| Symptom in logs                               | Likely cause                                         | Mitigation                                                                                                                                                                   |
-| --------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Invalid environment variables` at INIT       | CDK env value drifted from zod schema                | Fix `infra/main.ts` env block; redeploy                                                                                                                                      |
-| `Dynamic require of …` at INIT                | Bundling missing the createRequire banner            | Check `infra/main.ts` `bundling.banner`                                                                                                                                      |
-| `Secrets Manager can't find …` at deploy time | Friendly-name secret missing or wrong region         | `aws secretsmanager list-secrets --profile gdp-dev --region eu-west-2`                                                                                                       |
-| Repeated `PARSE_FAILED`                       | Gemini quota / outage / model deprecation            | Check Google AI Studio dashboard; fall back to Flash-Lite                                                                                                                    |
-| `PAYMENT_PROVIDER_ERROR`                      | TrueLayer 5xx, auth failure, or signing-key mismatch | Check TrueLayer status page; check Console kid matches `/gdp-{env}/truelayer-signing-kid` SSM and that `gdp-{env}/truelayer-signing-private-key` is the matching private key |
+To roll back, check out the last good commit and run `npm run deploy:dev -w apps/api`.
 
-The error envelope's `requestId` cross-references the `x-request-id`
-header we return to clients — if a user reports a failure, they can give
-you that ID and we can grep CloudWatch for the exact request.
+### ddb-throttle
 
-### `lambda-duration`
+DynamoDB throttled at least one request. The table is on-demand, so this means a sudden burst. The *DDB throttles* panel shows the operation. One hot key (a join code or image hash being hammered) points at abuse rather than load.
 
-**What it means.** p99 Lambda duration > 10s sustained for 5 minutes.
-Lambda cold starts on Node 22 are typically <1s; warm requests well under
-500ms. Sustained p99 above 10s usually means a downstream is slow.
+## Common problems
 
-**Where to look.** The trace gives the answer faster than logs. Open
-X-Ray service map for `gdp-dev` and look for the long span:
+### Bills won't read
 
-- DDB span > 1s → DDB throttling (cross-check `ddb-throttles` alarm)
-- Gemini fetch span > 8s → Gemini saturated; consider switching to
-  Flash-Lite or implementing async parse with a poll endpoint
-- TrueLayer span > 8s → TrueLayer slow; consider client-side timeouts
-- No external span; just Lambda time → likely a CPU loop or sync I/O —
-  rare; check recent code changes
+`PARSE_FAILED` or slow parses, with `bill.parse.fallback` in the logs:
 
-**Mitigation.** Same as the underlying cause. The 10s threshold is well
-below our 25s Lambda timeout and 30s API Gateway HTTP API limit, so the
-alarm fires before the user sees a 5xx.
+- `AccessDeniedException` from Bedrock: model access for Claude Haiku 4.5 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
+- `ThrottlingException`: Bedrock quota. Gemini picks these up until it hits its own limit. Ask for a quota increase.
+- Both failing: check the Gemini key in `gdp-dev/gemini-api-key`.
 
-### `api-5xx`
+`PARSE_LOW_CONFIDENCE` isn't an outage: the photo was unreadable, and it isn't retried on Gemini.
 
-**What it means.** API Gateway logged > 5 responses with status 5xx
-in 5 minutes. Almost always a downstream symptom of `lambda-errors`,
-but also fires on:
+### Sign-in codes don't arrive
 
-- API Gateway → Lambda invocation failures (rare; AWS-side)
-- Lambda exceeding 30s API Gateway timeout
-- Lambda runtime memory exhaustion (we're at 1024MB; 128MB events
-  observed — Max Memory Used in CloudWatch reports)
+Look for `otp.start.failed` or `email.sent` in *Emails, sign-in and payments*. A new SES account is in the sandbox and only sends to verified addresses: request production access or verify the tester.
 
-**Where to look.**
+### Bill reports don't arrive
+
+`report.failed` in the same panel. Same SES checks as above.
+
+### A deploy rolled back
 
 ```bash
-# 5xx count by minute, last hour
-aws cloudwatch get-metric-statistics --profile gdp-dev \
-  --namespace AWS/ApiGateway --metric-name 5xx \
-  --dimensions Name=ApiId,Value=<apiId> Name=Stage,Value='$default' \
-  --start-time $(date -u -v-1H '+%Y-%m-%dT%H:%M:%SZ') \
-  --end-time $(date -u '+%Y-%m-%dT%H:%M:%SZ') \
-  --period 60 --statistics Sum
+aws cloudformation describe-stack-events --profile gdp-dev --stack-name GdpBackendDev \
+  --query "StackEvents[?contains(ResourceStatus,'FAILED')].[LogicalResourceId,ResourceStatusReason]" \
+  --output table | head -20
 ```
 
-Then jump to the Lambda log group for the same time window.
-
-**Mitigation.** Fix whatever's in `lambda-errors`. If the issue is a
-specific deploy, `cdk deploy GdpBackendDev` of an earlier git commit
-rolls back.
-
-### `ddb-throttles`
-
-**What it means.** DynamoDB rejected at least one request because the
-table couldn't service it fast enough. We're on PAY_PER_REQUEST so this
-is usually a sustained-burst problem rather than a provisioned-capacity
-one — at v0 traffic this alarm should never fire.
-
-**Where to look.**
-
-```
-aws/dynamodb metrics → ThrottledRequests by Operation
-```
-
-…then which operation (GetItem / PutItem / TransactWrite / Query) tells
-you which access pattern is hot.
-
-**Mitigation.**
-
-- If it's the bill image-hash index PK getting hammered: a hot partition;
-  add a sharding suffix.
-- If it's the join-code index: same problem; or someone is brute-forcing
-  the 6-char code (32^6 ≈ 1B keyspace, but worth checking access logs).
-- If sustained: switch the table to provisioned with auto-scaling.
-
-## Common diagnostic flows
-
-### "Live API is returning 5xx"
-
-1. `npm run smoke` against the deployed URL — confirms which routes are
-   failing. If everything fails: deploy/init issue. If only specific
-   routes fail: route-specific bug.
-2. `aws logs tail "GdpBackendDev-ApiHandlerLogs..." --profile gdp-dev --since 5m`
-   — see the last 5 minutes of logs in real time.
-3. If the Lambda init is failing: check most recent `cdk deploy`. Roll
-   back with `git checkout <prior commit> && npm run deploy:dev`.
-4. If a specific endpoint: get a `requestId` from a failing curl, grep
-   it in logs.
-
-### "A deploy rolled back"
-
-CFN rolled back means the new state failed to provision. Look at:
-
-```bash
-aws cloudformation describe-stack-events --profile gdp-dev \
-  --stack-name GdpBackendDev \
-  --query 'StackEvents[?ResourceStatus==`UPDATE_FAILED`||ResourceStatus==`CREATE_FAILED`].[ResourceType,LogicalResourceId,ResourceStatusReason]' \
-  --output table | head -30
-```
-
-The first failure is the root cause — subsequent failures are usually
-"can't update X because Y also failed".
-
-Common rollback causes:
-
-- Secrets Manager / SSM parameter doesn't exist (CFN can't resolve
-  dynamic reference). Fix: create the missing param/secret.
-- IAM policy too large or recursive grant. Fix: split into multiple
-  policy attachments.
-- Lambda asset bundle changed in a way that broke `npm run validate:bundle`
-  — but you'd have caught that locally before this happened.
-
-### "Payment is stuck in `pending`"
-
-A payment row exists with `status: pending` but no webhook arrived after
-30 minutes. Either TrueLayer never sent the webhook, or our webhook
-endpoint rejected it.
-
-1. Check our `/webhooks/truelayer` endpoint logs for that
-   `providerPaymentId` — if it appears with 401, JWS verification
-   failed (likely a JWKS rotation or our `path` arg drifted from the
-   route mount). If it doesn't appear, TrueLayer never delivered.
-2. TrueLayer dashboard → Webhook deliveries — see retry attempts and
-   response codes.
-3. If TrueLayer says it delivered but we don't have it: our endpoint
-   was unreachable (Lambda init failure?) or our return status caused
-   them to give up.
-
-**Mitigation:** worst case, manually `aws dynamodb update-item …` to
-flip the payment status based on the truth in TrueLayer's dashboard.
-For v0 with a mock provider this code path is exercised by tests, not
-real money.
-
-## Tools you'll probably want
-
-```bash
-# Tail logs live
-aws logs tail "GdpBackendDev-ApiHandlerLogs..." --profile gdp-dev --follow --since 5m
-
-# All alarms current state
-aws cloudwatch describe-alarms --profile gdp-dev \
-  --alarm-name-prefix gdp-dev- \
-  --query 'MetricAlarms[].[AlarmName,StateValue,StateReason]' --output table
-
-# Stack outputs (api url, table name, etc.)
-aws cloudformation describe-stacks --profile gdp-dev \
-  --stack-name GdpBackendDev --query 'Stacks[0].Outputs' --output table
-
-# Recent deploys (CFN history)
-aws cloudformation describe-stack-events --profile gdp-dev \
-  --stack-name GdpBackendDev --max-items 10 \
-  --query 'StackEvents[].[Timestamp,ResourceStatus,LogicalResourceId,ResourceStatusReason]' \
-  --output table
-```
+The first failure is the cause. Usually a missing secret or SSM parameter: create it in eu-west-2 and redeploy.

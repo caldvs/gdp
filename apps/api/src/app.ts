@@ -25,6 +25,14 @@ import {
   AmazonLocationVenueResolver,
   amazonLocationSearch,
 } from './services/bills/locationVenueResolver.js';
+import {
+  createReadRunner,
+  createReadService,
+  inProcessDispatcher,
+  lambdaSelfDispatcher,
+  type ReadDispatcher,
+  type ReadJob,
+} from './services/bills/readService.js';
 import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
@@ -62,6 +70,8 @@ export interface AppDeps {
   stripe?: Stripe | null;
   stripeWebhookSecret?: string;
   tableFeeStore?: TableFeeStore;
+  /** How a background bill read is started. Omit: a self-invoke on Lambda, in-process elsewhere. */
+  readDispatcher?: ReadDispatcher;
 }
 
 const sessionJwtSecretFromEnv = (): Uint8Array => {
@@ -108,15 +118,29 @@ const defaultPaymentProvider = (): PaymentProvider | null => {
   return new MockTrueLayerProvider(secret);
 };
 
+const defaultBillParser = (): BillParser =>
+  createBillParser({
+    bedrockModelId: env.BEDROCK_MODEL_ID,
+    region: env.AWS_REGION,
+  });
+
+/**
+ * On Lambda the read must run in its own invocation: once the response is
+ * sent, this one is frozen. Elsewhere (local dev, tests) it runs in-process.
+ */
+const defaultReadDispatcher = (run: (job: ReadJob) => Promise<void>): ReadDispatcher => {
+  const fn = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  return fn ? lambdaSelfDispatcher(fn, env.AWS_REGION) : inProcessDispatcher(run);
+};
+
 export const createApp = (deps: AppDeps = {}): Hono => {
   const app = new Hono();
-  const billParser =
-    deps.billParser ??
-    createBillParser({
-      bedrockModelId: env.BEDROCK_MODEL_ID,
-      region: env.AWS_REGION,
-    });
+  const billParser = deps.billParser ?? defaultBillParser();
   const venueResolver = deps.venueResolver ?? defaultVenueResolver();
+  const runRead = createReadRunner({ parser: billParser, venueResolver });
+  const reads = createReadService({
+    dispatch: deps.readDispatcher ?? defaultReadDispatcher(runRead),
+  });
   const emailSender = deps.emailSender ?? createDefaultEmailSender();
   const sessionJwtSecret =
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);
@@ -161,7 +185,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     );
   }
   app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
-  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver }));
+  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver, reads }));
   app.route(
     '/v1/sessions',
     buildSessionRoutes({
@@ -214,3 +238,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
 };
 
 export const app = createApp();
+
+/** Runs a background bill read sent to this Lambda (see lambda.ts). */
+export const runBillRead = createReadRunner({
+  parser: defaultBillParser(),
+  venueResolver: defaultVenueResolver(),
+});

@@ -175,12 +175,11 @@ class GdpBackendStack extends cdk.Stack {
       depsLockFilePath: path.join(REPO_ROOT, 'package-lock.json'),
       handler: 'handler',
       memorySize: 1024,
-      // 30s is the API Gateway HTTP API integration timeout cap. Bumped
-      // from 25s after a complex receipt (HEIC source, large JPEG after
-      // conversion) made a bill read take 25001ms and the Lambda was
-      // killed mid-flight. Most parses come back in 6-15s; the buffer
-      // covers cold-start + complex images.
-      timeout: cdk.Duration.seconds(30),
+      // API Gateway gives up on a request at 30s whatever this says, and the
+      // synchronous /v1/bills/parse budgets itself under that. 60s is for
+      // background bill reads (POST /v1/bills/reads), which this function
+      // runs by invoking itself, outside API Gateway, with a 45s budget.
+      timeout: cdk.Duration.seconds(60),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         // Node and libraries run in production mode everywhere deployed;
@@ -311,6 +310,21 @@ class GdpBackendStack extends cdk.Stack {
         resources: ['*'],
       }),
     );
+    // Background bill reads: the function invokes itself asynchronously.
+    // Named by pattern rather than fn.functionArn, which would make the
+    // role's policy depend on the function that depends on the role.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:${this.region}:${this.account}:function:${this.stackName}-ApiHandler*`,
+        ],
+      }),
+    );
+    // A read records its own failure, so Lambda shouldn't retry it, and one
+    // that waited minutes in the queue is no use to someone at the table.
+    fn.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: cdk.Duration.minutes(2) });
+
     // Lets this environment's GitHub deploy role (infra/githubDeploy.ts)
     // invoke the function directly for that check. Granted here rather than
     // in that stack so the normal CI deploy keeps it in step with the function.

@@ -16,7 +16,7 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
   Avatar, Back, Backdrop, Btn, Check, Fab, Hero, KV, Label, List, Notice, Paid, Price, QrIcon, Row, RowBody, Screen, Sheet, Tick, TopBar, firstName,
 } from '@/components/glass';
-import { itemStatuses } from './guest';
+import { Stepper, itemStatuses } from './guest';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -126,6 +126,18 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           {statuses.map(({ item, left, mine, who }) => {
             const others = who.filter((n) => n !== 'you');
             const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
+            if (mine > 0 && item.quantity > 1) {
+              // Yours, more than one on the line: a − n + stepper, so you
+              // can go from 3 to 0 and not just bounce between 3 and 2.
+              return (
+                <div key={item.itemId} className="g-row g-row--on" style={{ gap: 10 }}>
+                  <Check on />
+                  <RowBody name={name} sub={others.length ? `${others.join(', ')} · ${formatGBP(item.unitPricePence)} each` : `${formatGBP(item.unitPricePence)} each`} />
+                  <Stepper n={mine} max={mine + left} busy={setClaims.isPending} onDec={() => dropOne(item.itemId)} onInc={() => takeOne(item.itemId)} name={item.name} />
+                  <Price>{formatGBP(item.unitPricePence * mine)}</Price>
+                </div>
+              );
+            }
             if (left > 0) {
               // Still open: tap takes one for the lead.
               const sub = [others.length ? others.join(', ') : null, item.quantity > 1 ? `${left} left · ${formatGBP(item.unitPricePence)} each` : null].filter(Boolean).join(' · ');
@@ -138,12 +150,12 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
               );
             }
             if (mine > 0) {
-              // Yours: tap hands one back.
+              // Yours: tap hands it back.
               return (
                 <Row key={item.itemId} on onClick={() => dropOne(item.itemId)} disabled={setClaims.isPending} ariaLabel={`Hand back ${item.name}`}>
                   <Check on />
-                  <RowBody name={name} sub={others.length ? `${others.join(', ')} and you` : 'you'} />
-                  <Price>{formatGBP(item.unitPricePence * mine)}</Price>
+                  <RowBody name={name} sub="you" />
+                  <Price>{formatGBP(item.unitPricePence)}</Price>
                 </Row>
               );
             }

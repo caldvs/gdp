@@ -137,6 +137,39 @@ test('two guests grab the last Negroni: the second is refused and their row snap
   expect(api.participants.find((p) => p.userId === 'u-tom')!.claimedItemIds).toEqual([]);
 });
 
+test('#123: a row someone else just took flashes who took it, then settles to an avatar', async ({ browser }) => {
+  const api = new FakeApi({ leadClaims: [] });
+  const sam = await diner(browser, api, users.sam);
+  const tom = await diner(browser, api, users.tom);
+
+  await expect(tom.getByRole('button', { name: 'Tick Calamari' })).toBeVisible();
+  await sam.getByRole('button', { name: 'Tick Calamari' }).click();
+
+  // Tom's row never disappears — it flashes "Sam took it" and settles to her initial.
+  await expect(tom.locator('.row__sub', { hasText: 'Sam took it' })).toBeVisible(POLL);
+  await expect(tom.getByText('Calamari')).toBeVisible();
+  await expect(tom.getByText('Sam', { exact: true })).toBeVisible();
+});
+
+test('#123: Hide taken folds rows someone else has fully claimed, Show taken brings them back', async ({ browser }) => {
+  const api = new FakeApi({ leadClaims: [] });
+  api.join(users.sam);
+  api.participants[1]!.claimedItemIds = [items[0]!.itemId, items[1]!.itemId];
+  const tom = await diner(browser, api, users.tom);
+
+  await expect(tom.getByText('Olives')).toBeVisible();
+  await expect(tom.getByText('Calamari')).toBeVisible();
+  await tom.getByRole('button', { name: 'Hide taken' }).click();
+
+  await expect(tom.getByText('Olives')).toHaveCount(0);
+  await expect(tom.getByText('Calamari')).toHaveCount(0);
+  await expect(tom.getByRole('button', { name: 'Show taken (2)' })).toBeVisible();
+
+  await tom.getByRole('button', { name: 'Show taken (2)' }).click();
+  await expect(tom.getByText('Olives')).toBeVisible();
+  await expect(tom.getByText('Calamari')).toBeVisible();
+});
+
 test('service charge: amounts are projected with service and add up to the lead’s "to come"', async ({ browser }) => {
   const api = new FakeApi({ serviceRate: 0.125 });
   const lead = await diner(browser, api, users.lead);

@@ -265,6 +265,11 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .pick--taken { color: var(--mute); }
 .pick--taken .row__sub { color: var(--mute); }
 .pick .row__end { flex: none; }
+/* A row someone else just changed (#123): a brief pale fade, never a reflow. */
+.pick--changed { animation: pick-changed 2s ease-out; }
+@keyframes pick-changed { from { background: var(--warn-bg); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .pick--changed { animation: none; } }
+.pick--fold { color: var(--mute); justify-content: center; cursor: pointer; background: none; border: 0; width: 100%; font: inherit; }
 .tick { flex: none; width: 24px; height: 24px; border: 2px solid var(--line-strong); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; background: var(--bg); }
 .tick--on { background: var(--accent); border-color: var(--accent); }
 .tick--done { background: var(--line); border-color: var(--line); color: var(--faint); }
@@ -275,6 +280,10 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .avatar--you { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes arrive { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .avatar { animation: none; } }
+.avatar--sm { width: 24px; height: 24px; font-size: 11px; border-width: 1px; }
+.avatar-stack { flex: none; display: inline-flex; }
+.avatar-stack .avatar + .avatar { margin-left: -6px; }
+.avatar-stack .avatar--more { background: var(--hover); color: var(--mute); }
 .diners { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .diner { display: flex; align-items: center; gap: 8px; font-size: 15px; min-height: 44px; }
 .tools { display: flex; gap: 8px; flex-wrap: wrap; }

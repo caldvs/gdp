@@ -488,7 +488,8 @@ export const sessionStore = {
     );
     const metaBySessionId = new Map<string, Omit<Session, 'participants'>>();
     for (const raw of metaRes.Responses?.[TABLE_NAME] ?? []) {
-      const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
+      // ttlAt is storage-only (epoch seconds for DynamoDB TTL).
+      const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ttlAt: _ttl, ...rest } = raw;
       const meta = rest as Omit<Session, 'participants'>;
       metaBySessionId.set(meta.sessionId, meta);
     }

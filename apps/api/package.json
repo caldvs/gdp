@@ -30,7 +30,8 @@
     "validate:bundle": "tsx scripts/validate-bundle.ts",
     "deploy:dev": "npm run validate:bundle && cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
     "precommit": "lint-staged",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "golden": "tsx scripts/golden-receipts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1161.0",
@@ -58,6 +59,8 @@
     "@types/node": "^22.10.0",
     "@types/uuid": "^10.0.0",
     "@vitest/coverage-v8": "^4.1.12",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "aws-cdk": "^2.170.0",
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.0",
@@ -70,7 +73,8 @@
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.3",
-    "vitest": "^4.1.12"
+    "vitest": "^4.1.12",
+    "yaml": "^2.9.1"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [

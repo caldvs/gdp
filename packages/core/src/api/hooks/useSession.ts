@@ -257,6 +257,16 @@ export function useCloseSession(sessionId: string) {
   });
 }
 
+/**
+ * Email the caller their bill report: every diner for the lead, just
+ * themselves for a guest. Everyone also gets one when the lead closes.
+ */
+export function useEmailReport(sessionId: string) {
+  return useMutation<{ sent: boolean }, ApiError, void>({
+    mutationFn: () => api<{ sent: boolean }>(`/v1/sessions/${sessionId}/report`, { method: 'POST' }),
+  });
+}
+
 export function useAbandonSession(sessionId: string) {
   const qc = useQueryClient();
   return useMutation<Session, ApiError, void>({

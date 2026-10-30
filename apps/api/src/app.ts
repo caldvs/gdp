@@ -15,6 +15,7 @@ import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
+import { createReportService } from './services/sessions/reportService.js';
 import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createDefaultBillParser } from './services/bills/geminiParser.js';
@@ -149,6 +150,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     buildSessionRoutes({
       idTokenVerifier,
       paymentProvider,
+      reports: createReportService({ emailSender }),
     }),
   );
   app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));

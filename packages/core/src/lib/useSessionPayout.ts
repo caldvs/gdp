@@ -3,13 +3,12 @@ import { readSessionPayout } from './sessionPayout';
 import type { PayoutAccount } from './payoutAccount';
 
 // useSessionPayout(sessionId) — guest-side hook returning the lead's
-// payout details for this session, sourced from the QR fragment stashed
-// at join time. Returns null once the 10-minute TTL has expired (the
-// underlying read clears the stale value).
+// payout details for this session, as accepted from the QR / join link.
+// They stay on the device until the guest has paid or GUEST_KEEP_MS
+// passes (see sessionPayout.ts).
 //
-// Polls every 30 s so screens stay correct around the TTL boundary
-// without needing manual refresh. Cheap — it's a single sessionStorage
-// + JSON.parse per tick.
+// Re-reads every 30 s so a clear from another tab shows up. Cheap — a
+// single localStorage read + JSON.parse per tick.
 
 export function useSessionPayout(sessionId: string | undefined): {
   data: PayoutAccount | null;

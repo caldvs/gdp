@@ -14,6 +14,7 @@ import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, s
 import type { PayoutAccount } from '@gdp/core/lib/payoutAccount';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
+import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useScreenTitle } from '@/lib/screen';
 import { BillImageModal } from '@/components/BillImageModal';
 import { ConfirmDialog } from '@/components/Dialog';
@@ -668,6 +669,8 @@ function SettledLayout({ s, b, meUserId, isCreator }: { s: Session; b: Bill; meU
   const myParticipant = s.participants.find((p) => p.userId === meUserId);
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = host?.displayName.split(' ')[0]?.toLowerCase() ?? 'the host';
+  // Settled: nobody needs the host's bank details any more.
+  useEffect(() => { clearSessionPayout(s.sessionId); }, [s.sessionId]);
   return (
     <div className="screen stack">
       <VenueHead bill={b} onViewBill={() => setImageOpen(true)} titleOverride="Settled" />

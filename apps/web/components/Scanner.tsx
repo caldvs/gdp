@@ -11,7 +11,7 @@ import { useRouter } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { useUploadAndParse } from '@gdp/core/api/hooks/useUploadAndParse';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
-import { ActionBar, Button, Page, Spinner, Title } from './ui';
+import { ActionBar, BillSkeleton, Button, Page, Title } from './ui';
 
 export type ScanError = { title: string; body?: string };
 
@@ -100,9 +100,13 @@ export function useScanner() {
   const reading: ReactNode = busy ? (
     <>
       <Page>
-        <Title title={busy === 'processing' ? 'Getting your photo ready' : 'Reading your bill'} sub={slow ? 'Long bill? Nearly there.' : 'Usually a few seconds.'} />
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}><Spinner label="Reading your bill" /></div>
-        {photo ? <img src={photo.uri} alt="Your bill" className="photo-thumb" /> : null}
+        <div className="reading-head">
+          {photo ? <img src={photo.uri} alt="Your bill" className="reading-thumb" /> : <span className="skel reading-thumb" aria-hidden="true" />}
+          <div role="status" aria-live="polite">
+            <Title title={busy === 'processing' ? 'Getting your photo ready' : 'Reading your bill'} sub={slow ? 'Long bill? Nearly there.' : 'Usually a few seconds.'} />
+          </div>
+        </div>
+        <BillSkeleton />
       </Page>
       <ActionBar><Button tone="secondary" onClick={cancel}>Cancel</Button></ActionBar>
     </>

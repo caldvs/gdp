@@ -3,17 +3,34 @@ import { AppError } from '../errors/AppError.js';
 import { userStore } from '../storage/userStore.js';
 import type { PayoutAccount } from '../types/users.js';
 
-// Default payout account auto-merged into every dev:* user on first auth.
-// Convenience so you don't have to fill in the payout-account form for
-// every new test identity. Bank-detail fields are seeded only when missing
-// (so manual edits via the form are preserved); monzoHandle is always set
-// if missing so the Monzo deep-link button shows up.
-const DEV_DEFAULT_PAYOUT: PayoutAccount = {
-  sortCode: '040004',
-  accountNumber: '16588257',
-  accountHolderName: 'Callum Davies',
-  monzoHandle: 'callumd',
-};
+// Deterministic-per-user dev payout. Each `dev:<userId>` gets a stable
+// but distinct sort code + account number + display name, so when one
+// guest pays another dev user the guest doesn't see "Callum Davies"
+// on every test session. Bank-detail fields are seeded only when
+// missing (manual edits via /payout-account form are preserved).
+function devPayoutFor(userId: string): PayoutAccount {
+  // Cheap deterministic hash — stable across restarts, distinct per
+  // user. Not cryptographic; we're just generating fake numbers.
+  let hash = 0;
+  for (let i = 0; i < userId.length; i += 1) {
+    hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+  }
+  const sortCode = String(hash % 1_000_000).padStart(6, '0');
+  const accountNumber = String((hash * 17) % 100_000_000).padStart(8, '0');
+  const name = userId.charAt(0).toUpperCase() + userId.slice(1) + ' Diner';
+  // Deliberately NO monzoHandle / revolutTag here. Previously this
+  // function set `monzoHandle: userId`, which on the client side
+  // produces a `monzo.me/<userId>` deep link — those handles ARE
+  // real on Monzo's public profile site and resolve to unrelated
+  // strangers. Without a handle the frontend skips the deep link
+  // buttons and the only payment path shown is the (obviously fake)
+  // sort code + account number, which goes nowhere.
+  return {
+    sortCode,
+    accountNumber,
+    accountHolderName: name,
+  };
+}
 
 // In-process cache so we only attempt the seed once per userId per process.
 const seededOnce = new Set<string>();
@@ -23,19 +40,39 @@ async function seedIfMissing(userId: string): Promise<void> {
   seededOnce.add(userId);
   try {
     const existing = await userStore.get(userId);
+    const defaults = devPayoutFor(userId);
+
+    // Migration path. Two stale seeds we want to overwrite:
+    //   v1: every dev user got "Callum Davies / 040004 / 16588257".
+    //   v2: per-user fake bank details BUT monzoHandle = userId, which
+    //       resolves to a real (unrelated) Monzo public profile page.
+    // Both are overwritten with the new safe defaults (no Monzo handle).
+    // Anything else — including manually-entered details from the
+    // /payout-account form — is preserved.
+    const isV1OldShared =
+      existing?.payoutAccount?.accountHolderName === 'Callum Davies' &&
+      existing?.payoutAccount?.sortCode === '040004' &&
+      existing?.payoutAccount?.accountNumber === '16588257';
+    const isV2BadMonzoHandle = existing?.payoutAccount?.monzoHandle === userId;
+
+    if (isV1OldShared || isV2BadMonzoHandle || !existing?.payoutAccount) {
+      await userStore.setPayoutAccount(userId, defaults);
+      return;
+    }
+
     // Merge: keep any field the user has explicitly set, fill in the rest
-    // from the dev defaults.
+    // from the deterministic dev defaults.
     const merged: PayoutAccount = {
-      sortCode: existing?.payoutAccount?.sortCode ?? DEV_DEFAULT_PAYOUT.sortCode,
-      accountNumber: existing?.payoutAccount?.accountNumber ?? DEV_DEFAULT_PAYOUT.accountNumber,
+      sortCode: existing.payoutAccount.sortCode ?? defaults.sortCode,
+      accountNumber: existing.payoutAccount.accountNumber ?? defaults.accountNumber,
       accountHolderName:
-        existing?.payoutAccount?.accountHolderName ?? DEV_DEFAULT_PAYOUT.accountHolderName,
-      ...((existing?.payoutAccount?.monzoHandle ?? DEV_DEFAULT_PAYOUT.monzoHandle)
+        existing.payoutAccount.accountHolderName ?? defaults.accountHolderName,
+      ...((existing.payoutAccount.monzoHandle ?? defaults.monzoHandle)
         ? {
-            monzoHandle: existing?.payoutAccount?.monzoHandle ?? DEV_DEFAULT_PAYOUT.monzoHandle,
+            monzoHandle: existing.payoutAccount.monzoHandle ?? defaults.monzoHandle,
           }
         : {}),
-      ...(existing?.payoutAccount?.revolutTag
+      ...(existing.payoutAccount.revolutTag
         ? { revolutTag: existing.payoutAccount.revolutTag }
         : {}),
     };

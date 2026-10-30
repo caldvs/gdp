@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { ParsedBillFromImageSchema, type ParsedBillFromImage } from './parser.js';
-import { applyDiscounts, type Discount } from './discounts.js';
+import { applyDiscounts, splitTotal, type Discount } from './discounts.js';
 
 /** What the bill reader is asked to return. */
 export const PROMPT = `You are parsing a UK restaurant bill image into structured JSON for a bill-splitting app.
@@ -10,10 +10,13 @@ RULES:
 - All monetary amounts are integer PENCE (e.g. "£12.50" → 1250).
 - Currency is "GBP".
 - "items" should be top-level line items only. Do not separate sub-modifiers (e.g. "extra cheese") unless they appear as their own priced line on the bill.
-- If the same item appears N times with the same price, group as quantity: N (single line, not duplicates).
+- "quantity" is the number printed at the start of the line (1 if there isn't one). "lineTotalPence" is the amount printed at the end of the line: the price of all of them together, not one ("3 House Red = 21.00" → quantity 3, lineTotalPence 2100). Copy the printed amount; don't divide or multiply.
+- A long name can wrap onto the next line, and a size line ("125ml", "250ml") can sit between the quantity and the name. The quantity and size belong to the item whose amount is printed next ("2 / 175ml / Pinot Grigio = 16.00" → "Pinot Grigio 175ml", quantity 2, lineTotalPence 1600). Put the size in the name.
+- One printed line is one item. Never merge two printed lines, even with the same name: sizes and prices differ.
+- Indented lines with their own amount ("Add Bacon = 2.00") are extras: list them as their own item.
 - "category": "food" for edible plates, "drink" for beverages (alcoholic or not), "other" for cover charges and fees.
-- Every item's "unitPricePence" is zero or more. A line with a minus price (a discount, deal, promotion or comp, e.g. "Coffee & Cannoli LRG = -4.00") is NOT an item: put it in "discounts" with "amountPence" as a positive number, and "appliesTo" set to the exact "name" of the item in "items" it reduces (e.g. the cannoli for a coffee-and-cannoli deal). Omit "appliesTo" for a discount on the whole bill (e.g. "10% off food") or when you can't tell which item it belongs to.
-- Deposits, prepayments and gift cards taken off at the end ("Deposit Red -£130.00") are NOT items or discounts: leave them out. "totalPence" is the total before any deposit is taken off, not the balance left to pay.
+- Every item's "lineTotalPence" is zero or more. A line with a minus amount (a discount, deal, promotion or comp, e.g. "Pizza & Pint Deal = -3.00") is NOT an item: put it in "discounts" with "amountPence" as a positive number, and "appliesTo" set to the exact "name" of the item in "items" it reduces (e.g. the pizza for a pizza-and-pint deal). Omit "appliesTo" for a discount on the whole bill (e.g. "10% off food") or when you can't tell which item it belongs to.
+- Deposits, prepayments and gift cards taken off at the end ("Deposit -£50.00", "Prepaid") are NOT items or discounts: leave them out. "totalPence" is the total before any deposit is taken off, not the balance left to pay.
 - "course" (food items only; omit for drinks and other): "starter" for starters, small plates, antipasti and nibbles like olives or bread; "main" for main dishes, pizzas, pastas, burgers and grills; "side" for sides like chips, fries, salads served alongside, vegetables or extra sauces; "dessert" for desserts, ice cream and cheese boards. Use section headings printed on the bill when present; otherwise judge from the dish name and price. If genuinely unsure, omit it.
 - DO NOT include service charge or tax in items. They are separate top-level fields.
 - DO NOT invent items.
@@ -23,7 +26,7 @@ RULES:
 
 Return ONLY valid JSON matching this schema, no preamble:
 {
-  "items": [{"name": string, "unitPricePence": int, "quantity": int, "category": "food"|"drink"|"other", "course"?: "starter"|"main"|"side"|"dessert"}],
+  "items": [{"name": string, "quantity": int, "lineTotalPence": int, "category": "food"|"drink"|"other", "course"?: "starter"|"main"|"side"|"dessert"}],
   "discounts"?: [{"name": string, "amountPence": int, "appliesTo"?: string}],
   "taxPence": int,
   "serviceChargePence": int,
@@ -75,25 +78,29 @@ const DiscountSchema = z.object({
     .transform((v) => v ?? undefined),
 });
 
-type RawItem = { name: string; unitPricePence: number; quantity: number };
+/** An item as the model gives it: a line total (asked for) or a unit price (older answers). */
+type RawItem = { name: string; quantity: number; lineTotalPence?: number; unitPricePence?: number };
+const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
 const isRawItem = (v: unknown): v is RawItem => {
   const o = v as Partial<RawItem> | null;
   return (
     typeof o?.name === 'string' &&
-    typeof o.unitPricePence === 'number' &&
-    Number.isInteger(o.unitPricePence) &&
-    typeof o.quantity === 'number' &&
-    Number.isInteger(o.quantity) &&
-    o.quantity > 0
+    isInt(o.quantity) &&
+    o.quantity > 0 &&
+    (isInt(o.lineTotalPence) || isInt(o.unitPricePence))
   );
 };
+const sameName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const lineTotal = (it: RawItem): number => it.lineTotalPence ?? it.unitPricePence! * it.quantity;
 
 /**
- * Folds discount lines into their items before validation, so a bill with a
- * "-4.00" deal line reads instead of failing. Takes the `discounts` the
- * prompt asks for, and also any item the model still gave a minus price
- * (shared across the bill, since it named no item). Leaves anything it
- * doesn't understand for the schema to reject.
+ * Turns the model's lines into priced items before validation. Each line's
+ * printed total becomes a unit price (the model copies amounts; we do the
+ * division, splitting a line that doesn't divide evenly). Discount lines are
+ * folded into their items, so a bill with a "-4.00" deal line reads instead
+ * of failing: the `discounts` the prompt asks for, and any line the model
+ * still gave a minus amount. Leaves anything it doesn't understand for the
+ * schema to reject.
  */
 function foldDiscounts(parsed: unknown): unknown {
   if (typeof parsed !== 'object' || parsed === null) return parsed;
@@ -106,10 +113,18 @@ function foldDiscounts(parsed: unknown): unknown {
         return r.success ? [r.data] : [];
       })
     : [];
-  const items = rest.items.filter((it) => {
-    if (it.unitPricePence >= 0) return true;
-    discounts.push({ name: it.name, amountPence: it.unitPricePence * it.quantity });
-    return false;
+  // The model sometimes lists a discount again as an item with a plus amount:
+  // drop that copy, or the bill charges for the discount.
+  const discountNames = new Set(discounts.map((d) => sameName(d.name)));
+  const items = rest.items.flatMap((raw) => {
+    if (discountNames.has(sameName(raw.name))) return [];
+    const total = lineTotal(raw);
+    if (total < 0) {
+      discounts.push({ name: raw.name, amountPence: total });
+      return [];
+    }
+    const { lineTotalPence: _total, ...it } = raw;
+    return splitTotal({ ...it, unitPricePence: 0 }, total);
   });
   return { ...rest, items: applyDiscounts(items, discounts) };
 }

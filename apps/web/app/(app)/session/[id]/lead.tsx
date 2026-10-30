@@ -16,26 +16,16 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
   Avatar, Back, Backdrop, Btn, Check, Fab, Hero, KV, Label, List, Notice, Paid, Price, QrIcon, Row, RowBody, Screen, Sheet, Tick, TopBar, firstName,
 } from '@/components/glass';
+import { itemStatuses } from './guest';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
 type Participant = components['schemas']['Participant'];
-type BillItem = components['schemas']['BillItem'];
 
 function owedFor(s: Session, b: Bill, p: Participant): number {
   return p.owedPence ?? projectOwedPence(s, b, p.userId);
 }
 const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment.status === 'self_paid';
-
-/** How many of each item are still nobody's (claims and splits both count). */
-function unclaimedUnits(s: Session, b: Bill): { item: BillItem; left: number }[] {
-  const taken = new Map<string, number>();
-  for (const p of s.participants) for (const id of p.claimedItemIds) taken.set(id, (taken.get(id) ?? 0) + 1);
-  for (const sh of s.shares ?? []) if (sh.userIds.length > 0) taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + 1);
-  return b.items
-    .map((item) => ({ item, left: Math.max(0, item.quantity - (taken.get(item.itemId) ?? 0)) }))
-    .filter((x) => x.left > 0);
-}
 
 /* ============================ setup ============================ */
 
@@ -78,7 +68,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const toCome = guests.reduce((acc, p) => (isPaid(p) ? acc : acc + owedFor(s, b, p)), 0);
   const paidCount = guests.filter(isPaid).length;
-  const unclaimed = useMemo(() => unclaimedUnits(s, b), [s, b]);
+  const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
+  const unclaimed = statuses.filter((x) => x.left > 0);
   const unclaimedPence = unclaimed.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0);
 
   // Tapping an unclaimed item makes it the lead's. Tapping again hands it back.
@@ -94,12 +85,6 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     next.splice(i, 1);
     setClaims.mutate({ claimedItemIds: next });
   };
-  const mine = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const id of me?.claimedItemIds ?? []) m.set(id, (m.get(id) ?? 0) + 1);
-    return m;
-  }, [me]);
-
   const hero = guests.length === 0
     ? <Hero title="Nobody's joined yet" note="Show the QR" />
     : toCome > 0
@@ -136,40 +121,43 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           </>
         ) : null}
 
-        {unclaimed.length > 0 ? (
-          <>
-            <Label>Unclaimed · {formatGBP(unclaimedPence)}</Label>
-            <List>
-              {unclaimed.map(({ item, left }) => (
+        <Label>{unclaimed.length > 0 ? `Unclaimed · ${formatGBP(unclaimedPence)}` : 'Everything’s claimed'}</Label>
+        <List>
+          {statuses.map(({ item, left, mine, who }) => {
+            const others = who.filter((n) => n !== 'you');
+            const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
+            if (left > 0) {
+              // Still open: tap takes one for the lead.
+              const sub = [others.length ? others.join(', ') : null, item.quantity > 1 ? `${left} left · ${formatGBP(item.unitPricePence)} each` : null].filter(Boolean).join(' · ');
+              return (
                 <Row key={item.itemId} onClick={() => takeOne(item.itemId)} disabled={setClaims.isPending} ariaLabel={`Take ${item.name}`}>
                   <Check on={false} />
-                  <RowBody name={left > 1 ? `${left}× ${item.name}` : item.name} sub={left > 1 ? `${formatGBP(item.unitPricePence)} each` : undefined} />
+                  <RowBody name={name} sub={sub || undefined} />
                   <Price>{formatGBP(item.unitPricePence * left)}</Price>
                 </Row>
-              ))}
-            </List>
-            <p className="g-foot-note">Tap to take one yourself. Anything left is yours when you close.</p>
-          </>
-        ) : null}
-
-        {mine.size > 0 ? (
-          <>
-            <Label>Yours</Label>
-            <List>
-              {[...mine.entries()].map(([itemId, n]) => {
-                const item = b.items.find((x) => x.itemId === itemId);
-                if (!item) return null;
-                return (
-                  <Row key={itemId} on onClick={() => dropOne(itemId)} disabled={setClaims.isPending} ariaLabel={`Hand back ${item.name}`}>
-                    <Check on />
-                    <RowBody name={n > 1 ? `${n}× ${item.name}` : item.name} />
-                    <Price>{formatGBP(item.unitPricePence * n)}</Price>
-                  </Row>
-                );
-              })}
-            </List>
-          </>
-        ) : null}
+              );
+            }
+            if (mine > 0) {
+              // Yours: tap hands one back.
+              return (
+                <Row key={item.itemId} on onClick={() => dropOne(item.itemId)} disabled={setClaims.isPending} ariaLabel={`Hand back ${item.name}`}>
+                  <Check on />
+                  <RowBody name={name} sub={others.length ? `${others.join(', ')} and you` : 'you'} />
+                  <Price>{formatGBP(item.unitPricePence * mine)}</Price>
+                </Row>
+              );
+            }
+            // Someone else's: stays put, just dims.
+            return (
+              <div key={item.itemId} className="g-row g-row--done">
+                <span className="g-check g-check--done" aria-hidden><Tick size={14} /></span>
+                <RowBody name={name} sub={others.join(', ')} />
+                <Price mute>{formatGBP(item.unitPricePence * item.quantity)}</Price>
+              </div>
+            );
+          })}
+        </List>
+        {unclaimed.length > 0 ? <p className="g-foot-note">Tap to take one yourself. Anything left is yours when you close.</p> : null}
         {setClaims.isError ? <Notice error>{setClaims.error.message}</Notice> : null}
 
         <List>

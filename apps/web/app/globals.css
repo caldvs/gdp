@@ -882,3 +882,6 @@ img { max-width: 100%; }
    (ghost) and the bank name carries the meaning. */
 .quick-pay__btn--monzo, .quick-pay__btn--revolut { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
 .quick-pay__btn--monzo:hover, .quick-pay__btn--revolut:hover { background: var(--surface-2); filter: none; }
+
+/* ---------- Share page ---------- */
+.share-note { font-size: 13px; line-height: 1.4; color: var(--mute); text-align: center; max-width: 320px; margin: -8px 0 0; }

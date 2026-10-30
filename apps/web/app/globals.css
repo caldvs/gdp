@@ -23,6 +23,7 @@
   --ok-line: #b7dfc3;
   --warn-ink: #8a4b00;
   --warn-bg: #fff4e5;
+  --warn-line: #f5dca3;
   --err-ink: #a3201a;
   --err-bg: #fdecea;
   --err-line: #f5c2be;
@@ -171,6 +172,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .notice--ok { background: var(--ok-bg); border-color: var(--ok-line); color: #0f4d21; }
 .notice--error { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
 .notice--info { background: var(--bg); }
+.notice--warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
 .spin { width: 22px; height: 22px; border: 2.5px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
 .spin--light { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
 @keyframes spin { to { transform: rotate(360deg); } }

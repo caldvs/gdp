@@ -60,6 +60,27 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
 });
 
+test('a cut-off photo: no printed total to check, Retake photo goes back to scanning', async ({ browser }) => {
+  const api = new FakeApi({ noPrintedTotal: true });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('No total on the photo')).toBeVisible();
+  await expect(lead.getByText('Bottom cut off? We can\u2019t check the sum.')).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Retake photo' }).click();
+  await expect(lead.getByRole('heading', { name: 'Scan a bill' })).toBeVisible();
+});
+
+test('a printed total that matches the sum: no notice, shown as matching', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('No total on the photo')).toHaveCount(0);
+  await expect(lead.getByText('matches the receipt')).toBeVisible();
+});
+
 test('parse errors say what went wrong', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, '/');

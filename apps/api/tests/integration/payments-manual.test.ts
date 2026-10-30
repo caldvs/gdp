@@ -186,7 +186,7 @@ describe('POST /v1/payments/:id/confirm — collector marks manual receipt', () 
     expect(body.events.at(-1)?.source).toBe('api');
   });
 
-  it('settles the session when last guest is confirmed', async () => {
+  it('does not settle the session when the last guest is confirmed (the lead closes it)', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const guestA = `a-${uuidv7()}`;
@@ -201,7 +201,8 @@ describe('POST /v1/payments/:id/confirm — collector marks manual receipt', () 
     }
     const sess = await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(creator) });
     const body = (await sess.json()) as { status: string };
-    expect(body.status).toBe('settled');
+    // Everyone paying no longer settles the bill; the lead closes it.
+    expect(body.status).not.toBe('settled');
   });
 
   it('is idempotent — confirming twice returns the same succeeded payment', async () => {

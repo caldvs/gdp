@@ -192,7 +192,7 @@ describe('Session settlement', () => {
     await ensureBillsBucket();
   });
 
-  it('settles the session when every non-self_paid participant succeeds', async () => {
+  it('does not settle the session when every non-self_paid participant succeeds (the lead closes it)', async () => {
     const { app, provider } = buildApp();
     const creator = `c-${uuidv7()}`;
     const guestA = `a-${uuidv7()}`;
@@ -211,7 +211,8 @@ describe('Session settlement', () => {
       headers: makeAuth(creator),
     });
     const body = (await session.json()) as { status: string };
-    expect(body.status).toBe('settled');
+    // Everyone paying no longer settles the bill; the lead closes it.
+    expect(body.status).not.toBe('settled');
   });
 
   it('stays in paying while at least one non-self_paid participant has not yet succeeded', async () => {

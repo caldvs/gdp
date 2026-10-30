@@ -500,3 +500,78 @@ describe('Hybrid claim model: /ready + lock-claims precondition', () => {
     expect([404, 409]).toContain(res.status); // session not found or invalid state
   });
 });
+
+describe('POST /v1/sessions/:id/close', () => {
+  it('creator closes a claiming session with unclaimed items; it settles', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await setUpClaiming(app, creator, [guest]);
+
+    const res = await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { status: string }).status).toBe('settled');
+
+    // Idempotent.
+    const again = await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { status: string }).status).toBe('settled');
+  });
+
+  it('a guest cannot close', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await setUpClaiming(app, creator, [guest]);
+    const res = await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('cannot close a setup session', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const bill = await createBill(app, creator);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const sessionId = ((await create.json()) as { sessionId: string }).sessionId;
+    const res = await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('a guest who still owes can pay after the lead has closed', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, bill } = await setUpClaiming(app, creator, [guest]);
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [bill.items[1]?.itemId] }),
+    });
+    await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+
+    const pay = await app.request(`/v1/sessions/${sessionId}/payments`, {
+      method: 'POST',
+      headers: { 'idempotency-key': uuidv7(), ...makeAuth(guest) },
+    });
+    expect(pay.status).toBe(201);
+  });
+});

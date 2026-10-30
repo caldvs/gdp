@@ -238,7 +238,7 @@ export const paymentService = {
     };
     await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
 
-    await maybeSettleSession(
+    maybeSettleSession(
       { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
       input.logger,
     );
@@ -326,7 +326,7 @@ export const paymentService = {
     });
 
     if (next === 'succeeded') {
-      await maybeSettleSession(
+      maybeSettleSession(
         { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
         input.logger,
       );
@@ -416,19 +416,21 @@ function computeOwedForParticipant(
   return Math.round((claimSub + shareSub) * (1 + extrasRate));
 }
 
-async function maybeSettleSession(session: Session, logger?: Logger): Promise<void> {
-  // Trust-based shift: settlement can happen straight from `claiming`
-  // (when guests have paid without the lead ever calling lock-claims)
-  // or from the legacy `paying` state. Setup / settled / abandoned
-  // never auto-settle.
+/**
+ * Everyone paying does NOT settle the session any more. Only the lead's
+ * `POST /v1/sessions/:id/close` does: a bill can look complete while an
+ * item is still unclaimed or a split still has a seat open, and someone
+ * may yet join to take it. We just log the milestone.
+ */
+function maybeSettleSession(session: Session, logger?: Logger): void {
   if (session.status !== 'paying' && session.status !== 'claiming') return;
   const nonSelfPaid = session.participants.filter((p) => p.payment.status !== 'self_paid');
-  const allSucceeded = nonSelfPaid.every((p) => p.payment.status === 'succeeded');
-  if (!allSucceeded) return;
-
-  const { participants: _participants, ...meta } = session;
-  await sessionStore.putMeta({ ...meta, status: 'settled' });
-  logger?.info({ sessionId: session.sessionId }, 'session settled');
+  if (nonSelfPaid.every((p) => p.payment.status === 'succeeded')) {
+    logger?.info(
+      { sessionId: session.sessionId },
+      'everyone has paid; waiting for the lead to close',
+    );
+  }
 }
 
 function buildManualInstructions(args: {

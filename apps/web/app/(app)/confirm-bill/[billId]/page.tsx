@@ -7,6 +7,8 @@ import { api, ApiError, type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
 import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
+import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
+import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
@@ -55,6 +57,10 @@ function CheckBill() {
   const amend = useAmendBill(billId ?? '');
   const createSession = useCreateSession();
   const payout = usePayoutAccount();
+  // The table fee is paid on the last step before the QR code. Null = no
+  // fee here (Stripe not set up on the API or the web app).
+  const fee = useTableFeeStatus(billId, { enabled: !!STRIPE_PUBLISHABLE_KEY && !isMidSession });
+  const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
 
   const [items, setItems] = useState<DraftItem[]>([]);
   const [servicePounds, setServicePounds] = useState('0.00');
@@ -144,6 +150,14 @@ function CheckBill() {
       return;
     }
     if (!(await saveDraft())) return;
+    if (feeDue !== null) {
+      // Saving may have moved the bill across £100, so take the fee from the server.
+      const fresh = await fee.refetch();
+      if (fresh.data?.status === 'unpaid') {
+        router.push(`/table-fee/${billId}`);
+        return;
+      }
+    }
     try {
       const created = await createSession.mutateAsync({ billId });
       await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
@@ -243,7 +257,9 @@ function CheckBill() {
         {isMidSession ? (
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
-          <Button grow busy={busy} disabled={editing !== null || items.length === 0} onClick={onShare}>Continue</Button>
+          <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
+            {feeDue !== null && !isDirty ? `Pay ${formatGBP(feeDue)} fee & get QR code` : 'Continue'}
+          </Button>
         )}
       </ActionBar>
     </>

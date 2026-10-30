@@ -39,6 +39,8 @@ tags:
     description: Group dining sessions, the join flow, and claim management
   - name: payments
     description: Open Banking payments from participants to the collector
+  - name: billing
+    description: The lead's table fee, paid to Group Dine Pay through Stripe
   - name: webhooks
     description: Server-to-server callbacks from payment providers
   - name: ops
@@ -976,6 +978,77 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/billing/table-fee:
+    post:
+      tags: [billing]
+      operationId: startTableFeeCheckout
+      summary: Start paying the table fee for a bill
+      description: |
+        The lead pays a flat fee to share a bill: £2, or £3 when the bill total is over £100.
+        Creates a Stripe Checkout Session for the embedded form (`ui_mode: form`) and returns
+        its client secret. The payment is recorded only by the Stripe webhook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartTableFeeRequest' }
+      responses:
+        '200':
+          description: Client secret for the embedded form
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableFeeCheckout' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The fee for this bill is already paid (`TABLE_FEE_PAID`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: Stripe error, or no active price for the fee
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/billing/table-fee/{billId}:
+    parameters:
+      - in: path
+        name: billId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [billing]
+      operationId: getTableFeeStatus
+      summary: Whether the table fee for a bill is paid
+      responses:
+        '200':
+          description: Fee status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableFeeStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/stripe:
+    post:
+      tags: [webhooks]
+      operationId: stripeWebhook
+      summary: Stripe event webhook
+      description: |
+        Verified with the `Stripe-Signature` header and `STRIPE_WEBHOOK_SECRET`.
+        `checkout.session.completed` (and `checkout.session.async_payment_succeeded`) with
+        `payment_status: paid` records the bill's table fee. Every verified event gets `200`,
+        including repeats; an invalid signature gets `401`.
+      security: []
+      responses:
+        '200': { description: Event accepted }
+        '401':
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /webhooks/truelayer:
     post:
       tags: [webhooks]
@@ -1075,6 +1148,27 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   schemas:
+    StartTableFeeRequest:
+      type: object
+      required: [billId]
+      properties:
+        billId: { type: string, format: uuid }
+    TableFeeCheckout:
+      type: object
+      required: [client_secret, amountPence]
+      properties:
+        client_secret:
+          type: string
+          description: Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`.
+        amountPence: { type: integer, enum: [200, 300] }
+    TableFeeStatus:
+      type: object
+      required: [billId, status, amountPence]
+      properties:
+        billId: { type: string, format: uuid }
+        status: { type: string, enum: [paid, unpaid] }
+        amountPence: { type: integer }
+        paidAt: { type: string, format: date-time }
     ErrorResponse:
       type: object
       required: [error]
@@ -1108,6 +1202,7 @@ components:
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
                 - PAYOUT_ACCOUNT_REQUIRED
+                - TABLE_FEE_PAID
                 - INTERNAL_ERROR
             message: { type: string, description: Human-safe explanation }
             requestId: { type: string, description: Server request ID; cross-reference in support }

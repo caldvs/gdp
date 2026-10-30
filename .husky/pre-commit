@@ -1,2 +1,9 @@
+# Formats (prettier) and lints (eslint) staged API files, then typechecks.
+# Never skip this (no --no-verify, no core.hooksPath override): CI fails any
+# PR it would have fixed. If it can't run, install dependencies first.
+if [ ! -d node_modules ]; then
+  echo "pre-commit: dependencies aren't installed, so prettier can't run. Run 'npx npm@11 ci', then commit again." >&2
+  exit 1
+fi
 npm run precommit -w apps/api --if-present
 npm run typecheck

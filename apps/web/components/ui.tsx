@@ -85,9 +85,11 @@ export function RowLink({ href, ...p }: RowProps & { href: string }) {
   return <Link href={href} className={rowClass(p)}><RowInner chevron {...p} /></Link>;
 }
 
-export function RowButton({ onClick, label, disabled, ...p }: RowProps & { onClick: () => void; label?: string; disabled?: boolean }) {
+/** `action` ("Edit") is read out before the visible text, so the name still contains what's on screen. */
+export function RowButton({ onClick, label, action, disabled, ...p }: RowProps & { onClick: () => void; label?: string; action?: string; disabled?: boolean }) {
   return (
     <button type="button" className={rowClass(p)} onClick={onClick} aria-label={label} disabled={disabled}>
+      {action ? <span className="vh">{action} </span> : null}
       <RowInner {...p} />
     </button>
   );

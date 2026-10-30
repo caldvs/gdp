@@ -139,7 +139,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                     key={item.itemId}
                     on={inIt}
                     busy={busy}
-                    label={inIt ? `Leave the split for ${item.name}` : `Join the split for ${item.name}`}
+                    action={inIt ? 'Leave the split for' : 'Join the split for'}
                     onTap={() => (inIt ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
                     name={name}
                     sub={splitSub(s, share, meUserId)}
@@ -166,7 +166,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   <PickRow
                     key={item.itemId}
                     busy={busy}
-                    label={`Take ${item.name}`}
+                    action="Take"
                     onTap={() => takeOne(item.itemId)}
                     name={name}
                     sub={sub}
@@ -176,7 +176,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                 );
               }
               if (mine > 0) {
-                return <PickRow key={item.itemId} on busy={busy} label={`Hand back ${item.name}`} onTap={() => dropOne(item.itemId)} name={name} sub="You" price={formatGBP(item.unitPricePence)} />;
+                return <PickRow key={item.itemId} on busy={busy} action="Hand back" onTap={() => dropOne(item.itemId)} name={name} sub="You" price={formatGBP(item.unitPricePence)} />;
               }
               return <PickRow key={item.itemId} taken name={name} sub={others.join(', ')} price={formatGBP(item.unitPricePence * item.quantity)} />;
             })}

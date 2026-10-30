@@ -105,7 +105,7 @@ export default function PayPage() {
               <Box>
                 <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />
                 <CopyRow k="Sort code" v={fmtSort(bd.sortCode)} copied={copied === 's'} onCopy={() => copy('s', bd.sortCode)} />
-                <CopyRow k="Account no." v={bd.accountNumber} label="account number" copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
+                <CopyRow k="Account no." v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
                 {reference ? <CopyRow k="Reference" v={reference} copied={copied === 'r'} onCopy={() => copy('r', reference)} /> : null}
               </Box>
             ) : initiate.isPending ? (
@@ -129,9 +129,10 @@ export default function PayPage() {
   );
 }
 
-function CopyRow({ k, v, label, copied, onCopy }: { k: string; v: string; label?: string; copied: boolean; onCopy: () => void }) {
+function CopyRow({ k, v, copied, onCopy }: { k: string; v: string; copied: boolean; onCopy: () => void }) {
   return (
-    <button type="button" className="row" onClick={onCopy} aria-label={`Copy ${label ?? k.toLowerCase()}`}>
+    <button type="button" className="row" onClick={onCopy}>
+      <span className="vh">Copy </span>
       <span className="row__main"><span className="row__sub">{k}</span><span className="row__title" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span></span>
       <span style={{ color: copied ? 'var(--ok-ink)' : 'var(--mute)', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
         {copied ? <><TickIcon size={18} />Copied</> : <CopyIcon />}

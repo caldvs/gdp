@@ -127,7 +127,7 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   key={item.itemId}
                   on={inShare}
                   busy={busy}
-                  label={inShare ? `Leave the split for ${item.name}` : `Join the split for ${item.name}`}
+                  action={inShare ? 'Leave the split for' : 'Join the split for'}
                   onTap={() => (inShare ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
                   name={item.name}
                   sub={splitSub(s, share, meUserId)}
@@ -148,7 +148,7 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   key={item.itemId}
                   on={mine > 0}
                   busy={busy}
-                  label={mine > 0 ? `${item.name}: ${mine} of ${item.quantity}` : `Take one ${item.name}`}
+                  action={mine > 0 ? undefined : 'Take one'}
                   onTap={mine > 0 ? undefined : () => claimOne(item)}
                   name={`${item.name} × ${item.quantity}`}
                   sub={others > 0 && mine === 0 ? `${others} taken · ${formatGBP(item.unitPricePence)} each` : `${formatGBP(item.unitPricePence)} each`}
@@ -163,7 +163,7 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                 key={item.itemId}
                 on={mine > 0}
                 busy={busy}
-                label={mine > 0 ? `Untick ${item.name}` : `Tick ${item.name}`}
+                action={mine > 0 ? 'Untick' : 'Tick'}
                 onTap={() => (mine > 0 ? dropOne(item.itemId) : claimOne(item))}
                 name={item.name}
                 price={formatGBP(item.unitPricePence)}
@@ -214,12 +214,13 @@ export function splitSub(s: Session, share: Share, meUserId: string): string {
 }
 
 /** A tick row: the whole row is the tap target; a control on the right (Split, a stepper) sits outside it. */
-export function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside }: {
-  on?: boolean; taken?: boolean; busy?: boolean; label?: string; onTap?: () => void; name: string; sub?: React.ReactNode; price: React.ReactNode; aside?: React.ReactNode;
+export function PickRow({ on, taken, busy, action, onTap, name, sub, price, aside }: {
+  on?: boolean; taken?: boolean; busy?: boolean; /** What a tap does ("Tick"), read out before the visible text. */ action?: string; onTap?: () => void; name: string; sub?: React.ReactNode; price: React.ReactNode; aside?: React.ReactNode;
 }) {
   const tick = <span className={`tick${on ? ' tick--on' : taken ? ' tick--done' : ''}`} aria-hidden>{on || taken ? <TickIcon size={16} /> : null}</span>;
   const body = (
     <>
+      {action ? <span className="vh">{action} </span> : null}
       {tick}
       <span className="row__main">
         <span className="row__title">{name}</span>
@@ -230,7 +231,7 @@ export function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside
   return (
     <div className={`pick${taken ? ' pick--taken' : ''}`}>
       {onTap ? (
-        <button type="button" className="pick__tap" onClick={onTap} disabled={busy} aria-pressed={!!on} aria-label={label}>{body}</button>
+        <button type="button" className="pick__tap" onClick={onTap} disabled={busy} aria-pressed={!!on}>{body}</button>
       ) : (
         <div className="pick__tap" style={{ cursor: 'default' }}>{body}</div>
       )}

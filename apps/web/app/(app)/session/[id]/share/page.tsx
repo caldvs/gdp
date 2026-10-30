@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from '@gdp/core/api/hooks/useSession';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
+import { SHARED_LINK_TTL_MS } from '@gdp/core/lib/qrPayload';
 import { copyText } from '@/lib/clipboard';
 import { JoinQr, useJoinUrl } from '@/components/JoinQr';
 import { BodyText, Button, CenterSpinner, DisplayText, Mini, Notice } from '@/components/ui';
@@ -13,7 +14,11 @@ export default function SharePage() {
   const { id } = useParams<{ id: string }>();
   const session = useSession(id);
   const payout = usePayoutAccount();
+  // The QR is scanned on the spot, so it keeps the short 10-minute
+  // window; a link that's copied or shared can be opened hours later.
   const joinUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null);
+  const sharedUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null, SHARED_LINK_TTL_MS);
+  const sharedHours = Math.round(SHARED_LINK_TTL_MS / 3_600_000);
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
 
   if (session.isPending) return <CenterSpinner />;
@@ -53,12 +58,15 @@ export default function SharePage() {
           </div>
           <div className="two-col">
             <Button variant="ghost" onClick={() => copy('code', code)}>{copied === 'code' ? 'Copied ✓' : 'Copy code'}</Button>
-            <Button variant="ghost" onClick={() => copy('link', joinUrl)}>{copied === 'link' ? 'Copied ✓' : 'Copy link'}</Button>
+            <Button variant="ghost" onClick={() => copy('link', sharedUrl)}>{copied === 'link' ? 'Copied ✓' : 'Copy link'}</Button>
           </div>
-          {canNativeShare && joinUrl ? (
-            <Button variant="ghost" onClick={() => navigator.share({ title: 'Join the bill', text: 'Pick what you had and pay me back:', url: joinUrl }).catch(() => {})}>
+          {canNativeShare && sharedUrl ? (
+            <Button variant="ghost" onClick={() => navigator.share({ title: 'Join the bill', text: 'Pick what you had and pay me back:', url: sharedUrl }).catch(() => {})}>
               Share…
             </Button>
+          ) : null}
+          {payout.data ? (
+            <p className="share-note">Copied and shared links include your bank details and work for {sharedHours} hours.</p>
           ) : null}
           {joinUrl ? <p className="deep-link">{joinUrl.replace(/^https?:\/\//, '').replace(/#.*$/, '')}</p> : null}
         </>

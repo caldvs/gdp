@@ -10,15 +10,23 @@ import type { PayoutAccount } from './payoutAccount';
 //
 //   https://gdp.app/join/ABC123#p=<base64url(JSON)>
 //
-// Payload shape, locked at v1:
-//   { v: 1, n: name, s: sort, a: account, m?: monzo, r?: revolut, iat: epochSecs }
+// Payload shape, v1:
+//   { v: 1, n: name, s: sort, a: account, m?: monzo, r?: revolut, iat: epochSecs, x?: epochSecs }
 //
-// TTL on the guest side is 10 minutes from iat — past that, the guest's
+// A link is accepted for 10 minutes from iat — past that, the guest's
 // app shows "re-scan the lead's QR" and the lead can re-show the QR to
-// renew. See ADR-0004 for the rationale.
+// renew. See ADR-0004 for the rationale. That suits a QR on the lead's
+// screen, which re-encodes every few minutes, but not a link pasted
+// into a group chat. Shared links therefore carry an explicit expiry
+// `x` (optional, so older payloads decode unchanged), capped at
+// MAX_LINK_TTL_MS so a crafted payload can't live forever.
 
 const PAYLOAD_VERSION = 1 as const;
 export const PAYOUT_TTL_MS = 10 * 60 * 1000;
+/** How long a copied or shared join link keeps working. */
+export const SHARED_LINK_TTL_MS = 48 * 60 * 60 * 1000;
+/** Upper bound on any `x`, whatever the payload claims. */
+export const MAX_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type PayloadV1 = {
   v: 1;
@@ -28,6 +36,7 @@ type PayloadV1 = {
   m?: string;
   r?: string;
   iat: number;
+  x?: number;
 };
 
 export type DecodeResult =
@@ -37,6 +46,7 @@ export type DecodeResult =
 export function encodePayoutForQR(
   account: PayoutAccount,
   nowMs: number = Date.now(),
+  ttlMs?: number,
 ): string {
   const payload: PayloadV1 = {
     v: PAYLOAD_VERSION,
@@ -46,12 +56,14 @@ export function encodePayoutForQR(
     iat: Math.floor(nowMs / 1000),
     ...(account.monzoHandle ? { m: account.monzoHandle } : {}),
     ...(account.revolutTag ? { r: account.revolutTag } : {}),
+    ...(ttlMs !== undefined ? { x: Math.floor((nowMs + Math.min(ttlMs, MAX_LINK_TTL_MS)) / 1000) } : {}),
   };
   return base64urlEncode(JSON.stringify(payload));
 }
 
 // Decode + age-check in one call. `expired` is true iff the payload is
-// well-formed but older than PAYOUT_TTL_MS — the caller can use this to
+// well-formed but past its expiry (`x` if present, capped at
+// MAX_LINK_TTL_MS from iat; otherwise iat + PAYOUT_TTL_MS) — the caller can use this to
 // render a "re-scan" empty state without discarding the data outright.
 export function decodePayoutFromQR(
   encoded: string | null | undefined,
@@ -83,10 +95,13 @@ export function decodePayoutFromQR(
   }
   const issuedAtMs = parsed.iat * 1000;
   const ageMs = nowMs - issuedAtMs;
+  const expiresAtMs = parsed.x !== undefined
+    ? Math.min(parsed.x * 1000, issuedAtMs + MAX_LINK_TTL_MS)
+    : issuedAtMs + PAYOUT_TTL_MS;
   return {
     ok: true,
     ageMs,
-    expired: ageMs > PAYOUT_TTL_MS,
+    expired: nowMs > expiresAtMs,
     account: {
       sortCode: parsed.s,
       accountNumber: parsed.a,
@@ -105,10 +120,11 @@ export function buildJoinUrl(
   joinCode: string,
   account?: PayoutAccount | null,
   nowMs?: number,
+  ttlMs?: number,
 ): string {
   const path = `${stripTrailingSlash(baseUrl)}/join/${joinCode}`;
   if (!account) return path;
-  return `${path}#p=${encodePayoutForQR(account, nowMs)}`;
+  return `${path}#p=${encodePayoutForQR(account, nowMs, ttlMs)}`;
 }
 
 // Pulls the `p=...` value out of a join URL's fragment. Returns null if
@@ -133,6 +149,7 @@ function isPayloadV1(value: unknown): value is PayloadV1 {
     typeof v.s === 'string' &&
     typeof v.a === 'string' &&
     typeof v.iat === 'number' &&
+    (v.x === undefined || typeof v.x === 'number') &&
     (v.m === undefined || typeof v.m === 'string') &&
     (v.r === undefined || typeof v.r === 'string')
   );

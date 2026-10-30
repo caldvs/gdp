@@ -17,7 +17,7 @@
  *
  * Run with the parser settings you want to test:
  *
- *   BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0 AWS_PROFILE=gdp-dev \
+ *   BEDROCK_MODEL_ID=eu.anthropic.claude-sonnet-4-6 AWS_PROFILE=gdp-dev \
  *     npm run golden -w apps/api
  *   npm run golden -w apps/api -- pizza-express-4          # one receipt
  *

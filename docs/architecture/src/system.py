@@ -183,7 +183,7 @@ c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (G
 c4card('sec', 'Secrets Manager + SSM', ['JWT, Stripe, TrueLayer secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
 c4card('sns', 'SNS', ['Alert topic'])
-c4card('bedrock', 'Bedrock', ['Claude Haiku 4.5 reads the bill,', 'venue name and address'])
+c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
 c4card('location', 'Amazon Location', ['Venue lookup, cached for good'])
 c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
 

@@ -29,7 +29,7 @@ import {
 const VERSION = 'v7';
 
 /**
- * Reads the bill with a vision model on Amazon Bedrock (Claude Haiku by
+ * Reads the bill with a vision model on Amazon Bedrock (Claude Sonnet by
  * default).
  * Runs on the Lambda's own AWS credentials: no API key.
  */

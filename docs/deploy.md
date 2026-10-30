@@ -189,7 +189,7 @@ to the page's own origin, which is right on Vercel.
   guests can't receive sign-in codes. Request production access (SES console
   → Account dashboard), or verify each tester's address meanwhile.
 - **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
-- **Bedrock model access.** Enable Claude Haiku 4.5 in the Bedrock console
+- **Bedrock model access.** Enable Claude Sonnet 4.6 in the Bedrock console
   (eu-west-2), or no bill can be read.
 - **Table fee.** Stripe setup is in [table-fee.md](table-fee.md).
 - **Real-device check.** Scan a real bill on a phone against the deployed

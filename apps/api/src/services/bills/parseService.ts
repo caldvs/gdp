@@ -7,7 +7,7 @@ import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
 import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
-import type { BillParser, ParsedBillFromImage } from './parser.js';
+import { readByOf, type BillParser, type ParsedBillFromImage, type ReadBy } from './parser.js';
 import type { VenueResolver } from './venueResolver.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -83,7 +83,7 @@ export const parseService = {
         userId: input.userId,
         uploadId: input.uploadId,
         sha256,
-        parser: input.parser,
+        readBy: readByOf(input.parser, parsed),
       }),
     );
 
@@ -123,7 +123,7 @@ function buildBillV1(args: {
   userId: string;
   uploadId: string;
   sha256: string;
-  parser: BillParser;
+  readBy: ReadBy;
 }): Bill {
   const items: BillItem[] = args.parsed.items.map((it) => ({
     itemId: uuidv7(),
@@ -152,8 +152,8 @@ function buildBillV1(args: {
     items,
     parsedFrom: {
       imageHash: args.sha256,
-      parser: args.parser.model,
-      parserVersion: args.parser.version,
+      parser: args.readBy.model,
+      parserVersion: args.readBy.version,
       parsedAt: new Date().toISOString(),
       uploadId: args.uploadId,
     },

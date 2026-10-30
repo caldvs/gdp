@@ -1851,6 +1851,14 @@ components:
               course: { type: string, enum: [starter, main, side, dessert] }
         taxPence: { type: integer, format: int64, minimum: 0 }
         serviceChargePence: { type: integer, format: int64, minimum: 0 }
+        venue:
+          type: object
+          required: [name]
+          description: Set to override the parsed venue; absent keeps whatever the bill has.
+          properties:
+            name: { type: string, minLength: 1, maxLength: 80 }
+            placeId: { type: string }
+            address: { type: string }
 
     CreateSessionRequest:
       type: object

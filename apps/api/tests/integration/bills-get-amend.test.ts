@@ -253,4 +253,61 @@ describe('POST /v1/bills/:billId/amend', () => {
     expect(latestBody.versionNumber).toBe(2);
     expect(latestBody.items[0]?.name).toBe('changed');
   });
+
+  it('a venue the lead sets replaces the parsed one', async () => {
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const created = await createBill(app, userId);
+
+    const res = await app.request(`/v1/bills/${created.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        items: [{ name: 'x', unitPricePence: 100, quantity: 1, category: 'food' }],
+        taxPence: 0,
+        serviceChargePence: 0,
+        venue: { name: 'The Chosen Place' },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const bill = (await res.json()) as { venue?: { name: string } };
+    expect(bill.venue?.name).toBe('The Chosen Place');
+  });
+
+  it('keeps the parsed venue when the lead sends none', async () => {
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const created = await createBill(app, userId);
+
+    const res = await app.request(`/v1/bills/${created.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        items: [{ name: 'x', unitPricePence: 100, quantity: 1, category: 'food' }],
+        taxPence: 0,
+        serviceChargePence: 0,
+      }),
+    });
+    expect(res.status).toBe(200);
+    const bill = (await res.json()) as { venue?: { name: string } };
+    expect(bill.venue?.name).toBe('Pizzeria Test');
+  });
+
+  it('a venue name too long is rejected', async () => {
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const created = await createBill(app, userId);
+
+    const res = await app.request(`/v1/bills/${created.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        items: [{ name: 'x', unitPricePence: 100, quantity: 1, category: 'food' }],
+        taxPence: 0,
+        serviceChargePence: 0,
+        venue: { name: 'x'.repeat(81) },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

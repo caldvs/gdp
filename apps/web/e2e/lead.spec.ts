@@ -81,6 +81,33 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   await expect(lead.getByText('matches the receipt')).toBeVisible();
 });
 
+test('no venue on the photo: Add venue, then it shows on the Bills list', async ({ browser }) => {
+  const api = new FakeApi({ venue: null });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Add venue' }).click();
+  await lead.getByLabel('Venue').fill('The Dog & Partridge');
+  await lead.getByRole('button', { name: 'Done' }).click();
+
+  await expect(lead.getByText('The Dog & Partridge')).toBeVisible();
+});
+
+test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('Gennaro')).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Change venue' }).click();
+  await lead.getByLabel('Venue').fill('The Dog & Partridge');
+  await lead.getByRole('button', { name: 'Done' }).click();
+
+  await expect(lead.getByText('The Dog & Partridge')).toBeVisible();
+  await expect(lead.getByText('Gennaro')).toHaveCount(0);
+});
+
 test('parse errors say what went wrong', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, '/');

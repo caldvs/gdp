@@ -173,7 +173,24 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
   r.post(
     '/:billId/amend',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', AmendBillRequestSchema),
+    zValidator('json', AmendBillRequestSchema, (result, c) => {
+      if (!result.success) {
+        const error = new AppError('INVALID_INPUT', 'Validation failed', {
+          fieldErrors: z.flattenError(result.error).fieldErrors,
+        });
+        return c.json(
+          {
+            error: {
+              code: error.code,
+              message: error.message,
+              requestId: c.var.requestId,
+              details: error.details,
+            },
+          },
+          error.http as 400,
+        );
+      }
+    }),
     async (c) => {
       const { userId } = callerOf(c);
       const billId = c.req.param('billId');

@@ -74,8 +74,9 @@ function CheckBill() {
   const [items, setItems] = useState<DraftItem[]>([]);
   const [servicePounds, setServicePounds] = useState('0.00');
   const [taxPounds, setTaxPounds] = useState('0.00');
+  const [venueName, setVenueName] = useState('');
   const [hydrated, setHydrated] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax'
+  const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
 
   useEffect(() => {
@@ -90,6 +91,7 @@ function CheckBill() {
     setItems(b.items.map(fromBillItem));
     setServicePounds(pounds(b.serviceChargePence));
     setTaxPounds(pounds(b.taxPence));
+    setVenueName(b.venue?.name ?? '');
   };
 
   const subtotalPence = useMemo(() => items.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0), [items]);
@@ -104,12 +106,13 @@ function CheckBill() {
     const b = bill.data;
     if (!b) return false;
     if (b.items.length !== items.length || b.serviceChargePence !== servicePence || b.taxPence !== taxPence) return true;
+    if (venueName.trim() && venueName.trim() !== (b.venue?.name ?? '')) return true;
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
         parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
-  }, [bill.data, items, servicePence, taxPence]);
+  }, [bill.data, items, servicePence, taxPence, venueName]);
 
   // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
@@ -148,6 +151,7 @@ function CheckBill() {
     })),
     taxPence,
     serviceChargePence: servicePence,
+    ...(venueName.trim() ? { venue: { name: venueName.trim() } } : {}),
   });
 
   const saveDraft = async (): Promise<boolean> => {
@@ -198,9 +202,18 @@ function CheckBill() {
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
+  const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
-    : [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+    : (
+      <>
+        {restOfSub}
+        {' · '}
+        <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={b.venue?.name ? 'Change venue' : undefined}>
+          {b.venue?.name ? 'change' : 'Add venue'}
+        </button>
+      </>
+    );
   // No printed total to check against (a cut-off photo, usually). Only
   // before sharing: once guests are claiming, retaking the photo would
   // throw their claims away.
@@ -211,7 +224,11 @@ function CheckBill() {
     <>
       <Page sub>
         {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
-        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={sub} />
+        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={editing === 'venue' ? undefined : sub} />
+
+        {editing === 'venue' ? (
+          <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />
+        ) : null}
 
         {noTotal ? (
           <Notice tone="warn" title="No total on the photo">
@@ -328,6 +345,28 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
         <span style={{ flex: 1 }} />
         <Button tone="secondary" small onClick={onCancel}>Cancel</Button>
         <Button small onClick={onDone}>Done</Button>
+      </div>
+    </div>
+  );
+}
+
+function VenueEditor({ value, onChange, onDone }: { value: string; onChange: (v: string) => void; onDone: () => void }) {
+  return (
+    <div className="editor" style={{ borderRadius: 'var(--radius)' }}>
+      <div className="editor__row">
+        <div className="field" style={{ flex: 1 }}>
+          <label htmlFor="venue-name">Venue</label>
+          <input
+            id="venue-name"
+            className="input"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Where was this?"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); onDone(); } }}
+          />
+        </div>
+        <Button onClick={onDone}>Done</Button>
       </div>
     </div>
   );

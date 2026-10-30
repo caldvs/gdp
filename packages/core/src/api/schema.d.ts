@@ -1318,6 +1318,12 @@ export interface components {
             taxPence: number;
             /** Format: int64 */
             serviceChargePence: number;
+            /** @description Set to override the parsed venue; absent keeps whatever the bill has. */
+            venue?: {
+                name: string;
+                placeId?: string;
+                address?: string;
+            };
         };
         CreateSessionRequest: {
             /** Format: uuid */

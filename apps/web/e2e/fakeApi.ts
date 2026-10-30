@@ -66,13 +66,16 @@ export class FakeApi {
   pinnedBillVersion = 1;
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
+  /** #63: the venue the parser found, or the lead's own choice once amended. */
+  private venue: { name: string; address?: string } | undefined;
 
-  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean } = {}) {
+  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null } = {}) {
     this.items = opts.items ?? items;
     const subtotal = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     this.serviceChargePence = Math.round(subtotal * (opts.serviceRate ?? 0));
     this.status = opts.status ?? 'claiming';
     this.noPrintedTotal = opts.noPrintedTotal ?? false;
+    this.venue = opts.venue === null ? undefined : (opts.venue ?? { name: 'Gennaro', address: '12 King Street, Manchester' });
     this.participants = [
       { userId: 'u-lead', displayName: 'Callum Davies', claimedItemIds: opts.leadClaims ?? [this.items[0]!.itemId], sharedItemIds: [], payment: { status: 'self_paid' }, readyToLock: true },
     ];
@@ -86,7 +89,8 @@ export class FakeApi {
       // noPrintedTotal scenario is the cut-off-photo case.
       ...(this.noPrintedTotal ? {} : { parsedTotalPence: subtotalPence + this.serviceChargePence }),
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
-      venue: { name: 'Gennaro', address: '12 King Street, Manchester' }, createdAt: '2026-10-31T12:00:00.000Z',
+      ...(this.venue ? { venue: this.venue } : {}),
+      createdAt: '2026-10-31T12:00:00.000Z',
     };
   }
 
@@ -186,9 +190,10 @@ export class FakeApi {
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);
     if (path === `/v1/bills/${BID}/amend`) {
-      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number };
+      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; venue?: { name: string } };
       this.items = b.items.map((it) => ({ itemId: it.itemId ?? `00000000-0000-4000-8000-${String(900 + ++this.seq).padStart(12, '0')}`, name: it.name, unitPricePence: it.unitPricePence, quantity: it.quantity, category: it.category }));
       this.serviceChargePence = b.serviceChargePence;
+      if (b.venue) this.venue = b.venue;
       this.pinnedBillVersion += 1;
       return json(this.bill);
     }

@@ -8,7 +8,7 @@ import { api, ApiError } from '@gdp/core/api';
 import { useCreateSession } from '@gdp/core/api/hooks/useSession';
 import { useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { BackLink, Button, Centre, Notice, Page, Spinner, Steps, Title } from '@/components/ui';
+import { ActionBar, BackLink, Button, Centre, Notice, Page, QrIcon, Spinner, TickIcon, Title } from '@/components/ui';
 
 // loadStripe fetches Stripe.js from js.stripe.com (never bundled), as PCI requires.
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
@@ -33,6 +33,12 @@ const appearance = {
 
 const pounds = (pence: number) => `£${pence % 100 === 0 ? pence / 100 : (pence / 100).toFixed(2)}`;
 
+/** A Checkout Session's client secret is `<session id>_secret_<…>`. */
+const sessionIdOf = (clientSecret: string) => clientSecret.split('_secret_')[0] ?? null;
+
+/** How long to wait for the payment to land before offering a retry. */
+const WAIT_MS = 30_000;
+
 /**
  * F3: the lead pays the table fee in Stripe's embedded form, then goes back
  * to share the bill. Card details stay inside Stripe's iframe.
@@ -41,11 +47,20 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const { billId } = use(params);
   const router = useRouter();
   // Back from a redirect-based payment method: Stripe adds ?session_id=…
-  const returned = useSearchParams().get('session_id') !== null;
-  const [confirmed, setConfirmed] = useState(returned);
-  const status = useTableFeeStatus(billId, { poll: confirmed });
+  const returnedId = useSearchParams().get('session_id');
+  const [confirmed, setConfirmed] = useState(returnedId !== null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(returnedId);
+  // Stop polling after WAIT_MS so a lost webhook can't spin forever.
+  const [slow, setSlow] = useState(false);
+  const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
   // Waived: this lead's email is exempt, so it's as good as paid.
   const paid = status.data?.status === 'paid' || status.data?.status === 'waived';
+
+  useEffect(() => {
+    if (!confirmed || paid || slow) return;
+    const t = setTimeout(() => setSlow(true), WAIT_MS);
+    return () => clearTimeout(t);
+  }, [confirmed, paid, slow]);
 
   // Paid: open the table and go straight to the QR code (F4).
   const createSession = useCreateSession();
@@ -94,21 +109,45 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
     );
   }
   if (confirmed || paid) {
+    const stage = paid ? 'qr' : slow ? 'slow' : 'paying';
     return (
       <Page>
-        <div className="box">
-          <div className="fee-sum">
-            <span className="muted">Table fee</span>
-            <b>{pounds(status.data.amountPence)}</b>
+        <div className={`box pay-wait pay-wait--${stage}`} role="status" aria-live="polite">
+          <div className="pay-wait__mark" aria-hidden="true">
+            {stage === 'qr' ? <QrIcon /> : stage === 'slow' ? '!' : <CardIcon />}
+            {stage === 'paying' ? <span className="pay-wait__ring" /> : null}
+            {stage === 'qr' ? <span className="pay-wait__done"><TickIcon size={14} /></span> : null}
           </div>
-          <Steps
-            steps={[
-              { label: paid ? 'Paid' : 'Confirming payment', state: paid ? 'done' : 'busy' },
-              { label: 'Making your QR code', state: paid ? 'busy' : 'todo' },
-            ]}
-          />
+          <h1 className="pay-wait__title">
+            {stage === 'qr' ? 'Paid' : stage === 'slow' ? 'Still checking' : 'Confirming payment'}
+          </h1>
+          <p className="muted">
+            {stage === 'qr'
+              ? 'Making your QR code'
+              : stage === 'slow'
+                ? 'Stripe hasn’t confirmed yet.'
+                : `${pounds(status.data.amountPence)} table fee`}
+          </p>
+          <div className="pay-wait__bar" aria-hidden="true">
+            <span className={stage === 'qr' ? 'on' : 'busy'} />
+            <span className={stage === 'qr' ? 'busy' : ''} />
+          </div>
         </div>
-        <p className="muted small" style={{ textAlign: 'center' }}>Don’t close this page.</p>
+        {stage === 'slow' ? (
+          <ActionBar stack>
+            <Button
+              onClick={() => {
+                setSlow(false);
+                void status.refetch();
+              }}
+            >
+              Check again
+            </Button>
+            <Button tone="secondary" href={`/confirm-bill/${billId}`}>Back to the bill</Button>
+          </ActionBar>
+        ) : (
+          <p className="muted small" style={{ textAlign: 'center' }}>Don’t close this page.</p>
+        )}
       </Page>
     );
   }
@@ -117,12 +156,18 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
     <Page sub>
       {back}
       <Title title={`Pay ${pounds(status.data.amountPence)} fee`} sub="Then your QR code" />
-      <FeeForm billId={billId} onConfirmed={() => setConfirmed(true)} />
+      <FeeForm
+        billId={billId}
+        onConfirmed={(id) => {
+          setCheckoutSessionId(id);
+          setConfirmed(true);
+        }}
+      />
     </Page>
   );
 }
 
-function FeeForm({ billId, onConfirmed }: { billId: string; onConfirmed: () => void }) {
+function FeeForm({ billId, onConfirmed }: { billId: string; onConfirmed: (checkoutSessionId: string | null) => void }) {
   const start = useStartTableFee();
   // One Checkout Session per visit, even when React runs effects twice in dev.
   const clientSecret = useRef<Promise<string> | null>(null);
@@ -141,7 +186,11 @@ function FeeForm({ billId, onConfirmed }: { billId: string; onConfirmed: () => v
 
   return (
     <CheckoutFormProvider stripe={stripePromise} options={{ clientSecret: clientSecret.current, appearance }}>
-      <Form onConfirmed={onConfirmed} />
+      <Form
+        onConfirmed={() => {
+          void clientSecret.current?.then((secret) => onConfirmed(sessionIdOf(secret)));
+        }}
+      />
     </CheckoutFormProvider>
   );
 }
@@ -174,3 +223,10 @@ function Form({ onConfirmed }: { onConfirmed: () => void }) {
     </>
   );
 }
+
+const CardIcon = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M7 15h3" />
+  </svg>
+);

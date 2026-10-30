@@ -106,6 +106,31 @@ describe('POST /v1/bills/parse', () => {
     expect(bill.parsedFrom.parser).toBe('fixture');
   });
 
+  it('credits the bill to the model a result says read it', async () => {
+    const parser = {
+      model: 'eu.anthropic.claude-haiku',
+      version: 'v3',
+      parse: () =>
+        Promise.resolve({ ...sampleParsedBill, readBy: { model: 'other-model', version: 'v9' } }),
+    };
+    const app = createApp({ idTokenVerifier: fakeVerifier, billParser: parser });
+    const userId = `u-${uuidv7()}`;
+    const uploadId = uuidv7();
+    await putObject(userId, uploadId, uniqueImageBytes());
+    const res = await app.request('/v1/bills/parse', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': newIdempotencyKey(),
+        ...makeAuth(userId),
+      },
+      body: JSON.stringify({ uploadId }),
+    });
+    expect(res.status).toBe(200);
+    const bill = (await res.json()) as { parsedFrom: { parser: string; parserVersion: string } };
+    expect(bill.parsedFrom).toMatchObject({ parser: 'other-model', parserVersion: 'v9' });
+  });
+
   it('returns a cached response on idempotency replay', async () => {
     const app = buildApp();
     const userId = `u-${uuidv7()}`;

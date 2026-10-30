@@ -45,8 +45,22 @@ export const ParsedBillFromImageSchema = z.object({
 });
 export type ParsedBillFromImage = z.infer<typeof ParsedBillFromImageSchema>;
 
+/** Which model and prompt version actually read the bill. */
+export type ReadBy = { model: string; version: string };
+
+/**
+ * A parse result. `readBy` is set when the answer may have come from a
+ * different model than the parser's own `model` (a fallback chain); when
+ * it's missing, the parser's own model read it.
+ */
+export type ParseResult = ParsedBillFromImage & { readBy?: ReadBy };
+
 export interface BillParser {
   readonly model: string;
   readonly version: string;
-  parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage>;
+  parse(image: Uint8Array, requestId: string): Promise<ParseResult>;
 }
+
+/** The model and version to record on a bill for this parse. */
+export const readByOf = (parser: BillParser, result: ParseResult): ReadBy =>
+  result.readBy ?? { model: parser.model, version: parser.version };

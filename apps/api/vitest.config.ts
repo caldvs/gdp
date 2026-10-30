@@ -13,7 +13,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['src/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
         },
       },
       {
@@ -23,6 +23,8 @@ export default defineConfig({
           environment: 'node',
           include: ['tests/integration/**/*.test.ts'],
           globalSetup: ['tests/integration/global-setup.ts'],
+          // Every response is checked against openapi.yaml.
+          setupFiles: ['tests/integration/contract-setup.ts'],
           testTimeout: 30_000,
           pool: 'forks',
         },

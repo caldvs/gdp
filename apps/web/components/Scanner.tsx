@@ -1,17 +1,20 @@
 'use client';
 
 /**
- * Snap or pick a bill photo, upload and parse it, then go to Review.
+ * Snap or pick a bill photo, upload it and start reading it in the
+ * background, then hand over to /reading/[id], which waits for the read.
  * `useScanner()` gives a page the hidden inputs, the open() calls (which
  * must run from a tap so the browser allows the camera), any error, and
- * the reading view to show while the bill is read.
+ * the view to show until the read has started.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
-import { useUploadAndParse } from '@gdp/core/api/hooks/useUploadAndParse';
+import { useStartBillRead } from '@gdp/core/api/hooks/useBillRead';
+import { setPendingRead } from '@gdp/core/lib/pendingRead';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
-import { ActionBar, BillSkeleton, Button, Page, Title } from './ui';
+import { Button } from './ui';
+import { ReadingFailed, ReadingWait, stashPhoto, useSlow } from './Reading';
 
 export type ScanError = { title: string; body?: string };
 
@@ -46,61 +49,68 @@ export function humanizeScanError(err: unknown): ScanError {
   return { title: 'No connection.', body: 'Check your connection and try again.' };
 }
 
+/** The error a failed background read recorded, in the scanner's words. */
+export function humanizeReadError(error: { code: string; message: string; details?: unknown } | undefined): ScanError {
+  if (!error) return { title: 'Couldn’t read that one.', body: 'Try again, or take a new photo.' };
+  return humanizeScanError(new ApiError(error.code === 'PARSE_TIMEOUT' ? 504 : 422, error.code, error.message, undefined, error.details));
+}
+
 export function useScanner() {
   const router = useRouter();
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
-  // 'failed': the read went wrong; the photo stays so it can be tried again.
-  const [busy, setBusy] = useState<'processing' | 'reading' | 'failed' | null>(null);
+  // 'failed': the upload or the start of the read went wrong; the photo
+  // stays so it can be tried again. Once the read has started, the
+  // reading page (/reading/[id]) takes over.
+  const [busy, setBusy] = useState<'processing' | 'uploading' | 'failed' | null>(null);
   const [photo, setPhoto] = useState<ProcessedImage | null>(null);
   const [error, setError] = useState<ScanError | null>(null);
-  const [slow, setSlow] = useState(false);
-  const upload = useUploadAndParse();
-
-  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.uri); }, [photo]);
+  const [since, setSince] = useState<number>();
+  const slow = useSlow(8_000, since);
+  const start = useStartBillRead();
 
   const handleFile = useCallback(async (file: File | undefined) => {
     if (!file) return;
     setError(null);
+    setSince(Date.now());
     setBusy('processing');
     try {
       const img = await processImage(file, file.name);
       setPhoto(img);
-      setBusy('reading');
-      setSlow(false);
-      upload.mutate(img);
+      setBusy('uploading');
+      start.mutate(img);
     } catch (e) {
       setError(humanizeScanError(e));
       setBusy(null);
     }
-  }, [upload]);
+  }, [start]);
 
   useEffect(() => {
-    if (busy !== 'reading') return;
-    const t = setTimeout(() => setSlow(true), 8_000);
-    return () => clearTimeout(t);
-  }, [busy]);
-
-  useEffect(() => {
-    if (upload.isSuccess && upload.data) {
-      const billId = upload.data.kind === 'duplicate' ? upload.data.billId : upload.data.bill.billId;
-      router.replace(`/confirm-bill/${billId}`);
+    if (start.isSuccess && start.data) {
+      const result = start.data;
+      if (result.kind === 'duplicate') {
+        router.replace(`/confirm-bill/${result.billId}`);
+      } else {
+        // The photo URL is handed to the reading page, so it isn't revoked here.
+        if (photo) stashPhoto(result.read.readId, photo.uri);
+        setPendingRead({ readId: result.read.readId, uploadId: result.uploadId, startedAt: Date.now() });
+        router.push(`/reading/${result.read.readId}`);
+      }
     }
-    if (upload.isError) {
-      setError(humanizeScanError(upload.error));
+    if (start.isError) {
+      setError(humanizeScanError(start.error));
       setBusy('failed');
-      upload.reset();
+      start.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upload.isSuccess, upload.isError, upload.data, upload.error]);
+  }, [start.isSuccess, start.isError, start.data, start.error]);
 
-  const cancel = () => { upload.reset(); setPhoto(null); setBusy(null); setError(null); };
+  const cancel = () => { start.reset(); setPhoto(null); setBusy(null); setError(null); };
   const retry = () => {
     if (!photo) return;
     setError(null);
-    setSlow(false);
-    setBusy('reading');
-    upload.mutate(photo);
+    setBusy('uploading');
+    start.mutate(photo);
   };
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => { void handleFile(e.target.files?.[0]); e.target.value = ''; };
 
@@ -111,40 +121,23 @@ export function useScanner() {
     </>
   );
 
-  const thumb = photo
-    ? <img src={photo.uri} alt="Your bill" className="reading-thumb" />
-    : <span className="skel reading-thumb" aria-hidden="true" />;
-
-  const reading: ReactNode = busy === 'failed' && photo ? (
-    <>
-      <Page>
-        <div className="reading-head">
-          {thumb}
-          <div role="alert">
-            <Title title={error?.title ?? 'Couldn’t read that one.'} sub={error?.body} />
-          </div>
-        </div>
-        <Button tone="text" onClick={cancel}>Cancel</Button>
-      </Page>
-      <ActionBar>
-        <Button tone="secondary" onClick={() => camera.current?.click()}>New photo</Button>
-        <Button grow onClick={retry}>Try again</Button>
-      </ActionBar>
-    </>
-  ) : busy && busy !== 'failed' ? (
-    <>
-      <Page>
-        <div className="reading-head">
-          {thumb}
-          <div role="status" aria-live="polite">
-            <Title title={busy === 'processing' ? 'Getting your photo ready' : 'Reading your bill'} sub={slow ? 'Long bill? Nearly there.' : 'Usually a few seconds.'} />
-          </div>
-        </div>
-        <BillSkeleton />
-      </Page>
-      <ActionBar><Button tone="secondary" onClick={cancel}>Cancel</Button></ActionBar>
-    </>
-  ) : null;
+  const reading: ReactNode =
+    busy === 'failed' && photo ? (
+      <ReadingFailed
+        photo={photo.uri}
+        error={error ?? { title: 'Couldn’t read that one.' }}
+        onCancel={cancel}
+        onNewPhoto={() => camera.current?.click()}
+        onRetry={retry}
+      />
+    ) : busy === 'processing' || busy === 'uploading' || (start.isSuccess && start.data?.kind === 'reading') ? (
+      <ReadingWait
+        photo={photo?.uri}
+        title={busy === 'processing' ? 'Getting your photo ready' : 'Reading your bill'}
+        slow={slow}
+        actions={<Button tone="secondary" onClick={cancel}>Cancel</Button>}
+      />
+    ) : null;
 
   return {
     inputs,

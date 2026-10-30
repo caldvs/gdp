@@ -53,5 +53,6 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).
 - **One Lambda** behind API Gateway serves every route. `apps/api/openapi.yaml` is the contract; client types are generated from it.
 - **Bills are versioned.** Every edit writes a new `V#nnn` row plus a `LATEST` mirror. A session pins the version it started with.
-- **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback. A low-confidence read isn't retried on the other model.
+- **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback. A low-confidence read isn't retried on the other model. Every read has a time budget; Bedrock gets 12s before the fallback, and the fallback is skipped if too little time is left.
+- **Bills are read in the background** (1 Nov). `POST /v1/bills/reads` returns at once and the Lambda invokes itself to do the read (45s budget, no retries); the app polls the read and the lead can go back to Bills meanwhile. The read is its own `READ#` row; the bill is only created when the read works. The synchronous `POST /v1/bills/parse` stays, with 22s to fit under API Gateway's 30s.
 - **Polling, not push.** Session screens poll; there are no websockets or notifications.

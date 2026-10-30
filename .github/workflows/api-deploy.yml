@@ -1,23 +1,22 @@
 name: API Deploy
 
 # Push to main → deploy dev automatically.
-# Manual dispatch → choose any environment (dev / staging / prod).
+# Manual dispatch → choose an environment (dev / prod).
 #
 # Required setup (one-off, per AWS account/environment):
-#   1. Create a GitHub OIDC IAM role in each AWS account with a trust
-#      policy that allows token.actions.githubusercontent.com to assume
-#      the role from this repo + the matching `environment` claim.
-#   2. In GitHub → Settings → Environments, create `dev`, `staging`,
-#      `prod`. For each, set these *variables* (not secrets — ARNs are
-#      not sensitive):
+#   1. Create a GitHub OIDC IAM role in each AWS account (infra/githubDeploy.ts).
+#      It trusts only jobs in its GitHub environment, so the `environment:`
+#      below is what lets a job assume it.
+#   2. In GitHub → Settings → Environments, create `dev` and `prod`. For
+#      each, set these *variables* (not secrets — ARNs are not sensitive):
 #        - AWS_DEPLOY_ROLE_ARN   arn:aws:iam::<acct>:role/<role-name>
 #        - AWS_REGION            eu-west-2
-#      Recommended: add required reviewers to `prod` (and `staging`).
+#      Limit both to the `main` branch, and add a required reviewer to `prod`.
 
 on:
   push:
     branches: [main]
-    paths: ['apps/api/**', 'package-lock.json', '.github/workflows/api-*.yml']
+    paths: ["apps/api/**", "package-lock.json", ".github/workflows/api-*.yml"]
   workflow_dispatch:
     inputs:
       environment:
@@ -25,7 +24,7 @@ on:
         required: true
         type: choice
         default: dev
-        options: [dev, staging, prod]
+        options: [dev, prod]
 
 concurrency:
   # Serialise deploys per environment, but allow dev and prod to deploy in parallel.
@@ -65,13 +64,20 @@ jobs:
       - run: npm test
       - run: npm run validate:bundle
 
+      # Prod only ever deploys main. The `prod` GitHub environment should also
+      # be limited to main; this holds even if it isn't.
+      - name: Refuse prod outside main
+        if: env.ENV_NAME == 'prod' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::prod deploys only from main (this run is on ${GITHUB_REF})"
+          exit 1
+
       - name: Resolve stack name
         id: stack
         run: |
           case "$ENV_NAME" in
-            dev)     echo "name=GdpBackendDev"     >>"$GITHUB_OUTPUT" ;;
-            staging) echo "name=GdpBackendStaging" >>"$GITHUB_OUTPUT" ;;
-            prod)    echo "name=GdpBackendProd"    >>"$GITHUB_OUTPUT" ;;
+            dev)  echo "name=GdpBackendDev"  >>"$GITHUB_OUTPUT" ;;
+            prod) echo "name=GdpBackendProd" >>"$GITHUB_OUTPUT" ;;
           esac
 
       # Prints the OIDC subject AWS checks against the role's trust policy,
@@ -98,6 +104,7 @@ jobs:
         # environment's variables; see infra/main.ts.
         env:
           STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
+          TRUELAYER_ENABLED: ${{ vars.TRUELAYER_ENABLED }}
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
         run: |
           npx cdk deploy "${{ steps.stack.outputs.name }}" \
@@ -127,6 +134,23 @@ jobs:
           fn=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \
             '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
           npx tsx scripts/deps-check.ts "$fn"
+
+      # The deploy roles' own stacks (infra/githubDeploy.ts), dev and prod,
+      # from the dev job only: both live in this account. Last, so a mistake
+      # in a trust policy can't stop an API deploy; the next run would fail to
+      # assume the role, and the fix is `npx cdk deploy GdpGithubDeploy
+      # --profile gdp-dev` with the provider ARN below. The OIDC provider
+      # predates the stacks, so pass its ARN rather than letting CDK try to
+      # create a second one.
+      - name: Deploy role stacks
+        if: env.ENV_NAME == 'dev'
+        run: |
+          acct=$(aws sts get-caller-identity --query Account --output text)
+          npx cdk deploy GdpGithubDeploy GdpGithubDeployProd \
+            --require-approval never \
+            --outputs-file cdk-outputs.roles.json \
+            -c "githubOidcProviderArn=arn:aws:iam::${acct}:oidc-provider/token.actions.githubusercontent.com"
+          echo "Prod deploy role: $(jq -r '.GdpGithubDeployProd.DeployRoleArnOutput' cdk-outputs.roles.json)" >>"$GITHUB_STEP_SUMMARY"
 
       - name: Upload CDK outputs
         if: always()

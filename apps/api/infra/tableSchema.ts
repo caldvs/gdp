@@ -1,6 +1,6 @@
 /**
  * Single source of truth for the gdp-backend DynamoDB table schema.
- * Consumed by both CDK (production / staging / dev table provisioning)
+ * Consumed by both CDK (dev / prod table provisioning)
  * and integration test setup (DynamoDB Local).
  */
 

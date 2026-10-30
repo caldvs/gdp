@@ -16,9 +16,12 @@ async function lead(browser: Browser, api: FakeApi, camera: CameraMode): Promise
   const ctx = await browser.newContext();
   await api.attach(ctx, users.lead);
   await ctx.addInitScript((mode: CameraMode) => {
-    const md = navigator.mediaDevices ?? ({} as MediaDevices);
-    if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', { value: md });
-    md.getUserMedia = async () => {
+    // On the prototype, not the instance: WebKit can hand the page a
+    // mediaDevices object without an instance override, and the real
+    // getUserMedia then refuses (NotAllowedError) and the camera shows as off.
+    if (!navigator.mediaDevices) Object.defineProperty(navigator, 'mediaDevices', { value: {} as MediaDevices });
+    const target = typeof MediaDevices === 'undefined' ? navigator.mediaDevices : MediaDevices.prototype;
+    target.getUserMedia = async () => {
       if (mode === 'denied') throw new DOMException('Permission denied', 'NotAllowedError');
       // A white "receipt" on grey, redrawn so the stream keeps producing frames.
       const c = document.createElement('canvas');

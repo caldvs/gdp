@@ -43,8 +43,8 @@ const EnvSchema = z.object({
   // Stripe takes the lead's table fee (not diner money). Both optional:
   // without STRIPE_SECRET_KEY the billing and Stripe webhook routes aren't
   // mounted. For dev the values come from SSM per stage.
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional().transform(unwrapSecret),
+  STRIPE_WEBHOOK_SECRET: z.string().optional().transform(unwrapSecret),
   // Where the web app lives; Stripe sends the lead back here if a payment
   // method needs a redirect (most don't: cards and wallets complete in place).
   APP_BASE_URL: z.string().url().default('http://localhost:8081'),
@@ -56,6 +56,26 @@ const parsed = EnvSchema.safeParse(process.env);
 if (!parsed.success) {
   console.error('Invalid environment variables:', z.flattenError(parsed.error).fieldErrors);
   throw new Error('Invalid environment configuration');
+}
+
+/**
+ * Secrets Manager's console saves a secret as `{"<name>":"<value>"}` when
+ * it's entered on the Key/value tab rather than Plaintext. Accept either:
+ * a one-entry JSON object gives its value, anything else is used as is.
+ */
+function unwrapSecret(raw: string | undefined): string | undefined {
+  const v = raw?.trim();
+  if (!v?.startsWith('{')) return v;
+  try {
+    const parsed = JSON.parse(v) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const values = Object.values(parsed as Record<string, unknown>);
+      if (values.length === 1 && typeof values[0] === 'string') return values[0].trim();
+    }
+  } catch {
+    /* not JSON: use as is */
+  }
+  return v;
 }
 
 export const env: Env = parsed.data;

@@ -16,7 +16,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname() ?? '/';
-  const goToSignIn = useCallback(() => router.replace('/sign-in'), [router]);
+  // Idle sign-out: come back to where you were after signing in again.
+  const goToSignIn = useCallback(() => {
+    const from = window.location.pathname + window.location.search;
+    router.replace(from && from !== '/' ? `/sign-in?from=${encodeURIComponent(from)}` : '/sign-in');
+  }, [router]);
   useIdleSignOut(!!me.data, goToSignIn);
 
   const status = me.error instanceof ApiError ? me.error.status : 0;

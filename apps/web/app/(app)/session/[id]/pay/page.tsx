@@ -86,7 +86,7 @@ export default function PayPage() {
     ? <Btn href={`/session/${id}`} replace>Done</Btn>
     : sentAt
       ? <Btn tone="light" href={`/session/${id}`} replace>Back to the table</Btn>
-      : status === 'failed'
+      : status === 'failed' || (status === 'unpaid' && startError)
         ? <Btn busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Btn>
         : <Btn busy={markPaid.isPending} disabled={!canSend} onClick={() => mine.payment.status === 'pending' && markPaid.mutate(mine.payment.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve sent it</Btn>;
 

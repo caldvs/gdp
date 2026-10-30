@@ -64,15 +64,15 @@ test('parse errors say what went wrong', async ({ browser }) => {
     await lead.locator('input[capture]').setInputFiles(PHOTO);
   };
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Failed to reach Gemini API' });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: TimeoutError' });
   await snap();
   await expect(lead.getByText('Couldn’t reach the bill reader.')).toBeVisible({ timeout: 15_000 });
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini returned 403', details: { status: 403 } });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: AccessDeniedException', details: { status: 403 } });
   await snap();
   await expect(lead.getByText('The bill reader turned us away. Not the photo’s fault.')).toBeVisible({ timeout: 15_000 });
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini output failed schema validation' });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock output failed schema validation' });
   await snap();
   await expect(lead.getByText('Couldn’t read that one.')).toBeVisible({ timeout: 15_000 });
 

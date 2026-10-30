@@ -8,7 +8,7 @@ Code comments cite the two numbered decisions as ADR-0002 and ADR-0006.
 
 The lead's sort code, account number and name are kept in their browser, not on the server. They reach guests inside the join link's `#p=` fragment, which browsers never send to a server.
 
-- The share flow asks for them on `/payout-account` before the QR. They're kept in `sessionStorage` (gone when the tab closes) unless the lead ticks *Remember on this device*, which uses `localStorage`. They aren't encrypted at rest.
+- The share flow asks for them on `/payout-account` before the QR. They're kept in `sessionStorage` (gone when the tab closes) unless the lead ticks _Remember on this device_, which uses `localStorage`. They aren't encrypted at rest.
 - The guest's pay screen uses the details from the link.
 - `PUT /v1/me/payout-account` is deprecated: it validates and returns 200 but stores nothing.
 - The API needs a beneficiary only for TrueLayer, which isn't in use.
@@ -39,12 +39,13 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:
-    - one free bill: each lead gets a single free credit, used by their first shared bill (decided 1 Nov 2026; replaces "one free bill a month")
-    - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
-    - guests repay the fee in what they owe
-    - a refund if nobody joins
+  - one free bill a month per lead (confirmed 1 Nov 2026)
+  - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
+  - guests repay the fee in what they owe
+  - a refund if nobody joins
 
   See [table-fee.md](table-fee.md).
+
 - **Bill reports.** Closing a bill emails every diner what they had and paid; the lead also gets what each diner paid for. Emails should come from the site's own domain once there is one.
 
 ## Technical
@@ -53,6 +54,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).
 - **One Lambda** behind API Gateway serves every route. `apps/api/openapi.yaml` is the contract; client types are generated from it.
 - **Bills are versioned.** Every edit writes a new `V#nnn` row plus a `LATEST` mirror. A session pins the version it started with.
-- **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback. A low-confidence read isn't retried on the other model. Every read has a time budget; Bedrock gets 12s before the fallback, and the fallback is skipped if too little time is left.
-- **Bills are read in the background** (1 Nov). `POST /v1/bills/reads` returns at once and the Lambda invokes itself to do the read (45s budget, no retries); the app polls the read and the lead can go back to Bills meanwhile. The read is its own `READ#` row; the bill is only created when the read works. The synchronous `POST /v1/bills/parse` stays, with 22s to fit under API Gateway's 30s.
+- **Bill reading** is Claude Haiku 4.5 on Bedrock, and nothing else: no fallback reader and no Google services (decided 1 Nov 2026). Bedrock reads the venue's name and printed address off the bill and never guesses one.
+- **Venue lookup** is Amazon Location Service (Places), which fills in the full address and coordinates from what Bedrock read. Answers are cached in `VENUEQ#` rows with no expiry (decided 1 Nov 2026), so it's queried with `IntendedUse: Storage` as AWS's terms require. A failed or vague lookup leaves the venue as read off the bill.
+- **Bills are read in the background** (1 Nov). `POST /v1/bills/reads` returns at once and the Lambda invokes itself to do the read (45s budget, no retries); the app polls the read and the lead can go back to Bills meanwhile. The read is its own `READ#` row; the bill is only created when the read works. The synchronous `POST /v1/bills/parse` stays, with 22s to fit under API Gateway's 30s; running out is a 504 `PARSE_TIMEOUT`.
 - **Polling, not push.** Session screens poll; there are no websockets or notifications.

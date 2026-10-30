@@ -60,10 +60,10 @@ y = 80
 y = place(1, y, 'Image hash index', 'bill', 'No TTL', [('pk', 'IMGHASH#{userId}#{sha256}'), ('sk', 'same as pk')], ['billId', 'dedupes a repeat photo per user']) + GAP
 y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#001, V#002 … (immutable)'), ('sk', 'LATEST (mirror of newest)')],
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
-           'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { placeId, name, address, lat, lng }',
+           'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId }']) + GAP
 y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE')], ['Stripe checkout state, amount', 'kept as a tax record']) + GAP
-y = place(1, y, 'Venue cache', 'bill', '90 days', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['resolved Google Places venue']) + GAP
+y = place(1, y, 'Venue lookup', 'bill', 'No TTL', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['Amazon Location answer, or no match', 'source = amazon-location']) + GAP
 y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
 col2_end = y
 

@@ -27,9 +27,11 @@ export function humanizeScanError(err: unknown): ScanError {
         // The API uses one code for "the model couldn't read it" and "we
         // couldn't talk to the model". Only the first is the photo's fault.
         const d = (err.details ?? {}) as { status?: number };
-        // "Bedrock: ThrottlingException" etc.: the model service, not the photo.
-        if (/reach Gemini|^Bedrock: /i.test(err.message)) return { title: 'Couldn’t reach the bill reader.', body: 'Not the photo’s fault. Try again.' };
-        if (/Gemini returned/i.test(err.message)) {
+        // Bedrock call failures read `Bedrock: <ErrorName>`, with the HTTP
+        // status in details when Bedrock answered at all.
+        const callFailed = /^Bedrock: /.test(err.message);
+        if (callFailed && d.status === undefined) return { title: 'Couldn’t reach the bill reader.', body: 'Is the API online? Check its terminal.' };
+        if (callFailed) {
           const why = d.status === 400 || d.status === 403 ? 'The bill reader turned us away.' : d.status === 429 ? 'The bill reader is busy.' : `The bill reader answered ${d.status ?? '?'}.`;
           return { title: 'The bill reader said no.', body: `${why} Not the photo’s fault.` };
         }

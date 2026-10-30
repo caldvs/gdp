@@ -27,3 +27,6 @@ export const DEV_SIGNIN_ENABLED =
   /^https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.test(API_BASE_URL) ||
   /^https:\/\/[a-z0-9-]+\.ngrok(-free)?\.app/i.test(API_BASE_URL) ||
   process.env.NEXT_PUBLIC_DEV_SIGNIN === '1';
+
+/** Set in sessionStorage on sign-out so local dev doesn't auto sign straight back in. */
+export const DEV_SIGNED_OUT_KEY = 'gdp.dev.signedOut';

@@ -17,6 +17,11 @@ const VerifySchema = z.object({
 export interface AuthRoutesDeps {
   emailSender: EmailSender;
   jwtSecret: Uint8Array;
+  /**
+   * Register POST /email/dev-sign-in (sign in with just an email).
+   * LOCAL DEVELOPMENT ONLY — set by src/local.ts, never by the Lambda.
+   */
+  devEmailSignIn?: boolean;
 }
 
 export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
@@ -82,6 +87,30 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
       return c.json(result);
     },
   );
+
+  if (deps.devEmailSignIn) {
+    r.post(
+      '/email/dev-sign-in',
+      zValidator('json', StartSchema, (result, c) => {
+        if (!result.success) {
+          return c.json(
+            {
+              error: {
+                code: 'INVALID_INPUT' as const,
+                message: 'Invalid email',
+                requestId: c.var.requestId,
+              },
+            },
+            400,
+          );
+        }
+      }),
+      async (c) => {
+        const { email } = c.req.valid('json');
+        return c.json(await otpService.devSignIn({ email }));
+      },
+    );
+  }
 
   return r;
 };

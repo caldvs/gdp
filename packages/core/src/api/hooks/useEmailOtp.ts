@@ -47,3 +47,20 @@ export function useVerifyEmailOtp() {
     },
   });
 }
+
+// LOCAL DEVELOPMENT ONLY: sign in with just an email, no code. The local
+// API server exposes /v1/auth/email/dev-sign-in (never deployed). A known
+// email gets its existing account; a new one gets a new account. 404
+// means the server doesn't offer it — callers fall back to the code flow.
+export function useDevEmailSignIn() {
+  const qc = useQueryClient();
+  return useMutation<VerifyResponse, ApiError, { email: string }>({
+    mutationFn: (body) =>
+      api<VerifyResponse>('/v1/auth/email/dev-sign-in', { method: 'POST', body }),
+    onSuccess: async ({ token, user }) => {
+      await storeToken(token);
+      qc.setQueryData<User>(['me'], user);
+      await qc.invalidateQueries({ queryKey: ['me'] });
+    },
+  });
+}

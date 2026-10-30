@@ -1,0 +1,56 @@
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+  PORT: z.coerce.number().int().positive().default(3000),
+  LOG_LEVEL: z.enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  AWS_REGION: z.string().default('eu-west-2'),
+  DYNAMODB_ENDPOINT: z.string().url().optional(),
+  S3_ENDPOINT: z.string().url().optional(),
+  DDB_TABLE_NAME: z.string().default('gdp-dev'),
+  S3_BUCKET_BILLS: z.string().default('gdp-bills-raw-dev'),
+
+  // HS256 secret used to mint + verify session JWTs after a successful
+  // email-OTP verify. Set via CDK from Secrets Manager. Optional only so
+  // local dev / tests can wire a deterministic value via AppDeps.
+  SESSION_JWT_SECRET: z.string().min(16).optional(),
+
+  GEMINI_API_KEY: z.string().optional(),
+
+  // Google Places (New) — used by GooglePlacesVenueResolver to enrich
+  // the venue Gemini extracts from a bill image with a stable placeId
+  // and coordinates. Optional: when unset, the app falls back to a
+  // no-op resolver that just passes the parsed text through.
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
+
+  // Verified SES sender address. When unset, transactional email is
+  // logged to stdout via ConsoleEmailSender instead of being sent.
+  // For dev the value comes from SSM (/gdp-{env}/ses-from-email),
+  // pre-verified once via `aws ses verify-email-identity`.
+  SES_FROM_EMAIL: z.string().email().optional(),
+
+  TRUELAYER_CLIENT_ID: z.string().optional(),
+  TRUELAYER_CLIENT_SECRET: z.string().optional(),
+  TRUELAYER_WEBHOOK_SECRET: z.string().optional(),
+  TRUELAYER_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
+  TRUELAYER_SIGNING_KID: z.string().optional(),
+  TRUELAYER_SIGNING_PRIVATE_KEY_PEM: z.string().optional(),
+  TRUELAYER_RETURN_URI: z.string().url().optional(),
+
+  PAYMENT_PROVIDER: z.enum(['mock', 'truelayer', 'manual']).default('mock'),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+const parsed = EnvSchema.safeParse(process.env);
+if (!parsed.success) {
+  console.error('Invalid environment variables:', z.flattenError(parsed.error).fieldErrors);
+  throw new Error('Invalid environment configuration');
+}
+
+export const env: Env = parsed.data;
+
+export const isProd = env.NODE_ENV === 'production';
+export const isTest = env.NODE_ENV === 'test';
+export const isLocal = !!env.DYNAMODB_ENDPOINT;

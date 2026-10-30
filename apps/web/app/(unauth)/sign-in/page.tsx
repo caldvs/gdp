@@ -69,6 +69,11 @@ function Landing() {
       </Section>
       {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
       <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
+      <nav className="legal-links" aria-label="Legal">
+        <Link href="/terms">Terms</Link>
+        <Link href="/privacy">Privacy</Link>
+        <Link href="/refunds">Refunds</Link>
+      </nav>
     </Page>
   );
 }

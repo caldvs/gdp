@@ -8,7 +8,7 @@ import { ActionBar, BackLink, Button, Notice, Page, Title } from '@/components/u
 export default function ScanPage() {
   const scanner = useScanner();
   const [over, setOver] = useState(false);
-  if (scanner.reading) return <>{scanner.inputs}{scanner.reading}</>;
+  if (scanner.screen) return <>{scanner.inputs}{scanner.screen}</>;
 
   return (
     <>

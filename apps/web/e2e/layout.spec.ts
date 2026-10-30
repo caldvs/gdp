@@ -23,11 +23,7 @@ async function open(page: Page, api: FakeApi, user: User, to: string) {
  * one changes a visual baseline, so it waits for the next baseline refresh;
  * remove the entry with the fix.
  */
-const KNOWN_SMALL = new Set([
-  // Review bill: the inline "change" buttons on the service and tax lines are 32px.
-  'button "Change service charge"',
-  'button "Change tax"',
-]);
+const KNOWN_SMALL = new Set<string>([]);
 
 /** Visible interactive elements shorter than MIN_TAP, described for the failure message. */
 async function smallTargets(page: Page): Promise<string[]> {

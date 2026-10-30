@@ -226,7 +226,7 @@ function CheckBill() {
                 key={it.draftId}
                 onClick={() => startEditing(it)}
                 disabled={busy || (editing !== null)}
-                label={`Edit ${it.name || 'item'}`}
+                action="Edit"
                 title={it.quantity > 1 ? `${it.name || 'Item'} × ${it.quantity}` : it.name || 'Item'}
                 sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined}
                 end={formatGBP(parsePence(it.unitPricePounds) * it.quantity)}

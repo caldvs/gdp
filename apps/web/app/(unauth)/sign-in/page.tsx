@@ -15,6 +15,29 @@ type Stage = 'EMAIL' | 'AWAITING_CODE';
 const DEV_PRESETS = ['alice', 'bob', 'charlie', 'diana'];
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
+// The email a code was sent to, so the code step survives the tab being
+// reloaded or discarded while the user fetches the code (common on phones).
+// Kept for the code's lifetime (10 minutes on the API).
+const PENDING_CODE_KEY = 'gdp.signIn.pendingCode';
+const PENDING_CODE_MS = 10 * 60 * 1000;
+
+function readPendingCode(): string | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_CODE_KEY);
+    if (!raw) return null;
+    const { email, sentAt } = JSON.parse(raw) as { email?: unknown; sentAt?: unknown };
+    if (typeof email === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_CODE_MS) return email;
+    window.sessionStorage.removeItem(PENDING_CODE_KEY);
+  } catch {}
+  return null;
+}
+
+function writePendingCode(email: string | null) {
+  try {
+    if (email) window.sessionStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email, sentAt: Date.now() }));
+    else window.sessionStorage.removeItem(PENDING_CODE_KEY);
+  } catch {}
+}
 
 /**
  * The front door. Signed-out visitors see what the app does and sign in
@@ -102,6 +125,14 @@ function EmailOtpFlow({ cta }: { cta: string }) {
   const devSignIn = useDevEmailSignIn();
   const [devAvailable, setDevAvailable] = useState(DEV_SIGNIN_ENABLED);
 
+  // Back on the code step if a code was sent from this tab recently.
+  useEffect(() => {
+    const pending = readPendingCode();
+    if (!pending) return;
+    setEmail(pending);
+    setStage('AWAITING_CODE');
+  }, []);
+
   // Local dev: sign straight back in as the last email used, unless the
   // user just signed out in this tab.
   const autoTried = useRef(false);
@@ -151,6 +182,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     }
     try {
       await startOtp.mutateAsync({ email: trimmed });
+      writePendingCode(trimmed);
       setStage('AWAITING_CODE');
       setCode('');
       setResendCountdown(RESEND_LOCKOUT_SECONDS);
@@ -168,6 +200,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     if (trimmed.length !== 6 || verifyOtp.isPending) return;
     try {
       await verifyOtp.mutateAsync({ email, code: trimmed });
+      writePendingCode(null);
       router.replace(dest);
     } catch {
       setCode('');
@@ -179,6 +212,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     setCode('');
     try {
       await startOtp.mutateAsync({ email });
+      writePendingCode(email);
       setResendCountdown(RESEND_LOCKOUT_SECONDS);
     } catch {}
   };
@@ -239,7 +273,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
         <Button tone="text" onClick={handleResend} disabled={!canResend}>
           {startOtp.isPending ? 'Sending…' : canResend ? 'Resend code' : `Resend in ${resendCountdown}s`}
         </Button>
-        <Button tone="text" onClick={() => { setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
+        <Button tone="text" onClick={() => { writePendingCode(null); setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
       </div>
     </form>
   );

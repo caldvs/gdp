@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
+import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
 import {
   ActionBar, BackLink, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
@@ -22,35 +23,10 @@ type Share = NonNullable<Session['shares']>[number];
 
 const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment.status === 'self_paid';
 
-/**
- * Every bill line in bill order with who has it, so lists keep their shape
- * while people claim: a row changes state instead of vanishing.
- */
-export type ItemStatus = { item: BillItem; left: number; mine: number; who: string[]; share?: Share };
+export type { ItemStatus } from '@gdp/core/lib/leftovers';
+/** Every bill line in bill order with who has it (see core's itemStatuses). */
 export function itemStatuses(s: Session, b: Bill, meUserId: string): ItemStatus[] {
-  const taken = new Map<string, number>();
-  const mine = new Map<string, number>();
-  const who = new Map<string, string[]>();
-  const add = (id: string, p: Participant) => {
-    taken.set(id, (taken.get(id) ?? 0) + 1);
-    if (p.userId === meUserId) mine.set(id, (mine.get(id) ?? 0) + 1);
-    const l = who.get(id) ?? [];
-    const n = p.userId === meUserId ? 'you' : firstName(p.displayName);
-    if (!l.includes(n)) l.push(n);
-    who.set(id, l);
-  };
-  for (const p of s.participants) for (const id of p.claimedItemIds) add(id, p);
-  for (const sh of s.shares ?? []) {
-    if (sh.userIds.length === 0) continue;
-    taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + 1);
-    const names = sh.userIds.map((uid) => (uid === meUserId ? 'you' : firstName(s.participants.find((p) => p.userId === uid)?.displayName)));
-    who.set(sh.itemId, [...(who.get(sh.itemId) ?? []), ...names]);
-    if (sh.userIds.includes(meUserId)) mine.set(sh.itemId, (mine.get(sh.itemId) ?? 0) + 1);
-  }
-  return b.items.map((item) => {
-    const share = s.shares?.find((x) => x.itemId === item.itemId && x.userIds.length > 0);
-    return { item, left: Math.max(0, item.quantity - (taken.get(item.itemId) ?? 0)), mine: mine.get(item.itemId) ?? 0, who: who.get(item.itemId) ?? [], ...(share ? { share } : {}) };
-  });
+  return coreItemStatuses(s, b, meUserId, (p) => firstName(p?.displayName));
 }
 
 /** A read-only bill line: open (nobody's yet), someone else's, or yours. */

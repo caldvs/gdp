@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type components } from '../index';
 
@@ -5,7 +6,8 @@ type Session = components['schemas']['Session'];
 type User = components['schemas']['User'];
 
 export function useSession(sessionId: string | undefined) {
-  return useQuery<Session, ApiError>({
+  const qc = useQueryClient();
+  const query = useQuery<Session, ApiError>({
     queryKey: ['session', sessionId],
     queryFn: () => api<Session>(`/v1/sessions/${sessionId}`),
     enabled: !!sessionId,
@@ -19,6 +21,15 @@ export function useSession(sessionId: string | undefined) {
     },
     staleTime: 0,
   });
+  // The lead can fix the bill mid-session; the session carries the version
+  // it's pinned to, so when that moves everyone refetches the bill.
+  const version = query.data?.pinnedBillVersion;
+  const billId = query.data?.billId;
+  useEffect(() => {
+    if (version === undefined || !billId) return;
+    void qc.invalidateQueries({ queryKey: ['bill', billId] });
+  }, [qc, billId, version]);
+  return query;
 }
 
 export function useCreateSession() {

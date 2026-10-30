@@ -30,7 +30,8 @@
     "validate:bundle": "tsx scripts/validate-bundle.ts",
     "deploy:dev": "npm run validate:bundle && cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
     "precommit": "lint-staged",
-    "test:cov": "vitest run --coverage"
+    "test:cov": "vitest run --coverage",
+    "golden": "tsx scripts/golden-receipts.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1161.0",

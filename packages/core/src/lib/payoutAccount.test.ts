@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   _resetCache,
   clearPayoutAccount,
+  isPayoutAccountRemembered,
   readPayoutAccount,
   savePayoutAccount,
   subscribe,
@@ -16,7 +17,30 @@ const account = {
 describe('payoutAccount (web)', () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    window.localStorage.clear();
     _resetCache();
+  });
+
+  it('remembers on this device when asked, and survives the tab closing', async () => {
+    await savePayoutAccount(account, { remember: true });
+    window.sessionStorage.clear();
+    _resetCache();
+    expect(await readPayoutAccount()).toEqual(account);
+    expect(isPayoutAccountRemembered()).toBe(true);
+  });
+
+  it('saving without remember forgets the device copy', async () => {
+    await savePayoutAccount(account, { remember: true });
+    await savePayoutAccount(account);
+    expect(isPayoutAccountRemembered()).toBe(false);
+    expect(window.localStorage.getItem('gdp.payoutAccount')).toBeNull();
+  });
+
+  it('clear removes both copies', async () => {
+    await savePayoutAccount(account, { remember: true });
+    await clearPayoutAccount();
+    _resetCache();
+    expect(await readPayoutAccount()).toBeNull();
   });
 
   it('returns null when nothing is stored', async () => {

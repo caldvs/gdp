@@ -885,3 +885,8 @@ img { max-width: 100%; }
 
 /* ---------- Share page ---------- */
 .share-note { font-size: 13px; line-height: 1.4; color: var(--mute); text-align: center; max-width: 320px; margin: -8px 0 0; }
+/* ---------- Payout: remember on this device ---------- */
+.remember { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-row); background: var(--surface); cursor: pointer; }
+.remember input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--accent); }
+.remember__t { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
+.remember__d { display: block; font-size: 13px; line-height: 1.45; color: var(--mute); margin-top: 2px; }

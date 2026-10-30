@@ -12,7 +12,7 @@ import {
 //
 // On mount, the hook calls readPayoutAccount(). On native that triggers
 // the biometric prompt unless the in-memory cache is already warm; on
-// web it's a sessionStorage read. Subsequent renders use the cache.
+// web it's a sessionStorage (or, if remembered, localStorage) read. Subsequent renders use the cache.
 
 export type UsePayoutAccountState = {
   data: PayoutAccount | null | undefined;
@@ -61,11 +61,11 @@ export function useSavePayoutAccount() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const save = useCallback(async (account: PayoutAccount) => {
+  const save = useCallback(async (account: PayoutAccount, opts?: { remember?: boolean }) => {
     setIsSaving(true);
     setError(null);
     try {
-      await savePayoutAccount(account);
+      await savePayoutAccount(account, opts);
     } catch (e) {
       setError(e instanceof Error ? e : new Error('Could not save payout account'));
       throw e;

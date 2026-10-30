@@ -182,6 +182,50 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/auth/email/test-sign-in:
+    post:
+      tags: [identity]
+      operationId: testAccountSignIn
+      security: []
+      summary: Sign in to a test account without a code (local and dev only)
+      description: |
+        For trying the app as several people at once. Only `@test.invalid`
+        addresses (reserved, so never a real person's), and only where the
+        server enables it: local and dev, never prod (404 there). A known
+        address gets its existing account; a new one gets a new account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '200':
+          description: Signed in. Same shape as `verifyEmailOtp`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token: { type: string }
+                  user:
+                    type: object
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      email: { type: string, format: email }
+                      displayName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Test accounts are off on this server.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/me:
     get:
       tags: [identity]

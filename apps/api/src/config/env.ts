@@ -43,6 +43,11 @@ const EnvSchema = z.object({
   TRUELAYER_SIGNING_PRIVATE_KEY_PEM: z.string().optional(),
   TRUELAYER_RETURN_URI: z.string().url().optional(),
 
+  // Test accounts (@test.invalid, sign in with no code) for trying the app
+  // as several people. CDK sets it to true for dev only; app.ts ignores it
+  // in prod and the dependency check fails if it's on there.
+  AUTH_TEST_ACCOUNTS: z.enum(['true', 'false']).default('false'),
+
   PAYMENT_PROVIDER: z.enum(['mock', 'truelayer', 'manual']).default('mock'),
 
   // Stripe takes the lead's table fee (not diner money). Both optional:

@@ -12,7 +12,6 @@ import Link from 'next/link';
 import { Box, Button, Notice, Page, Row, Section, Title } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'AWAITING_CODE';
-const DEV_PRESETS = ['alice', 'bob', 'charlie', 'diana'];
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
 // The email a code was sent to, so the code step survives the tab being
@@ -74,7 +73,6 @@ function Landing() {
       <Page>
         <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
         <EmailOtpFlow cta="Continue" />
-        {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
       </Page>
     );
   }
@@ -90,7 +88,6 @@ function Landing() {
       <Section title="Sign in or create an account">
         <EmailOtpFlow cta="Email me a code" />
       </Section>
-      {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
       <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
       <nav className="legal-links" aria-label="Legal">
         <Link href="/terms">Terms</Link>
@@ -276,33 +273,5 @@ function EmailOtpFlow({ cta }: { cta: string }) {
         <Button tone="text" onClick={() => { writePendingCode(null); setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
       </div>
     </form>
-  );
-}
-
-function DevSignIn() {
-  const router = useRouter();
-  const dest = useDestination();
-  const devSignIn = useDevEmailSignIn();
-  const [error, setError] = useState<string | null>(null);
-  const signInAs = async (name: string) => {
-    setError(null);
-    const email = `${name}@dev.local`;
-    try {
-      await devSignIn.mutateAsync({ email });
-      rememberDevEmail(email);
-      router.replace(dest);
-    } catch (err) {
-      setError(err instanceof ApiError && err.status === 404 ? 'This API has dev sign-in turned off.' : "Couldn't sign in. Is the local API running?");
-    }
-  };
-  return (
-    <Section title="Dev accounts">
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {DEV_PRESETS.map((u) => (
-          <Button key={u} tone="secondary" small disabled={devSignIn.isPending} onClick={() => signInAs(u)}>{u}</Button>
-        ))}
-      </div>
-      {error ? <div className="field__err">{error}</div> : null}
-    </Section>
   );
 }

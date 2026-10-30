@@ -159,7 +159,7 @@ button.g-row:not(:disabled):hover, a.g-row:hover { background: rgba(255, 255, 25
 .g-input--mono { font-variant-numeric: tabular-nums; letter-spacing: 0.08em; }
 .g-input-wrap { display: flex; align-items: center; height: 54px; border-radius: 16px; border: 1px solid var(--g-line-strong); background: var(--g-fill); padding: 0 6px 0 16px; }
 .g-input-wrap:focus-within { border-color: var(--g-accent); box-shadow: 0 0 0 3px var(--g-accent-soft); }
-.g-input-wrap input { flex: 1; min-width: 0; border: 0; background: none; outline: none; color: var(--g-ink); font: inherit; font-size: 17px; height: 100%; }
+.g-input-wrap input { flex: 1; min-width: 0; width: 100%; border: 0; background: none; outline: none; color: var(--g-ink); font: inherit; font-size: 17px; height: 100%; }
 .g-input-wrap__prefix { color: var(--g-mute); font-size: 15px; margin-right: 2px; }
 .g-error { font-size: 13px; color: var(--g-danger); }
 .g-checkbox { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--g-radius); background: var(--g-fill); cursor: pointer; }

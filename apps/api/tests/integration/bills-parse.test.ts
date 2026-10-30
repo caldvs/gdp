@@ -3,6 +3,8 @@ import { v7 as uuidv7 } from 'uuid';
 import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
+import { FallbackBillParser } from '../../src/services/bills/bedrockParser.js';
+import { AppError } from '../../src/errors/AppError.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
 import {
   fakeVerifier,
@@ -104,6 +106,33 @@ describe('POST /v1/bills/parse', () => {
     expect(bill.items).toHaveLength(3);
     expect(bill.items[0]?.itemId).toMatch(/^[0-9a-f-]{36}$/);
     expect(bill.parsedFrom.parser).toBe('fixture');
+  });
+
+  it('credits the bill to the fallback model when the primary fails', async () => {
+    const primary = {
+      model: 'eu.anthropic.claude-haiku',
+      version: 'v2',
+      parse: () => Promise.reject(new AppError('PARSE_FAILED', 'Bedrock: ThrottlingException')),
+    };
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FallbackBillParser(primary, new FixtureBillParser(sampleParsedBill)),
+    });
+    const userId = `u-${uuidv7()}`;
+    const uploadId = uuidv7();
+    await putObject(userId, uploadId, uniqueImageBytes());
+    const res = await app.request('/v1/bills/parse', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': newIdempotencyKey(),
+        ...makeAuth(userId),
+      },
+      body: JSON.stringify({ uploadId }),
+    });
+    expect(res.status).toBe(200);
+    const bill = (await res.json()) as { parsedFrom: { parser: string; parserVersion: string } };
+    expect(bill.parsedFrom).toMatchObject({ parser: 'fixture', parserVersion: 'v1' });
   });
 
   it('returns a cached response on idempotency replay', async () => {

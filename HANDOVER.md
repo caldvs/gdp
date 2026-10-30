@@ -10,6 +10,7 @@ _Last updated 1 Nov 2026._
 - **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback.
 - **The dev API deploys** from `main` through GitHub Actions (OIDC). The web app is set up for Vercel, with Vercel Analytics.
 - **Tests:** unit, integration and the Playwright e2e suite (against `FakeApi`) all run in CI. Visual baselines are CI's.
+- **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, Gemini, Places, SES from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
 
 ## Next up
 
@@ -25,7 +26,9 @@ _Last updated 1 Nov 2026._
 - The API still accepts claim changes after a guest has paid.
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.
-- Nothing has been tried on a real phone with a real Bedrock read since the switch.
+- Google Places returns 403 PERMISSION_DENIED: enable Places API (New) for the key's Google Cloud project, or loosen its API restrictions. Venues fall back to the text on the bill.
+- Gemini's free tier allows 20 reads a day, so the fallback is easily used up.
+- Nothing has been tried on a real phone with a real Bedrock read since the switch. Bedrock access (use-case form, Marketplace subscription) was completed on 1 Nov.
 
 ## Decided, not built
 

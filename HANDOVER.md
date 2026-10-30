@@ -22,12 +22,8 @@ _Last updated 1 Nov 2026._
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 - **Scanning:** *Scan a bill* opens our own camera (`Camera.tsx`: back camera, bill-shaped guide, gallery, torch where supported), falling back to the phone's camera app when there's no camera API or access is refused. Every photo is shown as *All in?* (*Retake* / *Use photo*) before anything uploads. Not yet tried on a real iPhone and Android phone with a long receipt: if small print reads worse than with the phone's own camera, raise the resolution.
+- **Look:** the tinted page (pale grey-blue `--page`, white cards; tokens in `apps/web/app/globals.css`). **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006); stories in `apps/web/stories/` cover `ui.tsx`, the forms, the header, the join QR and three screens. Not run in CI.
 - **Exempt accounts:** emails in the GitHub environment's `TABLE_FEE_EXEMPT_EMAILS` (secret or variable, comma separated) skip the table fee (status `waived`) and sign in with no code (`/email/start` returns the session). Set it on `dev` and `prod`; it applies from the next API deploy. Link sign-in instead of codes is backlog #119.
-
-## On branch `design/tinted-storybook` (not merged)
-
-- **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run _Update visual baselines_ on the branch) before `gate` goes green.
-- **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
 
 ## Next up
 
@@ -55,4 +51,4 @@ _Last updated 1 Nov 2026._
 
 ## Housekeeping
 
-- `pr-screenshots` (PR images) and `coverage-baseline` (main's coverage numbers, written by CI) are orphan branches; keep them. Each carries `apps/web/vercel.json` switching Vercel deploys off (CI writes it into `coverage-baseline`); keep that file if you rewrite either branch, or Vercel fails a build on every push. Other branches are leftovers from the PR days: delete them once nothing on them is needed.
+- `pr-screenshots` (PR images) and `coverage-baseline` (main's coverage numbers, written by CI) are orphan branches; keep them. Each carries `apps/web/vercel.json` switching Vercel deploys off (CI writes it into `coverage-baseline`); keep that file if you rewrite either branch, or Vercel fails a build on every push. Every other branch is a leftover from the PR days with nothing `main` needs; #73 has the command to delete them.

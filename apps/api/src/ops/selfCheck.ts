@@ -55,17 +55,27 @@ const GEMINI_MODEL = 'gemini-2.5-flash';
 const snippet = async (res: Response): Promise<string> =>
   (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
 
+/**
+ * Stripe keys must match the environment: test-mode keys everywhere except
+ * prod, and live-mode keys only in prod. Returns the problem, or null.
+ */
+export function stripeKeyModeProblem(appEnv: 'local' | 'dev' | 'prod', key: string): string | null {
+  const m = /^(sk|rk)_(test|live)_/.exec(key);
+  if (!m) return 'STRIPE_SECRET_KEY is not an sk_/rk_ key (wrapped in JSON, or the wrong value?)';
+  const mode = m[2];
+  if (appEnv === 'prod' && mode !== 'live') return 'prod must use a live-mode Stripe key';
+  if (appEnv !== 'prod' && mode !== 'test') return `${appEnv} must use a test-mode Stripe key`;
+  return null;
+}
+
 const stripeCheck: Check = {
   name: 'Stripe',
   required: true,
   run: async () => {
     const key = env.STRIPE_SECRET_KEY;
     if (!key) throw skip('Stripe not enabled (no STRIPE_SECRET_KEY)');
-    if (!/^(sk|rk)_(test|live)_/.test(key)) {
-      throw new Error(
-        'STRIPE_SECRET_KEY is not an sk_/rk_ key (wrapped in JSON, or the wrong value?)',
-      );
-    }
+    const modeProblem = stripeKeyModeProblem(env.APP_ENV, key);
+    if (modeProblem) throw new Error(modeProblem);
     if (!env.STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
       throw new Error('STRIPE_WEBHOOK_SECRET is missing or is not a whsec_ secret');
     }

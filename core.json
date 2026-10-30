@@ -1,30 +1,30 @@
 {
-  "sha": "a495e2684105b319a1fdaa6c44f66c34c654455d",
-  "recordedAt": "2026-11-01T18:05:32.760Z",
+  "sha": "823591c8ef8965080acbd1d81b15f324efbaae7b",
+  "recordedAt": "2026-11-01T18:49:17.411Z",
   "total": {
     "lines": {
-      "total": 698,
+      "total": 703,
       "covered": 309,
       "skipped": 0,
-      "pct": 44.26
+      "pct": 43.95
     },
     "statements": {
-      "total": 796,
+      "total": 802,
       "covered": 364,
       "skipped": 0,
-      "pct": 45.72
+      "pct": 45.38
     },
     "functions": {
-      "total": 238,
+      "total": 239,
       "covered": 84,
       "skipped": 0,
-      "pct": 35.29
+      "pct": 35.14
     },
     "branches": {
-      "total": 462,
+      "total": 466,
       "covered": 268,
       "skipped": 0,
-      "pct": 58
+      "pct": 57.51
     },
     "branchesTrue": {
       "total": 0,

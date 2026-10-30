@@ -14,8 +14,9 @@ import { formatGBP } from '@gdp/core/lib/money';
 import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  ActionBar, BackLink, Badge, Box, Button, Dialog, Notice, Page, QrIcon, Row, Section, Stats, Title, TotalLine, Totals, firstName,
+  ActionBar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Avatar, Row, Section, Stats, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
+import { BillTools } from '@/components/BillTools';
 import { PickRow, SplitSheet, Stepper, itemStatuses, splitSub } from './guest';
 
 type Session = components['schemas']['Session'];
@@ -104,11 +105,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title
-          title={b.venue?.name ?? 'Your bill'}
-          sub={s.joinCode ? `Code ${s.joinCode}` : undefined}
-          aside={s.joinCode ? <Button tone="secondary" small href={`/session/${s.sessionId}/share`} aria-label="Show QR code"><QrIcon />QR code</Button> : undefined}
-        />
+        <Title title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} />
+        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />
         <Stats items={[
           { k: 'Bill', v: formatGBP(b.totalPence) },
           { k: 'Collected', v: formatGBP(collected) },
@@ -118,7 +116,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <Section title="People">
           <Box>
             {guests.length === 0 ? (
-              <Row title="Nobody’s joined yet" sub="Show them the QR code" muted />
+              <Row title="Nobody’s joined yet" sub="Show them the QR code. People appear here as they join." muted />
             ) : guests.map((p) => (
               <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={p.payment.status === 'pending' ? () => confirm.mutate(p.payment.status === 'pending' ? p.payment.paymentId : '') : undefined} />
             ))}
@@ -248,17 +246,19 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number; onConfirm?: () => void; busy: boolean }) {
   const saysPaid = p.payment.status === 'pending' && !!p.payment.payerClaimedPaidAt;
   const name = firstName(p.displayName, 'Guest');
-  if (isPaid(p)) return <Row title={name} sub={formatGBP(owed)} end={<Badge tone="ok">Paid</Badge>} />;
+  const av = <Avatar name={p.displayName || name} />;
+  if (isPaid(p)) return <Row lead={av} title={name} sub={formatGBP(owed)} end={<Badge tone="ok">Paid</Badge>} />;
   if (saysPaid && onConfirm) {
     return (
       <Row
+        lead={av}
         title={name}
         sub={`Says they’ve paid ${formatGBP(owed)}`}
         end={<Button small onClick={onConfirm} disabled={busy} aria-label={`Confirm ${name} paid ${formatGBP(owed)}`}>Confirm</Button>}
       />
     );
   }
-  return <Row title={name} sub={p.payment.status === 'pending' ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
+  return <Row lead={av} title={name} sub={p.payment.status === 'pending' ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
 }
 
 /* ============================ closed ============================ */
@@ -273,6 +273,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <Title title={b.venue?.name ?? 'Your bill'} sub="Bill closed" />
+        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />
         {outstanding.length === 0
           ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>
           : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}

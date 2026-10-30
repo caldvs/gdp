@@ -8,11 +8,13 @@ _Last updated 1 Nov 2026._
 
 - **The app** is the Option D web UI. The whole flow is built: scan → check the bill → bank details → table fee (when Stripe is configured) → QR → guests claim and split → pay the lead → lead closes → everyone's emailed a report. See the [README](README.md) and [decisions](docs/decisions.md).
 - **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback.
-- **The dev API deploys** from `main` through GitHub Actions (OIDC). The web app is set up for Vercel, with Vercel Analytics.
+- **The dev API deploys** from `main` through GitHub Actions (OIDC). The deploy role only trusts jobs in the `dev` GitHub environment, and the dev job redeploys the role stack itself. There's no staging; prod (`GdpBackendProd`) is defined but not set up. TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests:** unit, integration and the Playwright e2e suite (against `FakeApi`) all run in CI. Visual baselines are CI's.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, Gemini, Places, SES from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
 
 ## Next up
+
+**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phase 1 (this deploy-role change) is done; next is `APP_ENV`, Stripe key-mode checks, and a web build that refuses to run without `NEXT_PUBLIC_API_BASE_URL`. Callum still to do: limit the GitHub `dev` environment to `main`.
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
 
@@ -33,7 +35,7 @@ _Last updated 1 Nov 2026._
 ## Decided, not built
 
 - Accounts optional: guests join with just a name (needs API work).
-- Top-ups: more than one payment per guest, so *I had something else* can reopen picking after paying.
+- Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
 - Table fee: free bill a month, guests repay it, refund if nobody joins, server-side gate. See [docs/table-fee.md](docs/table-fee.md).

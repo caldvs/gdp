@@ -37,9 +37,15 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
    - `AWS_REGION` = `eu-west-2`
 3. Actions → **API Deploy** → Run workflow (`dev`) to check it.
 
-The role can only assume the CDK bootstrap roles (`cdk-*`), and only from
-workflow runs in this repo (`repo:caldvs/gdp:*`, or the same with owner and repo IDs, which is what GitHub now sends).
+The role can only assume the CDK bootstrap roles (`cdk-*`), and only from jobs
+in this repo's `dev` GitHub environment (`repo:caldvs/gdp:environment:dev`, or
+the same with owner and repo IDs, which is what GitHub now sends). Limit the
+`dev` environment to the `main` branch so only `main` can deploy.
 The API stack also lets it invoke the API function, for the dependency check below.
+
+After step 1, CI keeps the role stack up to date: the dev deploy job redeploys
+`GdpGithubDeploy` as its last step. If a change to its trust locks CI out, rerun
+step 1 from your Mac.
 
 ### Checks after every deploy
 

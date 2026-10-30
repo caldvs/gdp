@@ -12,10 +12,10 @@
     "dev": "docker compose up -d && tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/dev-bootstrap.ts && tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local src/local.ts",
     "dev:bootstrap": "tsx scripts/dev-bootstrap.ts",
     "test:e2e:multi": "tsx scripts/e2e-multi-diner.ts",
-    "test": "vitest run",
-    "test:int": "vitest run --config vitest.integration.config.ts",
-    "test:all": "npm run test && npm run test:int",
-    "test:watch": "vitest",
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project integration",
+    "test:all": "vitest run",
+    "test:watch": "vitest --project unit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -29,7 +29,8 @@
     "smoke:bill": "tsx scripts/smoke-bill.ts",
     "validate:bundle": "tsx scripts/validate-bundle.ts",
     "deploy:dev": "npm run validate:bundle && cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
-    "precommit": "lint-staged"
+    "precommit": "lint-staged",
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1161.0",
@@ -55,6 +56,7 @@
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "^22.10.0",
     "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "^4.1.12",
     "aws-cdk": "^2.170.0",
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.0",
@@ -66,7 +68,7 @@
     "tsx": "^4.19.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.12"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [

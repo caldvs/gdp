@@ -1,0 +1,326 @@
+name: CI
+
+# One workflow for every PR and every push to main. Jobs are skipped by path,
+# but the workflow always runs, so the final `gate` job always reports. `gate`
+# is the single check that says whether a PR can merge (scripts/merge-pr.sh
+# refuses anything else). The repo is private on the free plan, so GitHub
+# itself can't block the merge button: merge with the script.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # Lines or branches may drop by at most this many percentage points
+  # against main. Floors are in each package's vitest.config.ts.
+  COVERAGE_TOLERANCE: '1'
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      core: ${{ steps.filter.outputs.core }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared: &shared
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+              - '.github/workflows/ci.yml'
+            api:
+              - *shared
+              - 'apps/api/**'
+            core:
+              - *shared
+              - 'packages/**'
+            web:
+              - *shared
+              - 'apps/web/**'
+              - 'packages/**'
+
+  tooling:
+    name: scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - run: npm run test:scripts
+
+  api:
+    name: api • lint • typecheck • unit • build
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        working-directory: .
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run openapi:lint
+      - name: Generated API types are up to date
+        working-directory: .
+        run: |
+          npm run gen:api
+          git diff --exit-code packages/core/src/api/schema.d.ts \
+            || { echo "::error::Run 'npm run gen:api' and commit packages/core/src/api/schema.d.ts"; exit 1; }
+      - run: npm test
+      - run: npm run build
+      - name: Validate Lambda bundle (cdk synth + handler load)
+        run: npm run validate:bundle
+      - run: npm audit --audit-level=high
+        continue-on-error: true
+
+  api-coverage:
+    name: api • unit + integration • coverage
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        working-directory: .
+      - name: Start DynamoDB Local + MinIO
+        run: docker compose up -d
+      - name: Wait for services
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://localhost:8000 >/dev/null 2>&1 \
+               || curl -s http://localhost:8000 | grep -qi dynamodb; then
+              echo "ddb up"; break
+            fi
+            sleep 1
+          done
+          for i in {1..30}; do
+            if curl -sf http://localhost:9000/minio/health/live >/dev/null; then
+              echo "minio up"; break
+            fi
+            sleep 1
+          done
+      - run: npm run test:cov
+        env:
+          DYNAMODB_ENDPOINT: http://localhost:8000
+          S3_ENDPOINT: http://localhost:9000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-api
+          path: apps/api/coverage/coverage-summary.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  core:
+    name: core • typecheck • unit • coverage
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w packages/core
+      - run: npm run test:cov -w packages/core
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-core
+          path: packages/core/coverage/coverage-summary.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web:
+    name: web • typecheck • build • e2e
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck -w apps/web
+      - run: npm run build -w apps/web
+      - run: npx playwright install --with-deps chromium webkit
+        working-directory: apps/web
+      - run: npm run e2e -w apps/web
+      # On failure, keep the report and any screenshots it wrote (including
+      # new visual baselines) so they can be inspected or committed.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright
+          path: |
+            apps/web/test-results/
+            apps/web/e2e/*-snapshots/
+          retention-days: 7
+
+  coverage:
+    name: coverage
+    needs: [changes, api-coverage, core]
+    if: always() && github.event_name == 'pull_request' && needs.changes.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: cov
+      - name: Fetch main's baseline
+        run: |
+          mkdir -p baseline
+          if git fetch --depth=1 origin coverage-baseline 2>/dev/null; then
+            git --work-tree=baseline checkout FETCH_HEAD -- . 2>/dev/null || true
+          else
+            echo "::warning::No coverage-baseline branch yet; ratchet skipped this run."
+          fi
+          ls baseline
+      - name: Check for the coverage-drop-ok label
+        id: label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Read labels live (not from the event payload) so re-running the
+          # job after adding the label picks it up.
+          labels=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" --jq '.[].name')
+          if echo "$labels" | grep -qx 'coverage-drop-ok'; then echo "allow=--allow-drop" >> "$GITHUB_OUTPUT"; fi
+      - name: Compare with main
+        id: gate
+        run: |
+          set +e
+          node scripts/coverage-gate.mjs check \
+            --pkg api=cov/coverage-api/coverage-summary.json \
+            --pkg core=cov/coverage-core/coverage-summary.json \
+            --baseline-dir baseline \
+            --tolerance "$COVERAGE_TOLERANCE" ${{ steps.label.outputs.allow }} \
+            --report report.md
+          code=$?
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: Post or update the PR comment
+        if: always() && hashFiles('report.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo="${{ github.repository }}"; pr="${{ github.event.pull_request.number }}"
+          id=$(gh api "repos/$repo/issues/$pr/comments" --paginate \
+                 --jq '.[] | select(.body | startswith("<!-- coverage-gate -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$repo/issues/comments/$id" -F body=@report.md >/dev/null
+          else
+            gh api -X POST "repos/$repo/issues/$pr/comments" -F body=@report.md >/dev/null
+          fi
+
+  publish-baseline:
+    name: publish coverage baseline
+    needs: [api-coverage, core]
+    # Only from main, and only when nothing failed (a skipped package keeps
+    # its previous baseline).
+    if: >-
+      always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: coverage-baseline
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: cov
+      - name: Record and push to the coverage-baseline branch
+        run: |
+          cp scripts/coverage-gate.mjs "$RUNNER_TEMP/coverage-gate.mjs"
+          git config user.name "caldvs"
+          git config user.email "42970938+caldvs@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            rm -rf "$RUNNER_TEMP/baseline"
+            if git fetch --depth=1 origin coverage-baseline 2>/dev/null; then
+              git worktree add -f "$RUNNER_TEMP/baseline" FETCH_HEAD
+              git -C "$RUNNER_TEMP/baseline" checkout -B coverage-baseline
+            else
+              git worktree add -f --orphan -b coverage-baseline "$RUNNER_TEMP/baseline"
+            fi
+            node "$RUNNER_TEMP/coverage-gate.mjs" record \
+              --pkg api=cov/coverage-api/coverage-summary.json \
+              --pkg core=cov/coverage-core/coverage-summary.json \
+              --baseline-dir "$RUNNER_TEMP/baseline" --sha "$GITHUB_SHA"
+            git -C "$RUNNER_TEMP/baseline" add -A
+            if git -C "$RUNNER_TEMP/baseline" diff --cached --quiet; then echo "Baseline unchanged"; exit 0; fi
+            git -C "$RUNNER_TEMP/baseline" commit -q -m "Coverage baseline for ${GITHUB_SHA::7}"
+            if git -C "$RUNNER_TEMP/baseline" push origin coverage-baseline; then exit 0; fi
+            git worktree remove -f "$RUNNER_TEMP/baseline"
+            echo "Push raced another run; retrying ($attempt)"
+          done
+          exit 1
+
+  gate:
+    name: gate
+    needs: [changes, tooling, api, api-coverage, core, web, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs passed or were skipped
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")')
+          if [ -n "$bad" ]; then echo "::error::Failed: $bad"; exit 1; fi

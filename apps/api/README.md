@@ -59,11 +59,11 @@ When an alarm fires: [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Deployed config
 
-| Setting | Dev value |
-| --- | --- |
-| Region | eu-west-2 |
+| Setting     | Dev value                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------ |
+| Region      | eu-west-2                                                                                                    |
 | Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, Gemini fallback (override with `-c bedrockModelId=…`) |
-| Payments | `manual`: guests transfer, the lead confirms |
-| Email | SES, from the address in SSM |
-| Secrets | Secrets Manager `gdp-dev/*`; plain config in SSM |
-| Logs | CloudWatch, one month; dashboard `gdp-dev` |
+| Payments    | `manual`: guests transfer, the lead confirms                                                                 |
+| Email       | SES, from the address in SSM                                                                                 |
+| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                                             |
+| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                                   |

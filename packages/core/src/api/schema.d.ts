@@ -215,7 +215,7 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     (Claude Sonnet on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
          *     the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
          *     Idempotent via `Idempotency-Key`.
          */
@@ -1016,7 +1016,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
+                /** @example eu.anthropic.claude-sonnet-4-6 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;

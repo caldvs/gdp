@@ -35,7 +35,7 @@ export default function TermsPage() {
       <section>
         <h2>Fees</h2>
         <ul>
-          <li>Each lead gets one free bill a month.</li>
+          <li>Your first bill is free.</li>
           <li>
             After that, sharing a bill costs £2, or £3 if the bill is over £100. The lead pays it by card when they
             share the bill. Card payments are handled by Stripe.

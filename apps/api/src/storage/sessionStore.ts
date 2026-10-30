@@ -13,6 +13,10 @@ const SESSION_TTL_DAYS = 30;
 
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const META_SK = 'META';
+// One row per session counting changes to who has what (claims, splits,
+// bill amends). Claim writes are conditional on it, so two claims read
+// against the same state can't both land.
+const CLAIMS_SK = 'CLAIMS';
 const partSk = (userId: string) => `PART#${userId}`;
 const shareSk = (itemId: string) => `SHARE#${itemId}`;
 const codePk = (code: string) => `JCODE#${code}`;
@@ -44,10 +48,37 @@ function metaOnly<T extends object>(meta: T): Omit<T, 'shares' | 'shareSettings'
   return rest;
 }
 
-type SessionMetaRow = Omit<Session, 'participants'> & { pk: string; sk: string };
+// ttlAt is DynamoDB's TTL attribute: epoch seconds, internal to storage.
+type SessionMetaRow = Omit<Session, 'participants' | 'ttlAt'> & {
+  pk: string;
+  sk: string;
+  ttlAt: number;
+};
 
 const ttlEpochSeconds = (): number =>
   Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
+
+/** Bump the claims version, but only from `expected` (see CLAIMS_SK). */
+function claimsVersionGuardOp(
+  sessionId: string,
+  expected: number,
+  ttlAt: number,
+): NonNullable<TransactWriteCommandInput['TransactItems']>[number] {
+  return {
+    Update: {
+      TableName: TABLE_NAME,
+      Key: { pk: sessionPk(sessionId), sk: CLAIMS_SK },
+      UpdateExpression: 'SET #v = :next, ttlAt = :ttl',
+      ConditionExpression: expected === 0 ? 'attribute_not_exists(#v)' : '#v = :expected',
+      ExpressionAttributeNames: { '#v': 'version' },
+      ExpressionAttributeValues: {
+        ':next': expected + 1,
+        ':ttl': ttlAt,
+        ...(expected === 0 ? {} : { ':expected': expected }),
+      },
+    },
+  };
+}
 
 export const sessionStore = {
   /**
@@ -61,7 +92,7 @@ export const sessionStore = {
       pk: sessionPk(session.sessionId),
       sk: META_SK,
       ...metaOnly(meta),
-      ttlAt: new Date(ttlAt * 1000).toISOString(),
+      ttlAt,
     };
 
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
@@ -90,7 +121,7 @@ export const sessionStore = {
     }
 
     // Lock the bill to this session for the entire session lifetime so the
-    // bill cannot be amended while in use. Released on abandon.
+    // bill cannot be amended while in use. Released on close and abandon.
     transactItems.push({
       Put: {
         TableName: TABLE_NAME,
@@ -109,6 +140,16 @@ export const sessionStore = {
   },
 
   async get(sessionId: string): Promise<Session | null> {
+    return (await this.getWithClaimsVersion(sessionId))?.session ?? null;
+  },
+
+  /**
+   * The session plus the version of its claims row, read in one consistent
+   * query. Pass the version to `putClaimsGuarded`.
+   */
+  async getWithClaimsVersion(
+    sessionId: string,
+  ): Promise<{ session: Session; claimsVersion: number } | null> {
     const result = await ddb.send(
       new QueryCommand({
         TableName: TABLE_NAME,
@@ -122,21 +163,107 @@ export const sessionStore = {
     let meta: Omit<Session, 'participants'> | null = null;
     const participants: Participant[] = [];
     const shareSettings: ShareSettings[] = [];
+    let claimsVersion = 0;
 
     for (const raw of result.Items) {
       const { pk: _pk, sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
       if (sk === META_SK) {
-        meta = rest as Omit<Session, 'participants'>;
+        // ttlAt is storage-only (epoch seconds for DynamoDB TTL).
+        const { ttlAt: _ttl, ...m } = rest;
+        meta = m as Omit<Session, 'participants'>;
       } else if (typeof sk === 'string' && sk.startsWith('PART#')) {
         participants.push(rest as Participant);
       } else if (typeof sk === 'string' && sk.startsWith('SHARE#')) {
         const { ttlAt: _ttl, ...settings } = rest;
         shareSettings.push(settings as ShareSettings);
+      } else if (sk === CLAIMS_SK) {
+        claimsVersion = Number((rest as { version?: number }).version ?? 0);
       }
     }
 
     if (!meta) return null;
-    return { ...meta, participants, ...(shareSettings.length > 0 && { shareSettings }) };
+    return {
+      session: { ...meta, participants, ...(shareSettings.length > 0 && { shareSettings }) },
+      claimsVersion,
+    };
+  },
+
+  /**
+   * Write a participant's claims only if nobody changed who-has-what since
+   * `expectedVersion` was read. Fails with ConditionalCheckFailed otherwise,
+   * so the caller re-reads and re-validates.
+   */
+  async putClaimsGuarded(
+    sessionId: string,
+    participant: Participant,
+    expectedVersion: number,
+  ): Promise<void> {
+    const ttlAt = ttlEpochSeconds();
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          claimsVersionGuardOp(sessionId, expectedVersion, ttlAt),
+          { Put: { TableName: TABLE_NAME, Item: participantItem(sessionId, ttlAt, participant) } },
+        ],
+      }),
+    );
+  },
+
+  /** Transaction step that marks who-has-what as changed (see CLAIMS_SK). */
+  bumpClaimsVersionOp(
+    sessionId: string,
+  ): NonNullable<TransactWriteCommandInput['TransactItems']>[number] {
+    return {
+      Update: {
+        TableName: TABLE_NAME,
+        Key: { pk: sessionPk(sessionId), sk: CLAIMS_SK },
+        UpdateExpression: 'ADD #v :one SET ttlAt = :ttl',
+        ExpressionAttributeNames: { '#v': 'version' },
+        ExpressionAttributeValues: { ':one': 1, ':ttl': ttlEpochSeconds() },
+      },
+    };
+  },
+
+  /**
+   * Whether the user is (or was) at a table for this bill: any session they
+   * have a participant row in whose bill is `billId`. Used to let guests
+   * keep reading a bill after its lock is released.
+   */
+  async userHasSessionForBill(userId: string, billId: string): Promise<boolean> {
+    const sessionIds: string[] = [];
+    let start: Record<string, unknown> | undefined;
+    do {
+      const page = await ddb.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'GSI1PK = :pk',
+          ExpressionAttributeValues: { ':pk': userIdx(userId) },
+          ProjectionExpression: 'GSI1SK',
+          ...(start ? { ExclusiveStartKey: start } : {}),
+        }),
+      );
+      for (const row of page.Items ?? []) {
+        if (typeof row.GSI1SK === 'string') sessionIds.push(row.GSI1SK);
+      }
+      start = page.LastEvaluatedKey;
+    } while (start);
+
+    for (let i = 0; i < sessionIds.length; i += 100) {
+      const chunk = sessionIds.slice(i, i + 100);
+      const res = await ddb.send(
+        new BatchGetCommand({
+          RequestItems: {
+            [TABLE_NAME]: {
+              Keys: chunk.map((id) => ({ pk: sessionPk(id), sk: META_SK })),
+              ProjectionExpression: 'billId',
+            },
+          },
+        }),
+      );
+      if ((res.Responses?.[TABLE_NAME] ?? []).some((m) => m.billId === billId)) return true;
+    }
+    return false;
   },
 
   async resolveJoinCode(code: string): Promise<{ sessionId: string } | null> {
@@ -177,6 +304,12 @@ export const sessionStore = {
     itemId: string;
     settings: ShareSettings | null;
     expectedVersion: number | null;
+    /**
+     * The claims version read with the session. Joining or leaving a split
+     * changes who has what, so it must not land on top of a claim made in
+     * between (see putClaimsGuarded). Omit for changes that don't (ways).
+     */
+    expectedClaimsVersion?: number;
   }): Promise<void> {
     const ttlAt = ttlEpochSeconds();
     const key = { pk: sessionPk(input.sessionId), sk: shareSk(input.itemId) };
@@ -197,7 +330,12 @@ export const sessionStore = {
               ...condition,
             },
           };
-    const items: NonNullable<TransactWriteCommandInput['TransactItems']> = [settingsOp];
+    const items: NonNullable<TransactWriteCommandInput['TransactItems']> = [
+      settingsOp,
+      input.expectedClaimsVersion === undefined
+        ? sessionStore.bumpClaimsVersionOp(input.sessionId)
+        : claimsVersionGuardOp(input.sessionId, input.expectedClaimsVersion, ttlAt),
+    ];
     if (input.participant) {
       items.push({
         Put: {
@@ -350,7 +488,8 @@ export const sessionStore = {
     );
     const metaBySessionId = new Map<string, Omit<Session, 'participants'>>();
     for (const raw of metaRes.Responses?.[TABLE_NAME] ?? []) {
-      const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
+      // ttlAt is storage-only (epoch seconds for DynamoDB TTL).
+      const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ttlAt: _ttl, ...rest } = raw;
       const meta = rest as Omit<Session, 'participants'>;
       metaBySessionId.set(meta.sessionId, meta);
     }

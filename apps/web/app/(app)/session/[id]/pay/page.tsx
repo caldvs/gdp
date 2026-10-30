@@ -29,7 +29,7 @@ export default function PayPage() {
   const router = useRouter();
   const session = useSession(id);
   const me = useMe();
-  const bill = useBill(session.data?.billId);
+  const bill = useBill(session.data?.billId, session.data?.pinnedBillVersion);
   const payout = useSessionPayout(id);
   const initiate = useInitiatePayment(id);
   const markPaid = useMarkPaymentPaid(id);

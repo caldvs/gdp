@@ -5,6 +5,7 @@ import {
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
+import { sessionStore } from './sessionStore.js';
 import type { Bill } from '../types/bills.js';
 import type { Participant, Session } from '../types/sessions.js';
 
@@ -102,6 +103,8 @@ export const billStore = {
     bill: Bill;
     sessionMeta: Omit<Session, 'participants'>;
     participants: Participant[];
+    /** Items removed from the bill whose split settings rows go too. */
+    removedSplitItemIds?: string[];
   }): Promise<void> {
     const ttlAt = ttlEpochSeconds();
     const billItem = { pk: billPk(input.bill.billId), ...input.bill };
@@ -131,8 +134,8 @@ export const billStore = {
           Item: {
             pk: sessionPk(input.sessionMeta.sessionId),
             sk: META_SK,
-            ttlAt,
             ...meta,
+            ttlAt,
           },
         },
       },
@@ -142,6 +145,14 @@ export const billStore = {
           Item: { pk: sessionPk(input.sessionMeta.sessionId), sk: partSk(p.userId), ttlAt, ...p },
         },
       })),
+      ...(input.removedSplitItemIds ?? []).map((itemId) => ({
+        Delete: {
+          TableName: TABLE_NAME,
+          Key: { pk: sessionPk(input.sessionMeta.sessionId), sk: `SHARE#${itemId}` },
+        },
+      })),
+      // Claims read before this amend must not land against the old bill.
+      sessionStore.bumpClaimsVersionOp(input.sessionMeta.sessionId),
     ];
     await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
   },

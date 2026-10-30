@@ -36,16 +36,16 @@ Bill reading uses Bedrock even locally: set `BEDROCK_MODEL_ID` and `AWS_PROFILE=
 
 ## Commands
 
-| Command                                    |                                                        |
-| ------------------------------------------ | ------------------------------------------------------ |
-| `npm run dev:local`                        | API + web, web pointed at the local API                |
-| `npm run dev` / `npm run dev:api`          | Web only / API only                                    |
-| `npm run typecheck`                        | All workspaces (the pre-commit hook runs it)           |
-| `npm test`                                 | Unit tests (`packages/core`, `apps/api`)               |
-| `npm run test:int -w apps/api`             | Integration tests (needs `npm run ddb:up -w apps/api`) |
-| `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API           |
-| `npm run gen:api`                          | Regenerate client types from `apps/api/openapi.yaml`   |
-| `npm run deploy:dev -w apps/api`           | Deploy the dev API stack and smoke-test it             |
+| Command                                    |                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev:local`                        | API + web (web pointed at the local API) + Stripe webhook forwarding, so the table fee completes locally. Needs the [Stripe CLI](https://stripe.com/docs/stripe-cli) logged in; without it, payments are off and everything else still runs. `DEV_NO_STRIPE=1` skips the forwarder. |
+| `npm run dev` / `npm run dev:api`          | Web only / API only                                                                                                                                                                                                                                                                 |
+| `npm run typecheck`                        | All workspaces (the pre-commit hook runs it)                                                                                                                                                                                                                                        |
+| `npm test`                                 | Unit tests (`packages/core`, `apps/api`)                                                                                                                                                                                                                                            |
+| `npm run test:int -w apps/api`             | Integration tests (needs `npm run ddb:up -w apps/api`)                                                                                                                                                                                                                              |
+| `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API                                                                                                                                                                                                                                        |
+| `npm run gen:api`                          | Regenerate client types from `apps/api/openapi.yaml`                                                                                                                                                                                                                                |
+| `npm run deploy:dev -w apps/api`           | Deploy the dev API stack and smoke-test it                                                                                                                                                                                                                                          |
 
 An API contract change and the matching client change go in the same commit, since the client types come from `openapi.yaml`.
 

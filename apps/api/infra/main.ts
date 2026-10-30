@@ -29,11 +29,6 @@ interface GdpStackProps extends cdk.StackProps {
   envName: EnvName;
 }
 
-// Map our short env names to the values the runtime zod schema expects
-// (env.ts EnvSchema NODE_ENV: 'development' | 'test' | 'production').
-const nodeEnvFor = (e: EnvName): 'development' | 'production' =>
-  e === 'prod' ? 'production' : 'development';
-
 class GdpBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GdpStackProps) {
     super(scope, id, props);
@@ -210,7 +205,10 @@ class GdpBackendStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
-        NODE_ENV: nodeEnvFor(envName),
+        // Node and libraries run in production mode everywhere deployed;
+        // APP_ENV says which environment (env.ts).
+        NODE_ENV: 'production',
+        APP_ENV: envName,
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
         DDB_TABLE_NAME: table.tableName,
         S3_BUCKET_BILLS: billsBucket.bucketName,

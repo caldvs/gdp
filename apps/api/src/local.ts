@@ -6,7 +6,9 @@ import { createSessionTokenVerifier, type IdTokenVerifier } from './services/aut
 // Local development server. Never used by the Lambda (src/lambda.ts).
 
 const port = Number(process.env.PORT ?? 3000);
-const isProduction = process.env.NODE_ENV === 'production';
+// Refuse anything that looks like a deployed environment.
+const isProduction =
+  process.env.NODE_ENV === 'production' || (process.env.APP_ENV ?? 'local') !== 'local';
 const hasLocalDb = !!process.env.DYNAMODB_ENDPOINT;
 
 const bypass = process.env.AUTH_BYPASS_LOCAL === 'true';
@@ -16,7 +18,9 @@ const devEmailSignIn = process.env.AUTH_DEV_EMAIL_SIGNIN !== 'false' && hasLocal
 
 if (bypass) {
   if (isProduction) {
-    console.error('REFUSING TO START: AUTH_BYPASS_LOCAL=true with NODE_ENV=production is unsafe.');
+    console.error(
+      'REFUSING TO START: AUTH_BYPASS_LOCAL=true needs APP_ENV=local and NODE_ENV other than production.',
+    );
     process.exit(1);
   }
   if (!hasLocalDb) {
@@ -27,7 +31,7 @@ if (bypass) {
   }
   console.warn('⚠ AUTH_BYPASS_LOCAL=true — accepting `dev:<userId>` tokens from any caller.');
   console.warn(
-    '⚠ Local-only. Refuses to start without local DDB endpoint or with NODE_ENV=production.',
+    '⚠ Local-only. Refuses to start without a local DDB endpoint, or outside APP_ENV=local.',
   );
 }
 

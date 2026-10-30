@@ -66,8 +66,7 @@ npm run dev:local
 
 ## Open items
 
-- Nothing is deployed. The dev API on AWS predates all of this work, including manual payments without server-side bank details, dev sign-in and splits. It needs a CDK deploy.
-- If a new GitHub repo is created, update the OIDC deploy role's trust policy (see README → Deploying).
+- Deploying is described in `docs/deploy.md`: API via CDK (`npm run deploy:dev -w apps/api`, or CI once the `GdpGithubDeploy` OIDC role and the GitHub `dev` environment exist), web on Vercel. The live dev API (`8yh705358k`) is out of date (no `close` route) until that deploy runs.
 - `package-lock.json` has an uncommitted change from Callum's own `npm install`.
 - Split notices only appear while the app is open, via polling. There are no push notifications.
 - Possible next steps:

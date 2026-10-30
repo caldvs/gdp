@@ -17,14 +17,39 @@ Each environment pairs one of each, and nothing in one row may reach another.
 `APP_ENV` (API) and `NEXT_PUBLIC_APP_ENV` (web) say which row a build is in;
 the checks below fail a deploy or build that crosses rows.
 
-| Env   | Web                         | API                               | Stripe  | GitHub environment |
-| ----- | --------------------------- | --------------------------------- | ------- | ------------------ |
-| local | `next dev` :8081            | Hono :3000, DynamoDB Local, MinIO | Sandbox | —                  |
-| CI    | `next start` + `FakeApi`    | Docker integration tests          | —       | —                  |
-| dev   | Vercel Preview (`web-nqib`) | `GdpBackendDev`                   | Sandbox | `dev`              |
-| prod  | Vercel Production           | `GdpBackendProd` (not yet set up) | Live    | `prod` (not yet)   |
+| Env   | Web                         | API                                 | Stripe  | GitHub environment |
+| ----- | --------------------------- | ----------------------------------- | ------- | ------------------ |
+| local | `next dev` :8081            | Hono :3000, DynamoDB Local, MinIO   | Sandbox | —                  |
+| CI    | `next start` + `FakeApi`    | Docker integration tests            | —       | —                  |
+| dev   | Vercel Preview (`web-nqib`) | `GdpBackendDev`                     | Sandbox | `dev`              |
+| prod  | Vercel Production           | `GdpBackendProd` (not yet deployed) | Live    | `prod` (not yet)   |
 
 Until prod exists, Vercel Production also runs as `dev` against the dev API.
+
+Dev and prod share one AWS account (eu-west-2). Every resource is named per
+environment (`gdp-dev`, `gdp-prod`, …) and each Lambda can only read its own
+`gdp-<env>/*` secrets. Deploys are kept apart by GitHub: each deploy role
+(`gdp-github-deploy`, `gdp-github-deploy-prod`) is trusted only by jobs in its
+own GitHub environment, and the workflow refuses a prod deploy from anything
+but `main`. Both roles can use the account's CDK bootstrap roles, so AWS
+itself doesn't separate them; a second account would.
+
+### Setting up prod (one-off)
+
+The dev deploy job creates `gdp-github-deploy-prod` and prints its ARN in the
+run summary. Then:
+
+1. GitHub → Settings → Environments → **New environment** `prod`: required
+   reviewer (Callum), deployment branches `main` only, and variables
+   `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
+   `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
+   Stripe live is ready.
+2. In eu-west-2: SSM parameters `/gdp-prod/ses-from-email` (the same verified
+   sender as dev works; it's one account) and `/gdp-prod/google-places-api-key`;
+   secrets `gdp-prod/session-jwt-secret` (new, random, 32+ characters) and
+   `gdp-prod/gemini-api-key`. Missing SSM parameters fail the deploy; missing
+   secrets fail the smoke test.
+3. Actions → **API Deploy** → Run workflow on `main` with `prod`, and approve.
 
 What enforces it:
 

@@ -10,14 +10,14 @@ Reading a bill costs a Gemini call (latency 3–10 s, money per call). The same 
 2. **Someone else, same bytes** — rare (messaging apps recompress images), but free to handle.
 3. **Same photo, newer parser** — we improve the prompt (e.g. parser `v2` added `course`) and old reads become stale.
 
-And the complication: **the analysis is not the bill**. After Gemini reads the image, the lead corrects lines on *Check the bill*, and later *Fix the bill* mid-session. Each amendment writes a new bill version. The parser's output and the bill a person is working on drift apart, and they're different things with different owners:
+And the complication: **the analysis is not the bill**. After Gemini reads the image, the lead corrects lines on _Check the bill_, and later _Fix the bill_ mid-session. Each amendment writes a new bill version. The parser's output and the bill a person is working on drift apart, and they're different things with different owners:
 
-| | Analysis | Bill |
-|---|---|---|
-| What | What the parser read from these exact bytes | The lead's working copy of what was ordered |
-| Changes? | Never | Every amend makes a new version |
-| Owner | Nobody (a pure function of image + parser) | The lead |
-| Safe to share across users? | Yes, if keyed by the exact bytes | No — corrections, venue, session are private |
+|                             | Analysis                                    | Bill                                         |
+| --------------------------- | ------------------------------------------- | -------------------------------------------- |
+| What                        | What the parser read from these exact bytes | The lead's working copy of what was ordered  |
+| Changes?                    | Never                                       | Every amend makes a new version              |
+| Owner                       | Nobody (a pure function of image + parser)  | The lead                                     |
+| Safe to share across users? | Yes, if keyed by the exact bytes            | No — corrections, venue, session are private |
 
 ## What exists today
 
@@ -27,9 +27,10 @@ And the complication: **the analysis is not the bill**. After Gemini reads the i
 - A bill in a session holds `BILLLOCK#<billId>`. Abandon releases it; close (settled) currently does not.
 
 Gaps:
+
 - The cache key ignores the parser, so a bill read by `v1` is returned forever, even after `v2`.
 - Nothing is reusable across users.
-- A repeat returns the latest version **without context**: if that bill is already in a live session, or was settled last week, the client lands on *Check the bill*, taps *Share*, and gets a 409 "already in use".
+- A repeat returns the latest version **without context**: if that bill is already in a live session, or was settled last week, the client lands on _Check the bill_, taps _Share_, and gets a 409 "already in use".
 - The analysis only lives inside a bill, so it disappears or gets muddled with amendments if the bill is forked, deleted, or amended.
 
 ## Decision
@@ -37,7 +38,7 @@ Gaps:
 Split the two concerns.
 
 1. **Cache the analysis, immutably, at the moment the parser returns** — before it becomes a bill and before anyone can amend it. Key it by image hash **and parser fingerprint**. This is what we reuse to avoid calling Gemini again.
-2. **Never cache "what to send back".** On a repeat from the same person, *resolve* it at request time from their own bill and its session state. Their latest amended version is the right answer for them; it's not a cache entry, it's their data.
+2. **Never cache "what to send back".** On a repeat from the same person, _resolve_ it at request time from their own bill and its session state. Their latest amended version is the right answer for them; it's not a cache entry, it's their data.
 
 So the answer to "at which point do we cache?" is: **right after `parser.parse()` + venue resolution, before `buildBillV1`**. What the uploader gets back is decided per request by the resolver below, and it is always their own latest bill version when they have one.
 
@@ -101,7 +102,7 @@ sha = sha256(bytes)
        → bill = buildBillV1(...); putVersion(bill, indexImageHash)
 ```
 
-Step 1 deliberately wins over a newer parser: if this user already has a bill for the image, their corrections matter more than a better read. Offer a re-read only via *Start again* (below).
+Step 1 deliberately wins over a newer parser: if this user already has a bill for the image, their corrections matter more than a better read. Offer a re-read only via _Start again_ (below).
 
 The uploaded image is still needed on an analysis hit (the bill's backdrop comes from `parsedFrom.uploadId`), so a cross-user hit still uploads; it just skips Gemini. Never point one user's bill at another user's S3 object.
 
@@ -109,15 +110,16 @@ The uploaded image is still needed on an analysis hit (the bill's backdrop comes
 
 The duplicate response carries enough for the client to route:
 
-| Their bill's state | Client goes to | Copy |
-|---|---|---|
-| No session, never amended | `/confirm-bill/<id>` | none |
-| No session, amended | `/confirm-bill/<id>` | small notice: "Picked up where you left off" |
-| Session `setup` / `claiming` / `paying` | `/session/<id>` (the lead's table) | none — they're back at the table |
-| Session `settled` | sheet: "You split this at Gennaro on Tue" → **Open** / **Start again** | |
-| Session `abandoned` (lock released) | `/confirm-bill/<id>` (latest version) | "Picked up where you left off" |
+| Their bill's state                      | Client goes to                                                         | Copy                                         |
+| --------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| No session, never amended               | `/confirm-bill/<id>`                                                   | none                                         |
+| No session, amended                     | `/confirm-bill/<id>`                                                   | small notice: "Picked up where you left off" |
+| Session `setup` / `claiming` / `paying` | `/session/<id>` (the lead's table)                                     | none — they're back at the table             |
+| Session `settled`                       | sheet: "You split this at Gennaro on Tue" → **Open** / **Start again** |                                              |
+| Session `abandoned` (lock released)     | `/confirm-bill/<id>` (latest version)                                  | "Picked up where you left off"               |
 
 **Start again** = `POST /v1/bills/{billId}/fork` with `{ from: 'latest' | 'analysis' }`:
+
 - `latest` (default): new `billId`, version 1 copied from the latest version (their reading corrections carry over), fresh `itemId`s, `parsedFrom.forkedFrom = { billId, versionNumber }`.
 - `analysis`: new bill from the current-fingerprint analysis (re-reading with today's parser if the cached row is from an older one).
 - Repoint `IMGHASH#<user>#<sha>` to the new bill.
@@ -140,11 +142,12 @@ Build as small PRs, each with tests.
 3. **Settled repeat + fork.** `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
 4. **(Optional) backfill.** One-off script seeding `ANALYSIS#` rows from existing `V#001` items where `parsedFrom.parserVersion` matches the current version. Probably not worth it; the cache warms itself.
 
-Also worth fixing alongside (2): `close` should probably release `BILLLOCK` like `abandon` does, otherwise a settled bill blocks *Share* forever. Check the amend rules still hold (settled bills are frozen by status, not by the lock).
+Also worth fixing alongside (2): `close` should probably release `BILLLOCK` like `abandon` does, otherwise a settled bill blocks _Share_ forever. Check the amend rules still hold (settled bills are frozen by status, not by the lock).
 
 ## Tests
 
 Integration (`apps/api/tests/integration/`, FixtureBillParser with a call counter):
+
 - Same user, same image twice, untouched → same `billId`, parser called once, `amended: false`.
 - Same user, after an amend → duplicate returns the latest `versionNumber` and `amended: true`; the analysis row still equals the original parse.
 - Same user, bill in a claiming session → duplicate carries `session.status = 'claiming'`.
@@ -155,7 +158,7 @@ Integration (`apps/api/tests/integration/`, FixtureBillParser with a call counte
 - Two concurrent parses of a new image → one `ANALYSIS` row, two bills (different users) or one (same user).
 - Fork `latest` vs `analysis` → contents as described; `IMGHASH` repointed.
 
-e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on the check sheet with the notice; snap a photo whose bill is in a live session → lands on the lead's table; settled → the sheet, *Start again* opens a fresh check sheet.
+e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on the check sheet with the notice; snap a photo whose bill is in a live session → lands on the lead's table; settled → the sheet, _Start again_ opens a fresh check sheet.
 
 ## Non-goals
 

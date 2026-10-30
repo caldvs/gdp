@@ -481,6 +481,5 @@ new GdpBackendStack(app, 'GdpBackendProd', { env: { region }, envName: 'prod' })
 new GithubDeployStack(app, 'GdpGithubDeploy', {
   env: { region },
   repo: 'caldvs/gdp',
-  environments: ['dev', 'staging', 'prod'],
   existingProviderArn: app.node.tryGetContext('githubOidcProviderArn') as string | undefined,
 });

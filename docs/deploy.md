@@ -38,7 +38,7 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
 3. Actions → **API Deploy** → Run workflow (`dev`) to check it.
 
 The role can only assume the CDK bootstrap roles (`cdk-*`), and only from
-the `dev`, `staging` and `prod` environments of this repo.
+workflow runs in this repo (`repo:caldvs/gdp:*`).
 
 ## Web (Vercel)
 

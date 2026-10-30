@@ -7,8 +7,6 @@ const GITHUB_OIDC_HOST = 'token.actions.githubusercontent.com';
 export interface GithubDeployStackProps extends cdk.StackProps {
   /** `owner/repo` allowed to assume the role. */
   repo: string;
-  /** GitHub environments (Settings → Environments) allowed to deploy. */
-  environments: string[];
   /**
    * ARN of an existing GitHub OIDC provider in this account. An account can
    * only hold one provider per URL, so pass this (`-c githubOidcProviderArn=…`)
@@ -47,14 +45,11 @@ export class GithubDeployStack extends cdk.Stack {
       description: `GitHub Actions deploys for ${props.repo}`,
       maxSessionDuration: cdk.Duration.hours(1),
       assumedBy: new iam.OpenIdConnectPrincipal(provider, {
-        StringEquals: {
-          [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com',
-          // The workflow runs jobs with `environment:`, so the subject is
-          // `repo:<owner>/<repo>:environment:<env>`.
-          [`${GITHUB_OIDC_HOST}:sub`]: props.environments.map(
-            (e) => `repo:${props.repo}:environment:${e}`,
-          ),
-        },
+        StringEquals: { [`${GITHUB_OIDC_HOST}:aud`]: 'sts.amazonaws.com' },
+        // Any workflow run in this repo. The subject's exact shape depends
+        // on the repo's OIDC settings (environment, branch or a custom
+        // template), so match the repo rather than one format.
+        StringLike: { [`${GITHUB_OIDC_HOST}:sub`]: `repo:${props.repo}:*` },
       }),
     });
 

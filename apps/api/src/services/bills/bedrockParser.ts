@@ -7,7 +7,7 @@ import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { timed } from '../../logging/timed.js';
 import { PROMPT, GeminiBillParser, validateParsedBill } from './geminiParser.js';
-import type { BillParser, ParsedBillFromImage } from './parser.js';
+import { readByOf, type BillParser, type ParseResult, type ParsedBillFromImage } from './parser.js';
 
 const VERSION = 'v2';
 
@@ -70,6 +70,9 @@ export class BedrockBillParser implements BillParser {
  * Try the first parser; if it fails for a reason other than "couldn't read
  * any items", try the second. Low confidence isn't retried: a second model
  * reading the same blurry photo rarely does better, and it doubles the wait.
+ *
+ * `model`/`version` name the primary (what we expect to answer); each
+ * result's `readBy` names the one that did, so bills credit the right model.
  */
 export class FallbackBillParser implements BillParser {
   readonly model: string;
@@ -83,16 +86,18 @@ export class FallbackBillParser implements BillParser {
     this.version = primary.version;
   }
 
-  async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
+  async parse(image: Uint8Array, requestId: string): Promise<ParseResult> {
     try {
-      return await this.primary.parse(image, requestId);
+      const result = await this.primary.parse(image, requestId);
+      return { ...result, readBy: readByOf(this.primary, result) };
     } catch (err) {
       if (err instanceof AppError && err.code === 'PARSE_LOW_CONFIDENCE') throw err;
       baseLogger.warn(
         { event: 'bill.parse.fallback', requestId, from: this.primary.model, err },
         'Primary bill reader failed; trying the fallback',
       );
-      return this.secondary.parse(image, requestId);
+      const result = await this.secondary.parse(image, requestId);
+      return { ...result, readBy: readByOf(this.secondary, result) };
     }
   }
 }

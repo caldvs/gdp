@@ -29,7 +29,9 @@ _Last updated 1 Nov 2026._
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and Production is on the prod API (#78). **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). Then: Stripe live (#79), SES out of the sandbox and on the domain (#76). Prod alerts have no subscriber yet (#81).
 
-**Scanning a bill (#66)**: next are #65 (review flags), then #62/#63 (venue), #61 (questions while reading), #64 (party size).
+**Scanning a bill (#66)**: #65 (review flags) and #63 (the lead sets the venue; it beats the parsed one, mid-session too) are built. Next: #62 (venue search), #61 (questions while reading), #64 (party size).
+
+**Claiming (#123)** is built bar one part: who has an item shows as initial avatars, a row someone else just took flashes "Sam took it" for 2s (and is announced), losing a race says who won, Pick shows "n open · £x left", and *Hide taken* folds fully-claimed rows, on guest and lead tables. Not built: *Split with Sam* after losing a race, because the API refuses to share an item one person has claimed (`CLAIM_SHARE_CONFLICT` in `addShare`); it needs an API change first.
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 

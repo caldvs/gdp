@@ -33,12 +33,14 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Up to about 10 people** per bill.
 - **The lead collects.** Guests pay the lead by their own bank transfer. The app never holds money. The deployed API runs `PAYMENT_PROVIDER=manual`; the TrueLayer code stays but needs a live contract.
 - **Trust-based payments.** Guests pay while the bill is still open for claiming. There's no lock-claims step in the UI.
+- **The lead can edit the bill at any time before close, including lines a guest has paid for** (decided 1 Nov 2026). No freeze on paid lines; the only edit refused is lowering a quantity below what's been claimed. Removing a line drops claims and splits on it.
 - **Only the lead closes a bill.** Everyone paying doesn't settle it, because a late guest may still take a split seat or a leftover item. Unclaimed items go on the lead. Payments are still accepted after closing. Closing releases the bill, so the lead can edit it or share it again; the closed table keeps the version it was pinned to.
 - **Bills keep their shape.** Every line stays in place and changes state as it's claimed.
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:
-    - one free bill a month
+    - one free bill: each lead gets a single free credit, used by their first shared bill (decided 1 Nov 2026; replaces "one free bill a month")
+    - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
     - guests repay the fee in what they owe
     - a refund if nobody joins
 

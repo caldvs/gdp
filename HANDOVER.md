@@ -27,6 +27,8 @@ _Last updated 1 Nov 2026._
 ## Known problems
 
 - The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
+- Five accessibility findings are allow-listed in `apps/web/e2e/a11y.spec.ts` (contrast on lines someone else took, aria-labels that don't contain the visible text, a colour-only link on the landing page). New ones fail CI.
+- No golden receipts yet: add photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - The API still accepts claim changes after a guest has paid. (`it.fails` test.)
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.
@@ -40,7 +42,7 @@ _Last updated 1 Nov 2026._
 - Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
-- Table fee: free bill a month, guests repay it, refund if nobody joins, server-side gate. See [docs/table-fee.md](docs/table-fee.md).
+- Table fee: one free bill per lead (a single credit), then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
 
 ## Housekeeping
 

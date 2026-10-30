@@ -22,6 +22,20 @@ export function webAppEnv(env: Env): WebAppEnv | null {
   return (APP_ENVS as readonly string[]).includes(raw) ? (raw as WebAppEnv) : null;
 }
 
+/**
+ * Whether this build shows the test bar (sign in as test accounts). On for
+ * dev builds, and locally when talking to a local API (`localApi`). Never
+ * on Vercel Production, whatever NEXT_PUBLIC_APP_ENV says: Production is
+ * built as `dev` until it talks to the prod API (#98).
+ * NEXT_PUBLIC_TEST_TOOLS=0 turns it off anywhere.
+ */
+export function testToolsEnabled(env: Env, localApi: boolean): boolean {
+  if (env.NEXT_PUBLIC_TEST_TOOLS === '0') return false;
+  if (env.NEXT_PUBLIC_VERCEL_ENV === 'production') return false;
+  const appEnv = env.NEXT_PUBLIC_APP_ENV || 'local';
+  return appEnv === 'dev' || (appEnv === 'local' && localApi);
+}
+
 /** Everything wrong with this build's environment. Empty means it's fine. */
 export function buildEnvProblems(env: Env): string[] {
   const problems: string[] = [];

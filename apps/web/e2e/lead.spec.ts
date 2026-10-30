@@ -152,3 +152,18 @@ test('the lead’s QR page shows people as they arrive', async ({ browser }) => 
   await expect(table).toContainText('Sam', POLL);
   await expect(lead.getByText('At the table · 2')).toBeVisible();
 });
+
+test('anyone at the table can email themselves a report of the bill', async ({ browser }) => {
+  const api = new FakeApi({ status: 'claiming' });
+  const lead = await diner(browser, api, users.lead);
+  const email = lead.getByRole('button', { name: 'Email me a report of this bill' });
+  await expect(email).toBeVisible(POLL);
+  await email.click();
+  await expect(lead.getByRole('button', { name: 'Report emailed to you' })).toBeDisabled();
+  expect(api.reportsTo).toEqual(['u-lead']);
+
+  const sam = await diner(browser, api, users.sam);
+  await sam.getByRole('button', { name: 'Email me a report of this bill' }).click();
+  await expect(sam.getByRole('button', { name: 'Report emailed to you' })).toBeVisible();
+  expect(api.reportsTo).toEqual(['u-lead', 'u-sam']);
+});

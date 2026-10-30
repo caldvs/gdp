@@ -16,11 +16,14 @@ import {
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { PaymentProvider } from '../services/payments/provider.js';
+import type { ReportService } from '../services/sessions/reportService.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   /** null = manual mode; no provider call on initiate. */
   paymentProvider: PaymentProvider | null;
+  /** Emails bill reports. Absent in tests that don't need it. */
+  reports?: ReportService;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
@@ -159,8 +162,25 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post('/:sessionId/close', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');
-    const session = await sessionService.close({ caller, sessionId });
+    const reports = deps.reports;
+    const session = await sessionService.close({
+      caller,
+      sessionId,
+      ...(reports ? { onClosed: (id: string) => reports.emailEveryone(id) } : {}),
+    });
     return c.json(session);
+  });
+
+  // Email the caller their bill report: the lead's lists every diner,
+  // a guest's only what they had. Works while the bill is open too.
+  r.post('/:sessionId/report', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    if (!deps.reports) return c.json({ sent: false }, 503);
+    await deps.reports.emailToCaller({
+      sessionId: c.req.param('sessionId'),
+      userId: caller.userId,
+    });
+    return c.json({ sent: true }, 202);
   });
 
   r.post('/:sessionId/abandon', requireAuth(deps.idTokenVerifier), async (c) => {

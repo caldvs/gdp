@@ -5,7 +5,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Repo root = npm workspaces root, so this covers apps/api, apps/web and packages/*.
     groups:
+      web:
+        patterns: ['next', 'react', 'react-dom', '@types/react*', '@tanstack/*']
       aws-sdk:
         patterns: ['@aws-sdk/*', 'aws-cdk', 'aws-cdk-lib', 'constructs']
       dev-tooling:

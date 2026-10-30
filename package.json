@@ -1,0 +1,25 @@
+{
+  "name": "group-dine-pay",
+  "private": true,
+  "description": "Group Dine Pay — snap the bill, claim what you had, pay the lead direct.",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
+    "build": "npm run build -w apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "gen:api": "npm run gen:api -w packages/core",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.0"
+  }
+}

@@ -1,0 +1,2 @@
+npm run precommit -w apps/api --if-present
+npm run typecheck

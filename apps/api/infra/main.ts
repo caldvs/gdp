@@ -12,7 +12,15 @@ import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import type { Construct } from 'constructs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
+
+// apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
+// at the repo root, which is what NodejsFunction treats as the project.
+const API_DIR = fileURLToPath(new URL('..', import.meta.url));
+const REPO_ROOT = path.resolve(API_DIR, '../..');
+const API_DIR_FROM_REPO_ROOT = path.relative(REPO_ROOT, API_DIR) || '.';
 
 type EnvName = 'dev' | 'staging' | 'prod';
 
@@ -146,7 +154,9 @@ class GdpBackendStack extends cdk.Stack {
 
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
-      entry: 'src/lambda.ts',
+      entry: path.join(API_DIR, 'src/lambda.ts'),
+      projectRoot: REPO_ROOT,
+      depsLockFilePath: path.join(REPO_ROOT, 'package-lock.json'),
       handler: 'handler',
       memorySize: 1024,
       // 30s is the API Gateway HTTP API integration timeout cap. Bumped
@@ -195,11 +205,15 @@ class GdpBackendStack extends cdk.Stack {
         // Ship openapi.yaml alongside the bundled lambda.js so the
         // /docs and /openapi.yaml routes can resolve it at runtime
         // (routes/docs.ts already looks for it next to import.meta.url).
+        //
+        // In the monorepo the lockfile (and so CDK's projectRoot /
+        // inputDir) is the repo root, so resolve apps/api relative to it.
+        // Relative rather than absolute keeps Docker bundling working.
         commandHooks: {
           beforeBundling: () => [],
           beforeInstall: () => [],
           afterBundling: (inputDir: string, outputDir: string) => [
-            `cp ${inputDir}/openapi.yaml ${outputDir}/openapi.yaml`,
+            `cp ${inputDir}/${API_DIR_FROM_REPO_ROOT}/openapi.yaml ${outputDir}/openapi.yaml`,
           ],
         },
       },

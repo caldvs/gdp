@@ -122,7 +122,7 @@ text(LX + 16, 296, 'ROUTES · openapi.yaml', 'zone-label')
 AX, AW = LX + 16, 246
 BX, BW = LX + 16 + 246 + 12, LW - 32 - 246 - 12
 y = 308
-y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/openapi.yaml')]) + 10
+y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
 y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify')]) + 10
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10

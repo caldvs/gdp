@@ -302,6 +302,11 @@ jobs:
               --pkg api=cov/coverage-api/coverage-summary.json \
               --pkg core=cov/coverage-core/coverage-summary.json \
               --baseline-dir "$RUNNER_TEMP/baseline" --sha "$GITHUB_SHA"
+            # Vercel builds every pushed branch. This one has no apps/web, so
+            # the build fails on every merge unless deploys are switched off
+            # here (Vercel reads vercel.json from the commit it builds).
+            mkdir -p "$RUNNER_TEMP/baseline/apps/web"
+            echo '{ "git": { "deploymentEnabled": false } }' > "$RUNNER_TEMP/baseline/apps/web/vercel.json"
             git -C "$RUNNER_TEMP/baseline" add -A
             if git -C "$RUNNER_TEMP/baseline" diff --cached --quiet; then echo "Baseline unchanged"; exit 0; fi
             git -C "$RUNNER_TEMP/baseline" commit -q -m "Coverage baseline for ${GITHUB_SHA::7}"

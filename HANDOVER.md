@@ -28,14 +28,13 @@ _Last updated 1 Nov 2026._
 
 ## Next up
 
-**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done (deploy role, `APP_ENV`, key-mode and web build checks, secrets read at cold start), and prod's deploy role exists in the same account. Waiting on Callum: the GitHub `prod` environment and prod's SSM parameters and secrets (docs/deploy.md, _Setting up prod_), Stripe live activation, and a domain (phase 3). Limit the GitHub `dev` environment to `main` (the session proxy can't change environment settings).
+**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and prod's API is deployed. **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). Then: cut Production over to the prod API (#78; remove the two cut-over origins from the dev list), Stripe live (#79), SES on the domain (#76).
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 
 ## Known problems
 
-- The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
-- Five accessibility findings are allow-listed in `apps/web/e2e/a11y.spec.ts` (contrast on lines someone else took, aria-labels that don't contain the visible text, a colour-only link on the landing page). New ones fail CI.
+- Vercel Hobby allows 100 deployments a day; a busy day of branches hit it on 1 Nov. #92 skips builds that don't touch the web app.
 - No golden receipts yet: add photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.

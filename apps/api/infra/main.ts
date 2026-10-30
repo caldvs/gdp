@@ -11,11 +11,13 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import type { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
 import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
+import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
 // apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
@@ -33,6 +35,8 @@ class GdpBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GdpStackProps) {
     super(scope, id, props);
     const { envName } = props;
+    // Browser origins for the API and the bills bucket (src/config/allowedOrigins.ts).
+    const allowedOrigins = ALLOWED_ORIGINS[envName];
 
     cdk.Tags.of(this).add('project', 'gdp-backend');
     cdk.Tags.of(this).add('env', envName);
@@ -64,12 +68,11 @@ class GdpBackendStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
-      // Browser clients PUT directly to presigned URLs from a different
-      // origin (e.g. http://localhost:8081 in dev). Without CORS the
-      // preflight fails. Permissive in dev — tighten origins before prod.
+      // Browser clients PUT directly to presigned URLs from the web app's
+      // origin. Same list as the API's CORS.
       cors: [
         {
-          allowedOrigins: ['*'],
+          allowedOrigins,
           allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],
@@ -206,6 +209,7 @@ class GdpBackendStack extends cdk.Stack {
         // to `truelayer` once TL Live commercial onboarding is in place.
         PAYMENT_PROVIDER: 'manual',
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
+        ALLOWED_ORIGINS: allowedOrigins.join(','),
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,
@@ -332,10 +336,32 @@ class GdpBackendStack extends cdk.Stack {
       iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), { mutable: true }),
     );
 
+    // Custom API domain (api.paymeback.dev / api.test.paymeback.dev). DNS is
+    // on Vercel, so the ACM certificate is requested and validated by hand and
+    // its ARN comes from the GitHub environment (API_DOMAIN, API_CERT_ARN).
+    // Without both, the API stays on its execute-api URL only.
+    const apiDomain =
+      process.env.API_DOMAIN || (this.node.tryGetContext('apiDomain') as string | undefined);
+    const apiCertArn =
+      process.env.API_CERT_ARN || (this.node.tryGetContext('apiCertArn') as string | undefined);
+    const domainName =
+      apiDomain && apiCertArn
+        ? new apigw.DomainName(this, 'ApiDomain', {
+            domainName: apiDomain,
+            certificate: acm.Certificate.fromCertificateArn(this, 'ApiCert', apiCertArn),
+          })
+        : undefined;
+
     const httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: `gdp-${envName}`,
       defaultIntegration: new integrations.HttpLambdaIntegration('LambdaIntegration', fn),
+      ...(domainName ? { defaultDomainMapping: { domainName } } : {}),
     });
+    if (domainName) {
+      // The CNAME to add in Vercel DNS: <api name> → this value.
+      new cdk.CfnOutput(this, 'ApiDomainTargetOutput', { value: domainName.regionalDomainName });
+      new cdk.CfnOutput(this, 'ApiDomainUrlOutput', { value: `https://${apiDomain}` });
+    }
 
     // The TrueLayer return URL has to match what's registered in the Console.
     // We resolve it from the API endpoint so a stack re-create still produces

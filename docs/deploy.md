@@ -21,10 +21,41 @@ the checks below fail a deploy or build that crosses rows.
 | ----- | --------------------------- | ----------------------------------- | ------- | ------------------ |
 | local | `next dev` :8081            | Hono :3000, DynamoDB Local, MinIO   | Sandbox | —                  |
 | CI    | `next start` + `FakeApi`    | Docker integration tests            | —       | —                  |
-| dev   | Vercel Preview (`web-nqib`) | `GdpBackendDev`                     | Sandbox | `dev`              |
-| prod  | Vercel Production           | `GdpBackendProd` (not yet deployed) | Live    | `prod` (not yet)   |
+| dev   | Vercel Preview, `test.paymeback.dev` | `GdpBackendDev`, `api.test.paymeback.dev` | Sandbox | `dev`  |
+| prod  | Vercel Production, `paymeback.dev`   | `GdpBackendProd`, `api.paymeback.dev`     | Live    | `prod` |
 
-Until prod exists, Vercel Production also runs as `dev` against the dev API.
+Until the cut-over (#78), Vercel Production also runs as `dev` against the dev API.
+
+## Domains
+
+`paymeback.dev` was bought on Vercel, and its DNS lives there (no Route 53).
+
+| Name | Points at |
+| --- | --- |
+| `paymeback.dev` | Vercel Production |
+| `www.paymeback.dev` | 308 to `paymeback.dev` |
+| `test.paymeback.dev` | Vercel Preview, branch `preview` (push to it to put something there) |
+| `api.paymeback.dev` | `GdpBackendProd` (custom domain on API Gateway) |
+| `api.test.paymeback.dev` | `GdpBackendDev` |
+
+**API domains (once per environment).** CDK can't validate a certificate in
+Vercel DNS, so this part is by hand:
+
+1. ACM (eu-west-2) → Request a public certificate for `api.test.paymeback.dev`
+   (or `api.paymeback.dev`), DNS validation.
+2. Vercel → Domains → `paymeback.dev` → DNS: add the CNAME ACM shows (name
+   without the `.paymeback.dev` suffix). Wait for *Issued*.
+3. GitHub environment (`dev` or `prod`) → variables `API_DOMAIN` and
+   `API_CERT_ARN`. Redeploy the API.
+4. Vercel DNS: CNAME `api.test` (or `api`) → the deploy's
+   `ApiDomainTargetOutput` (`d-….execute-api.eu-west-2.amazonaws.com`).
+5. Point `NEXT_PUBLIC_API_BASE_URL` (Vercel) and the Stripe webhook at the new
+   name.
+
+**CORS.** The API and the bills bucket accept only the origins in
+`apps/api/src/config/allowedOrigins.ts`: for prod, `paymeback.dev` and
+`web-nqib.vercel.app`; for dev, also `test.paymeback.dev`, preview URLs and
+`localhost:8081`. Local runs (no `ALLOWED_ORIGINS`) allow any origin.
 
 Dev and prod share one AWS account (eu-west-2). Every resource is named per
 environment (`gdp-dev`, `gdp-prod`, …) and each Lambda can only read its own

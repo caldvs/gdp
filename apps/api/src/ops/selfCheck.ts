@@ -1,13 +1,14 @@
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { GetAccountCommand, GetEmailIdentityCommand, SESv2Client } from '@aws-sdk/client-sesv2';
+import { GeoPlacesClient, SearchTextCommand } from '@aws-sdk/client-geo-places';
 import Stripe from 'stripe';
 import { env } from '../config/env.js';
 import type { FeeLookupKey } from '../services/billing/tableFee.js';
 
 /**
  * Checks that the deployed Lambda can actually use what it depends on:
- * Stripe keys and prices, Bedrock model access, the Gemini key, the Places
- * key and the SES sender. These are the settings unit tests can't see, and
+ * Stripe keys and prices, Bedrock model access, the Amazon Location venue
+ * lookup and the SES sender. These are the settings unit tests can't see, and
  * the ones that broke on the first real deploy.
  *
  * Runs inside the Lambda (so with its real env and IAM role) when it is
@@ -50,10 +51,6 @@ type Check = {
 
 const TIMEOUT_MS = 15_000;
 const LOOKUP_KEYS: FeeLookupKey[] = ['table_fee_2', 'table_fee_3'];
-const GEMINI_MODEL = 'gemini-2.5-flash';
-
-const snippet = async (res: Response): Promise<string> =>
-  (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
 
 /**
  * Stripe keys must match the environment: test-mode keys everywhere except
@@ -121,42 +118,31 @@ const bedrockCheck: Check = {
   },
 };
 
-const geminiCheck: Check = {
-  name: 'Gemini (fallback reader)',
+const venueCheck: Check = {
+  name: 'Amazon Location (venue lookup)',
+  // A failed lookup leaves the venue as read off the bill, so it only warns.
   required: false,
   run: async () => {
-    if (!env.GEMINI_API_KEY) throw skip('GEMINI_API_KEY not set');
-    // Looks the model up rather than generating, so it checks the key
-    // without spending the free tier's daily request quota.
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`,
-      {
-        headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await snippet(res)}`);
-    return `key valid for ${GEMINI_MODEL} (daily quota not checked)`;
-  },
-};
-
-const placesCheck: Check = {
-  name: 'Google Places (venue lookup)',
-  required: false,
-  run: async () => {
-    if (!env.GOOGLE_PLACES_API_KEY) throw skip('GOOGLE_PLACES_API_KEY not set');
-    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': env.GOOGLE_PLACES_API_KEY,
-        'x-goog-fieldmask': 'places.id',
-      },
-      body: JSON.stringify({ textQuery: 'Manchester Piccadilly station', maxResultCount: 1 }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await snippet(res)}`);
-    return 'search returned 200';
+    if (env.VENUE_LOOKUP !== 'amazon-location') throw skip('VENUE_LOOKUP is none');
+    const client = new GeoPlacesClient({ region: env.AWS_REGION });
+    try {
+      // SingleUse: this answer isn't stored, so it's billed at the lower rate.
+      const out = await client.send(
+        new SearchTextCommand({
+          QueryText: 'Piccadilly Gardens, Manchester',
+          Filter: { IncludeCountries: ['GBR'], BoundingBox: [-8.65, 49.86, 1.77, 60.86] },
+          MaxResults: 1,
+          IntendedUse: 'SingleUse',
+        }),
+        { abortSignal: AbortSignal.timeout(TIMEOUT_MS) },
+      );
+      const top = out.ResultItems?.[0];
+      if (!top) throw new Error('no result for a known UK place');
+      return `found "${top.Title ?? top.PlaceId ?? '?'}" (${top.PlaceType ?? '?'})`;
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
+      throw new Error(`${e.name ?? 'error'}: ${e.message ?? ''}`.slice(0, 300), { cause: err });
+    }
   },
 };
 
@@ -194,13 +180,7 @@ const sesCheck: Check = {
   },
 };
 
-export const CHECKS: readonly Check[] = [
-  stripeCheck,
-  bedrockCheck,
-  geminiCheck,
-  placesCheck,
-  sesCheck,
-];
+export const CHECKS: readonly Check[] = [stripeCheck, bedrockCheck, venueCheck, sesCheck];
 
 const runOne = async (check: Check): Promise<CheckResult> => {
   const start = performance.now();

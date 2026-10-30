@@ -18,7 +18,6 @@
  *
  *   BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0 AWS_PROFILE=gdp-dev \
  *     npm run golden -w apps/api
- *   GEMINI_API_KEY=… npm run golden -w apps/api           # Gemini alone
  *   npm run golden -w apps/api -- pizza-express-4          # one receipt
  *
  * Exits non-zero if any receipt fails. Not part of CI: it costs real calls.
@@ -81,7 +80,6 @@ async function main(): Promise<number> {
   const parser = createBillParser({
     bedrockModelId: process.env.BEDROCK_MODEL_ID,
     region: process.env.AWS_REGION ?? 'eu-west-2',
-    geminiApiKey: process.env.GEMINI_API_KEY,
   });
   console.log(`Reading ${photos.length} receipt(s) with ${parser.model} (${parser.version})\n`);
 

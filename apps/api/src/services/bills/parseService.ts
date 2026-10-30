@@ -145,7 +145,7 @@ function buildBillV1(args: {
     taxPence: args.parsed.taxPence,
     serviceChargePence: args.parsed.serviceChargePence,
     totalPence,
-    // Persist Gemini's read-of-the-printed-total alongside the computed
+    // Persist the reader's read-of-the-printed-total alongside the computed
     // total. If they disagree the client surfaces a "check this bill"
     // hint; we don't gate the parse on it.
     ...(args.parsed.totalPence !== undefined ? { parsedTotalPence: args.parsed.totalPence } : {}),

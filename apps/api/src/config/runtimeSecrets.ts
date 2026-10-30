@@ -3,7 +3,7 @@ import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-sec
 /**
  * Deployed Lambdas get secret *names*, not values: SECRET_SOURCES is JSON
  * mapping each setting to its Secrets Manager secret, e.g.
- * `{"GEMINI_API_KEY":"gdp-dev/gemini-api-key"}` (set by infra/main.ts).
+ * `{"SESSION_JWT_SECRET":"gdp-dev/session-jwt-secret"}` (set by infra/main.ts).
  * At cold start the values are fetched once and put into the environment,
  * before env.ts reads it. So nothing secret sits in the function's
  * configuration, and a rotated secret is picked up by the next cold start.

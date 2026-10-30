@@ -38,6 +38,9 @@ export default defineConfig({
       thresholds: {
         lines: 34,
         branches: 24,
+        // Money maths: every line covered (the uncovered branches are
+        // defensive `?? 0` fallbacks).
+        'src/services/sessions/allocation.ts': { lines: 100, branches: 80, functions: 100 },
       },
     },
   },

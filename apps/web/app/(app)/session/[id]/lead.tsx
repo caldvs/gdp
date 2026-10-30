@@ -11,6 +11,7 @@ import { ApiError, type components } from '@gdp/core/api';
 import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
+import { coverLeftovers } from '@gdp/core/lib/leftovers';
 import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
@@ -77,11 +78,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
   const unclaimed = statuses.filter((x) => x.left > 0);
   const unclaimedPence = unclaimed.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0);
-  // What "I'll cover these" takes: every unclaimed unit that isn't in a
-  // split (an item is claimed or split, never both).
-  const sharedIds = new Set(s.participants.flatMap((p) => p.sharedItemIds));
-  const coverable = unclaimed.filter((x) => !sharedIds.has(x.item.itemId) && !x.share);
-  const coverPence = coverable.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0);
+  // What "I'll cover these" takes: every unclaimed unit that isn't in a split.
+  const cover = coverLeftovers(s, statuses, me?.claimedItemIds ?? []);
+  const coverable = cover.lines;
+  const coverPence = cover.pence;
   const busy = setClaims.isPending || addShare.isPending || removeShare.isPending;
 
   const takeOne = (itemId: string) => {
@@ -98,7 +98,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   };
   const coverAll = () => {
     if (!me || coverable.length === 0) return;
-    setClaims.mutate({ claimedItemIds: [...me.claimedItemIds, ...coverable.flatMap((x) => Array<string>(x.left).fill(x.item.itemId))] });
+    setClaims.mutate({ claimedItemIds: cover.claimedItemIds });
   };
 
   return (

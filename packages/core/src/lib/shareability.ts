@@ -4,7 +4,7 @@ type BillItem = components['schemas']['BillItem'];
 
 // Heuristic: is this bill item likely something a table would split?
 //
-// Stopgap until the bill parser (Gemini) emits a `shareable` field
+// Stopgap until the bill parser emits a `shareable` field
 // directly. Today we lean on two signals:
 //   1. Item name matches a known "share-shaped" pattern (bottle, carafe,
 //      platter, etc.).

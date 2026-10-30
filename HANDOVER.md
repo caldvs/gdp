@@ -11,10 +11,11 @@ _Last updated 1 Nov 2026._
 - **The dev API deploys** from `main` through GitHub Actions (OIDC). The deploy role only trusts jobs in the `dev` GitHub environment, and the dev job redeploys the role stack itself. There's no staging; prod (`GdpBackendProd`) is defined but not set up. TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests:** unit, integration and the Playwright e2e suite (against `FakeApi`) all run in CI. Visual baselines are CI's.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, Gemini, Places, SES from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
+- **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 
 ## Next up
 
-**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phase 1 (this deploy-role change) is done; next is `APP_ENV`, Stripe key-mode checks, and a web build that refuses to run without `NEXT_PUBLIC_API_BASE_URL`. Callum still to do: limit the GitHub `dev` environment to `main`.
+**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1 and 2 are done (deploy role, `APP_ENV`, key-mode and web build checks). Next in code: phase 4, secrets read at runtime instead of Lambda env vars. Waiting on Callum: buy a domain (phase 3), then the prod AWS account and Stripe live (phase 5). Limit the GitHub `dev` environment to `main` (the session proxy can't).
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
 

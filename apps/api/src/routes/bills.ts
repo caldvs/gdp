@@ -12,9 +12,11 @@ import { billStore } from '../storage/billStore.js';
 import { sessionStore } from '../storage/sessionStore.js';
 import { AppError } from '../errors/AppError.js';
 import type { Bill } from '../types/bills.js';
+import type { BillRead } from '../storage/readStore.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { BillParser } from '../services/bills/parser.js';
 import type { VenueResolver } from '../services/bills/venueResolver.js';
+import type { ReadService } from '../services/bills/readService.js';
 import { AmendBillRequestSchema, ParseRequestSchema, UploadRequestSchema } from '../types/bills.js';
 
 async function loadBillForReader(billId: string, userId: string): Promise<Bill> {
@@ -39,7 +41,16 @@ export interface BillRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   billParser: BillParser;
   venueResolver: VenueResolver;
+  reads: ReadService;
 }
+
+/** What the client sees of a read: no user or upload ids. */
+const readView = (read: BillRead) => ({
+  readId: read.readId,
+  status: read.status,
+  ...(read.billId ? { billId: read.billId } : {}),
+  ...(read.error ? { error: read.error } : {}),
+});
 
 export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
   const r = new Hono();
@@ -91,6 +102,26 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
       return c.json(bill);
     },
   );
+
+  // Start reading an uploaded photo in the background; poll GET /reads/:readId.
+  r.post(
+    '/reads',
+    requireAuth(deps.idTokenVerifier),
+    requireIdempotency(),
+    zValidator('json', ParseRequestSchema),
+    async (c) => {
+      const { userId } = callerOf(c);
+      const { uploadId } = c.req.valid('json');
+      const read = await deps.reads.start({ userId, uploadId, requestId: c.var.requestId });
+      return c.json(readView(read), 202);
+    },
+  );
+
+  r.get('/reads/:readId', requireAuth(deps.idTokenVerifier), async (c) => {
+    const { userId } = callerOf(c);
+    const read = await deps.reads.get(c.req.param('readId'), userId);
+    return c.json(readView(read));
+  });
 
   r.get('/:billId', requireAuth(deps.idTokenVerifier), async (c) => {
     const { userId } = callerOf(c);

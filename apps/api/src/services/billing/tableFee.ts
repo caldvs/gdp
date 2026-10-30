@@ -127,6 +127,49 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     return { clientSecret: session.client_secret, amountPence: price.unit_amount ?? 0 };
   };
 
+  /** Records a paid Checkout Session for its bill. Safe to call twice. */
+  const recordPaid = async (
+    session: Stripe.Checkout.Session,
+    paidAt: string,
+  ): Promise<'recorded' | 'duplicate' | 'ignored'> => {
+    const billId = session.metadata?.billId;
+    const userId = session.metadata?.userId;
+    if (session.payment_status !== 'paid' || !billId || !userId) return 'ignored';
+    const paymentIntentId =
+      typeof session.payment_intent === 'string'
+        ? session.payment_intent
+        : session.payment_intent?.id;
+    return deps.store.putIfAbsent({
+      billId,
+      userId,
+      checkoutSessionId: session.id,
+      ...(paymentIntentId ? { paymentIntentId } : {}),
+      amountPence: session.amount_total ?? 0,
+      paidAt,
+    });
+  };
+
+  /**
+   * The webhook hasn't landed (slow, or not reaching this API at all, as
+   * locally without `stripe listen`): ask Stripe about the caller's own
+   * Checkout Session and record it if it's paid for this bill.
+   */
+  const reconcile = async (bill: Bill, caller: VerifiedCaller, checkoutSessionId: string) => {
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await timed('stripe', 'checkout.sessions.retrieve', () =>
+        deps.stripe.checkout.sessions.retrieve(checkoutSessionId),
+      );
+    } catch {
+      return null; // unknown or foreign id: keep waiting for the webhook
+    }
+    if (session.metadata?.billId !== bill.billId || session.metadata?.userId !== caller.userId) {
+      return null;
+    }
+    if ((await recordPaid(session, new Date().toISOString())) === 'ignored') return null;
+    return deps.store.get(bill.billId);
+  };
+
   return {
     /** Starts the embedded checkout for this bill's fee and returns the form's client secret. */
     async startCheckout(input: { caller: VerifiedCaller; billId: string }) {
@@ -145,9 +188,17 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       }
     },
 
-    async status(input: { caller: VerifiedCaller; billId: string }): Promise<TableFeeStatus> {
+    async status(input: {
+      caller: VerifiedCaller;
+      billId: string;
+      /** The Checkout Session the page just confirmed, to check with Stripe directly. */
+      checkoutSessionId?: string;
+    }): Promise<TableFeeStatus> {
       const bill = await loadOwnBill(input.billId, input.caller);
-      const fee = await deps.store.get(bill.billId);
+      let fee = await deps.store.get(bill.billId);
+      if (!fee && input.checkoutSessionId) {
+        fee = await reconcile(bill, input.caller, input.checkoutSessionId);
+      }
       if (fee)
         return {
           billId: bill.billId,
@@ -168,22 +219,11 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       ) {
         return 'ignored';
       }
-      const session = event.data.object;
-      const billId = session.metadata?.billId;
-      const userId = session.metadata?.userId;
-      if (session.payment_status !== 'paid' || !billId || !userId) return 'ignored';
-      const paymentIntentId =
-        typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : session.payment_intent?.id;
-      const result = await deps.store.putIfAbsent({
-        billId,
-        userId,
-        checkoutSessionId: session.id,
-        ...(paymentIntentId ? { paymentIntentId } : {}),
-        amountPence: session.amount_total ?? 0,
-        paidAt: new Date(event.created * 1000).toISOString(),
-      });
+      const result = await recordPaid(
+        event.data.object,
+        new Date(event.created * 1000).toISOString(),
+      );
+      if (result === 'ignored') return 'ignored';
       return result === 'recorded' ? 'applied' : 'duplicate';
     },
   };

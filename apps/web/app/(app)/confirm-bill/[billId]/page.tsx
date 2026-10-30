@@ -9,6 +9,7 @@ import { useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
 import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
+import { Pencil } from 'lucide-react';
 import { useScreenTitle } from '@/lib/screen';
 import { BillImageModal } from '@/components/BillImageModal';
 import {
@@ -84,6 +85,10 @@ function ConfirmBill() {
   const [hydrated, setHydrated] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [mode, setMode] = useState<'review' | 'edit'>(isMidSession ? 'edit' : 'review');
+  // Review screen: the item being edited in place, and its values before
+  // editing (so Escape / Cancel can put them back).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSnapshot, setEditingSnapshot] = useState<DraftItem | null>(null);
 
   useEffect(() => {
     if (bill.data && !hydrated) {
@@ -115,6 +120,14 @@ function ConfirmBill() {
 
   const existingSessionId = existingSessionIdFromError(createSession.error);
 
+  // Review screen: persist as soon as an inline edit is finished (or an
+  // item removed), so nothing is lost if the lead leaves the page.
+  useEffect(() => {
+    if (mode !== 'review' || editingId !== null || !hydrated || !isDirty || amend.isPending) return;
+    void saveDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, editingId, isDirty, hydrated]);
+
   const claimsByItemId = useMemo(() => {
     const m = new Map<string, { count: number; names: string[] }>();
     for (const p of session.data?.participants ?? []) {
@@ -133,6 +146,29 @@ function ConfirmBill() {
     setItems((prev) => prev.map((it) => (it.draftId === draftId ? { ...it, ...patch } : it)));
   const removeItem = (draftId: string) => setItems((prev) => prev.filter((it) => it.draftId !== draftId));
 
+  const startEditing = (it: DraftItem) => {
+    setEditingId(it.draftId);
+    setEditingSnapshot(it);
+  };
+  const cancelEditing = () => {
+    if (editingSnapshot) {
+      // A brand-new item that was never filled in just disappears.
+      if (!editingSnapshot.itemId && !editingSnapshot.name.trim()) removeItem(editingSnapshot.draftId);
+      else updateItem(editingSnapshot.draftId, editingSnapshot);
+    }
+    setEditingId(null);
+    setEditingSnapshot(null);
+  };
+  const finishEditing = () => {
+    setEditingId(null);
+    setEditingSnapshot(null);
+  };
+  const addAndEdit = () => {
+    const it = blankItem();
+    setItems((prev) => [...prev, it]);
+    startEditing(it);
+  };
+
   const buildAmendPayload = () => ({
     items: items.map((it) => ({
       ...(it.itemId ? { itemId: it.itemId } : {}),
@@ -145,6 +181,25 @@ function ConfirmBill() {
     serviceChargePence: servicePence,
   });
 
+  // Load a bill (fresh from the server, or the last saved one) into the
+  // editable draft. Items then carry their server itemIds, so later saves
+  // update them instead of re-adding them.
+  const hydrateFrom = (bill: Bill) => {
+    setItems(bill.items.map(fromBillItem));
+    setServicePounds((bill.serviceChargePence / 100).toFixed(2));
+    setTaxPounds((bill.taxPence / 100).toFixed(2));
+  };
+
+  const saveDraft = async (): Promise<boolean> => {
+    if (!isDirty) return true;
+    try {
+      hydrateFrom(await amend.mutateAsync(buildAmendPayload()));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const onCreateSession = async () => {
     if (!billId) return;
     // Diners need somewhere to pay — get the lead's bank details first.
@@ -152,9 +207,7 @@ function ConfirmBill() {
       router.push(`/payout-account?returnTo=${encodeURIComponent(`/confirm-bill/${billId}`)}`);
       return;
     }
-    if (isDirty) {
-      try { await amend.mutateAsync(buildAmendPayload()); } catch { return; }
-    }
+    if (!(await saveDraft())) return;
     try {
       const created = await createSession.mutateAsync({ billId });
       await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
@@ -216,17 +269,40 @@ function ConfirmBill() {
         <div className="screen screen--sticky stack">
           {b.venue?.name ? <DisplayText size="md" as="h2" className="mt-xs">{b.venue.name}</DisplayText> : null}
           {venueLine ? <BodyText className="t-mute mt-xs">{venueLine}</BodyText> : null}
-          <BodyText className="mt-sm">Bill look right? Let&apos;s split it.</BodyText>
+          <BodyText className="mt-sm">Bill look right? Fix anything the scan got wrong, then split it.</BodyText>
           <Receipt className="mt-base">
-            {items.map((it) => (
-              <ReceiptItem
-                key={it.draftId}
-                name={it.quantity > 1 ? `${it.quantity}× ${it.name || 'Item'}` : it.name || 'Item'}
-                price={formatGBP(parsePence(it.unitPricePounds) * it.quantity)}
-              />
-            ))}
+            {items.map((it) =>
+              it.draftId === editingId ? (
+                <InlineItemEditor
+                  key={it.draftId}
+                  item={it}
+                  busy={amend.isPending}
+                  onChange={(patch) => updateItem(it.draftId, patch)}
+                  onDone={finishEditing}
+                  onCancel={cancelEditing}
+                  onRemove={() => { removeItem(it.draftId); setEditingId(null); setEditingSnapshot(null); }}
+                />
+              ) : (
+                <button
+                  key={it.draftId}
+                  type="button"
+                  className="ritem ritem--editable"
+                  onClick={() => startEditing(it)}
+                  disabled={busy}
+                  aria-label={`Edit ${it.name || 'item'}`}
+                >
+                  <span className="ritem__name">{it.quantity > 1 ? `${it.quantity}× ${it.name || 'Item'}` : it.name || 'Item'}</span>
+                  <span className="ritem__right">
+                    <span className="ritem__price">{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</span>
+                    <Pencil size={13} className="ritem__pencil" aria-hidden />
+                  </span>
+                </button>
+              ),
+            )}
+            <button type="button" className="ritem ritem--add" onClick={addAndEdit} disabled={busy}>+ add an item</button>
             <BillTotals subtotalPence={subtotalPence} servicePence={servicePence} taxPence={taxPence} totalPence={totalPence} />
           </Receipt>
+          <Mini className="t-center mt-sm">tap an item to fix its name or price</Mini>
           <ParsedTotalMismatch bill={b} computedTotalPence={totalPence} />
           <LinkButton align="center" className="mt-md" onClick={() => setImageOpen(true)}>view original photo</LinkButton>
           {createSession.isError && !existingSessionId ? (
@@ -240,8 +316,8 @@ function ConfirmBill() {
         <div className="sticky-bar">
           <div className="sticky-bar__inner">
             <div className="sticky-bar__row">
-              <Button variant="ghost" onClick={() => setMode('edit')} disabled={busy}>Edit bill</Button>
-              <Button disabled={busy} onClick={onCreateSession}>{busy ? <Spinner /> : 'Open the session →'}</Button>
+              <Button variant="ghost" onClick={() => { setEditingId(null); setMode('edit'); }} disabled={busy}>Edit all</Button>
+              <Button disabled={busy || editingId !== null} onClick={onCreateSession}>{busy ? <Spinner /> : 'Open the session →'}</Button>
             </div>
           </div>
         </div>
@@ -351,9 +427,7 @@ function ConfirmBill() {
                 if (isMidSession) {
                   router.replace(`/session/${sessionId}`);
                 } else {
-                  setItems(b.items.map(fromBillItem));
-                  setServicePounds((b.serviceChargePence / 100).toFixed(2));
-                  setTaxPounds((b.taxPence / 100).toFixed(2));
+                  hydrateFrom(b);
                   amend.reset();
                   setMode('review');
                 }
@@ -365,8 +439,7 @@ function ConfirmBill() {
               disabled={busy || items.length === 0 || (isMidSession && !isDirty)}
               onClick={() => {
                 if (isMidSession) void onSaveAmend();
-                else if (isDirty) amend.mutate(buildAmendPayload(), { onSuccess: () => setMode('review') });
-                else setMode('review');
+                else void saveDraft().then((ok) => ok && setMode('review'));
               }}
             >
               {busy ? <Spinner /> : isMidSession && !isDirty ? 'No changes' : 'Save changes →'}
@@ -376,6 +449,57 @@ function ConfirmBill() {
       </div>
       {imageModal}
     </>
+  );
+}
+
+function InlineItemEditor({ item, busy, onChange, onDone, onCancel, onRemove }: {
+  item: DraftItem; busy: boolean; onChange: (patch: Partial<DraftItem>) => void;
+  onDone: () => void; onCancel: () => void; onRemove: () => void;
+}) {
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); onDone(); }
+    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+  };
+  return (
+    <div className="ritem-edit" onKeyDown={onKey}>
+      <TextField
+        variant="compact"
+        aria-label="Item name"
+        value={item.name}
+        onChange={(e) => onChange({ name: e.target.value })}
+        placeholder="Item name"
+        autoCorrect="off"
+        autoFocus
+      />
+      <div className="edit-item__row">
+        <div className="price-field">
+          <TextField
+            variant="compact"
+            aria-label={`Price of ${item.name || 'item'}`}
+            value={item.unitPricePounds}
+            onChange={(e) => onChange({ unitPricePounds: e.target.value })}
+            onBlur={() => onChange({ unitPricePounds: (parsePence(item.unitPricePounds) / 100).toFixed(2) })}
+            onFocus={(e) => e.target.select()}
+            placeholder="0.00"
+            inputMode="decimal"
+            prefix="£"
+          />
+          {item.quantity > 1 ? <span className="hint-inline">each</span> : null}
+        </div>
+        <div className="qty">
+          <button type="button" aria-label="Decrease quantity" disabled={item.quantity <= 1}
+            onClick={() => onChange({ quantity: Math.max(1, item.quantity - 1) })}>−</button>
+          <span className="qty__v">{item.quantity}×</span>
+          <button type="button" aria-label="Increase quantity" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
+        </div>
+      </div>
+      <div className="ritem-edit__actions">
+        <button type="button" className="link-btn link-btn--danger" onClick={onRemove} disabled={busy}>remove</button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="link-btn link-btn--mute" onClick={onCancel}>cancel</button>
+        <Button variant="quiet" onClick={onDone}>Done</Button>
+      </div>
+    </div>
   );
 }
 

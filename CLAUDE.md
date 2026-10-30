@@ -30,6 +30,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 - `npm run dev:local`: API on :3000 plus web on :8081. Needs Docker.
 - `npm run typecheck`: must pass before committing (the pre-commit hook runs it).
 - `npm test`: unit tests.
+- `npm run test:cov -w apps/api` / `-w packages/core`: tests with coverage and the floors CI enforces (API needs the integration services).
 - `npm run test:int -w apps/api`: integration tests. Needs `npm run ddb:up -w apps/api`.
 - `npm run build && npm run e2e -w apps/web`: e2e against the in-memory `FakeApi`. Visual baselines are CI's; don't commit locally-made snapshots.
 - `npm run gen:api`: after any change to `apps/api/openapi.yaml`. Commit the contract and client change together.
@@ -53,8 +54,14 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 ## From a Claude cloud session
 
 - `gh` GraphQL is blocked: use `gh api` REST.
-- To merge, merge locally with `--no-ff` and push `main`, so Callum stays the committer.
+- To merge, run `scripts/merge-pr.sh <pr>` (see below). It merges locally with `--no-ff` and pushes `main`, so Callum stays the committer.
 - Callum's Mac shell has no GitHub credentials; move work to it with git bundles.
+
+## Merging and coverage
+
+The repo is private on GitHub's free plan, so GitHub can't stop a red PR being merged. `scripts/merge-pr.sh <pr>` is the gate: it refuses unless the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and the branch is up to date with main. Don't use GitHub's merge button, and never pass `--force` unless Callum says so.
+
+Coverage: lines and branches may not drop more than 1 point below main (the `coverage` job, against the `coverage-baseline` branch), and each package's `vitest.config.ts` thresholds are hard floors. Raise floors as tests land; never lower them to get a PR through. A deliberate drop needs the `coverage-drop-ok` label.
 
 ## When you finish a piece of work
 

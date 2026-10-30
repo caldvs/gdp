@@ -214,49 +214,50 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-mono" x="588" y="248">requestId → requestLogger → CORS → errorHandler</text>
 <text class="t-mono" x="588" y="264">per route: session JWT auth · Idempotency-Key</text>
 <text class="zone-label" x="576" y="296">ROUTES · openapi.yaml</text>
-<rect class="inner" x="576" y="308" width="246" height="110" rx="7"/>
+<rect class="inner" x="576" y="308" width="246" height="128" rx="7"/>
 <text class="t-inner" x="588" y="329">Ops</text>
 <text class="t-base" x="810" y="329" text-anchor="end">/</text>
 <text class="t-ep" x="588" y="349"><tspan class="m m-get">GET</tspan><tspan x="644">/healthz</tspan></text>
 <text class="t-ep" x="588" y="367"><tspan class="m m-get">GET</tspan><tspan x="644">/readyz</tspan></text>
 <text class="t-ep" x="588" y="385"><tspan class="m m-get">GET</tspan><tspan x="644">/docs</tspan></text>
-<text class="t-ep" x="588" y="403"><tspan class="m m-get">GET</tspan><tspan x="644">/openapi.yaml</tspan></text>
-<rect class="inner" x="576" y="428" width="246" height="74" rx="7"/>
-<text class="t-inner" x="588" y="449">Auth</text>
-<text class="t-base" x="810" y="449" text-anchor="end">/v1/auth/email</text>
-<text class="t-ep" x="588" y="469"><tspan class="m m-post">POST</tspan><tspan x="644">/start</tspan></text>
-<text class="t-ep" x="588" y="487"><tspan class="m m-post">POST</tspan><tspan x="644">/verify</tspan></text>
-<rect class="inner" x="576" y="512" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="533">Me</text>
-<text class="t-base" x="810" y="533" text-anchor="end">/v1/me</text>
-<text class="t-ep" x="588" y="553"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="571"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
-<text class="t-ep" x="588" y="589"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
-<rect class="inner" x="576" y="614" width="246" height="128" rx="7"/>
-<text class="t-inner" x="588" y="635">Bills</text>
-<text class="t-base" x="810" y="635" text-anchor="end">/v1/bills</text>
-<text class="t-ep" x="588" y="655"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
-<text class="t-ep" x="588" y="673"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
-<text class="t-ep" x="588" y="691"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<text class="t-ep" x="588" y="709"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
-<text class="t-ep" x="588" y="727"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
-<rect class="inner" x="576" y="752" width="246" height="110" rx="7"/>
-<text class="t-inner" x="588" y="773">Payments</text>
-<text class="t-base" x="810" y="773" text-anchor="end">/v1/payments</text>
-<text class="t-ep" x="588" y="793"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
-<text class="t-ep" x="588" y="811"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
-<text class="t-ep" x="588" y="829"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
-<text class="t-ep" x="588" y="847"><tspan class="m m-get">GET</tspan><tspan x="644">/return</tspan></text>
-<rect class="inner" x="576" y="872" width="246" height="74" rx="7"/>
-<text class="t-inner" x="588" y="893">Billing</text>
-<text class="t-base" x="810" y="893" text-anchor="end">/v1/billing/table-fee</text>
-<text class="t-ep" x="588" y="913"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="931"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<rect class="inner" x="576" y="956" width="246" height="74" rx="7"/>
-<text class="t-inner" x="588" y="977">Webhooks</text>
-<text class="t-base" x="810" y="977" text-anchor="end">/webhooks</text>
-<text class="t-ep" x="588" y="997"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
-<text class="t-ep" x="588" y="1015"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<text class="t-ep" x="588" y="403"><tspan class="m m-get">GET</tspan><tspan x="644">/swagger</tspan></text>
+<text class="t-ep" x="588" y="421"><tspan class="m m-get">GET</tspan><tspan x="644">/openapi.yaml</tspan></text>
+<rect class="inner" x="576" y="446" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="467">Auth</text>
+<text class="t-base" x="810" y="467" text-anchor="end">/v1/auth/email</text>
+<text class="t-ep" x="588" y="487"><tspan class="m m-post">POST</tspan><tspan x="644">/start</tspan></text>
+<text class="t-ep" x="588" y="505"><tspan class="m m-post">POST</tspan><tspan x="644">/verify</tspan></text>
+<rect class="inner" x="576" y="530" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="551">Me</text>
+<text class="t-base" x="810" y="551" text-anchor="end">/v1/me</text>
+<text class="t-ep" x="588" y="571"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="589"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
+<text class="t-ep" x="588" y="607"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
+<rect class="inner" x="576" y="632" width="246" height="128" rx="7"/>
+<text class="t-inner" x="588" y="653">Bills</text>
+<text class="t-base" x="810" y="653" text-anchor="end">/v1/bills</text>
+<text class="t-ep" x="588" y="673"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
+<text class="t-ep" x="588" y="691"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
+<text class="t-ep" x="588" y="709"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<text class="t-ep" x="588" y="727"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
+<text class="t-ep" x="588" y="745"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
+<rect class="inner" x="576" y="770" width="246" height="110" rx="7"/>
+<text class="t-inner" x="588" y="791">Payments</text>
+<text class="t-base" x="810" y="791" text-anchor="end">/v1/payments</text>
+<text class="t-ep" x="588" y="811"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
+<text class="t-ep" x="588" y="829"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
+<text class="t-ep" x="588" y="847"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
+<text class="t-ep" x="588" y="865"><tspan class="m m-get">GET</tspan><tspan x="644">/return</tspan></text>
+<rect class="inner" x="576" y="890" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="911">Billing</text>
+<text class="t-base" x="810" y="911" text-anchor="end">/v1/billing/table-fee</text>
+<text class="t-ep" x="588" y="931"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="949"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<rect class="inner" x="576" y="974" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="995">Webhooks</text>
+<text class="t-base" x="810" y="995" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="1015"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
+<text class="t-ep" x="588" y="1033"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
 <rect class="inner" x="834" y="308" width="230" height="308" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
@@ -275,7 +276,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
 <text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
 <text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="626" width="230" height="404" rx="7"/>
+<rect class="inner" x="834" y="626" width="230" height="422" rx="7"/>
 <text class="t-inner" x="846" y="647">Services</text>
 <text class="t-base" x="1052" y="647" text-anchor="end">src/services</text>
 <text class="t-mono" x="846" y="670">auth</text>
@@ -294,11 +295,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="846" y="927">sender (SES or console)</text>
 <text class="t-mono" x="846" y="950">storage</text>
 <text class="t-sub" x="846" y="967">one store per entity</text>
-<rect class="inner" x="576" y="1040" width="488" height="94" rx="7"/>
-<text class="t-inner" x="588" y="1062">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1084">Parser: Bedrock → Gemini fallback · fixture</text>
-<text class="t-mono" x="588" y="1102">Payments: TrueLayer · mock · manual</text>
-<text class="t-mono" x="588" y="1120">Email: SES · console     Venue: Google Places</text>
+<rect class="inner" x="576" y="1058" width="488" height="76" rx="7"/>
+<text class="t-inner" x="588" y="1080">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1102">Parser: Bedrock → Gemini fallback · fixture</text>
+<text class="t-mono" x="588" y="1120">Payments: TrueLayer · mock · manual</text>
+<text class="t-mono" x="588" y="1138">Email: SES · console     Venue: Google Places</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>

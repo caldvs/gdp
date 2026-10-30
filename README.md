@@ -13,7 +13,7 @@ docs/          Architecture diagrams, decisions, deploy guide, designs
 
 ## How it works
 
-1. The **lead** photographs the bill. The API reads it (Claude Haiku on Amazon Bedrock), looks up the restaurant's address (Amazon Location Service), and the lead checks the items.
+1. The **lead** photographs the bill. The API reads it (Claude Sonnet on Amazon Bedrock), looks up the restaurant's address (Amazon Location Service), and the lead checks the items.
 2. The lead enters their bank details, pays the **table fee** (£2, or £3 over £100, via Stripe; skipped when Stripe isn't configured), and gets a QR code and join code. The bank details stay in their browser and travel to guests in the link's `#p=` fragment ([ADR-0002](docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
 3. **Guests** join, tick what they had or split shared items ([ADR-0006](docs/decisions.md#adr-0006-splits-by-ways)), and see their share including service.
 4. Guests pay the lead by bank transfer (tap-to-copy details, Monzo/Revolut links) and tap _I've paid_. The app never holds money.

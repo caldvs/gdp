@@ -159,12 +159,12 @@ class GdpBackendStack extends cdk.Stack {
       });
     }
 
-    // The bill reader: Claude Haiku on Bedrock through the EU cross-region
+    // The bill reader: Claude Sonnet 4.6 on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Override with
     // `-c bedrockModelId=…`.
     const bedrockModelId =
       (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
-      'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+      'eu.anthropic.claude-sonnet-4-6';
 
     const apiLogs = new logs.LogGroup(this, 'ApiHandlerLogs', {
       retention: envName === 'prod' ? logs.RetentionDays.SIX_MONTHS : logs.RetentionDays.ONE_MONTH,

@@ -4,13 +4,19 @@ const unauthenticated = (page: Page) =>
   page.route('**/v1/me', (route) =>
     route.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'No token' } } }),
   );
+// Local dev sign-in isn't on the test server; the form falls back to email codes.
+const noDevSignIn = (page: Page) =>
+  page.route('**/v1/auth/email/dev-sign-in', (route) =>
+    route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'no' } } }),
+  );
 
-test('signed-out visitors land on sign-in', async ({ page }) => {
+test('signed-out visitors land on the front door', async ({ page }) => {
   await unauthenticated(page);
   await page.goto('/');
   await expect(page).toHaveURL(/\/sign-in$/);
-  await expect(page.getByRole('heading', { name: 'Sort the bill.' })).toBeVisible();
-  await expect(page.getByLabel('your email')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Snap the bill/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Snap a bill' }).click();
+  await expect(page.getByLabel('Email')).toBeVisible();
 });
 
 test('a join link survives the sign-in redirect without leaking the bank details', async ({ page }) => {
@@ -24,31 +30,39 @@ test('a join link survives the sign-in redirect without leaking the bank details
 
 test('email step validates before calling the API', async ({ page }) => {
   await unauthenticated(page);
+  await noDevSignIn(page);
   let called = false;
   await page.route('**/v1/auth/email/start', (route) => {
     called = true;
     return route.fulfill({ json: { ok: true } });
   });
   await page.goto('/sign-in');
-  await page.getByLabel('your email').fill('not-an-email');
-  await page.getByRole('button', { name: 'Email me a code →' }).click();
+  await page.getByRole('button', { name: 'Snap a bill' }).click();
+  const submit = page.locator('form button[type="submit"]');
+  await page.getByLabel('Email').fill('not-an-email');
+  await submit.click();
   await expect(page.getByText("That doesn't look like an email address.")).toBeVisible();
   expect(called).toBe(false);
 
-  await page.getByLabel('your email').fill('alice@example.com');
-  await page.getByRole('button', { name: 'Email me a code →' }).click();
-  await expect(page.getByText('check your inbox')).toBeVisible();
+  await page.getByLabel('Email').fill('alice@example.com');
+  await submit.click();
+  await expect(page.getByLabel('6-digit code')).toBeVisible();
   expect(called).toBe(true);
 });
 
-test('signed-in home shows the greeting and a new-bill button', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('gdp.idToken', 'test-token'));
+test('signed-in home is the camera, with the open bills tray', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('gdp.idToken', 'test-token');
+    localStorage.setItem('gdp.lastActiveAt', String(Date.now()));
+  });
   await page.route('**/v1/me', (route) =>
     route.fulfill({ json: { userId: 'u1', displayName: 'Alice Cooper', email: 'alice@example.com' } }),
   );
-  await page.route('**/v1/me/sessions**', (route) => route.fulfill({ json: { sessions: [] } }));
+  await page.route('**/v1/me/sessions**', (route) =>
+    route.fulfill({ json: { sessions: [{ sessionId: 's1', status: 'claiming', creatorUserId: 'u1', collectorUserId: 'u1', billId: 'b1', pinnedBillVersion: 1, createdAt: new Date().toISOString(), role: 'lead', myPaymentStatus: 'self_paid', venue: { name: 'Gennaro' } }] } }),
+  );
   await page.goto('/');
-  await expect(page.getByText(/, Alice$/)).toBeVisible();
-  await expect(page.getByRole('link', { name: /New bill/ })).toBeVisible();
-  await expect(page.getByText('Nothing yet. Snap a bill to start.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Take the photo' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Your bills and account' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Gennaro/ })).toBeVisible();
 });

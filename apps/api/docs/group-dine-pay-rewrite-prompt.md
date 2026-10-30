@@ -8,7 +8,7 @@ This brief is **backend-only**. The mobile app is its own project, sequenced aft
 
 ## Read this in full before writing any code
 
-Skim every section. Then read the existing-code references for domain understanding. Then *stop and ask the user the open questions at the bottom* before writing anything.
+Skim every section. Then read the existing-code references for domain understanding. Then _stop and ask the user the open questions at the bottom_ before writing anything.
 
 ---
 
@@ -29,7 +29,7 @@ Mobile-first product. The backend is a public-internet HTTP API serving a mobile
 - **OpenAPI 3.1 spec is the source of truth for the API contract.** Generated from zod schemas with `zod-openapi` or hand-written and validated against the implementation — pick one and stick to it. The spec is committed in the repo at `openapi.yaml` and published to the mobile team via a release artifact.
 - **Path-based API versioning from day one** — `/v1/...`. You will need to support multiple versions in parallel within 12 months once the mobile client is in the App Store.
 - **Money is integer pence.** Never floats. Storage, wire format, calculation. Display formatting is the client's job.
-- **All input validated with zod at the boundary.** Generated TypeScript types come *from* the zod schemas, not the other way around.
+- **All input validated with zod at the boundary.** Generated TypeScript types come _from_ the zod schemas, not the other way around.
 - **Real auth.** Google sign-in via server-verified ID tokens (`google-auth-library`). The server never trusts a `userId` from a request. The verified `sub` claim is the only source of caller identity.
 - **Idempotency keys required on every state-changing payment endpoint.** Standard `Idempotency-Key` header, stored in DynamoDB with a TTL, returns the cached response on retry.
 - **Webhook signatures verified, not stubbed.** If a provider's signature can't be verified, return 401 and log it.
@@ -42,6 +42,7 @@ Mobile-first product. The backend is a public-internet HTTP API serving a mobile
 The bar isn't "it works in dev". The bar is "an on-call engineer who didn't write this can debug a 2am incident with the logs and metrics you produced". Concretely:
 
 ### Observability is part of v0, not a later chore
+
 - **Structured logs** (pino) with a stable schema. Every log line has `requestId`, `userId` (when authed), `route`, `latencyMs`. JSON to stdout, ingested by CloudWatch.
 - **Request IDs propagated** through every layer; returned to the client as `X-Request-Id` so support tickets can be cross-referenced.
 - **Metrics** for the four golden signals — request count, error rate, latency p50/p95/p99, saturation (concurrent executions). CloudWatch metric filters or EMF.
@@ -49,11 +50,13 @@ The bar isn't "it works in dev". The bar is "an on-call engineer who didn't writ
 - **Health endpoint** at `GET /healthz` (liveness) and `GET /readyz` (DDB connectivity check). No auth.
 
 ### Errors are typed and documented
+
 - One error envelope: `{ error: { code: "BILL_NOT_FOUND", message: "...", requestId: "...", details?: {...} } }`. Codes are SCREAMING_SNAKE_CASE, namespaced where useful, and listed in the OpenAPI spec.
 - Don't leak internal error messages. The `message` field is safe to show users; `details` is for debugging and is omitted in prod.
 - HTTP statuses follow RFC 7231 honestly — 404 means not found, not "anything that went wrong with that resource".
 
 ### Tests run against real infrastructure where it matters
+
 - **DynamoDB Local in Docker** for integration tests. Not mocks. The prior codebase's mocked tests would have hidden float-money bugs and key-schema mistakes; you don't get to repeat that.
 - **Test pyramid**:
   - Unit tests for the non-trivial pure logic — proportional split arithmetic, currency formatting, idempotency-key cache logic, signature verification. Fast, plentiful.
@@ -63,12 +66,14 @@ The bar isn't "it works in dev". The bar is "an on-call engineer who didn't writ
 - **CI runs lint, type-check, unit, integration, build, audit (npm audit / socket.dev), and OpenAPI lint** on every PR.
 
 ### Deployment is reproducible and reversible
+
 - **CDK stacks** are the only way infra changes get to AWS. No console clicks. The dev environment is created from the same code as prod.
 - **Per-environment config** comes from AWS SSM Parameter Store and Secrets Manager, not `.env` files. Local dev uses a `.env` for convenience but the loader is identical.
 - **Rollback is `cdk deploy` of the previous git commit.** No special procedure.
 - **Cold-start budget** — keep the deployed bundle small (esbuild, tree-shake, no AWS SDK v2). Aim for <500ms cold start on a 1024MB Lambda. Measure it; don't guess.
 
 ### Operations
+
 - **Rate limiting** via API Gateway usage plans for v0. Per-IP for unauthed routes, per-user for authed. Numbers are reviewable in code, not magic in the console.
 - **Throttle DynamoDB** with on-demand mode initially. Re-evaluate at 1k req/s sustained.
 - **TTLs everywhere** that data is ephemeral — sessions (30d), idempotency cache (24h), magic links if any (15m). DDB TTL attribute, indexed.
@@ -100,7 +105,7 @@ Existing repo: `caldvs/group-dine-pay`, locally at `/Users/callum/software-local
 - `packages/backend/src/services/geminiVisionParser.ts` lines ~68-100 — **the prompt is the most domain-mature thing in the project**. It handles hierarchical items, kitchen notes, ambiguous prices. Steal the prompt design. Rewrite the surrounding code.
 - `packages/backend/src/services/venueVerification.ts` — graceful-degradation pattern for Google Places lookup is reasonable. Keep the pattern, not the code.
 - `packages/backend/src/types/billSplitting.ts` — entity shapes (Bill, BillItem, Participant, BillSplitSession) as a starting point for your domain modelling. Read with the anti-patterns list in hand.
-- `packages/backend/src/handlers/truelayerHandler.ts` and `paymentInitiationHandler.ts` — for the rough shape of the TrueLayer integration only. Note carefully what's *missing* (signature verification, idempotency).
+- `packages/backend/src/handlers/truelayerHandler.ts` and `paymentInitiationHandler.ts` — for the rough shape of the TrueLayer integration only. Note carefully what's _missing_ (signature verification, idempotency).
 
 ### Ignore entirely
 
@@ -267,7 +272,7 @@ Get answers to 1, 2, 3, 5, 6, 8 before writing the OpenAPI spec. The rest can fo
 ## Working style expectations
 
 - Be opinionated. If the user is wrong about something, say so once with the reason, then defer if they push back.
-- No code comments that narrate what the code does. Names should suffice. Comments are for non-obvious *why*.
+- No code comments that narrate what the code does. Names should suffice. Comments are for non-obvious _why_.
 - Don't write README files beyond run/test/deploy. Don't generate `*-SUMMARY.md` files. The OpenAPI spec is the API documentation.
 - Don't add abstractions for hypothetical future needs. Three similar lines is better than a premature abstraction.
 - Don't catch errors you can't handle. Let them propagate to the error envelope middleware. Internal calls don't need try/catch.
@@ -279,6 +284,7 @@ Get answers to 1, 2, 3, 5, 6, 8 before writing the OpenAPI spec. The rest can fo
 ## When you finish reading this
 
 Reply with:
+
 1. A one-paragraph statement of what you understand the product and the backend's responsibilities to be (in your own words).
 2. Anything in this brief that seems wrong, contradictory, or missing.
 3. The numbered open questions above, asked of the user.

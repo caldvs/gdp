@@ -65,8 +65,7 @@ async function seedIfMissing(userId: string): Promise<void> {
     const merged: PayoutAccount = {
       sortCode: existing.payoutAccount.sortCode ?? defaults.sortCode,
       accountNumber: existing.payoutAccount.accountNumber ?? defaults.accountNumber,
-      accountHolderName:
-        existing.payoutAccount.accountHolderName ?? defaults.accountHolderName,
+      accountHolderName: existing.payoutAccount.accountHolderName ?? defaults.accountHolderName,
       ...((existing.payoutAccount.monzoHandle ?? defaults.monzoHandle)
         ? {
             monzoHandle: existing.payoutAccount.monzoHandle ?? defaults.monzoHandle,

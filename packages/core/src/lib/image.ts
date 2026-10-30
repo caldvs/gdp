@@ -9,14 +9,19 @@ export type ProcessedImage = {
   sha256: string;
 };
 
-const MAX_WIDTH = 1600;
-const JPEG_QUALITY = 0.8;
+// Long receipts need the detail: the API crops to the receipt and reads a
+// long one in parts, each at up to the model's 1568px. 3200 on the long side
+// is about a phone photo's full width.
+const MAX_EDGE = 3200;
+// The API takes up to 5 MB. Busy photos at high quality can pass that, so
+// step the quality down until it fits.
+const JPEG_QUALITIES = [0.85, 0.75, 0.6];
+const MAX_BYTES = 4.5 * 1024 * 1024;
 
 /**
  * Browser version of gdp-mobile's processImage: convert HEIC if needed,
- * scale to at most 1600px wide, re-encode as JPEG (q 0.8) and hash it.
- * Same output shape, so the upload hook and server-side dedup behave
- * exactly as they did in the Expo web build.
+ * scale to at most 3200px on the long side, re-encode as JPEG (under the
+ * API's 5 MB) and hash it.
  */
 export async function processImage(file: Blob, fileName?: string): Promise<ProcessedImage> {
   let source: Blob = file;
@@ -27,7 +32,7 @@ export async function processImage(file: Blob, fileName?: string): Promise<Proce
   }
 
   const bitmap = await decode(source);
-  const scale = Math.min(1, MAX_WIDTH / bitmap.width);
+  const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const width = Math.round(bitmap.width * scale);
   const height = Math.round(bitmap.height * scale);
 
@@ -41,13 +46,19 @@ export async function processImage(file: Blob, fileName?: string): Promise<Proce
   ctx.drawImage(bitmap.image, 0, 0, width, height);
   bitmap.close();
 
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Could not prepare the photo.'))),
-      'image/jpeg',
-      JPEG_QUALITY,
-    ),
-  );
+  const toJpeg = (quality: number) =>
+    new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('Could not prepare the photo.'))),
+        'image/jpeg',
+        quality,
+      ),
+    );
+  let blob = await toJpeg(JPEG_QUALITIES[0]!);
+  for (const q of JPEG_QUALITIES.slice(1)) {
+    if (blob.size <= MAX_BYTES) break;
+    blob = await toJpeg(q);
+  }
   const sha256 = await sha256Hex(await blobToArrayBuffer(blob));
   return {
     uri: URL.createObjectURL(blob),

@@ -25,6 +25,8 @@ export interface EmailOtpServiceDeps {
   logger?: Logger;
   /** Override for tests. */
   generateCode?: () => string;
+  /** Sign in with just the email, no code (TABLE_FEE_EXEMPT_EMAILS). */
+  exemptEmails?: ReadonlySet<string>;
 }
 
 export interface StartOtpInput {
@@ -116,6 +118,22 @@ export const createEmailOtpService = (deps: EmailOtpServiceDeps) => ({
    * its bills and sessions); a new email gets a new user. Only reachable
    * when the local server registers the dev route (see src/local.ts).
    */
+  /**
+   * An exempt address (TABLE_FEE_EXEMPT_EMAILS) signs straight in: no code.
+   * Null for everyone else, who get a code as usual. Anyone who types one
+   * of these addresses gets that account; Callum accepted that (1 Nov 2026).
+   */
+  async exemptSignIn(input: { email: string }): Promise<VerifyOtpResult | null> {
+    const email = input.email.trim().toLowerCase();
+    if (!isValidEmail(email) || !deps.exemptEmails?.has(email)) return null;
+    const result = await signInByEmail(email, deps.jwtSecret);
+    deps.logger?.warn(
+      { event: 'auth.exempt_sign_in', userId: result.user.userId, email },
+      'Exempt sign-in (no code)',
+    );
+    return result;
+  },
+
   async devSignIn(input: { email: string }): Promise<VerifyOtpResult> {
     if (!isValidEmail(input.email)) {
       throw new AppError('INVALID_INPUT', 'Email is not in a valid shape');

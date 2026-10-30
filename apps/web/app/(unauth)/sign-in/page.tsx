@@ -178,7 +178,12 @@ function EmailOtpFlow({ cta }: { cta: string }) {
       }
     }
     try {
-      await startOtp.mutateAsync({ email: trimmed });
+      const started = await startOtp.mutateAsync({ email: trimmed });
+      if (started.token) {
+        // An exempt address: signed in already, no code.
+        router.replace(dest);
+        return;
+      }
       writePendingCode(trimmed);
       setStage('AWAITING_CODE');
       setCode('');

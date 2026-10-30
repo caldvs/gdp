@@ -27,6 +27,10 @@ _Last updated 1 Nov 2026._
 - **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run _Update visual baselines_ on the branch) before `gate` goes green.
 - **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
 
+## Exempt accounts (PR open)
+
+On `feat/fee-exempt`: emails in the GitHub environment's `TABLE_FEE_EXEMPT_EMAILS` (secret or variable, comma separated) skip the table fee (`waived`) and sign in with no code. Set it on `dev` and `prod`, then redeploy the API. Link sign-in instead of codes is backlog #119.
+
 ## Next up
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and prod's API is deployed. **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). Then: cut Production over to the prod API (#78; remove the two cut-over origins from the dev list), Stripe live (#79), SES on the domain (#76).

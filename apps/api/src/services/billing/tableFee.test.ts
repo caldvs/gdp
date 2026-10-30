@@ -5,6 +5,7 @@ import {
   checkoutSessionParams,
   createTableFeeService,
   feeLookupKeyFor,
+  parseEmailList,
   type TableFee,
   type TableFeeStore,
 } from './tableFee.js';
@@ -141,6 +142,69 @@ describe('tableFeeService.startCheckout', () => {
       code: 'TABLE_FEE_PAID',
     });
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('exempt leads', () => {
+  it('parses a comma list, ignoring case, spaces and blanks', () => {
+    expect([...parseEmailList(' Callum@Example.com, ,friend@x.co ,not-an-email,')]).toEqual([
+      'callum@example.com',
+      'friend@x.co',
+    ]);
+    expect(parseEmailList('').size).toBe(0);
+  });
+
+  const service = (exempt: string, store = memoryStore()) => {
+    const fake = fakeStripe();
+    return {
+      ...fake,
+      store,
+      service: createTableFeeService({
+        stripe: fake.stripe,
+        store,
+        getBill: () => Promise.resolve(bill(12_000)),
+        appBaseUrl: 'https://gdp.example',
+        exemptEmails: parseEmailList(exempt),
+      }),
+    };
+  };
+
+  it('an exempt lead owes nothing and is never sent to Stripe', async () => {
+    const { service: s, create } = service('CALLUM@example.com');
+    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toEqual({
+      billId: BILL_ID,
+      status: 'waived',
+      amountPence: 0,
+    });
+    await expect(s.startCheckout({ caller: LEAD, billId: BILL_ID })).rejects.toMatchObject({
+      code: 'TABLE_FEE_WAIVED',
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('everyone else still pays', async () => {
+    const { service: s } = service('someone-else@example.com');
+    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+      amountPence: 300,
+    });
+    const noEmail = { userId: LEAD.userId, displayName: 'Callum' };
+    expect(await s.status({ caller: noEmail, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+    });
+  });
+
+  it('a fee paid before the lead was exempted still shows as paid', async () => {
+    const store = memoryStore();
+    store.rows.set(BILL_ID, {
+      billId: BILL_ID,
+      userId: LEAD.userId,
+      checkoutSessionId: 'cs_old',
+      amountPence: 300,
+      paidAt: '2026-10-31T20:00:00.000Z',
+    });
+    const { service: s } = service('callum@example.com', store);
+    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({ status: 'paid' });
   });
 });
 

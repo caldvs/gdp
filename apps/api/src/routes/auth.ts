@@ -27,6 +27,8 @@ export interface AuthRoutesDeps {
    * with no code). Local and dev only: app.ts never sets it in prod.
    */
   testAccountSignIn?: boolean;
+  /** Addresses that sign in from /email/start with no code. */
+  exemptEmails?: ReadonlySet<string>;
 }
 
 export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
@@ -34,6 +36,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
   const otpService = createEmailOtpService({
     emailSender: deps.emailSender,
     jwtSecret: deps.jwtSecret,
+    ...(deps.exemptEmails ? { exemptEmails: deps.exemptEmails } : {}),
   });
 
   r.post(
@@ -54,6 +57,9 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
     }),
     async (c) => {
       const { email } = c.req.valid('json');
+      // Exempt addresses get a session straight away, no code.
+      const signedIn = await otpService.exemptSignIn({ email });
+      if (signedIn) return c.json({ ok: true, ...signedIn });
       try {
         await otpService.start({ email });
       } catch (err) {

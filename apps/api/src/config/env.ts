@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Which environment this is. NODE_ENV says how Node and libraries behave;
+  // APP_ENV says which stage's data, keys and rules apply. Deployed Lambdas
+  // run NODE_ENV=production with APP_ENV=dev or prod.
+  APP_ENV: z.enum(['local', 'dev', 'prod']).default('local'),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
@@ -83,6 +87,6 @@ function unwrapSecret(raw: string | undefined): string | undefined {
 
 export const env: Env = parsed.data;
 
-export const isProd = env.NODE_ENV === 'production';
+export const isProd = env.APP_ENV === 'prod';
 export const isTest = env.NODE_ENV === 'test';
 export const isLocal = !!env.DYNAMODB_ENDPOINT;

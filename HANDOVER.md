@@ -8,15 +8,19 @@ _Last updated 1 Nov 2026._
 
 - **The app** is the Option D web UI. The whole flow is built: scan → check the bill → bank details → table fee (when Stripe is configured) → QR → guests claim and split → pay the lead → lead closes → everyone's emailed a report. See the [README](README.md) and [decisions](docs/decisions.md).
 - **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback.
-- **The dev API deploys** from `main` through GitHub Actions (OIDC). The web app is set up for Vercel, with Vercel Analytics.
+- **The dev API deploys** from `main` through GitHub Actions (OIDC). Dev and prod share one AWS account. Each has its own deploy role, trusted only by jobs in its GitHub environment; the dev job redeploys both role stacks. There's no staging; prod (`GdpBackendProd`) is defined but not deployed (setup steps in [docs/deploy.md](docs/deploy.md)). TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests and CI:** one workflow, `.github/workflows/ci.yml`, runs on every PR and push to main and ends in a single `gate` check. Unit, integration and the Playwright e2e suite (against `FakeApi`) all run in it. Visual baselines are CI's.
   - **Coverage gate:** API (unit + integration together) is at ~86% lines / 70% branches, core at ~39% / 52%. Floors are in each `vitest.config.ts` (API 85/68, core 39/50, 100% on the money files). A PR fails if lines or branches drop more than 1 point below main; main's numbers live on the `coverage-baseline` branch and every PR gets a coverage comment. `coverage-drop-ok` label for a deliberate drop.
   - **Merging:** only with `scripts/merge-pr.sh <pr>`, which refuses unless `gate` passed on an up-to-date branch. GitHub can't enforce it (private repo, free plan).
   - Property tests (fast-check) pin the money maths: client and server agree on every split, a complete bill is charged to the penny.
   - Known bugs are written as `it.fails` in `apps/api/tests/integration/rules-and-races.test.ts`: fix one and its test starts failing, so change it to `it` in the same PR.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, Gemini, Places, SES from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
+- **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
+- **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 
 ## Next up
+
+**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done (deploy role, `APP_ENV`, key-mode and web build checks, secrets read at cold start), and prod's deploy role exists in the same account. Waiting on Callum: the GitHub `prod` environment and prod's SSM parameters and secrets (docs/deploy.md, _Setting up prod_), Stripe live activation, and a domain (phase 3). Limit the GitHub `dev` environment to `main` (the session proxy can't change environment settings).
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
 
@@ -25,7 +29,7 @@ _Last updated 1 Nov 2026._
 
 ## Known problems
 
-- The *change* buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
+- The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
 - The API still accepts claim changes after a guest has paid. (`it.fails` test.)
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.
@@ -36,7 +40,7 @@ _Last updated 1 Nov 2026._
 ## Decided, not built
 
 - Accounts optional: guests join with just a name (needs API work).
-- Top-ups: more than one payment per guest, so *I had something else* can reopen picking after paying.
+- Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
 - Table fee: free bill a month, guests repay it, refund if nobody joins, server-side gate. See [docs/table-fee.md](docs/table-fee.md).

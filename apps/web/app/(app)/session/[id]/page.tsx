@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSession } from '@gdp/core/api/hooks/useSession';
-import { Btn, Centre, Notice, Spin } from '@/components/glass';
+import { Button, Centre, Notice, Spinner } from '@/components/ui';
 import { GuestPick, GuestTable } from './guest';
 import { Ended, LeadSetup, LeadSettled, LeadTable } from './lead';
 
@@ -15,12 +15,12 @@ export default function SessionPage() {
   const me = useMe();
   const bill = useBill(session.data?.billId);
 
-  if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Centre><Spin /></Centre>;
+  if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Centre><Spinner /></Centre>;
   if (session.isError || bill.isError) {
     return (
       <Centre>
-        <Notice error title="Couldn’t load the bill.">{session.error?.message ?? bill.error?.message}</Notice>
-        <Btn tone="ghost" href="/">Home</Btn>
+        <Notice tone="error" title="Couldn’t load the bill.">{session.error?.message ?? bill.error?.message}</Notice>
+        <Button tone="secondary" href="/">Back to bills</Button>
       </Centre>
     );
   }

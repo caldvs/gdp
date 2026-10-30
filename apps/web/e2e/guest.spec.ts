@@ -30,13 +30,13 @@ test('join link, signed out: the invite names the host, and the bank details in 
 
   await sam.goto(`/join/${CODE}#p=${fragment}`);
   await expect(sam).toHaveURL(new RegExp(`/sign-in\\?from=%2Fjoin%2F${CODE}$`));
-  await expect(sam.getByText('Callum invited you')).toBeVisible();
-  await expect(sam.getByText(`code ${CODE}`)).toBeVisible();
+  await expect(sam.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
+  await expect(sam.getByText(`Code ${CODE}`)).toBeVisible();
 
   await signInWithCode(sam);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
-  await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
   // The sort code shown comes from the fragment, formatted.
   await expect(sam.getByText('04-06-68')).toBeVisible();
   await expect(sam.getByText('00079660')).toBeVisible();
@@ -70,7 +70,7 @@ test('an expired link leaves the guest without bank details, with a way out', as
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ ageMs: 3 * 24 * 3600_000, ttlMs: 48 * 3600_000 })}`);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
-  await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
   // The fake's initiate carries no server-side bank details here.
   api.participants.find((p) => p.userId === 'u-sam')!.payment = { status: 'unpaid' };
   await expect(sam.getByText('04-06-68').or(sam.getByText('No bank details from Callum yet.'))).toBeVisible();
@@ -81,18 +81,18 @@ test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
   await sam.getByRole('button', { name: 'Tick Calamari' }).click(POLL);
-  await sam.getByRole('link', { name: 'Pay Callum £22.50' }).click();
-  await expect(sam.getByRole('link', { name: 'Monzo' })).toHaveAttribute('href', 'https://monzo.me/callum.davies/22.50?d=gdp-0193ab12');
-  await expect(sam.getByRole('link', { name: 'Revolut' })).toHaveAttribute('href', 'https://revolut.me/callumd');
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  await expect(sam.getByRole('link', { name: 'Pay with Monzo' })).toHaveAttribute('href', 'https://monzo.me/callum.davies/22.50?d=gdp-0193ab12');
+  await expect(sam.getByRole('link', { name: 'Pay with Revolut' })).toHaveAttribute('href', 'https://revolut.me/callumd');
 
   const api2 = new FakeApi();
   const { page: tom } = await ctxFor(browser, api2, users.tom);
   await tom.goto(`/join/${CODE}#p=${fragmentFor()}`);
   await tom.getByRole('button', { name: 'Tick Calamari' }).click(POLL);
-  await tom.getByRole('link', { name: 'Pay Callum £22.50' }).click();
+  await tom.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(tom.getByText('04-06-68')).toBeVisible();
-  await expect(tom.getByRole('link', { name: 'Monzo' })).toHaveCount(0);
-  await expect(tom.getByRole('link', { name: 'Revolut' })).toHaveCount(0);
+  await expect(tom.getByRole('link', { name: 'Pay with Monzo' })).toHaveCount(0);
+  await expect(tom.getByRole('link', { name: 'Pay with Revolut' })).toHaveCount(0);
 });
 
 test('tapping a bank detail copies the raw value', async ({ browser, browserName }) => {
@@ -101,10 +101,10 @@ test('tapping a bank detail copies the raw value', async ({ browser, browserName
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor()}`);
   await sam.getByRole('button', { name: 'Tick Lasagne' }).click(POLL);
-  await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'Copy sort code' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('040668');
-  await sam.getByRole('button', { name: 'Copy account' }).click();
+  await sam.getByRole('button', { name: 'Copy account number' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('00079660');
   await sam.getByRole('button', { name: 'Copy reference' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('gdp-0193ab12');
@@ -119,16 +119,15 @@ test('guest table after the lead closes: what they paid, the tick, Done goes hom
   const { page: lead } = await ctxFor(browser, api, users.lead);
   await sam.goto(`/session/${SID}`);
   await expect(sam.getByText('Callum has your')).toBeVisible();
-  await expect(sam.getByText('Waiting for Callum to close the bill')).toBeVisible();
+  await expect(sam.getByText('Callum closes the bill once everyone’s paid')).toBeVisible();
 
   await lead.goto(`/session/${SID}`);
-  await lead.getByRole('button', { name: 'Close the bill' }).click();
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await lead.getByRole('button', { name: 'Close bill' }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
 
   await expect(sam.getByText('Bill closed')).toBeVisible(POLL);
-  await expect(sam.getByText('Waiting for Callum to close the bill')).toHaveCount(0);
-  await expect(sam.locator('.g-done')).toBeVisible();
-  await expect(sam.locator('.g-row--total')).toContainText('£17.25');
+  await expect(sam.getByText('Callum closes the bill once everyone’s paid')).toHaveCount(0);
+  await expect(sam.locator('.totals__line--total')).toContainText('£17.25');
   await sam.getByRole('link', { name: 'Done' }).click();
   await expect(sam).toHaveURL(/\/$/);
 });

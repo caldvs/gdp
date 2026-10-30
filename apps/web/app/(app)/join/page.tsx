@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@gdp/core/api';
-import { Back, Backdrop, Btn, Fab, Notice, Screen, Sheet, TopBar } from '@/components/glass';
+import { ActionBar, BackLink, Button, Notice, Page, Title } from '@/components/ui';
 
 /** Type a 6-letter code when there's no QR to scan. */
 export default function JoinByCodePage() {
@@ -22,19 +22,21 @@ export default function JoinByCodePage() {
       await api<{ sessionId: string }>('/v1/sessions/by-code', { method: 'POST', body: { code: c } });
       router.push(`/join/${c}`);
     } catch (err) {
-      setError(err instanceof ApiError && err.code === 'NOT_FOUND' ? "Can't find that code" : 'Try again');
+      setError(err instanceof ApiError && err.code === 'NOT_FOUND' ? 'Can’t find that code' : 'Try again');
       setBusy(false);
     }
   };
 
   return (
-    <Screen>
-      <Backdrop tone="deep" />
-      <TopBar left={<Fab href="/" label="Back" icon={<Back />} />} />
-      <Sheet title="Join a bill">
-        <form onSubmit={go} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <>
+      <Page sub>
+        <BackLink href="/">Bills</BackLink>
+        <Title title="Join a bill" sub="Enter the 6-letter code from the host’s screen, or scan their QR code with your camera." />
+        <form id="join" onSubmit={go} className="field">
+          <label htmlFor="code">Code</label>
           <input
-            className="g-input g-input--mono"
+            id="code"
+            className={error ? 'input input--code input--invalid' : 'input input--code'}
             aria-label="6-letter code"
             value={code}
             onChange={(e) => { setCode(e.target.value.toUpperCase()); if (error) setError(null); }}
@@ -44,12 +46,13 @@ export default function JoinByCodePage() {
             autoComplete="off"
             maxLength={6}
             autoFocus
-            style={{ textAlign: 'center', fontSize: 26, letterSpacing: '0.22em' }}
           />
-          {error ? <Notice error>{error}</Notice> : null}
-          <Btn type="submit" busy={busy} disabled={code.trim().length < 6}>Join</Btn>
         </form>
-      </Sheet>
-    </Screen>
+        {error ? <Notice tone="error">{error}</Notice> : null}
+      </Page>
+      <ActionBar>
+        <Button grow type="submit" form="join" busy={busy} disabled={code.trim().length < 6}>Join</Button>
+      </ActionBar>
+    </>
   );
 }

@@ -1,0 +1,15 @@
+node_modules/
+.DS_Store
+._*
+.env
+.env.local
+.env*.local
+*.tsbuildinfo
+# Next.js
+apps/web/.next/
+apps/web/out/
+apps/web/next-env.d.ts
+# test output
+test-results/
+playwright-report/
+coverage/

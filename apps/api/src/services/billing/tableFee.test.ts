@@ -219,3 +219,76 @@ describe('POST /webhooks/stripe', () => {
     expect(store.rows.size).toBe(0);
   });
 });
+
+describe('tableFeeService.status', () => {
+  const session = (over: Record<string, unknown> = {}) => ({
+    id: 'cs_test_1',
+    payment_status: 'paid',
+    payment_intent: 'pi_1',
+    amount_total: 200,
+    metadata: { billId: BILL_ID, userId: LEAD.userId },
+    ...over,
+  });
+  const setup = (retrieved: unknown) => {
+    const store = memoryStore();
+    const retrieve = vi.fn(() =>
+      retrieved instanceof Error ? Promise.reject(retrieved) : Promise.resolve(retrieved),
+    );
+    const svc = createTableFeeService({
+      stripe: { checkout: { sessions: { retrieve } } } as unknown as Stripe,
+      store,
+      getBill: () => Promise.resolve(bill(5_000)),
+      appBaseUrl: 'http://localhost:8081',
+    });
+    return { store, retrieve, svc };
+  };
+
+  it('is unpaid without asking Stripe when no session is given', async () => {
+    const { svc, retrieve } = setup(session());
+    await expect(svc.status({ caller: LEAD, billId: BILL_ID })).resolves.toEqual({
+      billId: BILL_ID,
+      status: 'unpaid',
+      amountPence: 200,
+    });
+    expect(retrieve).not.toHaveBeenCalled();
+  });
+
+  it('records a paid session when the webhook has not arrived', async () => {
+    const { svc, store } = setup(session());
+    const res = await svc.status({ caller: LEAD, billId: BILL_ID, checkoutSessionId: 'cs_test_1' });
+    expect(res).toMatchObject({ status: 'paid', amountPence: 200 });
+    expect(store.rows.get(BILL_ID)).toMatchObject({
+      checkoutSessionId: 'cs_test_1',
+      paymentIntentId: 'pi_1',
+    });
+  });
+
+  it('stays unpaid while Stripe still has the session unpaid', async () => {
+    const { svc, store } = setup(session({ payment_status: 'unpaid' }));
+    const res = await svc.status({ caller: LEAD, billId: BILL_ID, checkoutSessionId: 'cs_test_1' });
+    expect(res.status).toBe('unpaid');
+    expect(store.rows.size).toBe(0);
+  });
+
+  it("won't record a session for another bill or another user", async () => {
+    for (const metadata of [
+      { billId: 'other-bill', userId: LEAD.userId },
+      { billId: BILL_ID, userId: 'someone-else' },
+    ]) {
+      const { svc, store } = setup(session({ metadata }));
+      const res = await svc.status({
+        caller: LEAD,
+        billId: BILL_ID,
+        checkoutSessionId: 'cs_test_1',
+      });
+      expect(res.status).toBe('unpaid');
+      expect(store.rows.size).toBe(0);
+    }
+  });
+
+  it('stays unpaid when Stripe does not know the session', async () => {
+    const { svc } = setup(new Error('No such checkout.session'));
+    const res = await svc.status({ caller: LEAD, billId: BILL_ID, checkoutSessionId: 'cs_bad' });
+    expect(res.status).toBe('unpaid');
+  });
+});

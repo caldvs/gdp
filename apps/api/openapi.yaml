@@ -1,0 +1,1537 @@
+openapi: 3.1.0
+info:
+  title: Group Dine Pay API
+  version: 0.1.0
+  summary: Group restaurant bill splitting and Open Banking settlement.
+  description: |
+    Backend for the Group Dine Pay mobile app.
+
+    ## Conventions
+
+    - **All money is integer pence (GBP).** No floats anywhere on the wire.
+    - **All identifiers are UUIDv7** unless documented otherwise.
+    - **Timestamps are RFC 3339** strings.
+    - **Auth** uses session JWTs issued by `POST /v1/auth/email/verify` after a successful email OTP. Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
+    - **Errors** use a single envelope (`ErrorResponse`). `error.code` is the stable identifier; `error.message` is human-safe.
+    - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body returns `409 IDEMPOTENCY_CONFLICT`.
+    - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
+
+  contact:
+    name: Group Dine Pay
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.gdp.example.com
+    description: production (placeholder until deploy)
+  - url: http://localhost:3000
+    description: local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: identity
+    description: The authenticated caller
+  - name: bills
+    description: Photographing, parsing, retrieving, and amending bills
+  - name: sessions
+    description: Group dining sessions, the join flow, and claim management
+  - name: payments
+    description: Open Banking payments from participants to the collector
+  - name: webhooks
+    description: Server-to-server callbacks from payment providers
+  - name: ops
+    description: Health and readiness probes
+
+paths:
+  /healthz:
+    get:
+      tags: [ops]
+      operationId: healthcheck
+      summary: Liveness probe
+      security: []
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /readyz:
+    get:
+      tags: [ops]
+      operationId: readiness
+      summary: Readiness probe (checks DDB and S3 connectivity)
+      security: []
+      responses:
+        '200':
+          description: Ready to serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, checks]
+                properties:
+                  status: { type: string, const: ok }
+                  checks:
+                    type: object
+                    properties:
+                      ddb: { type: string, enum: [ok, fail] }
+                      s3: { type: string, enum: [ok, fail] }
+        '503':
+          description: One or more dependencies are unhealthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/email/start:
+    post:
+      tags: [identity]
+      operationId: startEmailOtp
+      security: []
+      summary: Request a one-time sign-in code for an email
+      description: |
+        Generates a 6-digit code, stores its hash, and emails the plaintext
+        code to the supplied address. The code expires in 10 minutes and
+        allows up to 5 verification attempts.
+
+        Response is uniform regardless of whether the email belongs to an
+        existing user — this prevents address enumeration. Email delivery
+        failures (e.g. SES bounce) also return `200` and are logged
+        server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '200':
+          description: Code dispatched (or treated as dispatched).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/auth/email/verify:
+    post:
+      tags: [identity]
+      operationId: verifyEmailOtp
+      security: []
+      summary: Exchange a valid OTP for a session JWT
+      description: |
+        Verifies a 6-digit code against the most recent OTP issued for the
+        email. On success: looks up (or creates) an opaque userId, persists
+        the user profile if new, and mints a session JWT. The JWT is
+        carried in `Authorization: Bearer ...` on every subsequent request.
+
+        On failure (wrong code, expired, used, no OTP, too many attempts)
+        returns `401 AUTH_INVALID` uniformly so failure modes don't leak.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                code:
+                  type: string
+                  pattern: '^[0-9]{6}$'
+      responses:
+        '200':
+          description: Verified. Token is good for 30 days.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token:
+                    type: string
+                    description: Session JWT — pass on every subsequent request.
+                  user:
+                    type: object
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      email: { type: string, format: email }
+                      displayName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: |
+            Code didn't match, expired, was already used, or the attempt
+            cap was hit. Response is `AUTH_INVALID` in every failure mode
+            so callers can't distinguish them.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/me:
+    get:
+      tags: [identity]
+      operationId: getCurrentUser
+      summary: Get the verified caller
+      responses:
+        '200':
+          description: The authenticated user, derived from the verified ID token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/payout-account:
+    put:
+      tags: [identity]
+      operationId: setMyPayoutAccount
+      deprecated: true
+      summary: '[DEPRECATED] Accepted but no longer persisted'
+      description: |
+        **Deprecated.** Per ADR-0002, the lead's bank details are now device-local
+        and exchanged peer-to-peer via QR — never stored server-side. This endpoint
+        still validates the body and returns 200 echoing the supplied account for
+        compatibility with older clients, but it no longer persists anything.
+
+        New clients should not call this. The endpoint will be removed in a future
+        release.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutAccount' }
+      responses:
+        '200':
+          description: |
+            Always returned for valid bodies. The supplied account is echoed back
+            but **not** persisted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payoutAccount]
+                properties:
+                  payoutAccount: { $ref: '#/components/schemas/PayoutAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/sessions:
+    get:
+      tags: [identity]
+      operationId: listMySessions
+      summary: List sessions the caller has been part of, most recent first
+      description: |
+        Returns lightweight summaries (no participants list) for sessions where the caller is the
+        creator or a joined diner. Sessions are sorted by sessionId descending — UUIDv7 is time-ordered
+        so the newest comes first. The full session can be fetched via GET /v1/sessions/{id}.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+          description: Maximum number of summaries to return (1–100, defaults to 20).
+      responses:
+        '200':
+          description: List of session summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/SessionSummary' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/bills/uploads:
+    post:
+      tags: [bills]
+      operationId: requestBillUpload
+      summary: Request a pre-signed S3 PUT URL for a bill image
+      description: |
+        Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
+        If the hash is already mapped to a parsed bill, returns `{ status: "duplicate", billId }` and
+        no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+        scoped permissions (specific key, content-length cap, PUT only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UploadRequest' }
+      responses:
+        '200':
+          description: Upload slot or duplicate-bill resolution
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/UploadSlot'
+                  - $ref: '#/components/schemas/UploadDuplicate'
+                discriminator:
+                  propertyName: status
+                  mapping:
+                    new: '#/components/schemas/UploadSlot'
+                    duplicate: '#/components/schemas/UploadDuplicate'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/bills/parse:
+    post:
+      tags: [bills]
+      operationId: parseBill
+      summary: Parse a previously uploaded image into a structured bill
+      description: |
+        Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
+        (Gemini 2.5 Flash for v0), validates the parser output with zod, persists `Bill` v1, and indexes
+        the image hash. Idempotent via `Idempotency-Key`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParseRequest' }
+      responses:
+        '200':
+          description: Parsed bill
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Upload not found or expired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '422':
+          description: Parser returned but output failed validation, or confidence below threshold
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502':
+          description: Upstream parser provider error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/bills/{billId}:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    get:
+      tags: [bills]
+      operationId: getBill
+      summary: Get a bill (latest version unless ?version is specified)
+      parameters:
+        - in: query
+          name: version
+          schema: { type: integer, minimum: 1 }
+          description: Specific version number; omit for latest
+      responses:
+        '200':
+          description: Bill record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/bills/{billId}/image-url:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    get:
+      tags: [bills]
+      operationId: getBillImageUrl
+      summary: Get a short-lived presigned GET URL for the original bill image
+      description: |
+        Returns a presigned S3 GET URL (TTL ~5 min) for the original uploaded image. Available to the
+        bill creator and to any participant of a session this bill is pinned to. Returns 404 NOT_FOUND
+        for legacy bills that were parsed before the upload reference was retained.
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expiresAt]
+                properties:
+                  url: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/bills/{billId}/amend:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    post:
+      tags: [bills]
+      operationId: amendBill
+      summary: Create a new version of the bill with user edits
+      description: |
+        Allowed when the bill is either (a) not yet attached to a session, or (b) attached to a session
+        in `setup` or `claiming`. Once a session enters `paying`, the bill is frozen.
+
+        When an active session is attached, the amend reconciles in lockstep: the session's
+        `pinnedBillVersion` bumps to the new version, claims pointing to removed items are dropped, and
+        non-creator participants are un-readied so they re-confirm against the new bill. If the new
+        quantity for an item is below the count of claims already attached to it, the call fails with
+        `409 CLAIMS_EXCEED_QUANTITY` — the lead must clear those claims (or raise the quantity) first.
+        Item IDs are preserved where item identity is preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AmendBillRequest' }
+      responses:
+        '200':
+          description: New bill version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Bill is frozen (session in `paying` or `settled`), or the amend would orphan existing
+            claims (`CLAIMS_EXCEED_QUANTITY`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions:
+    post:
+      tags: [sessions]
+      operationId: createSession
+      summary: Create a session from a bill
+      description: |
+        The caller becomes both the creator and the collector. The session starts in `setup`. The join
+        code is generated but not returned by this endpoint and not visible until `/share` is called.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSessionRequest' }
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Bill not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/by-code:
+    post:
+      tags: [sessions]
+      operationId: resolveJoinCode
+      summary: Resolve a 6-character join code to a session ID
+      description: Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JoinByCodeRequest' }
+      responses:
+        '200':
+          description: Resolved session id
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessionId]
+                properties:
+                  sessionId: { type: string, format: uuid }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Code not found, expired, or attached to a non-claiming session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [sessions]
+      operationId: getSession
+      summary: Get session state including participants
+      description: |
+        For non-creator callers in `setup`, the `joinCode` field is omitted from the response.
+      responses:
+        '200':
+          description: Session state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/sessions/{sessionId}/share:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: shareSession
+      summary: Creator transitions setup -> claiming, freezing their own claims
+      description: |
+        Creator-only. Transitions the session from `setup` to `claiming`. Freezes the creator's
+        `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
+        (subsequent calls to `/by-code` will resolve it).
+
+        Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
+        those live device-local and reach guests via the join QR. The previous
+        `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
+      responses:
+        '200':
+          description: Session, now in `claiming` with the join code visible
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not the creator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is not in `setup`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/join:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: joinSession
+      summary: Current user joins the session
+      responses:
+        '200':
+          description: Session including the new participant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is not in `claiming`, or user already a participant
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/claims:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: setClaims
+      summary: Replace the current user's claim list
+      description: |
+        Full replacement (not delta). Caller must be the creator (in `setup`) or a participant (in
+        `claiming`). Items can be claimed by multiple participants; the cost is split equally with
+        rounding pennies allocated deterministically at `lock-claims` time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClaimsRequest' }
+      responses:
+        '200':
+          description: Session reflecting the updated claims
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is in a state where claims cannot be modified by this caller
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/shares:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: addShare
+      summary: Caller joins the splitter set for a shared item (ADR-0006)
+      description: |
+        Adds the caller to the share set for `itemId`. Idempotent — calling
+        twice has no effect on the second call. The shared item's unit price
+        is split equally across all sharers at lock-claims time, with
+        deterministic largest-remainder rounding on the lowest userId.
+
+        v1 simplification: only items with `quantity: 1` are shareable, and
+        an item is in exactly one mode session-wide — claim-mode (unit
+        claims via `/claims`) or share-mode. Either:
+        - `409 ITEM_NOT_SHAREABLE` if the item has quantity > 1, or
+        - `409 CLAIM_SHARE_CONFLICT` if any participant is currently
+          claiming this item.
+
+        Editing the caller's share set un-readies them (same rule as
+        `/claims`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemId]
+              properties:
+                itemId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated session, with the caller now in the splitter set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Session is not in setup/claiming, item has quantity > 1
+            (`ITEM_NOT_SHAREABLE`), or the item is currently claimed
+            (`CLAIM_SHARE_CONFLICT`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/shares/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - in: path
+        name: itemId
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [sessions]
+      operationId: removeShare
+      summary: Caller leaves the splitter set for a shared item (ADR-0006)
+      description: |
+        Removes the caller from the share set for `itemId`. Idempotent —
+        no-op if not in the set. If the caller is the last sharer, the
+        item reverts to no-share-at-all and will require unit claims at
+        lock-claims time.
+      responses:
+        '200':
+          description: Updated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is in a state where shares cannot be modified
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/ready:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: setReady
+      summary: Non-creator participant signals 'I'm done claiming'
+      description: |
+        Per-diner readiness flag used by the hybrid claim model. Each guest
+        toggles this when they're done claiming items; the lead's lock-claims
+        precondition checks all non-creator participants are ready (unless
+        `force: true`). The creator cannot use this endpoint — they signal
+        readiness implicitly via `lock-claims`.
+
+        Editing claims (`POST /claims`) un-readies the participant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ready]
+              properties:
+                ready: { type: boolean }
+      responses:
+        '200':
+          description: Session, with the caller's readyToLock flipped
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session not in `claiming`, or caller is the creator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/lock-claims:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: lockClaims
+      summary: Creator locks claims and transitions claiming -> paying
+      description: |
+        Creator-only. All bill items must be claimed by ≥1 participant; otherwise returns
+        `409 CLAIMS_INCOMPLETE` with the list of unclaimed item IDs in `details`.
+
+        All non-creator participants must have `readyToLock: true` (set via
+        `POST /ready`); otherwise returns `409 PARTICIPANTS_NOT_READY` with
+        the list of un-ready user IDs in `details`. The order of these
+        checks: items completeness first, then readiness.
+
+        Pass `force: true` in the body to skip the readiness precondition
+        (e.g. a guest dropped off). Items completeness is always required.
+
+        On success, computes `owedPence` for every participant and freezes
+        claims.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+                  default: false
+                  description: Skip the readiness precondition.
+      responses:
+        '200':
+          description: Session, now in `paying` with `owedPence` computed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not the creator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            One of: session not in `claiming`, items unclaimed
+            (`CLAIMS_INCOMPLETE`), or participants not ready
+            (`PARTICIPANTS_NOT_READY`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/abandon:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: abandonSession
+      summary: Creator marks the session abandoned (terminal)
+      responses:
+        '200':
+          description: Session, now in `abandoned`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not the creator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is already `settled`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/payments:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [payments]
+      operationId: initiatePayment
+      summary: Initiate a payment from the current participant to the collector
+      description: |
+        The current user must be a participant in the session, the session must be in `paying`, and the
+        participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
+        record with a TrueLayer redirect URL the client should open to complete the authentication.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Payment created and authorized with TrueLayer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InitiatePaymentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not a participant in this session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session not in `paying`, or payment status not unpaid/failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: TrueLayer error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/payments/{paymentId}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    get:
+      tags: [payments]
+      operationId: getPayment
+      summary: Get a payment record
+      description: |
+        Caller must be the payer or the collector for this payment.
+      responses:
+        '200':
+          description: Payment record
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: Caller is not authorized to view this payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/payments/{paymentId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [payments]
+      operationId: confirmManualPayment
+      summary: Collector confirms a manual payment was received
+      description: |
+        Manual mode only. The collector marks a guest payment as `succeeded` after seeing
+        the funds arrive in their bank account. Idempotent — confirming a payment already
+        in `succeeded` returns the same payment unchanged. When this is the last unpaid
+        guest, the session transitions to `settled` automatically.
+
+        Rejected for `provider != manual` payments (those advance via webhook from
+        TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+      responses:
+        '200':
+          description: Payment, now in `succeeded`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Payment not found, or caller is not the collector
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Payment is non-manual, or in a state that can't be confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/payments/{paymentId}/mark-paid:
+    parameters:
+      - $ref: '#/components/parameters/PaymentId'
+    post:
+      tags: [payments]
+      operationId: markPaymentPaidByPayer
+      summary: Payer claims they've sent the money via their banking app
+      description: |
+        Payer-only. Idempotent — re-claiming returns the same `payerClaimedPaidAt` timestamp.
+        **Does not advance payment status** — only the lead's `/confirm` does that. This claim
+        exists purely as a UX signal: the lead's session view can flag pending payments where
+        the payer says they've already paid, so the lead knows which ones to confirm next.
+
+        Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
+        payments advance via webhook from TL, not via the payer self-claiming).
+      responses:
+        '200':
+          description: Payment with `payerClaimedPaidAt` set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Payment not found, or caller is not the payer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Payment is not in `pending` (e.g. already succeeded or failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /webhooks/truelayer:
+    post:
+      tags: [webhooks]
+      operationId: truelayerWebhook
+      summary: TrueLayer payment-status webhook
+      description: |
+        Provider-to-server callback. Authentication is via TrueLayer's `Tl-Signature` header
+        (request signing scheme) verified using TrueLayer's public JWKS. The body is provider-defined;
+        we resolve `providerPaymentId` to our `paymentId` via GSI2 and apply the state transition.
+
+        Returns `200` for accepted updates (idempotent), `401` for invalid signature, `404` if the
+        provider payment id cannot be resolved.
+      security: []
+      parameters:
+        - in: header
+          name: Tl-Signature
+          required: true
+          schema: { type: string }
+          description: TrueLayer JWS detached signature of the raw body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-defined; passed through to verification then state machine.
+      responses:
+        '200':
+          description: Update accepted
+        '401':
+          description: Signature verification failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: providerPaymentId not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Session JWT minted by `POST /v1/auth/email/verify`. Verified server-side on every request.
+
+  parameters:
+    BillId:
+      in: path
+      name: billId
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string, format: uuid }
+    PaymentId:
+      in: path
+      name: paymentId
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, format: uuid }
+      description: Client-generated UUIDv7. Cached server-side for 24 hours.
+
+  responses:
+    BadRequest:
+      description: Validation failure (`INVALID_INPUT`); `details` carries field errors
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Missing, invalid, or expired token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Resource does not exist or caller cannot see it
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    IdempotencyConflict:
+      description: Same key with a different request body
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              description: Stable error code (SCREAMING_SNAKE_CASE)
+              enum:
+                - AUTH_MISSING
+                - AUTH_INVALID
+                - AUTH_EXPIRED
+                - INVALID_INPUT
+                - IDEMPOTENCY_CONFLICT
+                - NOT_FOUND
+                - BILL_NOT_FOUND
+                - SESSION_NOT_FOUND
+                - PAYMENT_NOT_FOUND
+                - SESSION_INVALID_STATE
+                - CLAIMS_INCOMPLETE
+                - CLAIM_SHARE_CONFLICT
+                - ITEM_NOT_SHAREABLE
+                - PARSE_FAILED
+                - PARSE_LOW_CONFIDENCE
+                - RATE_LIMITED
+                - PAYMENT_PROVIDER_ERROR
+                - PAYOUT_ACCOUNT_REQUIRED
+                - INTERNAL_ERROR
+            message: { type: string, description: Human-safe explanation }
+            requestId: { type: string, description: Server request ID; cross-reference in support }
+            details:
+              description: Optional structured detail; omitted in production for non-validation errors
+              type: object
+              additionalProperties: true
+
+    User:
+      type: object
+      required: [userId, displayName]
+      properties:
+        userId: { type: string, description: Google sub claim }
+        displayName: { type: string }
+        email: { type: string, format: email }
+        avatarUrl: { type: string, format: uri }
+        payoutAccount:
+          allOf:
+            - $ref: '#/components/schemas/PayoutAccount'
+          deprecated: true
+          description: |
+            **Deprecated** per ADR-0002. Bank details are now device-local and
+            exchanged peer-to-peer via QR. The field may still be returned for
+            users created before the migration but new clients should ignore it
+            and read the lead's payout from the QR fragment.
+
+    PayoutAccount:
+      type: object
+      required: [sortCode, accountNumber, accountHolderName]
+      properties:
+        sortCode:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: UK sort code, 6 digits, no separators
+          example: '040668'
+        accountNumber:
+          type: string
+          pattern: '^[0-9]{8}$'
+          description: UK account number, 8 digits
+          example: '00079660'
+        accountHolderName:
+          type: string
+          minLength: 1
+          maxLength: 150
+          example: Callum Davies
+        monzoHandle:
+          type: string
+          pattern: '^[a-zA-Z0-9._-]{1,30}$'
+          description: |
+            Optional monzo.me username (without the leading `@` or domain). When set,
+            guest payment instructions include a one-tap `https://monzo.me/<handle>/...` link.
+          example: callum.davies
+        revolutTag:
+          type: string
+          pattern: '^[a-z0-9]{1,32}$'
+          description: |
+            Optional Revolut tag (without the leading `@`). When set, guest payment
+            instructions include a one-tap `https://revolut.me/<tag>/...` link.
+          example: callumd
+
+    Venue:
+      type: object
+      properties:
+        placeId: { type: string }
+        name: { type: string }
+        address: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+
+    BillItem:
+      type: object
+      required: [itemId, name, unitPricePence, quantity, category]
+      properties:
+        itemId:
+          {
+            type: string,
+            format: uuid,
+            description: Stable across amendments where item identity is preserved,
+          }
+        name: { type: string }
+        unitPricePence: { type: integer, format: int64, minimum: 0 }
+        quantity: { type: integer, minimum: 1 }
+        category: { type: string, enum: [food, drink, other] }
+
+    Bill:
+      type: object
+      required:
+        [
+          billId,
+          versionNumber,
+          creatorUserId,
+          currency,
+          subtotalPence,
+          taxPence,
+          serviceChargePence,
+          totalPence,
+          items,
+          parsedFrom,
+          createdAt,
+        ]
+      properties:
+        billId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        creatorUserId: { type: string }
+        currency: { type: string, enum: [GBP] }
+        subtotalPence: { type: integer, format: int64, minimum: 0 }
+        taxPence: { type: integer, format: int64, minimum: 0 }
+        serviceChargePence: { type: integer, format: int64, minimum: 0 }
+        totalPence: { type: integer, format: int64, minimum: 0 }
+        parsedTotalPence:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            The total printed on the receipt itself, as read by OCR.
+            Kept alongside the computed `totalPence` so the client can
+            flag a mismatch — typical causes are OCR misreading an item
+            price, a restaurant arithmetic error, or an undisclosed
+            discount/tip baked into the printed total. Optional because
+            old bills predate this field and not every parser surfaces it.
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BillItem' }
+        parsedFrom:
+          type: object
+          required: [imageHash, parser, parserVersion, parsedAt]
+          properties:
+            imageHash: { type: string, description: SHA-256 hex of resized image bytes }
+            parser: { type: string, example: gemini-2.5-flash }
+            parserVersion: { type: string, example: v1 }
+            parsedAt: { type: string, format: date-time }
+            uploadId:
+              type: string
+              format: uuid
+              description: Original upload identifier; absent on bills parsed before this field was retained.
+        venue: { $ref: '#/components/schemas/Venue' }
+        previousVersionId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    SessionStatus:
+      type: string
+      enum: [setup, claiming, paying, settled, abandoned]
+
+    ParticipantPayment:
+      oneOf:
+        - type: object
+          required: [status]
+          properties:
+            status: { type: string, const: unpaid }
+        - type: object
+          required: [status]
+          properties:
+            status: { type: string, const: self_paid }
+        - type: object
+          required: [status, paymentId]
+          properties:
+            status: { type: string, const: pending }
+            paymentId: { type: string, format: uuid }
+            payerClaimedPaidAt:
+              type: string
+              format: date-time
+              description: |
+                Mirrors `Payment.payerClaimedPaidAt` — set when the payer hits
+                `/v1/payments/{paymentId}/mark-paid` to claim they've sent the money.
+                The lead's UI can use this to flag "they say they paid" alongside the
+                pending payment.
+        - type: object
+          required: [status, paymentId, paidAt]
+          properties:
+            status: { type: string, const: succeeded }
+            paymentId: { type: string, format: uuid }
+            paidAt: { type: string, format: date-time }
+        - type: object
+          required: [status, paymentId, reason]
+          properties:
+            status: { type: string, const: failed }
+            paymentId: { type: string, format: uuid }
+            reason: { type: string }
+      discriminator:
+        propertyName: status
+
+    Participant:
+      type: object
+      required: [userId, displayName, claimedItemIds, sharedItemIds, payment, readyToLock]
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        avatarUrl: { type: string, format: uri }
+        claimedItemIds:
+          type: array
+          items: { type: string, format: uuid }
+        sharedItemIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: |
+            Items this participant is sharing with other diners (ADR-0006).
+            Distinct from `claimedItemIds`: a share is one unit of a
+            quantity-1 item divided equally across all sharers, with
+            deterministic largest-remainder rounding.
+        owedPence:
+          type: integer
+          format: int64
+          description: Computed at lock-claims; absent before then
+        payment: { $ref: '#/components/schemas/ParticipantPayment' }
+        readyToLock:
+          type: boolean
+          description: |
+            True once the diner has signalled they're done claiming via
+            `POST /v1/sessions/:id/ready`. Lead's `lock-claims` rejects
+            with `PARTICIPANTS_NOT_READY` unless all non-creator participants
+            are ready (override with `force: true`). Creator is implicitly
+            ready and cannot toggle this flag.
+
+    Session:
+      type: object
+      required:
+        [sessionId, status, creatorUserId, billId, pinnedBillVersion, participants, createdAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        creatorUserId: { type: string }
+        collectorUserId: { type: string, description: Same as creator for v0 }
+        billId: { type: string, format: uuid }
+        pinnedBillVersion: { type: integer, minimum: 1 }
+        joinCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+          description: Hidden during `setup`; visible to creator after `/share`; visible to participants after they join.
+        participants:
+          type: array
+          items: { $ref: '#/components/schemas/Participant' }
+        venue:
+          allOf:
+            - $ref: '#/components/schemas/Venue'
+          description: |
+            Denormalised from the pinned bill at session-create time so the
+            frontend can render a venue strapline without a second round-trip.
+            Optional — predates this field on old sessions, and not every bill
+            has a venue Gemini could extract.
+        shares:
+          type: array
+          description: |
+            Computed view of share state per ADR-0006. One entry per item
+            with at least one sharer; `userIds` is the splitter set. Server
+            derives this from participants' `sharedItemIds` on every read.
+            Absent when no items are shared.
+          items:
+            type: object
+            required: [itemId, userIds]
+            properties:
+              itemId: { type: string, format: uuid }
+              userIds:
+                type: array
+                items: { type: string }
+        createdAt: { type: string, format: date-time }
+        ttlAt: { type: string, format: date-time }
+
+    SessionSummary:
+      type: object
+      required:
+        [
+          sessionId,
+          status,
+          creatorUserId,
+          collectorUserId,
+          billId,
+          pinnedBillVersion,
+          createdAt,
+          role,
+          myPaymentStatus,
+        ]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        creatorUserId: { type: string }
+        collectorUserId: { type: string }
+        billId: { type: string, format: uuid }
+        pinnedBillVersion: { type: integer, minimum: 1 }
+        joinCode:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+        venue:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+          description: |
+            Slim venue projection (just `name`) for list-view straplines. The full
+            Venue with placeId/lat/lng/address is available on `GET /v1/sessions/{id}`.
+            Absent when the bill's parsed venue had no name.
+        createdAt: { type: string, format: date-time }
+        ttlAt: { type: string, format: date-time }
+        role:
+          type: string
+          enum: [lead, diner]
+          description: Whether the caller created this session or joined as a diner.
+        myOwedPence:
+          type: integer
+          minimum: 0
+          description: The caller's locked-in share, present once the session has been locked into paying.
+        myPaymentStatus:
+          type: string
+          enum: [unpaid, self_paid, pending, succeeded, failed]
+
+    PaymentStatus:
+      type: string
+      enum: [pending, authorized, succeeded, failed, refunded]
+
+    Payment:
+      type: object
+      required:
+        [
+          paymentId,
+          sessionId,
+          payerUserId,
+          collectorUserId,
+          amountPence,
+          currency,
+          provider,
+          status,
+          createdAt,
+        ]
+      properties:
+        paymentId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        payerUserId: { type: string }
+        collectorUserId: { type: string }
+        amountPence: { type: integer, format: int64, minimum: 0 }
+        currency: { type: string, enum: [GBP] }
+        provider: { type: string, enum: [truelayer, manual] }
+        providerPaymentId: { type: string }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        idempotencyKey: { type: string, format: uuid }
+        events:
+          type: array
+          description: Audit trail of state transitions
+          items:
+            type: object
+            required: [at, from, to, source]
+            properties:
+              at: { type: string, format: date-time }
+              from: { $ref: '#/components/schemas/PaymentStatus' }
+              to: { $ref: '#/components/schemas/PaymentStatus' }
+              source: { type: string, enum: [api, webhook, system] }
+              note: { type: string }
+        createdAt: { type: string, format: date-time }
+        payerClaimedPaidAt:
+          type: string
+          format: date-time
+          description: |
+            Set when the payer hits `POST /v1/payments/{paymentId}/mark-paid` to claim
+            "I've sent the money via my bank app". Surfaced in the lead's session view so
+            they know which pending payments are awaiting their `/confirm`. Does not advance
+            payment status — only `/confirm` does that.
+
+    UploadRequest:
+      type: object
+      required: [sha256, sizeBytes, mimeType]
+      properties:
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: SHA-256 hex of the resized image bytes (lowercase)
+        sizeBytes:
+          type: integer
+          minimum: 1
+          maximum: 5242880
+          description: Max 5 MB
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, image/webp]
+
+    UploadSlot:
+      type: object
+      required: [status, uploadId, url, expiresAt, maxBytes]
+      properties:
+        status: { type: string, const: new }
+        uploadId: { type: string, format: uuid }
+        url:
+          { type: string, format: uri, description: Pre-signed S3 PUT URL (expires in 5 minutes) }
+        expiresAt: { type: string, format: date-time }
+        maxBytes: { type: integer, description: Enforced via Content-Length on the PUT }
+
+    UploadDuplicate:
+      type: object
+      required: [status, billId]
+      properties:
+        status: { type: string, const: duplicate }
+        billId:
+          type: string
+          format: uuid
+          description: An existing bill matched the supplied image hash; do not upload again
+
+    ParseRequest:
+      type: object
+      required: [uploadId]
+      properties:
+        uploadId: { type: string, format: uuid }
+
+    AmendBillRequest:
+      type: object
+      required: [items, taxPence, serviceChargePence]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, unitPricePence, quantity, category]
+            properties:
+              itemId:
+                type: string
+                format: uuid
+                description: Provide existing itemId to preserve identity; omit for a new item
+              name: { type: string, minLength: 1 }
+              unitPricePence: { type: integer, format: int64, minimum: 0 }
+              quantity: { type: integer, minimum: 1 }
+              category: { type: string, enum: [food, drink, other] }
+        taxPence: { type: integer, format: int64, minimum: 0 }
+        serviceChargePence: { type: integer, format: int64, minimum: 0 }
+
+    CreateSessionRequest:
+      type: object
+      required: [billId]
+      properties:
+        billId: { type: string, format: uuid }
+        billVersion:
+          type: integer
+          minimum: 1
+          description: Defaults to the latest version of the bill at session-create time
+
+    JoinByCodeRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+
+    ClaimsRequest:
+      type: object
+      required: [claimedItemIds]
+      properties:
+        claimedItemIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: Replaces the caller's full claim list; deduplicated server-side
+
+    InitiatePaymentResponse:
+      type: object
+      required: [payment, instructions]
+      properties:
+        payment: { $ref: '#/components/schemas/Payment' }
+        instructions: { $ref: '#/components/schemas/PaymentInstructions' }
+
+    PaymentInstructions:
+      description: |
+        Discriminated union telling the client how to actually complete the payment.
+        - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
+        - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
+          the guest pays via their own banking app, then the lead confirms receipt
+          via `POST /v1/payments/{paymentId}/confirm`.
+      oneOf:
+        - $ref: '#/components/schemas/RedirectInstructions'
+        - $ref: '#/components/schemas/ManualTransferInstructions'
+      discriminator:
+        propertyName: type
+        mapping:
+          redirect: '#/components/schemas/RedirectInstructions'
+          manual_transfer: '#/components/schemas/ManualTransferInstructions'
+
+    RedirectInstructions:
+      type: object
+      required: [type, url]
+      properties:
+        type: { type: string, enum: [redirect] }
+        url: { type: string, format: uri }
+
+    ManualTransferInstructions:
+      type: object
+      required: [type, bankDetails, reference, amountPence, links]
+      properties:
+        type: { type: string, enum: [manual_transfer] }
+        bankDetails:
+          type: object
+          required: [sortCode, accountNumber, accountHolderName]
+          properties:
+            sortCode: { type: string, pattern: '^[0-9]{6}$' }
+            accountNumber: { type: string, pattern: '^[0-9]{8}$' }
+            accountHolderName: { type: string }
+        reference:
+          type: string
+          description: Short reference the guest should put on their bank transfer (≤18 chars)
+        amountPence: { type: integer, minimum: 1 }
+        links:
+          type: object
+          description: One-tap deep links into popular banking apps; populated only if the lead has the matching handle saved on `payoutAccount`.
+          properties:
+            monzo:
+              {
+                type: string,
+                format: uri,
+                example: 'https://monzo.me/callum.davies/12.34?d=gdp-019e137a',
+              }
+            revolut: { type: string, format: uri, example: 'https://revolut.me/callumd/12.34' }

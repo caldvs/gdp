@@ -1,0 +1,79 @@
+{
+  "name": "gdp-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Group Dine Pay backend API",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "esbuild src/lambda.ts --bundle --platform=node --target=node22 --format=esm --outdir=dist --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "dev": "docker compose up -d && tsx scripts/dev-bootstrap.ts && tsx watch src/local.ts",
+    "dev:bootstrap": "tsx scripts/dev-bootstrap.ts",
+    "dev:tunneled": "bash scripts/dev-tunneled.sh",
+    "test:e2e:multi": "tsx scripts/e2e-multi-diner.ts",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.integration.config.ts",
+    "test:all": "npm run test && npm run test:int",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "openapi:lint": "redocly lint openapi.yaml",
+    "ddb:up": "docker compose up -d",
+    "ddb:down": "docker compose down",
+    "cdk": "cdk",
+    "smoke": "tsx scripts/smoke.ts",
+    "smoke:bill": "tsx scripts/smoke-bill.ts",
+    "validate:bundle": "tsx scripts/validate-bundle.ts",
+    "deploy:dev": "npm run validate:bundle && cdk deploy GdpBackendDev --profile gdp-dev --outputs-file cdk-outputs.dev.json --require-approval never && tsx scripts/smoke.ts",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-sesv2": "^3.1045.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "@hono/node-server": "^1.13.0",
+    "@hono/zod-validator": "^0.7.6",
+    "aws-xray-sdk-core": "^3.10.0",
+    "hono": "^4.6.0",
+    "jose": "^6.2.3",
+    "pino": "^9.5.0",
+    "truelayer-signing": "^0.2.1",
+    "uuid": "^11.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@redocly/cli": "^1.25.0",
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "aws-cdk": "^2.170.0",
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.4.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.3.0",
+    "globals": "^17.6.0",
+    "husky": "^9.1.0",
+    "lint-staged": "^17.0.4",
+    "prettier": "^3.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.3",
+    "vitest": "^4.1.6"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yaml,yml,md}": [
+      "prettier --write"
+    ]
+  }
+}

@@ -1,4 +1,5 @@
 import { v7 as uuidv7 } from 'uuid';
+import { splitShare } from '../sessions/allocation.js';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
@@ -401,10 +402,8 @@ function computeOwedForParticipant(
       .filter((p) => (p.sharedItemIds ?? []).includes(itemId))
       .map((p) => p.userId);
     if (sharers.length === 0) continue;
-    const base = Math.floor(item.unitPricePence / sharers.length);
-    const remainder = item.unitPricePence - base * sharers.length;
-    const lowestUserId = [...sharers].sort()[0];
-    shareSub += base + (participant.userId === lowestUserId ? remainder : 0);
+    const ways = session.shareSettings?.find((s) => s.itemId === itemId)?.ways ?? sharers.length;
+    shareSub += splitShare(item.unitPricePence, sharers, ways).get(participant.userId) ?? 0;
   }
   const extras = bill.serviceChargePence + bill.taxPence;
   const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;

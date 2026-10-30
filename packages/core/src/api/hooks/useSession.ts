@@ -92,15 +92,16 @@ export function useSetClaims(sessionId: string) {
 // (fetch is stubbed there, so onSuccess never lands).
 export function useAddShare(sessionId: string) {
   const qc = useQueryClient();
-  return useMutation<Session, ApiError, { itemId: string }, { previous?: Session }>({
+  // `ways` (how many people shared it) is only used when starting a split.
+  return useMutation<Session, ApiError, { itemId: string; ways?: number }, { previous?: Session }>({
     mutationFn: (body) =>
       api<Session>(`/v1/sessions/${sessionId}/shares`, { method: 'POST', body }),
-    onMutate: async ({ itemId }) => {
+    onMutate: async ({ itemId, ways }) => {
       await qc.cancelQueries({ queryKey: ['session', sessionId] });
       const previous = qc.getQueryData<Session>(['session', sessionId]);
       const me = qc.getQueryData<User>(['me']);
       if (previous && me) {
-        qc.setQueryData<Session>(['session', sessionId], applyAddShare(previous, itemId, me.userId));
+        qc.setQueryData<Session>(['session', sessionId], applyAddShare(previous, itemId, me.userId, ways));
       }
       return { previous };
     },
@@ -143,20 +144,48 @@ export function useRemoveShare(sessionId: string) {
   });
 }
 
+// Someone in a split changes how many ways it's divided.
+export function useSetShareWays(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<Session, ApiError, { itemId: string; ways: number }, { previous?: Session }>({
+    mutationFn: ({ itemId, ways }) =>
+      api<Session>(`/v1/sessions/${sessionId}/shares/${itemId}`, { method: 'PUT', body: { ways } }),
+    onMutate: async ({ itemId, ways }) => {
+      await qc.cancelQueries({ queryKey: ['session', sessionId] });
+      const previous = qc.getQueryData<Session>(['session', sessionId]);
+      if (previous) {
+        qc.setQueryData<Session>(['session', sessionId], {
+          ...previous,
+          shares: (previous.shares ?? []).map((sh) => (sh.itemId === itemId ? { ...sh, ways } : sh)),
+        });
+      }
+      return { previous };
+    },
+    onError: (_e, _body, ctx) => {
+      if (ctx?.previous) qc.setQueryData(['session', sessionId], ctx.previous);
+    },
+    onSuccess: (session) => {
+      qc.setQueryData(['session', sessionId], session);
+    },
+  });
+}
+
 // Pure transforms — exported for tests later if needed. The server is
 // the source of truth; these mirror its behaviour for the optimistic
 // window only (mutual exclusion with claims, dedup on re-add, prune
 // empty share sets).
-function applyAddShare(session: Session, itemId: string, userId: string): Session {
+function applyAddShare(session: Session, itemId: string, userId: string, ways?: number): Session {
   const shares = [...(session.shares ?? [])];
   const idx = shares.findIndex((sh) => sh.itemId === itemId);
   if (idx >= 0) {
     const existing = shares[idx]!;
     if (!existing.userIds.includes(userId)) {
-      shares[idx] = { ...existing, userIds: [...existing.userIds, userId] };
+      const userIds = [...existing.userIds, userId];
+      // Joining a split with every spot taken makes it one more way.
+      shares[idx] = { ...existing, userIds, ways: Math.max(existing.ways, userIds.length) };
     }
   } else {
-    shares.push({ itemId, userIds: [userId] });
+    shares.push({ itemId, userIds: [userId], ways: ways ?? 2, activity: [] });
   }
   const participants = session.participants.map((p) =>
     p.userId === userId

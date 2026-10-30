@@ -71,7 +71,14 @@ describe('shares — ADR-0006', () => {
     const res = await shareItem(app, creator, sessionId, itemIds[0]!);
     expect(res.status).toBe(200);
     const session = (await res.json()) as Session;
-    expect(session.shares).toEqual([{ itemId: itemIds[0], userIds: [creator] }]);
+    expect(session.shares).toEqual([
+      {
+        itemId: itemIds[0],
+        userIds: [creator],
+        ways: 2,
+        activity: [expect.objectContaining({ kind: 'started', byUserId: creator, toWays: 2 })],
+      },
+    ]);
     const me = session.participants.find((p) => p.userId === creator);
     expect(me?.sharedItemIds).toEqual([itemIds[0]]);
   });
@@ -204,5 +211,206 @@ describe('shares — ADR-0006', () => {
     expect(denied.status).toBe(409);
     const body = (await denied.json()) as { error: { code: string } };
     expect(body.error.code).toBe('SESSION_INVALID_STATE');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Number of ways (how many people shared the item)
+// ---------------------------------------------------------------------------
+
+async function openWithGuests(app: ReturnType<typeof buildApp>, creator: string, guests: string[]) {
+  const { sessionId, itemIds } = await setUpSessionForSharing(app, creator);
+  await app.request(`/v1/sessions/${sessionId}/share`, {
+    method: 'POST',
+    headers: makeAuth(creator),
+  });
+  for (const g of guests) {
+    await app.request(`/v1/sessions/${sessionId}/join`, { method: 'POST', headers: makeAuth(g) });
+  }
+  return { sessionId, itemIds };
+}
+
+async function startSplit(
+  app: ReturnType<typeof buildApp>,
+  user: string,
+  sessionId: string,
+  itemId: string,
+  ways: number,
+) {
+  return app.request(`/v1/sessions/${sessionId}/shares`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...makeAuth(user) },
+    body: JSON.stringify({ itemId, ways }),
+  });
+}
+
+async function setWays(
+  app: ReturnType<typeof buildApp>,
+  user: string,
+  sessionId: string,
+  itemId: string,
+  ways: number,
+) {
+  return app.request(`/v1/sessions/${sessionId}/shares/${itemId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...makeAuth(user) },
+    body: JSON.stringify({ ways }),
+  });
+}
+
+const shareOf = (s: Session, itemId: string) => s.shares?.find((x) => x.itemId === itemId);
+
+describe('shares — number of ways', () => {
+  beforeAll(ensureBillsBucket);
+
+  it('the starter sets the number of ways; joining takes an open spot without changing it', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1]);
+    const itemId = itemIds[0]!;
+
+    const started = (await (await startSplit(app, g1, sessionId, itemId, 3)).json()) as Session;
+    expect(shareOf(started, itemId)).toMatchObject({ userIds: [g1], ways: 3 });
+
+    const joined = (await (await shareItem(app, creator, sessionId, itemId)).json()) as Session;
+    expect(shareOf(joined, itemId)?.ways).toBe(3);
+    expect(shareOf(joined, itemId)?.activity.at(-1)).toMatchObject({
+      kind: 'joined',
+      byUserId: creator,
+    });
+    expect(shareOf(joined, itemId)?.activity.at(-1)?.toWays).toBeUndefined();
+  });
+
+  it('joining a split where every spot is taken makes it one more way', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const g2 = `g2-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1, g2]);
+    const itemId = itemIds[0]!;
+    await startSplit(app, g1, sessionId, itemId, 2);
+    await shareItem(app, g2, sessionId, itemId);
+    const res = await shareItem(app, creator, sessionId, itemId);
+    const share = shareOf((await res.json()) as Session, itemId);
+    expect(share?.ways).toBe(3);
+    expect(share?.activity.at(-1)).toMatchObject({
+      kind: 'joined',
+      byUserId: creator,
+      fromWays: 2,
+      toWays: 3,
+    });
+  });
+
+  it('someone in the split can change the number of ways; it is recorded as activity', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1]);
+    const itemId = itemIds[0]!;
+    await startSplit(app, g1, sessionId, itemId, 3);
+    await shareItem(app, creator, sessionId, itemId);
+
+    const res = await setWays(app, creator, sessionId, itemId, 2);
+    expect(res.status).toBe(200);
+    const share = shareOf((await res.json()) as Session, itemId);
+    expect(share?.ways).toBe(2);
+    expect(share?.activity.at(-1)).toMatchObject({
+      kind: 'ways',
+      byUserId: creator,
+      fromWays: 3,
+      toWays: 2,
+    });
+
+    // Everyone sees it on a fresh read.
+    const fresh = (await (
+      await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(g1) })
+    ).json()) as Session;
+    expect(shareOf(fresh, itemId)?.ways).toBe(2);
+    expect((fresh as Session & { shareSettings?: unknown }).shareSettings).toBeUndefined();
+  });
+
+  it('only people in the split can change it, and not below the number already in it', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const g2 = `g2-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1, g2]);
+    const itemId = itemIds[0]!;
+    await startSplit(app, g1, sessionId, itemId, 4);
+    await shareItem(app, g2, sessionId, itemId);
+    await shareItem(app, creator, sessionId, itemId);
+
+    const outsider = `g3-${uuidv7()}`;
+    await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(outsider),
+    });
+    const notIn = await setWays(app, outsider, sessionId, itemId, 2);
+    expect(notIn.status).toBe(409);
+    expect(((await notIn.json()) as { error: { code: string } }).error.code).toBe('SHARE_CONFLICT');
+
+    const tooLow = await setWays(app, g1, sessionId, itemId, 2);
+    expect(tooLow.status).toBe(409);
+    expect(((await tooLow.json()) as { error: { code: string } }).error.code).toBe(
+      'SHARE_WAYS_TOO_LOW',
+    );
+  });
+
+  it('leaving keeps the number of ways (the spot reopens); the last one out removes the split', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1]);
+    const itemId = itemIds[0]!;
+    await startSplit(app, g1, sessionId, itemId, 3);
+    await shareItem(app, creator, sessionId, itemId);
+
+    const left = (await (await unshareItem(app, creator, sessionId, itemId)).json()) as Session;
+    expect(shareOf(left, itemId)).toMatchObject({ userIds: [g1], ways: 3 });
+    expect(shareOf(left, itemId)?.activity.at(-1)).toMatchObject({
+      kind: 'left',
+      byUserId: creator,
+    });
+
+    const gone = (await (await unshareItem(app, g1, sessionId, itemId)).json()) as Session;
+    expect(shareOf(gone, itemId)).toBeUndefined();
+
+    // Starting again later begins fresh with the new starter's number.
+    const again = (await (await startSplit(app, creator, sessionId, itemId, 2)).json()) as Session;
+    expect(shareOf(again, itemId)).toMatchObject({ userIds: [creator], ways: 2 });
+    expect(shareOf(again, itemId)?.activity).toHaveLength(1);
+  });
+
+  it('lock-claims treats open spots as unclaimed and charges each sharer price / ways', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const g1 = `g1-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [g1]);
+    const [shared, ...rest] = itemIds;
+    await startSplit(app, g1, sessionId, shared!, 3);
+    await shareItem(app, creator, sessionId, shared!);
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ claimedItemIds: rest }),
+    });
+    const lock = () =>
+      app.request(`/v1/sessions/${sessionId}/lock-claims`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+        body: JSON.stringify({ force: true }),
+      });
+
+    const incomplete = await lock();
+    expect(incomplete.status).toBe(409);
+    expect(
+      ((await incomplete.json()) as { error: { details: { unclaimedItemIds: string[] } } }).error
+        .details.unclaimedItemIds,
+    ).toEqual([shared]);
+
+    await setWays(app, g1, sessionId, shared!, 2);
+    const ok = await lock();
+    expect(ok.status).toBe(200);
   });
 });

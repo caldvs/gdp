@@ -42,6 +42,7 @@ export const amendService = {
       unitPricePence: it.unitPricePence,
       quantity: it.quantity,
       category: it.category,
+      ...(it.category === 'food' && it.course ? { course: it.course } : {}),
     }));
     const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
     const totalPence =

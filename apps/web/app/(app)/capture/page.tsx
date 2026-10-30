@@ -6,6 +6,7 @@ import { ApiError } from '@gdp/core/api';
 import { useUploadAndParse } from '@gdp/core/api/hooks/useUploadAndParse';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
 import { BodyText, Button, DisplayText, Mini, Notice } from '@/components/ui';
+import { ParsingScan } from './ParsingScan';
 
 type Stage = 'idle' | 'preview' | 'processing' | 'uploading-parsing';
 type FriendlyError = { title: string; body?: string; code?: string };
@@ -98,8 +99,17 @@ export default function CapturePage() {
   return (
     <div className="screen stack gap-lg">
       <div className="stack gap-sm t-center">
-        <DisplayText size="md">Snap the bill.</DisplayText>
-        <BodyText>Get the whole receipt in frame, nice and flat.</BodyText>
+        {stage === 'uploading-parsing' ? (
+          <>
+            <DisplayText size="md">Reading your bill.</DisplayText>
+            <BodyText>Usually takes a few seconds.</BodyText>
+          </>
+        ) : (
+          <>
+            <DisplayText size="md">Snap the bill.</DisplayText>
+            <BodyText>Get the whole receipt in frame, nice and flat.</BodyText>
+          </>
+        )}
       </div>
 
       {error ? <Notice title={error.title} detail={error.body} /> : null}
@@ -133,50 +143,8 @@ export default function CapturePage() {
         </>
       ) : null}
 
-      {stage === 'processing' ? <ParsingOverlay phase="processing" stillWorking={false} /> : null}
-      {stage === 'uploading-parsing' ? <ParsingOverlay phase="parsing" stillWorking={stillWorking} /> : null}
-    </div>
-  );
-}
-
-function ParsingOverlay({ phase, stillWorking }: { phase: 'processing' | 'parsing'; stillWorking: boolean }) {
-  const messages =
-    phase === 'processing'
-      ? ['Getting your photo ready', 'Smoothing out the edges']
-      : stillWorking
-        ? ['This one is taking a moment', 'Still working', 'Almost there']
-        : ['Reading the receipt', 'Finding the items', 'Working out the prices', 'Adding it up'];
-  const [idx, setIdx] = useState(0);
-  useEffect(() => {
-    setIdx(0);
-    const t = setInterval(() => setIdx((i) => (i + 1) % messages.length), 2400);
-    return () => clearInterval(t);
-  }, [phase, stillWorking, messages.length]);
-
-  const rows: Array<[number, number]> = [[180, 56], [150, 50], [200, 58], [130, 48], [170, 54]];
-  return (
-    <div className="stack gap-lg" style={{ alignItems: 'center' }} aria-busy="true">
-      <div className="receipt skeleton" aria-hidden>
-        <span className="skel" style={{ width: 200, height: 22 }} />
-        <span className="skel mt-sm" style={{ width: 120, height: 11 }} />
-        <div className="mt-lg">
-          {rows.map(([n, p], i) => (
-            <div key={i} className="skel-row">
-              <span className="skel" style={{ width: n, height: 14 }} />
-              <span className="skel" style={{ width: p, height: 14 }} />
-            </div>
-          ))}
-        </div>
-        <div className="stack gap-sm mt-md">
-          <div className="skel-total"><span className="skel" style={{ width: 70, height: 11 }} /><span className="skel" style={{ width: 60, height: 14 }} /></div>
-          <div className="skel-total"><span className="skel" style={{ width: 60, height: 11 }} /><span className="skel" style={{ width: 50, height: 14 }} /></div>
-          <div className="skel-total mt-xs"><span className="skel" style={{ width: 50, height: 11 }} /><span className="skel" style={{ width: 80, height: 20 }} /></div>
-        </div>
-      </div>
-      <div className="stack gap-sm" style={{ alignItems: 'center' }}>
-        <p key={`${phase}-${idx}`} className="parse-msg" role="status">{messages[idx]}</p>
-        <span className="parse-dot" />
-      </div>
+      {stage === 'processing' ? <ParsingScan phase="processing" stillWorking={false} /> : null}
+      {stage === 'uploading-parsing' ? <ParsingScan phase="parsing" photoUrl={processed?.uri} stillWorking={stillWorking} /> : null}
     </div>
   );
 }

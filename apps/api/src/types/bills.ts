@@ -3,12 +3,19 @@ import { z } from 'zod';
 export const BillItemCategory = z.enum(['food', 'drink', 'other']);
 export type BillItemCategory = z.infer<typeof BillItemCategory>;
 
+// Which part of the meal a food item is. A best guess from the parser, used
+// only to group items for display; nothing about money depends on it.
+// Optional so bills parsed before it existed stay valid.
+export const BillItemCourse = z.enum(['starter', 'main', 'side', 'dessert']);
+export type BillItemCourse = z.infer<typeof BillItemCourse>;
+
 export const BillItemSchema = z.object({
   itemId: z.string().uuid(),
   name: z.string().min(1),
   unitPricePence: z.number().int().nonnegative(),
   quantity: z.number().int().positive(),
   category: BillItemCategory,
+  course: BillItemCourse.optional(),
 });
 export type BillItem = z.infer<typeof BillItemSchema>;
 
@@ -95,6 +102,7 @@ export const AmendBillRequestSchema = z.object({
         unitPricePence: z.number().int().nonnegative(),
         quantity: z.number().int().positive(),
         category: BillItemCategory,
+        course: BillItemCourse.optional(),
       }),
     )
     .min(1),

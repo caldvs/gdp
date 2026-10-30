@@ -778,6 +778,11 @@ export interface components {
             quantity: number;
             /** @enum {string} */
             category: "food" | "drink" | "other";
+            /**
+             * @description Food items only. The parser's best guess at the course, for grouping in the UI. May be absent.
+             * @enum {string}
+             */
+            course?: "starter" | "main" | "side" | "dessert";
         };
         Bill: {
             /** Format: uuid */
@@ -1069,6 +1074,8 @@ export interface components {
                 quantity: number;
                 /** @enum {string} */
                 category: "food" | "drink" | "other";
+                /** @enum {string} */
+                course?: "starter" | "main" | "side" | "dessert";
             }[];
             /** Format: int64 */
             taxPence: number;

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BillItemCategory } from '../../types/bills.js';
+import { BillItemCategory, BillItemCourse } from '../../types/bills.js';
 
 export const ParsedBillFromImageSchema = z.object({
   items: z
@@ -9,6 +9,15 @@ export const ParsedBillFromImageSchema = z.object({
         unitPricePence: z.number().int().nonnegative(),
         quantity: z.number().int().positive(),
         category: BillItemCategory,
+        // Gemini may send null or an unexpected label; treat those as unknown
+        // rather than failing the whole parse over a display hint.
+        course: z
+          .unknown()
+          .transform((v) => {
+            const r = BillItemCourse.safeParse(v);
+            return r.success ? r.data : undefined;
+          })
+          .optional(),
       }),
     )
     .min(1),

@@ -3,7 +3,7 @@ import { AppError } from '../../errors/AppError.js';
 import { ParsedBillFromImageSchema, type BillParser, type ParsedBillFromImage } from './parser.js';
 
 const MODEL = 'gemini-2.5-flash';
-const VERSION = 'v1';
+const VERSION = 'v2';
 
 const PROMPT = `You are parsing a UK restaurant bill image into structured JSON for a bill-splitting app.
 
@@ -13,13 +13,14 @@ RULES:
 - "items" should be top-level line items only. Do not separate sub-modifiers (e.g. "extra cheese") unless they appear as their own priced line on the bill.
 - If the same item appears N times with the same price, group as quantity: N (single line, not duplicates).
 - "category": "food" for edible plates, "drink" for beverages (alcoholic or not), "other" for cover charges, deposits, fees.
+- "course" (food items only; omit for drinks and other): "starter" for starters, small plates, antipasti and nibbles like olives or bread; "main" for main dishes, pizzas, pastas, burgers and grills; "side" for sides like chips, fries, salads served alongside, vegetables or extra sauces; "dessert" for desserts, ice cream and cheese boards. Use section headings printed on the bill when present; otherwise judge from the dish name and price. If genuinely unsure, omit it.
 - DO NOT include service charge or tax in items. They are separate top-level fields.
 - DO NOT invent items. If the bill is unreadable, return items: [] and explain in venue.name.
 - Kitchen notes ("rare", "no onions", "table 4") are NOT items.
 
 Return ONLY valid JSON matching this schema, no preamble:
 {
-  "items": [{"name": string, "unitPricePence": int, "quantity": int, "category": "food"|"drink"|"other"}],
+  "items": [{"name": string, "unitPricePence": int, "quantity": int, "category": "food"|"drink"|"other", "course"?: "starter"|"main"|"side"|"dessert"}],
   "taxPence": int,
   "serviceChargePence": int,
   "totalPence": int,

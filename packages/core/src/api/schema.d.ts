@@ -1229,6 +1229,8 @@ export interface components {
             sizeBytes: number;
             /** @enum {string} */
             mimeType: "image/jpeg" | "image/png" | "image/webp";
+            /** @description Local API only (ignored elsewhere): don't return an earlier bill for this photo, so it's uploaded and read again. */
+            skipCache?: boolean;
         };
         UploadSlot: {
             /**
@@ -1263,6 +1265,8 @@ export interface components {
         ParseRequest: {
             /** Format: uuid */
             uploadId: string;
+            /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
+            skipCache?: boolean;
         };
         BillRead: {
             /** Format: uuid */

@@ -1746,6 +1746,11 @@ components:
         mimeType:
           type: string
           enum: [image/jpeg, image/png, image/webp]
+        skipCache:
+          type: boolean
+          description: >-
+            Local API only (ignored elsewhere): don't return an earlier bill for this photo,
+            so it's uploaded and read again.
 
     UploadSlot:
       type: object
@@ -1773,6 +1778,11 @@ components:
       required: [uploadId]
       properties:
         uploadId: { type: string, format: uuid }
+        skipCache:
+          type: boolean
+          description: >-
+            Local API only (ignored elsewhere): read the photo with the model again even if it was
+            read before. The new bill replaces the old one as this photo's bill.
 
     BillRead:
       type: object

@@ -1,5 +1,6 @@
 import type Stripe from 'stripe';
 import { AppError } from '../../errors/AppError.js';
+import { timed } from '../../logging/timed.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Bill } from '../../types/bills.js';
 
@@ -78,11 +79,9 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
 
   const priceFor = async (bill: Bill): Promise<Stripe.Price> => {
     const lookupKey = feeLookupKeyFor(bill.totalPence);
-    const prices = await deps.stripe.prices.list({
-      lookup_keys: [lookupKey],
-      active: true,
-      limit: 1,
-    });
+    const prices = await timed('stripe', 'prices.list', () =>
+      deps.stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 }),
+    );
     const price = prices.data[0];
     if (!price || price.unit_amount == null) {
       throw new AppError(
@@ -100,14 +99,16 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     }
     const price = await priceFor(bill);
     const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
-    const session = await deps.stripe.checkout.sessions.create(
-      checkoutSessionParams({
-        priceId: price.id,
-        billId: bill.billId,
-        userId: input.caller.userId,
-        ...(input.caller.email ? { email: input.caller.email } : {}),
-        returnUrl,
-      }),
+    const session = await timed('stripe', 'checkout.sessions.create', () =>
+      deps.stripe.checkout.sessions.create(
+        checkoutSessionParams({
+          priceId: price.id,
+          billId: bill.billId,
+          userId: input.caller.userId,
+          ...(input.caller.email ? { email: input.caller.email } : {}),
+          returnUrl,
+        }),
+      ),
     );
     if (!session.client_secret) {
       throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');

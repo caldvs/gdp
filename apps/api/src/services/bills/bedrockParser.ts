@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-bedrock-runtime';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
+import { timed } from '../../logging/timed.js';
 import { PROMPT, GeminiBillParser, validateParsedBill } from './geminiParser.js';
 import type { BillParser, ParsedBillFromImage } from './parser.js';
 
@@ -29,18 +30,27 @@ export class BedrockBillParser implements BillParser {
   async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
     let out: ConverseCommandOutput;
     try {
-      out = await this.client.send(
-        new ConverseCommand({
-          modelId: this.model,
-          messages: [
-            {
-              role: 'user',
-              content: [{ image: { format: 'jpeg', source: { bytes: image } } }, { text: PROMPT }],
-            },
-          ],
-          inferenceConfig: { temperature: 0, maxTokens: 4096 },
-          requestMetadata: { requestId },
-        }),
+      out = await timed(
+        'bedrock',
+        'converse',
+        () =>
+          this.client.send(
+            new ConverseCommand({
+              modelId: this.model,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { image: { format: 'jpeg', source: { bytes: image } } },
+                    { text: PROMPT },
+                  ],
+                },
+              ],
+              inferenceConfig: { temperature: 0, maxTokens: 4096 },
+              requestMetadata: { requestId },
+            }),
+          ),
+        { requestId, model: this.model },
       );
     } catch (err) {
       const e = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };

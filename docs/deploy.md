@@ -39,6 +39,28 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
 
 The role can only assume the CDK bootstrap roles (`cdk-*`), and only from
 workflow runs in this repo (`repo:caldvs/gdp:*`, or the same with owner and repo IDs, which is what GitHub now sends).
+The API stack also lets it invoke the API function, for the dependency check below.
+
+### Checks after every deploy
+
+The workflow runs two checks once `cdk deploy` finishes:
+
+- **Smoke test** (`scripts/smoke.ts`): health, readiness, the auth gate and
+  the docs, over HTTPS.
+- **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
+  function with `{"gdpSelfCheck":true}` so it checks, with its own config
+  and IAM role, that the Stripe key works and both fee prices exist, Bedrock
+  answers, the Gemini and Places keys are accepted, and the SES sender is
+  verified (and whether SES is still in the sandbox). Stripe, Bedrock and
+  SES failing fail the run; Gemini and Places are fallbacks or extras, so
+  they show as warnings. The results table is in the run's summary.
+
+Run it yourself with `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>`
+(the name is the stack's `ApiFunctionNameOutput`).
+
+Every call out to Bedrock, Gemini, Places, Stripe and SES is logged as
+`event: dep.call` with its duration; the dashboard's **Calls out** panel
+shows count, failures, average, p95 and max for each.
 
 ## Web (Vercel)
 

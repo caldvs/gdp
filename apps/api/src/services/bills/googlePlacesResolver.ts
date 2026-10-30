@@ -3,6 +3,7 @@ import type { Venue } from '../../types/bills.js';
 import type { VenueResolver } from './venueResolver.js';
 import { cacheKey, venueCacheStore } from '../../storage/venueCacheStore.js';
 import type { Logger } from '../../logging/logger.js';
+import { timed } from '../../logging/timed.js';
 
 const SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
 // Keep the field mask tight: more fields = higher SKU tier = more $.
@@ -70,21 +71,25 @@ export class GooglePlacesVenueResolver implements VenueResolver {
   }
 
   private async search(textQuery: string): Promise<Venue | undefined> {
-    const res = await fetch(SEARCH_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': this.config.apiKey,
-        'x-goog-fieldmask': FIELD_MASK,
-      },
-      body: JSON.stringify({
-        textQuery,
-        regionCode: this.config.regionCode ?? 'GB',
-        maxResultCount: 1,
+    const res = await timed('places', 'searchText', () =>
+      fetch(SEARCH_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': this.config.apiKey,
+          'x-goog-fieldmask': FIELD_MASK,
+        },
+        body: JSON.stringify({
+          textQuery,
+          regionCode: this.config.regionCode ?? 'GB',
+          maxResultCount: 1,
+        }),
       }),
-    });
+    );
     if (!res.ok) {
-      throw new Error(`Places returned ${res.status}`);
+      // Google's body says why (API not enabled, key restricted, billing).
+      const why = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
+      throw new Error(`Places returned ${res.status}: ${why}`);
     }
 
     const json: unknown = await res.json();

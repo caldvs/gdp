@@ -1,6 +1,7 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { EmailSender, SendEmailInput } from './sender.js';
 import type { Logger } from '../../logging/logger.js';
+import { timed } from '../../logging/timed.js';
 
 export interface SesEmailSenderConfig {
   fromAddress: string;
@@ -38,7 +39,9 @@ export class SesEmailSender implements EmailSender {
     });
 
     try {
-      const out = await this.client.send(cmd);
+      const out = await timed('ses', 'sendEmail', () => this.client.send(cmd), {
+        category: input.category,
+      });
       this.config.logger?.info(
         {
           event: 'email.sent',

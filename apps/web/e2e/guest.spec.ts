@@ -10,7 +10,9 @@ import { fragmentFor } from './fakeApi';
 const POLL = { timeout: 10_000 };
 
 async function ctxFor(browser: Browser, api: FakeApi, user: User, opts: Parameters<FakeApi['attach']>[2] = {}): Promise<{ ctx: BrowserContext; page: Page }> {
-  const ctx = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+  // Clipboard permissions only exist in Chromium; WebKit rejects them.
+  const chromium = browser.browserType().name() === 'chromium';
+  const ctx = await browser.newContext(chromium ? { permissions: ['clipboard-read', 'clipboard-write'] } : {});
   await api.attach(ctx, user, opts);
   return { ctx, page: await ctx.newPage() };
 }
@@ -93,7 +95,8 @@ test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo
   await expect(tom.getByRole('link', { name: 'Revolut' })).toHaveCount(0);
 });
 
-test('tapping a bank detail copies the raw value', async ({ browser }) => {
+test('tapping a bank detail copies the raw value', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'reading the clipboard needs Chromium permissions');
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor()}`);

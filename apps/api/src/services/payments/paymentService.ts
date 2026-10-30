@@ -3,6 +3,7 @@ import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
 import { userStore } from '../../storage/userStore.js';
+import { billStore } from '../../storage/billStore.js';
 import { isAlreadyApplied, nextStatus } from './stateMachine.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
@@ -26,8 +27,15 @@ export const paymentService = {
     if (!participant) {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
-    if (session.status !== 'paying') {
-      throw new AppError('SESSION_INVALID_STATE', 'Session is not paying');
+    // Trust-based model: a guest can pay as soon as they're confident
+    // in their picks — no need for the lead to "lock claims" first.
+    // We accept both `claiming` (no lock yet) and `paying` (post-lock).
+    // Setup / settled / abandoned remain hard-rejected.
+    if (session.status !== 'paying' && session.status !== 'claiming') {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        `Session is ${session.status}; can't pay`,
+      );
     }
     if (participant.payment.status !== 'unpaid' && participant.payment.status !== 'failed') {
       throw new AppError(
@@ -38,8 +46,20 @@ export const paymentService = {
     if (participant.userId === session.collectorUserId) {
       throw new AppError('SESSION_INVALID_STATE', 'Collector does not pay themselves');
     }
+    // If the lead hasn't locked claims yet, `owedPence` won't be set on
+    // the participant. Compute on the fly from their current claims +
+    // their share of extras (service + tax, apportioned by subtotal).
+    // Mirrors the indicative running total the frontend already shows.
+    let computedOwed: number | undefined;
     if (typeof participant.owedPence !== 'number' || participant.owedPence <= 0) {
-      throw new AppError('SESSION_INVALID_STATE', 'Participant has nothing owed');
+      const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+      if (!bill) {
+        throw new AppError('SESSION_INVALID_STATE', 'Bill not found for owed-amount calc');
+      }
+      computedOwed = computeOwedForParticipant(bill, session, participant);
+      if (computedOwed <= 0) {
+        throw new AppError('SESSION_INVALID_STATE', 'Nothing claimed yet');
+      }
     }
 
     // Beneficiary = the collector's saved bank details. The /share gate
@@ -53,7 +73,7 @@ export const paymentService = {
 
     const paymentId = uuidv7();
     const reference = `gdp-${session.sessionId.slice(0, 8)}`;
-    const amountPence = participant.owedPence;
+    const amountPence = computedOwed ?? participant.owedPence!;
 
     let providerPaymentId: string;
     let providerName: 'truelayer' | 'manual';
@@ -345,8 +365,54 @@ function replaceParticipant(participants: Participant[], updated: Participant): 
   return participants.map((p) => (p.userId === updated.userId ? updated : p));
 }
 
+// Per-participant owed-amount calc tolerant of partial / unclaimed
+// bills. Used when the lead hasn't locked claims yet — each diner pays
+// for their CURRENT claims + a proportional share of service / tax.
+// Mirrors the indicative math the frontend shows as the running total.
+//
+// Differs from `computeOwed` in allocation.ts: that one enforces the
+// CLAIMS_INCOMPLETE invariant (every item must be claimed or shared)
+// and apportions extras via largest-remainder rounding for exact
+// reconciliation. The trust-based path can't enforce completeness —
+// some items may legitimately be unclaimed at pay time — so we use
+// the simpler ratio approach and accept slight rounding drift across
+// participants (a few pennies, well within manual-mode tolerance).
+function computeOwedForParticipant(
+  bill: { items: ReadonlyArray<{ itemId: string; unitPricePence: number }>; subtotalPence: number; serviceChargePence: number; taxPence: number },
+  session: Session,
+  participant: Participant,
+): number {
+  let claimSub = 0;
+  for (const id of participant.claimedItemIds) {
+    const item = bill.items.find((it) => it.itemId === id);
+    if (item) claimSub += item.unitPricePence;
+  }
+  // Share subtotal (ADR-0006): equal split, remainder pennies go to
+  // the lowest-userId sharer.
+  let shareSub = 0;
+  for (const itemId of participant.sharedItemIds ?? []) {
+    const item = bill.items.find((it) => it.itemId === itemId);
+    if (!item) continue;
+    const sharers = session.participants
+      .filter((p) => (p.sharedItemIds ?? []).includes(itemId))
+      .map((p) => p.userId);
+    if (sharers.length === 0) continue;
+    const base = Math.floor(item.unitPricePence / sharers.length);
+    const remainder = item.unitPricePence - base * sharers.length;
+    const lowestUserId = [...sharers].sort()[0];
+    shareSub += base + (participant.userId === lowestUserId ? remainder : 0);
+  }
+  const extras = bill.serviceChargePence + bill.taxPence;
+  const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
+  return Math.round((claimSub + shareSub) * (1 + extrasRate));
+}
+
 async function maybeSettleSession(session: Session, logger?: Logger): Promise<void> {
-  if (session.status !== 'paying') return;
+  // Trust-based shift: settlement can happen straight from `claiming`
+  // (when guests have paid without the lead ever calling lock-claims)
+  // or from the legacy `paying` state. Setup / settled / abandoned
+  // never auto-settle.
+  if (session.status !== 'paying' && session.status !== 'claiming') return;
   const nonSelfPaid = session.participants.filter((p) => p.payment.status !== 'self_paid');
   const allSucceeded = nonSelfPaid.every((p) => p.payment.status === 'succeeded');
   if (!allSucceeded) return;

@@ -13,6 +13,8 @@ export type FeeLookupKey = 'table_fee_2' | 'table_fee_3';
 export const feeLookupKeyFor = (billTotalPence: number): FeeLookupKey =>
   billTotalPence > FEE_THRESHOLD_PENCE ? 'table_fee_3' : 'table_fee_2';
 
+export { parseEmailList } from '../../config/exemptEmails.js';
+
 export interface TableFee {
   billId: string;
   userId: string;
@@ -62,13 +64,19 @@ export interface TableFeeServiceDeps {
   store: TableFeeStore;
   getBill: (billId: string) => Promise<Bill | null>;
   appBaseUrl: string;
+  /** Leads who never pay the fee (lower case). */
+  exemptEmails?: ReadonlySet<string>;
 }
 
 export type TableFeeStatus =
   | { billId: string; status: 'paid'; amountPence: number; paidAt: string }
-  | { billId: string; status: 'unpaid'; amountPence: number };
+  | { billId: string; status: 'unpaid'; amountPence: number }
+  | { billId: string; status: 'waived'; amountPence: 0 };
 
 export const createTableFeeService = (deps: TableFeeServiceDeps) => {
+  const isExempt = (caller: VerifiedCaller): boolean =>
+    !!caller.email && !!deps.exemptEmails?.has(caller.email.trim().toLowerCase());
+
   const loadOwnBill = async (billId: string, caller: VerifiedCaller): Promise<Bill> => {
     const bill = await deps.getBill(billId);
     if (!bill || bill.creatorUserId !== caller.userId) {
@@ -96,6 +104,9 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     const bill = await loadOwnBill(input.billId, input.caller);
     if (await deps.store.get(bill.billId)) {
       throw new AppError('TABLE_FEE_PAID', 'The fee for this bill is already paid');
+    }
+    if (isExempt(input.caller)) {
+      throw new AppError('TABLE_FEE_WAIVED', 'No fee is due: this account is exempt');
     }
     const price = await priceFor(bill);
     const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
@@ -144,6 +155,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
           amountPence: fee.amountPence,
           paidAt: fee.paidAt,
         };
+      if (isExempt(input.caller)) return { billId: bill.billId, status: 'waived', amountPence: 0 };
       const amountPence = feeLookupKeyFor(bill.totalPence) === 'table_fee_3' ? 300 : 200;
       return { billId: bill.billId, status: 'unpaid', amountPence };
     },

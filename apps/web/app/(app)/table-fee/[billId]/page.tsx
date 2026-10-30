@@ -44,7 +44,8 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const returned = useSearchParams().get('session_id') !== null;
   const [confirmed, setConfirmed] = useState(returned);
   const status = useTableFeeStatus(billId, { poll: confirmed });
-  const paid = status.data?.status === 'paid';
+  // Waived: this lead's email is exempt, so it's as good as paid.
+  const paid = status.data?.status === 'paid' || status.data?.status === 'waived';
 
   // Paid: open the table and go straight to the QR code (F4).
   const createSession = useCreateSession();

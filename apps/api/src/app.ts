@@ -40,6 +40,7 @@ import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
 import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
 import Stripe from 'stripe';
 import { createTableFeeService, type TableFeeStore } from './services/billing/tableFee.js';
+import { parseEmailList } from './config/exemptEmails.js';
 import { tableFeeStore as defaultTableFeeStore } from './storage/tableFeeStore.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
@@ -48,6 +49,8 @@ import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
 export interface AppDeps {
   /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
   allowedOrigins?: string;
+  /** Comma list; overrides TABLE_FEE_EXEMPT_EMAILS (tests). */
+  exemptEmails?: string;
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
   venueResolver?: VenueResolver;
@@ -185,6 +188,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         emailSender,
         jwtSecret: sessionJwtSecret,
         devEmailSignIn: deps.devEmailSignIn === true,
+        exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(
           env.APP_ENV,
           deps.testAccountSignIn ?? env.AUTH_TEST_ACCOUNTS === 'true',
@@ -230,6 +234,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       store: deps.tableFeeStore ?? defaultTableFeeStore,
       getBill: (billId) => billStore.getLatest(billId),
       appBaseUrl: env.APP_BASE_URL,
+      exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
     });
     app.route('/v1/billing', buildBillingRoutes({ idTokenVerifier, tableFees }));
     const webhookSecret = deps.stripeWebhookSecret ?? env.STRIPE_WEBHOOK_SECRET;

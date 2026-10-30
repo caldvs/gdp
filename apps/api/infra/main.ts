@@ -210,6 +210,9 @@ class GdpBackendStack extends cdk.Stack {
         // to `truelayer` once TL Live commercial onboarding is in place.
         PAYMENT_PROVIDER: 'manual',
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
+        // Leads who never pay the table fee: a comma list from the GitHub
+        // environment (secret or variable TABLE_FEE_EXEMPT_EMAILS).
+        TABLE_FEE_EXEMPT_EMAILS: process.env.TABLE_FEE_EXEMPT_EMAILS ?? '',
         ALLOWED_ORIGINS: allowedOrigins.join(','),
       },
       bundling: {

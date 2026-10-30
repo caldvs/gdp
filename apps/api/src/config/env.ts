@@ -55,6 +55,10 @@ const EnvSchema = z.object({
   // mounted. For dev the values come from SSM per stage.
   STRIPE_SECRET_KEY: z.string().optional().transform(unwrapSecret),
   STRIPE_WEBHOOK_SECRET: z.string().optional().transform(unwrapSecret),
+  // Comma list of email addresses that never pay the table fee (the
+  // owner, friends testing it). Case and spaces don't matter. From the
+  // GitHub environment's TABLE_FEE_EXEMPT_EMAILS at deploy.
+  TABLE_FEE_EXEMPT_EMAILS: z.string().default(''),
   // Where the web app lives; Stripe sends the lead back here if a payment
   // method needs a redirect (most don't: cards and wallets complete in place).
   APP_BASE_URL: z.string().url().default('http://localhost:8081'),

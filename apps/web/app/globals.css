@@ -874,3 +874,9 @@ img { max-width: 100%; }
 }
 .course-pick__opt:hover { border-color: var(--mute-2); }
 .course-pick__opt--on { background: var(--surface-2); border-color: var(--ink-2); color: var(--ink); font-weight: 600; }
+
+/* ---------- Payout: remember on this device ---------- */
+.remember { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-row); background: var(--surface); cursor: pointer; }
+.remember input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--accent); }
+.remember__t { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
+.remember__d { display: block; font-size: 13px; line-height: 1.45; color: var(--mute); margin-top: 2px; }

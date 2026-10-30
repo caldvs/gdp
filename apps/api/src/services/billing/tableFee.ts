@@ -93,28 +93,44 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     return price;
   };
 
+  const startCheckoutUnsafe = async (input: { caller: VerifiedCaller; billId: string }) => {
+    const bill = await loadOwnBill(input.billId, input.caller);
+    if (await deps.store.get(bill.billId)) {
+      throw new AppError('TABLE_FEE_PAID', 'The fee for this bill is already paid');
+    }
+    const price = await priceFor(bill);
+    const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
+    const session = await deps.stripe.checkout.sessions.create(
+      checkoutSessionParams({
+        priceId: price.id,
+        billId: bill.billId,
+        userId: input.caller.userId,
+        ...(input.caller.email ? { email: input.caller.email } : {}),
+        returnUrl,
+      }),
+    );
+    if (!session.client_secret) {
+      throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');
+    }
+    return { clientSecret: session.client_secret, amountPence: price.unit_amount ?? 0 };
+  };
+
   return {
     /** Starts the embedded checkout for this bill's fee and returns the form's client secret. */
     async startCheckout(input: { caller: VerifiedCaller; billId: string }) {
-      const bill = await loadOwnBill(input.billId, input.caller);
-      if (await deps.store.get(bill.billId)) {
-        throw new AppError('TABLE_FEE_PAID', 'The fee for this bill is already paid');
+      try {
+        return await startCheckoutUnsafe(input);
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+        // A Stripe error (bad key, test/live mix-up, missing price, a
+        // parameter this account doesn't support): show its message
+        // instead of "internal error", which says nothing.
+        const e = err as { type?: string; message?: string };
+        if (e.type?.startsWith('Stripe')) {
+          throw new AppError('PAYMENT_PROVIDER_ERROR', `Stripe: ${e.message ?? e.type}`);
+        }
+        throw err;
       }
-      const price = await priceFor(bill);
-      const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
-      const session = await deps.stripe.checkout.sessions.create(
-        checkoutSessionParams({
-          priceId: price.id,
-          billId: bill.billId,
-          userId: input.caller.userId,
-          ...(input.caller.email ? { email: input.caller.email } : {}),
-          returnUrl,
-        }),
-      );
-      if (!session.client_secret) {
-        throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');
-      }
-      return { clientSecret: session.client_secret, amountPence: price.unit_amount ?? 0 };
     },
 
     async status(input: { caller: VerifiedCaller; billId: string }): Promise<TableFeeStatus> {

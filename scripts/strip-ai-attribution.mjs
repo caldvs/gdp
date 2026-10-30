@@ -5,6 +5,8 @@
 //
 //   node scripts/strip-ai-attribution.mjs <path-to-COMMIT_EDITMSG>
 //   node scripts/strip-ai-attribution.mjs --check <file>   exit 1 if any found
+//
+// Also run by .github/workflows/pr-attribution.yml over PR descriptions.
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
@@ -37,8 +39,10 @@ if (check) {
 
 if (removed.length) {
   const kept = lines.filter((l) => !patterns.some((p) => p(l)));
-  // Drop the blank lines a removed trailer block leaves at the end.
-  while (kept.length && kept[kept.length - 1].trim() === '') kept.pop();
+  // Drop the blank lines a removed trailer block leaves at the end, and a
+  // bare `---` rule that only separated the attribution from the body.
+  const trailing = () => kept.length && (kept[kept.length - 1].trim() === '' || /^-{3,}$/.test(kept[kept.length - 1].trim()));
+  while (trailing()) kept.pop();
   writeFileSync(file, `${kept.join('\n')}\n`);
-  console.error(`commit-msg: removed ${removed.length} AI attribution line(s) (see CLAUDE.md)`);
+  console.error(`strip-ai-attribution: removed ${removed.length} AI attribution line(s) (see CLAUDE.md)`);
 }

@@ -6,7 +6,12 @@ import {
 import { AppError } from '../../errors/AppError.js';
 import { timed } from '../../logging/timed.js';
 import { PROMPT, validateParsedBill } from './billPrompt.js';
-import type { BillParser, ParsedBillFromImage } from './parser.js';
+import {
+  parseTimeout,
+  type BillParser,
+  type ParseOptions,
+  type ParsedBillFromImage,
+} from './parser.js';
 
 // v3: the prompt asks for the full printed address and never a guessed one.
 const VERSION = 'v3';
@@ -27,7 +32,11 @@ export class BedrockBillParser implements BillParser {
     this.client = new BedrockRuntimeClient({ region });
   }
 
-  async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
+  async parse(
+    image: Uint8Array,
+    requestId: string,
+    opts: ParseOptions = {},
+  ): Promise<ParsedBillFromImage> {
     let out: ConverseCommandOutput;
     try {
       out = await timed(
@@ -49,10 +58,12 @@ export class BedrockBillParser implements BillParser {
               inferenceConfig: { temperature: 0, maxTokens: 4096 },
               requestMetadata: { requestId },
             }),
+            { abortSignal: opts.signal },
           ),
         { requestId, model: this.model },
       );
     } catch (err) {
+      if (opts.signal?.aborted) throw parseTimeout('Bedrock');
       const e = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
       throw new AppError('PARSE_FAILED', `Bedrock: ${e.name ?? 'error'}`, {
         status: e.$metadata?.httpStatusCode,

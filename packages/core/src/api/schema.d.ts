@@ -861,7 +861,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1708,6 +1708,15 @@ export interface operations {
             429: components["responses"]["RateLimited"];
             /** @description Upstream parser provider error */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

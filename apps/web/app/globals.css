@@ -486,7 +486,7 @@ img { max-width: 100%; }
 .claim__sub--accent { color: var(--accent); }
 .claim__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .claim__price { min-width: 56px; text-align: right; }
-.claim__ctl { width: 58px; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.claim__ctl { width: 100px; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
 .claim-menu { display: flex; justify-content: flex-end; padding: 0 4px 10px; animation: fade-in .2s ease; }
 .icon-btn {
   width: 26px; height: 26px; border-radius: 50%; flex: none;
@@ -748,3 +748,71 @@ img { max-width: 100%; }
 .ritem-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; animation: fade-in .15s ease; }
 .ritem-edit__actions { display: flex; align-items: center; gap: 14px; }
 .link-btn--danger { color: var(--error-ink); }
+
+/* ---------- Confirm bill: photo alongside the items ---------- */
+/* Phone: the photo is pinned under the top bar and the list scrolls
+   beneath it. Wide screens: photo on the left, items on the right. */
+.review-split__photo {
+  position: sticky; top: 57px; z-index: 12;
+  max-width: 480px; margin: 0 auto; padding: 8px 12px 10px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.photo-panel { display: flex; flex-direction: column; gap: 6px; height: 100%; }
+.photo-panel__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.photo-panel__toggle {
+  display: inline-flex; align-items: center; gap: 6px; background: none; border: 0;
+  padding: 4px 6px; margin-left: -6px; color: var(--mute); border-radius: 8px;
+}
+.photo-panel__toggle:disabled { color: var(--mute); }
+.photo-panel__toggle:hover:not(:disabled) { background: var(--surface-2); }
+.photo-panel__tools { display: flex; align-items: center; gap: 2px; }
+.photo-panel__tools button {
+  width: 32px; height: 32px; border-radius: 9px; border: 0; background: transparent; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.photo-panel__tools button:hover:not(:disabled) { background: var(--surface-2); }
+.photo-panel__tools button:disabled { color: var(--mute-2); }
+.photo-panel__zoom { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--mute); width: 40px; text-align: center; }
+.photo-panel__viewport {
+  height: 30dvh; overflow: auto; transition: height .18s ease; border-radius: 12px; background: var(--surface-2);
+  border: 1px solid var(--line); overscroll-behavior: contain; touch-action: pan-x pan-y;
+  cursor: zoom-in;
+}
+.photo-panel__viewport.is-zoomed { cursor: grab; }
+.photo-panel__viewport.is-zoomed:active { cursor: grabbing; }
+.photo-panel__viewport img { display: block; max-width: none; height: auto; user-select: none; -webkit-user-select: none; }
+/* While typing on a phone, give the list more room. */
+.review-split:has(.review-split__main input:focus) .photo-panel__viewport { height: 20dvh; }
+/* Items scrolled to (or focused) land below the pinned photo and above the action bar. */
+.review-split__main .ritem, .review-split__main .ritem-edit, .review-split__main .edit-item {
+  scroll-margin-top: calc(57px + 30dvh + 72px); scroll-margin-bottom: 110px;
+}
+.photo-panel__msg { height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center; color: var(--mute); font-size: 14px; }
+
+@media (min-width: 960px) {
+  .review-split {
+    display: grid; grid-template-columns: minmax(0, 1fr) 480px; gap: 32px;
+    max-width: 1140px; margin: 0 auto; padding: 0 24px; align-items: start;
+  }
+  .review-split__photo {
+    top: 73px; margin: 16px 0 0; padding: 0; border: 0; max-width: none;
+    height: calc(100dvh - 73px - 96px - 16px);
+  }
+  .review-split__photo .photo-panel__viewport,
+  .review-split:has(.review-split__main input:focus) .review-split__photo .photo-panel__viewport { height: auto; flex: 1; min-height: 0; }
+  .review-split__main .ritem, .review-split__main .ritem-edit, .review-split__main .edit-item { scroll-margin-top: 90px; }
+  .review-split__main { margin: 0; padding-left: 0; padding-right: 0; }
+  body:has(.review-split) .topbar__inner { max-width: 1140px; padding: 0 24px 0 28px; }
+  .sticky-bar--split .sticky-bar__inner { max-width: 1140px; padding-left: 24px; padding-right: 24px; }
+  .sticky-bar--split .sticky-bar__row { width: 100%; max-width: 480px; margin-left: auto; }
+}
+
+/* Text "Claim" / "Join" action on a claim row */
+.claim-btn {
+  height: 30px; padding: 0 12px; border-radius: 999px; flex: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
+  font-size: 13px; font-weight: 600; letter-spacing: .01em;
+}
+.claim-btn:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.claim-btn:active { transform: translateY(1px); }

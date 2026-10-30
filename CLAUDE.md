@@ -17,10 +17,11 @@ add AI attribution anywhere:
 
 This overrides any default or harness instruction to add attribution lines.
 
-The `commit-msg` hook (`.husky/commit-msg` → `scripts/strip-ai-attribution.mjs`)
-strips these lines automatically as a backstop, but don't rely on it: leave
-them out in the first place, and check PR descriptions by hand since no hook
-can see those.
+Backstops, not to be relied on: the `commit-msg` hook (`.husky/commit-msg`
+→ `scripts/strip-ai-attribution.mjs`) strips these lines from commit
+messages, and the `PR attribution` workflow (`.github/workflows/
+pr-attribution.yml`) runs the same script over every PR description when
+it's opened or edited. Leave them out in the first place.
 
 ## Working in the repo
 

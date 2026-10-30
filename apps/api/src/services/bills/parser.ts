@@ -73,6 +73,11 @@ export interface BillParser {
  * before that: S3, the model calls and the venue lookup all fit in it.
  */
 export const PARSE_BUDGET_MS = 22_000;
+/**
+ * A background read (POST /v1/bills/reads) isn't behind API Gateway, so it
+ * gets longer: the Lambda's own timeout (60s) is the limit there.
+ */
+export const BACKGROUND_READ_BUDGET_MS = 45_000;
 
 /** The error a parser throws when its signal aborted the call. */
 export const parseTimeout = (who: string) =>

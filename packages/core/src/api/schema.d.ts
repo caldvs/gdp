@@ -216,9 +216,54 @@ export interface paths {
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
          *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
-         *     the image hash. Idempotent via `Idempotency-Key`.
+         *     the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
+         *     Idempotent via `Idempotency-Key`.
          */
         post: operations["parseBill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start reading an uploaded image in the background
+         * @description Same read as `POST /v1/bills/parse`, but it runs in the background (with 45s rather than 22s)
+         *     and this returns at once. Poll `GET /v1/bills/reads/{readId}` until it's `done` (open `billId`)
+         *     or `failed` (the same error the synchronous parse would have returned). Idempotent via
+         *     `Idempotency-Key`.
+         */
+        post: operations["startBillRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/reads/{readId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a background read is going
+         * @description Only the user who started the read can see it. A read still `reading` after 90s is reported as
+         *     `failed` with `PARSE_TIMEOUT`. Reads are kept for a day.
+         */
+        get: operations["getBillRead"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1219,6 +1264,25 @@ export interface components {
             /** Format: uuid */
             uploadId: string;
         };
+        BillRead: {
+            /** Format: uuid */
+            readId: string;
+            /** @enum {string} */
+            status: "reading" | "done" | "failed";
+            /**
+             * Format: uuid
+             * @description Set when `done`
+             */
+            billId?: string;
+            /** @description Set when `failed`. `code` is one of the API's error codes. */
+            error?: {
+                code: string;
+                message: string;
+                details?: {
+                    [key: string]: unknown;
+                };
+            };
+        };
         AmendBillRequest: {
             items: {
                 /**
@@ -1717,6 +1781,68 @@ export interface operations {
             };
             /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
             504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startBillRead: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Reading has started (or, if it couldn't be started, has already failed) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["IdempotencyConflict"];
+        };
+    };
+    getBillRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                readId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No such read for this user */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

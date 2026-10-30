@@ -131,6 +131,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>OTP#email:{e}</code></td><td class="op">Get</td></tr>
             <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
+            <tr><td>Background read</td><td><code>READ#{id}</code></td><td class="op">Get</td></tr>
             <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
             <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
             <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
@@ -164,7 +165,7 @@ ul.plain strong { color: var(--ink); }
       <ul class="plain">
         <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees, venue lookups.</li>
         <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks.</li>
-        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h.</li>
+        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, bill reads 1 day.</li>
       </ul>
     </section>
   </div>

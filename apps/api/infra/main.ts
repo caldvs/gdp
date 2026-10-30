@@ -214,6 +214,10 @@ class GdpBackendStack extends cdk.Stack {
         // to `truelayer` once TL Live commercial onboarding is in place.
         PAYMENT_PROVIDER: 'manual',
         ...stripeEnv,
+        // Changes on every deploy, so CloudFormation updates the function and
+        // re-reads the secrets above; otherwise a rotated secret is only
+        // picked up when something else about the function changes.
+        DEPLOY_ID: process.env.GITHUB_RUN_ID ?? new Date().toISOString(),
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
       },
       bundling: {

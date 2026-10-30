@@ -14,7 +14,6 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { formatGBP } from '@gdp/core/lib/money';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
-import { chaseDiner, shouldShowChase } from '@/lib/chase';
 import { DinerRow } from '@/components/DinerRow';
 import { PaymentDetailsReceipt } from '@/components/PaymentDetailsReceipt';
 import { QuickPayLinks } from '@/components/QuickPayLinks';
@@ -34,7 +33,6 @@ export default function PayPage() {
   const markPaid = useMarkPaymentPaid(id);
   const confirm = useConfirmPayment(id);
   const [instructions, setInstructions] = useState<ManualInstructions | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
 
   if (session.isPending || me.isPending) return <CenterSpinner />;
   if (session.isError) return <div className="center"><Notice title="Couldn't load the session." detail={session.error.message} /></div>;
@@ -91,7 +89,6 @@ export default function PayPage() {
             {s.participants.map((p) => {
               const isLead = p.userId === s.creatorUserId;
               const canConfirm = !isLead && p.payment.status === 'pending';
-              const canChase = !isLead && shouldShowChase(p.payment);
               return (
                 <DinerRow
                   key={p.userId}
@@ -101,16 +98,11 @@ export default function PayPage() {
                   variant="paying"
                   fallbackOwedPence={bill.data ? projectOwedPence(s, bill.data, p.userId) : undefined}
                   onMarkReceived={canConfirm ? () => { if (p.payment.status === 'pending') confirm.mutate(p.payment.paymentId); } : undefined}
-                  onChase={canChase ? async () => {
-                    const r = await chaseDiner(p, me.data?.displayName ?? 'me');
-                    if (r === 'copied') { setToast('Copied — paste it into your messages.'); setTimeout(() => setToast(null), 2500); }
-                  } : undefined}
                 />
               );
             })}
           </div>
           {confirm.isError ? <Notice title="Couldn't confirm." detail={confirm.error.message} /> : null}
-          {toast ? <Notice neutral detail={toast} /> : null}
         </section>
       ) : null}
 

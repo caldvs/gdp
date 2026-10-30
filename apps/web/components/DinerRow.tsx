@@ -8,10 +8,10 @@ type Participant = components['schemas']['Participant'];
 type BillItem = components['schemas']['BillItem'];
 type SessionShares = NonNullable<components['schemas']['Session']['shares']>;
 
-export function DinerRow({ p, isMe, isLead, variant, items, billExtrasRate, shares, fallbackOwedPence, onMarkReceived, onChase }: {
+export function DinerRow({ p, isMe, isLead, variant, items, billExtrasRate, shares, fallbackOwedPence, onMarkReceived }: {
   p: Participant; isMe: boolean; isLead: boolean; variant: 'claiming' | 'paying' | 'settled'; fallbackOwedPence?: number;
   items?: BillItem[]; billExtrasRate?: number; shares?: SessionShares;
-  onMarkReceived?: () => void; onChase?: () => void;
+  onMarkReceived?: () => void;
 }) {
   // While claiming, owedPence isn't computed yet — project it from picks
   // the same way the server will at lock time (shares: price / number of
@@ -46,14 +46,14 @@ export function DinerRow({ p, isMe, isLead, variant, items, billExtrasRate, shar
       </div>
       <div className="diner__right">
         {amountPence !== undefined && variant !== 'claiming' ? <span className="diner__amount">{formatGBP(amountPence)}</span> : null}
-        <DinerStatus p={p} variant={variant} isLead={isLead} onMarkReceived={onMarkReceived} onChase={onChase} />
+        <DinerStatus p={p} variant={variant} isLead={isLead} onMarkReceived={onMarkReceived} />
       </div>
     </div>
   );
 }
 
-function DinerStatus({ p, variant, isLead, onMarkReceived, onChase }: {
-  p: Participant; variant: 'claiming' | 'paying' | 'settled'; isLead: boolean; onMarkReceived?: () => void; onChase?: () => void;
+function DinerStatus({ p, variant, isLead, onMarkReceived }: {
+  p: Participant; variant: 'claiming' | 'paying' | 'settled'; isLead: boolean; onMarkReceived?: () => void;
 }) {
   if (variant === 'claiming') {
     if (isLead) return <Chip>host</Chip>;
@@ -68,7 +68,6 @@ function DinerStatus({ p, variant, isLead, onMarkReceived, onChase }: {
       return <Chip variant="live">{p.payment.payerClaimedPaidAt ? 'says paid' : 'pending'}</Chip>;
     }
     if (st === 'failed') return <Chip variant="accent">failed</Chip>;
-    if (onChase) return <button type="button" className="diner__action diner__action--ghost" onClick={onChase}>chase →</button>;
     return <Chip variant="live">unpaid</Chip>;
   }
   if (p.payment.status === 'self_paid' || isLead) return <Chip>collector</Chip>;

@@ -31,8 +31,14 @@ export const paymentService = {
     // Trust-based model: a guest can pay as soon as they're confident
     // in their picks — no need for the lead to "lock claims" first.
     // We accept both `claiming` (no lock yet) and `paying` (post-lock).
-    // Setup / settled / abandoned remain hard-rejected.
-    if (session.status !== 'paying' && session.status !== 'claiming') {
+    // `settled` is also allowed: the lead can close the bill from the
+    // table before everyone has paid, and a late guest should still be
+    // able to settle up. Setup / abandoned remain hard-rejected.
+    if (
+      session.status !== 'paying' &&
+      session.status !== 'claiming' &&
+      session.status !== 'settled'
+    ) {
       throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't pay`);
     }
     if (participant.payment.status !== 'unpaid' && participant.payment.status !== 'failed') {

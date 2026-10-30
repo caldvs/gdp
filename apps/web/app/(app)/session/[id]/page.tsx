@@ -16,6 +16,7 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useScreenTitle } from '@/lib/screen';
+import { Ended, LeadSetup, LeadSettled, LeadTable } from './lead';
 import { BillImageModal } from '@/components/BillImageModal';
 import { ConfirmDialog } from '@/components/Dialog';
 import { DinerRow } from '@/components/DinerRow';
@@ -57,8 +58,15 @@ function SessionScreen() {
   const meId = me.data.userId;
   const isCreator = meId === s.creatorUserId;
 
+  if (s.status === 'abandoned') return <Ended s={s} isCreator={isCreator} />;
+  if (isCreator) {
+    if (s.status === 'setup') return <LeadSetup s={s} b={b} />;
+    if (s.status === 'settled') return <LeadSettled s={s} b={b} />;
+    return <LeadTable s={s} b={b} meUserId={meId} />;
+  }
+  // Guest screens: still the old receipt UI until the Pick / Pay / table
+  // redesign lands (PR D).
   switch (s.status) {
-    case 'abandoned': return <AbandonedLayout s={s} isCreator={isCreator} />;
     case 'setup': return <SetupLayout s={s} b={b} sessionId={id} />;
     case 'settled': return <SettledLayout s={s} b={b} meUserId={meId} isCreator={isCreator} />;
     case 'paying': return <PayingLayout s={s} b={b} meUserId={meId} isCreator={isCreator} />;
@@ -718,25 +726,6 @@ function GuestSettledBody({ b, myParticipant, myOwed, hostFirst }: { b: Bill; my
         </section>
       ) : null}
     </>
-  );
-}
-
-/* ============================ ended ============================ */
-
-function AbandonedLayout({ s, isCreator }: { s: Session; isCreator: boolean }) {
-  const host = s.participants.find((p) => p.userId === s.creatorUserId);
-  return (
-    <div className="center" style={{ minHeight: '70vh' }}>
-      <Mini>ended</Mini>
-      <DisplayText size="md" as="h2" className="t-center">This session has ended.</DisplayText>
-      <BodyText className="t-center">
-        {isCreator
-          ? 'You abandoned this session. The bill is unlocked, so you can start a new one from the same receipt.'
-          : `${host?.displayName ?? 'The host'} ended this session. The bill won't be split here.`}
-      </BodyText>
-      {!isCreator ? <Mini className="t-center">if you weren&apos;t expecting this · speak to {host?.displayName.toLowerCase() ?? 'the host'}</Mini> : null}
-      <div style={{ width: '100%', maxWidth: 360 }} className="mt-base"><Button href="/" replace>Back to home →</Button></div>
-    </div>
   );
 }
 

@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Group Dine Pay Data Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one wide board of item types in four columns (identity, bills, sessions, table + payments), then access patterns, transactions and TTL notes below. */
+:root {
+  --bg: #F3F6FA;
+  --grid: #DDE4EE;
+  --card: #FFFFFF;
+  --inner: #F1F5FB;
+  --ink: #142033;
+  --muted: #5B6A82;
+  --line: #C9D3E1;
+  --accent: #0B57D0;
+  --edge: #46566F;
+  --id: #6B4FBB;
+  --bill: #0F7B4A;
+  --sess: #0B57D0;
+  --pay: #B45309;
+  --ttl-bg: #DCE7FB;
+  --ttl-fg: #0B4AB0;
+  --none-bg: #E8ECF2;
+  --warn: #B45309;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+    --line: #2C3750; --accent: #82A9FF; --edge: #9AA8C2; --id: #B39DFF; --bill: #5CD39A; --sess: #82A9FF; --pay: #F0A85A;
+    --ttl-bg: #1D2B4D; --ttl-fg: #A9C3FF; --none-bg: #222B3E; --warn: #F0A85A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+  --line: #2C3750; --accent: #82A9FF; --edge: #9AA8C2; --id: #B39DFF; --bill: #5CD39A; --sess: #82A9FF; --pay: #F0A85A;
+  --ttl-bg: #1D2B4D; --ttl-fg: #A9C3FF; --none-bg: #222B3E; --warn: #F0A85A; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1560px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+  display: grid; gap: 18px;
+}
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
+h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: 20px; margin: 10px 0 0; text-wrap: balance; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13.5px; }
+.stats b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.board {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 14px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+.board svg { display: block; width: 100%; min-width: 1160px; height: auto; }
+.zone-label { font: 600 11px var(--body); fill: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.node { fill: var(--card); stroke: var(--line); stroke-width: 1.2; }
+.node.key { stroke: var(--sess); stroke-width: 1.6; }
+.node.gsi { fill: var(--inner); stroke: var(--line); stroke-dasharray: 5 4; }
+.inner { fill: var(--inner); stroke: var(--line); }
+.band-id { fill: var(--id); } .band-bill { fill: var(--bill); } .band-sess { fill: var(--sess); } .band-pay { fill: var(--pay); }
+.rule { stroke: var(--line); }
+.t-title { font: 700 16px var(--display); fill: var(--ink); }
+.t-inner { font: 700 13.5px var(--body); fill: var(--ink); }
+.t-keylab { font: 600 11px var(--mono); fill: var(--muted); }
+.t-key { font: 500 12px var(--mono); fill: var(--ink); }
+.t-attr { font: 400 12px var(--body); fill: var(--muted); }
+.t-gsi { font: 500 11.5px var(--mono); fill: var(--sess); }
+.chip-ttl { fill: var(--ttl-bg); } .chip-none { fill: var(--none-bg); }
+.t-chip { font: 600 10.5px var(--body); fill: var(--ttl-fg); }
+.chip-none + .t-chip { fill: var(--muted); }
+.edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.edge.dashed path { stroke-dasharray: 6 5; stroke: var(--sess); }
+.edge text { font: 600 11.5px var(--body); fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+.arrow { fill: var(--edge); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge); vertical-align: middle; margin-right: 6px; }
+.legend i.d { border-top: 2px dashed var(--sess); }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; align-items: start; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px 0 8px; min-width: 0; }
+.panel h2 { margin: 12px 16px 6px; font-size: 18px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; border-top: 0; }
+td code, li code { font-family: var(--mono); font-size: 12px; color: var(--ink); overflow-wrap: anywhere; }
+td.op { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+ul.plain { margin: 0; padding: 4px 16px 4px 34px; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+ul.plain strong { color: var(--ink); }
+.note { border-left: 3px solid var(--warn); padding-left: 10px; }
+.foot { margin: 0; color: var(--muted); font-size: 13.5px; }
+.foot code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Group Dine Pay data model</h1>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>14</b> item types</span><span><b>2</b> GSIs</span><span><b>8</b> expiring types</span></div>
+  </header>
+
+  <div class="board">
+    <svg viewBox="0 0 1520 946" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+<text class="zone-label" x="30" y="52">Identity &amp; request safety</text>
+<text class="zone-label" x="410" y="52">Bills</text>
+<text class="zone-label" x="790" y="52">Sessions</text>
+<text class="zone-label" x="1170" y="52">Table &amp; payments</text>
+<g class="edge "><path d="M190.0,222 L190.0,264" marker-end="url(#ah)"/>
+<text x="200.0" y="249" text-anchor="start">userId</text>
+</g>
+<g class="edge "><path d="M570.0,222 L570.0,264" marker-end="url(#ah)"/>
+<text x="580.0" y="249" text-anchor="start">billId</text>
+</g>
+<g class="edge "><path d="M460,582 L460,540" marker-end="url(#ah)"/>
+</g>
+<g class="edge "><path d="M790,151.0 L732,151.0" marker-end="url(#ah)"/>
+<text x="760.0" y="143.0" text-anchor="middle">billId</text>
+</g>
+<g class="edge "><path d="M950.0,222 L950.0,264" marker-end="url(#ah)"/>
+<text x="960.0" y="249" text-anchor="start">sessionId</text>
+</g>
+<g class="edge "><path d="M804,380 L732,380" marker-end="url(#ah)"/>
+<text x="760.0" y="372" text-anchor="middle">billId</text>
+</g>
+<g class="edge "><path d="M950.0,684 L950.0,642" marker-end="url(#ah)"/>
+<text x="960.0" y="667" text-anchor="start">sessionId</text>
+</g>
+<g class="edge dashed"><path d="M804,540 L760,540 L760,560 L380,560 L380,355.0 L352,355.0" marker-end="url(#ah)"/>
+<text x="610.0" y="553" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
+</g>
+<g class="edge "><path d="M1112,502 L1168,502" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1140.0" y="494" text-anchor="middle">ids</text>
+</g>
+<rect class="node" x="30" y="80" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="80" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="107">Auth identity</text>
+<rect class="chip-none" x="286.4" y="93" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="107" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="48" y="132">pk</text>
+<text class="t-key" x="104" y="132">AUTH#email:{email}</text>
+<text class="t-keylab" x="48" y="154">sk</text>
+<text class="t-key" x="104" y="154">same as pk</text>
+<line class="rule" x1="48" y1="168" x2="332" y2="168"/>
+<text class="t-attr" x="48" y="186">userId</text>
+<text class="t-attr" x="48" y="204">email (lower-cased)</text>
+<rect class="node" x="30" y="266" width="320" height="178" rx="10"/>
+<rect class="band band-id" x="30" y="266" width="6" height="178" rx="3"/>
+<text class="t-title" x="48" y="293">User</text>
+<rect class="chip-none" x="286.4" y="279" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="293" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="48" y="318">pk</text>
+<text class="t-key" x="104" y="318">USER#{userId}</text>
+<text class="t-keylab" x="48" y="340">sk</text>
+<text class="t-key" x="104" y="340">same as pk</text>
+<line class="rule" x1="48" y1="354" x2="332" y2="354"/>
+<text class="t-attr" x="48" y="372">displayName, email, avatarUrl</text>
+<text class="t-attr" x="48" y="390">payoutAccount { sortCode, accountNumber,</text>
+<text class="t-attr" x="48" y="408">  accountHolderName, monzoHandle, revolutTag }</text>
+<text class="t-attr" x="48" y="426">createdAt, updatedAt</text>
+<rect class="node" x="30" y="488" width="320" height="160" rx="10"/>
+<rect class="band band-id" x="30" y="488" width="6" height="160" rx="3"/>
+<text class="t-title" x="48" y="515">Sign-in code</text>
+<rect class="chip-ttl" x="286.4" y="501" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="515" text-anchor="middle">10 min</text>
+<text class="t-keylab" x="48" y="540">pk</text>
+<text class="t-key" x="104" y="540">OTP#email:{email}</text>
+<text class="t-keylab" x="48" y="562">sk</text>
+<text class="t-key" x="104" y="562">same as pk</text>
+<line class="rule" x1="48" y1="576" x2="332" y2="576"/>
+<text class="t-attr" x="48" y="594">codeHash</text>
+<text class="t-attr" x="48" y="612">attempts (conditional increment)</text>
+<text class="t-attr" x="48" y="630">ttlAt, also checked on read</text>
+<rect class="node" x="30" y="692" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="692" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="719">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="705" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="719" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="744">pk</text>
+<text class="t-key" x="104" y="744">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="766">sk</text>
+<text class="t-key" x="104" y="766">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="780" x2="332" y2="780"/>
+<text class="t-attr" x="48" y="798">stored status + response body</text>
+<rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="107">Image hash index</text>
+<rect class="chip-none" x="666.4" y="93" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="107" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="132">pk</text>
+<text class="t-key" x="484" y="132">IMGHASH#{userId}#{sha256}</text>
+<text class="t-keylab" x="428" y="154">sk</text>
+<text class="t-key" x="484" y="154">same as pk</text>
+<line class="rule" x1="428" y1="168" x2="712" y2="168"/>
+<text class="t-attr" x="428" y="186">billId</text>
+<text class="t-attr" x="428" y="204">dedupes a repeat photo per user</text>
+<rect class="node" x="410" y="266" width="320" height="272" rx="10"/>
+<rect class="band band-bill" x="410" y="266" width="6" height="272" rx="3"/>
+<text class="t-title" x="428" y="293">Bill</text>
+<rect class="chip-none" x="666.4" y="279" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="293" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="318">pk</text>
+<text class="t-key" x="484" y="318">BILL#{billId}</text>
+<text class="t-keylab" x="428" y="340">sk</text>
+<text class="t-key" x="484" y="340">V#001, V#002 … (immutable)</text>
+<text class="t-keylab" x="428" y="362">sk</text>
+<text class="t-key" x="484" y="362">LATEST (mirror of newest)</text>
+<line class="rule" x1="428" y1="376" x2="712" y2="376"/>
+<text class="t-attr" x="428" y="394">versionNumber, creatorUserId, currency GBP</text>
+<text class="t-attr" x="428" y="412">items[] { itemId, name, unitPricePence,</text>
+<text class="t-attr" x="428" y="430">  quantity, category, course }</text>
+<text class="t-attr" x="428" y="448">subtotalPence, taxPence,</text>
+<text class="t-attr" x="428" y="466">  serviceChargePence, totalPence</text>
+<text class="t-attr" x="428" y="484">venue { placeId, name, address, lat, lng }</text>
+<text class="t-attr" x="428" y="502">parsedFrom { imageHash, parser,</text>
+<text class="t-attr" x="428" y="520">  parserVersion, parsedAt, uploadId }</text>
+<rect class="node" x="410" y="582" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="582" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="609">Table fee</text>
+<rect class="chip-none" x="666.4" y="595" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="609" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="634">pk</text>
+<text class="t-key" x="484" y="634">FEE#{billId}</text>
+<text class="t-keylab" x="428" y="656">sk</text>
+<text class="t-key" x="484" y="656">FEE</text>
+<line class="rule" x1="428" y1="670" x2="712" y2="670"/>
+<text class="t-attr" x="428" y="688">Stripe checkout state, amount</text>
+<text class="t-attr" x="428" y="706">kept as a tax record</text>
+<rect class="node" x="410" y="768" width="320" height="124" rx="10"/>
+<rect class="band band-bill" x="410" y="768" width="6" height="124" rx="3"/>
+<text class="t-title" x="428" y="795">Venue cache</text>
+<rect class="chip-ttl" x="659.8" y="781" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="687.9" y="795" text-anchor="middle">90 days</text>
+<text class="t-keylab" x="428" y="820">pk</text>
+<text class="t-key" x="484" y="820">VENUEQ#{name+address key}</text>
+<text class="t-keylab" x="428" y="842">sk</text>
+<text class="t-key" x="484" y="842">same as pk</text>
+<line class="rule" x1="428" y1="856" x2="712" y2="856"/>
+<text class="t-attr" x="428" y="874">resolved Google Places venue</text>
+<rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
+<rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
+<text class="t-title" x="808" y="107">Bill lock</text>
+<rect class="chip-ttl" x="1039.8" y="93" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="107" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="132">pk</text>
+<text class="t-key" x="864" y="132">BILLLOCK#{billId}</text>
+<text class="t-keylab" x="808" y="154">sk</text>
+<text class="t-key" x="864" y="154">same as pk</text>
+<line class="rule" x1="808" y1="168" x2="1092" y2="168"/>
+<text class="t-attr" x="808" y="186">sessionId, lockedAt</text>
+<text class="t-attr" x="808" y="204">create-if-absent; deleted on abandon</text>
+<rect class="node key" x="790" y="266" width="320" height="374" rx="10"/>
+<rect class="band band-sess" x="790" y="266" width="6" height="374" rx="3"/>
+<text class="t-title" x="808" y="293">Session</text>
+<rect class="chip-ttl" x="1039.8" y="279" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="293" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="318">pk</text>
+<text class="t-key" x="864" y="318">SESS#{sessionId}</text>
+<text class="t-attr" x="808" y="336">One item collection, read with one Query</text>
+<rect class="inner" x="804" y="350" width="292" height="88" rx="7"/>
+<text class="t-keylab" x="816" y="369">sk</text>
+<text class="t-key" x="842" y="369">META</text>
+<text class="t-attr" x="816" y="388">status, creatorUserId, collectorUserId</text>
+<text class="t-attr" x="816" y="406">billId, pinnedBillVersion</text>
+<text class="t-attr" x="816" y="424">joinCode, venue</text>
+<rect class="inner" x="804" y="448" width="292" height="106" rx="7"/>
+<text class="t-keylab" x="816" y="467">sk</text>
+<text class="t-key" x="842" y="467">PART#{userId}</text>
+<text class="t-attr" x="816" y="486">displayName, claimedItemIds[]</text>
+<text class="t-attr" x="816" y="504">sharedItemIds[], owedPence, readyToLock</text>
+<text class="t-attr" x="816" y="522">payment { status, paymentId, paidAt }</text>
+<text class="t-gsi" x="816" y="540">GSI1PK USER#{userId} · GSI1SK sessionId</text>
+<rect class="inner" x="804" y="564" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="583">sk</text>
+<text class="t-key" x="842" y="583">SHARE#{itemId}</text>
+<text class="t-attr" x="816" y="602">ways, version (optimistic lock)</text>
+<text class="t-attr" x="816" y="620">activity[] { kind, byUserId, at }</text>
+<rect class="node" x="790" y="684" width="320" height="142" rx="10"/>
+<rect class="band band-sess" x="790" y="684" width="6" height="142" rx="3"/>
+<text class="t-title" x="808" y="711">Join code</text>
+<rect class="chip-ttl" x="1039.8" y="697" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="711" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="736">pk</text>
+<text class="t-key" x="864" y="736">JCODE#{code}</text>
+<text class="t-keylab" x="808" y="758">sk</text>
+<text class="t-key" x="864" y="758">same as pk</text>
+<line class="rule" x1="808" y1="772" x2="1092" y2="772"/>
+<text class="t-attr" x="808" y="790">sessionId</text>
+<text class="t-attr" x="808" y="808">create-if-absent (collision check)</text>
+<rect class="node gsi" x="1170" y="80" width="320" height="250" rx="10"/>
+<text class="t-title" x="1188" y="107">Table gdp-{env}</text>
+<text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>
+<text class="t-inner" x="1188" y="160">GSI1</text>
+<text class="t-key" x="1244" y="160">GSI1PK / GSI1SK</text>
+<text class="t-attr" x="1188" y="179">Only on participant rows: USER#{userId}</text>
+<text class="t-attr" x="1188" y="197">→ sessionId. UUIDv7 ids sort by time,</text>
+<text class="t-attr" x="1188" y="215">so reverse order = newest first.</text>
+<text class="t-inner" x="1188" y="245">GSI2</text>
+<text class="t-key" x="1244" y="245">GSI2PK</text>
+<text class="t-attr" x="1188" y="264">Only on payment rows:</text>
+<text class="t-attr" x="1188" y="282">PROVPAY#{providerPaymentId}</text>
+<text class="t-attr" x="1188" y="300">finds a payment from a webhook.</text>
+<rect class="node" x="1170" y="408" width="320" height="236" rx="10"/>
+<rect class="band band-pay" x="1170" y="408" width="6" height="236" rx="3"/>
+<text class="t-title" x="1188" y="435">Payment</text>
+<rect class="chip-none" x="1426.4" y="421" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="1451.2" y="435" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="1188" y="460">pk</text>
+<text class="t-key" x="1244" y="460">PAY#{paymentId}</text>
+<text class="t-keylab" x="1188" y="482">sk</text>
+<text class="t-key" x="1244" y="482">same as pk</text>
+<text class="t-keylab" x="1188" y="504">GSI2</text>
+<text class="t-key" x="1244" y="504">PROVPAY#{providerPaymentId}</text>
+<line class="rule" x1="1188" y1="518" x2="1472" y2="518"/>
+<text class="t-attr" x="1188" y="536">sessionId, payerUserId, collectorUserId</text>
+<text class="t-attr" x="1188" y="554">amountPence, currency GBP</text>
+<text class="t-attr" x="1188" y="572">provider (truelayer · mock · manual)</text>
+<text class="t-attr" x="1188" y="590">status, idempotencyKey</text>
+<text class="t-attr" x="1188" y="608">events[] { at, from, to, source }</text>
+<text class="t-attr" x="1188" y="626">createdAt, payerClaimedPaidAt</text>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i></i>Holds the other item's id</span>
+    <span><i class="d"></i>Index lookup</span>
+    <span><span class="sw" style="background:var(--id)"></span>Identity</span>
+    <span><span class="sw" style="background:var(--bill)"></span>Bills</span>
+    <span><span class="sw" style="background:var(--sess)"></span>Sessions</span>
+    <span><span class="sw" style="background:var(--pay)"></span>Payments</span>
+  </div>
+
+  <div class="cols">
+    <section class="panel">
+      <h2>Access patterns</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Need</th><th>Key condition</th><th>Op</th></tr></thead>
+          <tbody>
+            <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>OTP#email:{e}</code></td><td class="op">Get</td></tr>
+            <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
+            <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
+            <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
+            <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
+            <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE#)</td><td class="op">Query</td></tr>
+            <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
+            <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
+            <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
+            <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
+            <tr><td>Payment from webhook</td><td>GSI2 <code>GSI2PK = PROVPAY#{providerId}</code></td><td class="op">Query</td></tr>
+            <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
+            <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
+            <tr><td>Replay a request</td><td><code>IDMP#{user}#{endpoint}</code> / <code>KEY#{key}</code></td><td class="op">Get</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Transactions</h2>
+      <ul class="plain">
+        <li><strong>New bill version:</strong> put <code>V#nnn</code> and <code>LATEST</code>, and the <code>IMGHASH#</code> row on first parse.</li>
+        <li><strong>Create session:</strong> META + every <code>PART#</code> row, plus <code>JCODE#</code> and <code>BILLLOCK#</code>, both create-if-absent.</li>
+        <li><strong>Amend mid-session:</strong> new bill version + <code>LATEST</code> + reconciled META and participant rows.</li>
+        <li><strong>Lock claims:</strong> META to <code>claiming</code> and the creator's <code>PART#</code> row together.</li>
+        <li><strong>Split change:</strong> <code>SHARE#</code> row (guarded by <code>version</code>) and the diner's <code>PART#</code> row.</li>
+        <li><strong>Payment update:</strong> <code>PAY#</code> row and the payer's <code>PART#</code> row; mark-paid is conditional on <code>pending</code>.</li>
+        <li><strong>Abandon:</strong> deletes <code>BILLLOCK#</code>. Close does not.</li>
+      </ul>
+
+      <h2>Lifetimes</h2>
+      <ul class="plain">
+        <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees.</li>
+        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#), join codes, bill locks.</li>
+        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, venue cache 90 days.</li>
+        <li class="note"><strong>Check:</strong> <code>sessionStore.create</code> writes META's <code>ttlAt</code> as an ISO string. DynamoDB TTL ignores non-numbers, so a session that never gets a later META write keeps its META row while its other rows expire.</li>
+      </ul>
+    </section>
+  </div>
+
+  <p class="foot">Read from <code>apps/api/src/storage/*</code>, <code>src/types/*</code> and <code>infra/tableSchema.ts</code> on main. The planned analysis cache would add <code>ANALYSIS#{sha256}</code> / <code>P#{parserFingerprint}</code> with a 30-day TTL.</p>
+</div>
+</body>
+</html>

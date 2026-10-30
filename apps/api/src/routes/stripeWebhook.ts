@@ -26,7 +26,13 @@ export const buildStripeWebhookRoutes = (deps: StripeWebhookDeps): Hono => {
         deps.webhookSecret,
       );
     } catch (err) {
-      log?.warn({ err }, 'stripe webhook signature rejected');
+      // Not `{ err }`: Stripe's error carries the whole payload (customer
+      // name and email) and the signature header, which mustn't reach the logs.
+      const e = err as { type?: string; message?: string };
+      log?.warn(
+        { errType: e.type, reason: e.message?.split('\n')[0], bytes: rawBody.length },
+        'stripe webhook signature rejected',
+      );
       throw new AppError('AUTH_INVALID', 'Webhook signature rejected');
     }
 

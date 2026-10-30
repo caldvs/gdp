@@ -22,10 +22,7 @@ _Last updated 1 Nov 2026._
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done (deploy role, `APP_ENV`, key-mode and web build checks, secrets read at cold start), and prod's deploy role exists in the same account. Waiting on Callum: the GitHub `prod` environment and prod's SSM parameters and secrets (docs/deploy.md, _Setting up prod_), Stripe live activation, and a domain (phase 3). Limit the GitHub `dev` environment to `main` (the session proxy can't change environment settings).
 
-**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
-
-- `FallbackBillParser` reports the primary's `model` and `version` even when Gemini answered. Fix that first, or bills and the cache will credit Bedrock with Gemini reads.
-- Callum to decide: a global cache or one per user.
+**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills now record the model that actually read them (`parsedFrom.parser` is Gemini's model when the fallback answered), so cache keys can use it.
 
 ## Known problems
 

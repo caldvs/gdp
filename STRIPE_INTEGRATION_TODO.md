@@ -39,7 +39,7 @@ These parameters were configured in Checkout Studio and are already set correctl
 ### Local
 
 1. API: in `apps/api/.env.local` set `STRIPE_SECRET_KEY=sk_test_...` from [API keys](https://dashboard.stripe.com/test/apikeys). Without it, the billing routes aren't mounted.
-2. Webhook: `stripe listen --forward-to localhost:3000/webhooks/stripe`, then put the `whsec_...` it prints in `STRIPE_WEBHOOK_SECRET`.
+2. Webhook: `stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded --forward-to localhost:3000/webhooks/stripe` (newer CLIs need `--events`), then put the `whsec_...` it prints in `STRIPE_WEBHOOK_SECRET`.
 3. `APP_BASE_URL` defaults to `http://localhost:8081`; change it if the web app runs elsewhere.
 4. Web: in `apps/web/.env.local` set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...`. Never put the secret key in a `NEXT_PUBLIC_` variable.
 5. `npm run dev:local`, then open `/table-fee/<billId>` for a bill you created.

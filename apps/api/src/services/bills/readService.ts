@@ -8,7 +8,14 @@ import { BACKGROUND_READ_BUDGET_MS, type BillParser } from './parser.js';
 import type { VenueResolver } from './venueResolver.js';
 
 /** What the background job needs to read one bill. */
-export type ReadJob = { readId: string; userId: string; uploadId: string; requestId: string };
+export type ReadJob = {
+  readId: string;
+  userId: string;
+  uploadId: string;
+  requestId: string;
+  /** Read again even if this photo was read before (local testing). */
+  skipCache?: boolean;
+};
 
 /** Starts a read without waiting for it. */
 export type ReadDispatcher = (job: ReadJob) => Promise<void>;
@@ -31,6 +38,7 @@ export const createReadRunner =
         parser: deps.parser,
         venueResolver: deps.venueResolver,
         budgetMs: BACKGROUND_READ_BUDGET_MS,
+        skipCache: job.skipCache,
       });
       await readStore.finish(job.readId, { status: 'done', billId: bill.billId });
     } catch (err) {
@@ -94,7 +102,12 @@ export const isBillReadEvent = (event: unknown): event is { gdpBillRead: ReadJob
 export const createReadService = (deps: { dispatch: ReadDispatcher; now?: () => number }) => {
   const now = deps.now ?? Date.now;
   return {
-    async start(input: { userId: string; uploadId: string; requestId: string }): Promise<BillRead> {
+    async start(input: {
+      userId: string;
+      uploadId: string;
+      requestId: string;
+      skipCache?: boolean;
+    }): Promise<BillRead> {
       const read: BillRead = {
         readId: uuidv7(),
         userId: input.userId,

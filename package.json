@@ -1,7 +1,7 @@
 {
   "name": "group-dine-pay",
   "private": true,
-  "description": "Group Dine Pay \u2014 snap the bill, claim what you had, pay the lead direct.",
+  "description": "Group Dine Pay — snap the bill, claim what you had, pay the lead direct.",
   "workspaces": [
     "apps/api",
     "apps/web",
@@ -19,7 +19,8 @@
     "gen:api": "npm run gen:api -w packages/core",
     "check:contrast": "node scripts/check-contrast.mjs",
     "prepare": "husky || true",
-    "dev:local": "concurrently -k -n api,web -c cyan,green \"npm run dev -w apps/api\" \"wait-on -t 180000 http-get://localhost:3000/healthz && NEXT_PUBLIC_API_BASE_URL=http://localhost:3000 npm run dev -w apps/web\""
+    "dev:local": "concurrently -k -n api,web -c cyan,green \"npm run dev -w apps/api\" \"wait-on -t 180000 http-get://localhost:3000/healthz && NEXT_PUBLIC_API_BASE_URL=http://localhost:3000 npm run dev -w apps/web\"",
+    "test:scripts": "node --test scripts/*.test.mjs"
   },
   "devDependencies": {
     "husky": "^9.1.0",

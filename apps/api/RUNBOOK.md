@@ -18,7 +18,7 @@ Commands use the `gdp-dev` profile and the `GdpBackendDev` stack. Production doe
 - **One request:** every response carries `x-request-id`, and error bodies include `requestId`. Search the logs for it.
 - **Traces:** X-Ray tracing is on; the service map shows which downstream call was slow.
 - **Smoke test:** `npm run smoke -w apps/api -- <api-url>` shows which routes fail.
-- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Gemini, Places and SES from inside the deployed function (CI runs it after every deploy). The dashboard's *Calls out* panel shows each one's failures and timings (`event: dep.call`).
+- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Gemini, Places and SES from inside the deployed function (CI runs it after every deploy). The dashboard's _Calls out_ panel shows each one's failures and timings (`event: dep.call`).
 
 ## Getting alerts
 
@@ -36,31 +36,31 @@ Then confirm the email AWS sends.
 
 ### lambda-errors
 
-More than 3 Lambda errors in 5 minutes. Open the *Errors and warnings* and *Crashes and timeouts* panels.
+More than 3 Lambda errors in 5 minutes. Open the _Errors and warnings_ and _Crashes and timeouts_ panels.
 
-| In the logs | Likely cause | Fix |
-| --- | --- | --- |
-| `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts` | Fix the env block in `infra/main.ts`, redeploy |
-| `Dynamic require of …` | Bundle banner missing | Check `bundling.banner` in `infra/main.ts` |
-| `Task timed out after 30` | A downstream call hung (usually bill reading) | See lambda-duration |
-| `PAYMENT_PROVIDER_ERROR` | Only with TrueLayer, which isn't in use | Check `PAYMENT_PROVIDER` is `manual` |
+| In the logs                              | Likely cause                                  | Fix                                            |
+| ---------------------------------------- | --------------------------------------------- | ---------------------------------------------- |
+| `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts`  | Fix the env block in `infra/main.ts`, redeploy |
+| `Dynamic require of …`                   | Bundle banner missing                         | Check `bundling.banner` in `infra/main.ts`     |
+| `Task timed out after 30`                | A downstream call hung (usually bill reading) | See lambda-duration                            |
+| `PAYMENT_PROVIDER_ERROR`                 | Only with TrueLayer, which isn't in use       | Check `PAYMENT_PROVIDER` is `manual`           |
 
 ### lambda-duration
 
 p99 over 10 seconds for 5 minutes. Bill reading is almost always the cause: a parse takes 3–10 seconds normally, and the Lambda and API Gateway both stop at 30.
 
-- Check the *Bill reading* panel. `bill.parse.fallback` means Bedrock failed and Gemini answered, so that request paid for two reads.
+- Check the _Bill reading_ panel. `bill.parse.fallback` means Bedrock failed and Gemini answered, so that request paid for two reads.
 - If it's every request, look at the X-Ray map for the slow span.
 
 ### api-5xx
 
-More than 5 server errors in 5 minutes. Usually the same cause as lambda-errors; it also fires when a request passes API Gateway's 30-second limit. Use *Requests by route and status* to see which route.
+More than 5 server errors in 5 minutes. Usually the same cause as lambda-errors; it also fires when a request passes API Gateway's 30-second limit. Use _Requests by route and status_ to see which route.
 
 To roll back, check out the last good commit and run `npm run deploy:dev -w apps/api`.
 
 ### ddb-throttle
 
-DynamoDB throttled at least one request. The table is on-demand, so this means a sudden burst. The *DDB throttles* panel shows the operation. One hot key (a join code or image hash being hammered) points at abuse rather than load.
+DynamoDB throttled at least one request. The table is on-demand, so this means a sudden burst. The _DDB throttles_ panel shows the operation. One hot key (a join code or image hash being hammered) points at abuse rather than load.
 
 ## Common problems
 
@@ -76,7 +76,7 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 ### Sign-in codes don't arrive
 
-Look for `otp.start.failed` or `email.sent` in *Emails, sign-in and payments*. A new SES account is in the sandbox and only sends to verified addresses: request production access or verify the tester.
+Look for `otp.start.failed` or `email.sent` in _Emails, sign-in and payments_. A new SES account is in the sandbox and only sends to verified addresses: request production access or verify the tester.
 
 ### Bill reports don't arrive
 

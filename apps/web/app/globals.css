@@ -19,7 +19,7 @@
   --ink:         #eef2f4;   /* primary text */
   --ink-2:       #cdd6db;   /* secondary text */
   --mute:        #9aa6ad;   /* metadata, captions */
-  --mute-2:      #6a7780;   /* tertiary / disabled */
+  --mute-2:      #84919a;   /* tertiary; still 4.5:1+ on every surface */
 
   --line:        rgba(255,255,255,.06);
   --line-strong: rgba(255,255,255,.12);
@@ -50,17 +50,17 @@
   --ink:         #0f1417;
   --ink-2:       #2a353c;
   --mute:        #5a6770;
-  --mute-2:      #8a949c;
+  --mute-2:      #656f78;   /* 4.5:1+ on white, --bg and --surface-2 */
 
   --line:        rgba(15,20,23,.08);
   --line-strong: rgba(15,20,23,.14);
 
-  --accent:      #15a86a;        /* the mint, deepened so it reads as a button on white */
-  --accent-soft: rgba(21,168,106,.10);
+  --accent:      #0b7a4b;        /* the mint, deepened so white text on it and it on white both pass 4.5:1 */
+  --accent-soft: rgba(11,122,75,.10);
   --on-accent:   #ffffff;
 
-  --ok:          #15a86a;
-  --warn:        #b07a14;
+  --ok:          #0b7a4b;
+  --warn:        #8a5e0c;
   --error-ink:   #a8341c;
   --error-bg:    rgba(168,52,28,.08);
 
@@ -75,10 +75,10 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     --bg:#f6f8f9; --surface:#fff; --surface-2:#eef2f4; --surface-elev:#fff;
-    --ink:#0f1417; --ink-2:#2a353c; --mute:#5a6770; --mute-2:#8a949c;
+    --ink:#0f1417; --ink-2:#2a353c; --mute:#5a6770; --mute-2:#656f78;
     --line:rgba(15,20,23,.08); --line-strong:rgba(15,20,23,.14);
-    --accent:#15a86a; --accent-soft:rgba(21,168,106,.10); --on-accent:#fff;
-    --ok:#15a86a; --warn:#b07a14; --error-ink:#a8341c; --error-bg:rgba(168,52,28,.08);
+    --accent:#0b7a4b; --accent-soft:rgba(11,122,75,.10); --on-accent:#fff;
+    --ok:#0b7a4b; --warn:#8a5e0c; --error-ink:#a8341c; --error-bg:rgba(168,52,28,.08);
     --av-1:#cdd6db; --av-2:#b7c2c9; --av-3:#a3b0b8; --av-4:#8a949c; --av-ring:var(--bg);
     --shadow-card:0 1px 0 rgba(15,20,23,.02), 0 8px 24px -16px rgba(15,20,23,.16);
     --shadow-elev:0 8px 28px -10px rgba(15,20,23,.18);

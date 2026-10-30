@@ -4,7 +4,7 @@ _Status: proposed (31 Oct 2026). Not built. Owner: Callum. Written for the next 
 
 ## Problem
 
-Reading a bill costs a model call (Bedrock, falling back to Gemini) (latency 3–10 s, money per call). The same image can come in more than once:
+Reading a bill costs a Bedrock call (latency 3–10 s, money per call). The same image can come in more than once:
 
 1. **Same person, same photo again** — they backed out of the check screen, the tab died, they picked the photo from the library a second time, or they're re-splitting a receipt they already split.
 2. **Someone else, same bytes** — rare (messaging apps recompress images), but free to handle.
@@ -52,10 +52,6 @@ So the answer to "at which point do we cache?" is: **right after `parser.parse()
 
 It works for the same user, but it's tied to a bill's lifecycle (its owner, its future deletion), it's not keyed by parser version, and it can't serve other users without exposing a `billId`. A separate, ownerless row is simpler to reason about.
 
-### With a fallback parser
-
-`FallbackBillParser` tries Bedrock, then Gemini. The fingerprint must be the parser that actually answered, not the primary. Today `FallbackBillParser` reports the primary's `model` and `version` whatever happened, so fix that first: have `parse()` return which parser answered, and use it for both the cache key and `parsedFrom.parser`. A Gemini read cached under Bedrock's fingerprint would be served as a Bedrock read until the TTL.
-
 ## Data model
 
 New item in the single table:
@@ -64,7 +60,7 @@ New item in the single table:
 pk: ANALYSIS#<sha256>
 sk: P#<parserFingerprint>          e.g. P#eu.anthropic.claude-haiku-4-5:v2:3f9a1c2e
 parsed:        ParsedBillFromImage  (the validated parser output, as-is)
-venue?:        Venue                (resolved Places result, if any)
+venue?:        Venue                (as read off the bill)
 analysedAt:    ISO datetime
 parser, parserVersion, promptHash
 ttlAt:         epoch seconds        (analysedAt + 30 days)
@@ -173,7 +169,7 @@ e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on t
 
 - `apps/api/src/services/bills/uploadService.ts` — early per-user dedup
 - `apps/api/src/services/bills/parseService.ts` — `parse`, `buildBillV1`
-- `apps/api/src/services/bills/parser.ts`, `bedrockParser.ts` (`FallbackBillParser`, `createBillParser`), `geminiParser.ts`, `fixtureParser.ts`
+- `apps/api/src/services/bills/parser.ts`, `bedrockParser.ts` (`createBillParser`), `billPrompt.ts`, `fixtureParser.ts`
 - `apps/api/src/storage/billStore.ts` — `putVersion`, `findByImageHash`, key helpers
 - `apps/api/src/storage/sessionStore.ts` — `getBillLock`, `deleteBillLock`
 - `apps/api/src/services/sessions/sessionService.ts` — `close`, `abandon`

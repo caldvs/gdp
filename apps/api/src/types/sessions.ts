@@ -113,7 +113,7 @@ export const SessionSchema = z.object({
   // Denormalised from the pinned bill at session-create time so the
   // frontend can render a venue strapline without a second round-trip.
   // Optional both because old sessions predate this field and because
-  // not every bill has a venue Gemini could extract.
+  // not every bill has a venue the reader could extract.
   venue: VenueSchema.optional(),
   // Computed at read time from participants' sharedItemIds (ADR-0006).
   // One entry per shared item; userIds is the splitter set. Empty when

@@ -6,8 +6,7 @@ import type { FeeLookupKey } from '../services/billing/tableFee.js';
 
 /**
  * Checks that the deployed Lambda can actually use what it depends on:
- * Stripe keys and prices, Bedrock model access, the Gemini key, the Places
- * key and the SES sender. These are the settings unit tests can't see, and
+ * Stripe keys and prices, Bedrock model access and the SES sender. These are the settings unit tests can't see, and
  * the ones that broke on the first real deploy.
  *
  * Runs inside the Lambda (so with its real env and IAM role) when it is
@@ -50,10 +49,6 @@ type Check = {
 
 const TIMEOUT_MS = 15_000;
 const LOOKUP_KEYS: FeeLookupKey[] = ['table_fee_2', 'table_fee_3'];
-const GEMINI_MODEL = 'gemini-2.5-flash';
-
-const snippet = async (res: Response): Promise<string> =>
-  (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200);
 
 /**
  * Stripe keys must match the environment: test-mode keys everywhere except
@@ -121,45 +116,6 @@ const bedrockCheck: Check = {
   },
 };
 
-const geminiCheck: Check = {
-  name: 'Gemini (fallback reader)',
-  required: false,
-  run: async () => {
-    if (!env.GEMINI_API_KEY) throw skip('GEMINI_API_KEY not set');
-    // Looks the model up rather than generating, so it checks the key
-    // without spending the free tier's daily request quota.
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}`,
-      {
-        headers: { 'x-goog-api-key': env.GEMINI_API_KEY },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await snippet(res)}`);
-    return `key valid for ${GEMINI_MODEL} (daily quota not checked)`;
-  },
-};
-
-const placesCheck: Check = {
-  name: 'Google Places (venue lookup)',
-  required: false,
-  run: async () => {
-    if (!env.GOOGLE_PLACES_API_KEY) throw skip('GOOGLE_PLACES_API_KEY not set');
-    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': env.GOOGLE_PLACES_API_KEY,
-        'x-goog-fieldmask': 'places.id',
-      },
-      body: JSON.stringify({ textQuery: 'Manchester Piccadilly station', maxResultCount: 1 }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await snippet(res)}`);
-    return 'search returned 200';
-  },
-};
-
 const sesCheck: Check = {
   name: 'SES (email)',
   required: true,
@@ -194,13 +150,7 @@ const sesCheck: Check = {
   },
 };
 
-export const CHECKS: readonly Check[] = [
-  stripeCheck,
-  bedrockCheck,
-  geminiCheck,
-  placesCheck,
-  sesCheck,
-];
+export const CHECKS: readonly Check[] = [stripeCheck, bedrockCheck, sesCheck];
 
 const runOne = async (check: Check): Promise<CheckResult> => {
   const start = performance.now();

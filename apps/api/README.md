@@ -24,14 +24,14 @@ tests/          integration tests (real DynamoDB Local and MinIO)
 From the repo root, `npm run dev:local` starts this and the web app. On its own:
 
 ```bash
-cp .env.example .env.local     # then fill in GEMINI_API_KEY at least
+cp .env.example .env.local     # set AWS_PROFILE to a profile that can call Bedrock
 npm run dev                    # docker compose up (DynamoDB Local :8000, MinIO :9000), create table + bucket, watch src/local.ts on :3000
 ```
 
 Locally:
 
 - `POST /v1/auth/email/dev-sign-in` lets you sign in with just an email. It only exists against a local DynamoDB; turn it off with `AUTH_DEV_EMAIL_SIGNIN=false`.
-- Bill reading uses Gemini unless `BEDROCK_MODEL_ID` is set (and you have AWS credentials).
+- Bill reading uses Bedrock with your AWS profile (`AWS_PROFILE`, `BEDROCK_MODEL_ID`). Without them, scans fail with a clear error.
 - Emails go to the console instead of SES.
 - Payments use the `mock` provider by default.
 
@@ -60,11 +60,11 @@ When an alarm fires: [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Deployed config
 
-| Setting     | Dev value                                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------------------------ |
-| Region      | eu-west-2                                                                                                    |
-| Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, Gemini fallback (override with `-c bedrockModelId=…`) |
-| Payments    | `manual`: guests transfer, the lead confirms                                                                 |
-| Email       | SES, from the address in SSM                                                                                 |
-| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                                             |
-| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                                   |
+| Setting     | Dev value                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Region      | eu-west-2                                                                                                                                  |
+| Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, which also reads the venue's name and address (override with `-c bedrockModelId=…`) |
+| Payments    | `manual`: guests transfer, the lead confirms                                                                                               |
+| Email       | SES, from the address in SSM                                                                                                               |
+| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                                                                           |
+| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                                                                 |

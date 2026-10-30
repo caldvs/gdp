@@ -1,78 +1,68 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useSession } from '@gdp/core/api/hooks/useSession';
+import { useBill } from '@gdp/core/api/hooks/useBill';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { SHARED_LINK_TTL_MS } from '@gdp/core/lib/qrPayload';
 import { copyText } from '@/lib/clipboard';
 import { JoinQr, useJoinUrl } from '@/components/JoinQr';
-import { BodyText, Button, CenterSpinner, DisplayText, Mini, Notice } from '@/components/ui';
+import { Back, Backdrop, Btn, Centre, CopyIcon, Fab, Notice, Screen, ShareIcon, Sheet, Spin, Tick, TopBar } from '@/components/glass';
 
+/** "Scan to join": QR, code, copy and share. Nothing else. */
 export default function SharePage() {
   const { id } = useParams<{ id: string }>();
   const session = useSession(id);
+  const bill = useBill(session.data?.billId);
   const payout = usePayoutAccount();
-  // The QR is scanned on the spot, so it keeps the short 10-minute
-  // window; a link that's copied or shared can be opened hours later.
-  const joinUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null);
-  const sharedUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null, SHARED_LINK_TTL_MS);
-  const sharedHours = Math.round(SHARED_LINK_TTL_MS / 3_600_000);
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null);
+  const qrUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null);
+  const linkUrl = useJoinUrl(session.data?.joinCode, payout.data ?? null, SHARED_LINK_TTL_MS);
+  const [copied, setCopied] = useState(false);
 
-  if (session.isPending) return <CenterSpinner />;
-  if (session.isError) return <div className="center"><Notice title="Couldn't load the session." detail={session.error.message} /></div>;
+  if (session.isPending) return <Centre><Spin /></Centre>;
+  if (session.isError) return <Centre><Notice error title="Couldn't load the bill.">{session.error.message}</Notice></Centre>;
   const code = session.data.joinCode;
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
-  const copy = async (what: 'code' | 'link', text: string | null | undefined) => {
-    if (!text) return;
-    if (await copyText(text)) {
-      setCopied(what);
-      setTimeout(() => setCopied(null), 1400);
-    }
+  const copy = async () => {
+    if (!linkUrl) return;
+    if (await copyText(linkUrl)) { setCopied(true); setTimeout(() => setCopied(false), 1400); }
   };
-  const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  const share = () => {
+    if (!linkUrl) return;
+    navigator.share({ title: 'Split the bill', text: 'Tick what you had and pay me back:', url: linkUrl }).catch(() => {});
+  };
 
   return (
-    <div className="screen stack gap-lg" style={{ alignItems: 'center' }}>
-      <div className="stack gap-sm t-center">
-        <DisplayText size="md" as="h2">Pass the table a code.</DisplayText>
-        <BodyText>Have diners point their phone camera at this.</BodyText>
-      </div>
-
-      {!payout.isPending && !payout.data ? (
-        <Link href={`/payout-account?returnTo=${encodeURIComponent(`/session/${id}/share`)}`} className="notice-link">
-          <Notice title="No bank details yet." detail="Diners can join, but they won't see where to pay. Tap to add yours." />
-        </Link>
-      ) : null}
-
-      {!code ? (
-        <Notice title="No join code yet." detail="Give it a moment, then try again." />
-      ) : (
-        <>
-          <JoinQr url={joinUrl} size={240} />
-          <div className="stack gap-xs" style={{ alignItems: 'center' }}>
-            <Mini>or share this code</Mini>
-            <span className="join-code">{code}</span>
+    <Screen>
+      <Backdrop billId={session.data.billId} tone="soft" />
+      <TopBar left={<Fab href={`/session/${id}`} label="Back" icon={<Back />} replace />} />
+      <Sheet
+        title="Scan to join"
+        sub={bill.data?.venue?.name}
+        foot={<Btn href={`/session/${id}`} replace>Done</Btn>}
+      >
+        {!payout.isPending && !payout.data ? (
+          <Notice title="No bank details yet.">Friends can join, but won&apos;t see where to pay.</Notice>
+        ) : null}
+        {!code ? (
+          <Notice>No code yet. Give it a moment.</Notice>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '4px 0' }}>
+            <div className="g-qr"><JoinQr url={qrUrl} size={208} /></div>
+            <div className="g-code">{code}</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button type="button" className="g-fab g-fab--icon" style={{ width: 56, height: 56, borderRadius: 28, background: copied ? 'var(--g-accent)' : undefined, color: copied ? 'var(--g-on-accent)' : undefined }} aria-label={copied ? 'Link copied' : 'Copy link'} onClick={copy}>
+                {copied ? <Tick size={22} /> : <CopyIcon />}
+              </button>
+              {canShare ? (
+                <button type="button" className="g-fab g-fab--icon" style={{ width: 56, height: 56, borderRadius: 28 }} aria-label="Share link" onClick={share}><ShareIcon /></button>
+              ) : null}
+            </div>
           </div>
-          <div className="two-col">
-            <Button variant="ghost" onClick={() => copy('code', code)}>{copied === 'code' ? 'Copied ✓' : 'Copy code'}</Button>
-            <Button variant="ghost" onClick={() => copy('link', sharedUrl)}>{copied === 'link' ? 'Copied ✓' : 'Copy link'}</Button>
-          </div>
-          {canNativeShare && sharedUrl ? (
-            <Button variant="ghost" onClick={() => navigator.share({ title: 'Join the bill', text: 'Pick what you had and pay me back:', url: sharedUrl }).catch(() => {})}>
-              Share…
-            </Button>
-          ) : null}
-          {payout.data ? (
-            <p className="share-note">Copied and shared links include your bank details and work for {sharedHours} hours.</p>
-          ) : null}
-          {joinUrl ? <p className="deep-link">{joinUrl.replace(/^https?:\/\//, '').replace(/#.*$/, '')}</p> : null}
-        </>
-      )}
-
-      <Button href={`/session/${id}`} replace>Done →</Button>
-    </div>
+        )}
+      </Sheet>
+    </Screen>
   );
 }

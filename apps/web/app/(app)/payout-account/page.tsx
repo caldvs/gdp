@@ -1,32 +1,15 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePayoutAccount, useSavePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { isPayoutAccountRemembered } from '@gdp/core/lib/payoutAccount';
+import { cleanHandle } from '@gdp/core/lib/quickPay';
 import { DEMO_MODE, DEMO_PAYOUT } from '@gdp/core/lib/demoMode';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
-import { BodyText, Button, CenterSpinner, DisplayText, Mini, Notice, Spinner } from '@/components/ui';
-
-type FieldKey = 'name' | 'sortCode' | 'accountNumber' | 'monzo' | 'revolut';
+import { Back, Backdrop, Btn, Centre, Fab, Notice, Screen, Sheet, Spin, TopBar } from '@/components/glass';
 
 const digits = (s: string, max: number) => s.replace(/\D/g, '').slice(0, max);
-
-function validateSortCode(raw: string): string | null {
-  const d = digits(raw, 6);
-  if (d.length === 0) return 'Sort code is required.';
-  if (d.length !== 6) return `${6 - d.length} more digit${6 - d.length === 1 ? '' : 's'}.`;
-  return null;
-}
-function validateAccountNumber(raw: string): string | null {
-  const d = digits(raw, 8);
-  if (d.length === 0) return 'Account number is required.';
-  if (d.length !== 8) return `${8 - d.length} more digit${8 - d.length === 1 ? '' : 's'}.`;
-  return null;
-}
-function validateName(raw: string): string | null {
-  return raw.trim() ? null : 'Whose account is this?';
-}
 function formatSort(raw: string): string {
   const d = digits(raw, 6);
   if (d.length <= 2) return d;
@@ -35,244 +18,130 @@ function formatSort(raw: string): string {
 }
 
 export default function PayoutAccountPage() {
-  return (
-    <Suspense fallback={<CenterSpinner />}>
-      <PayoutAccountForm />
-    </Suspense>
-  );
+  return <Suspense fallback={<Centre><Spin /></Centre>}><PayoutForm /></Suspense>;
 }
 
-function PayoutAccountForm() {
+/**
+ * "Where should the money land?" Three fields, optional Monzo/Revolut,
+ * and "Save these for next time". Until accounts exist server-side,
+ * saving means localStorage on this device (see payoutAccount.ts).
+ */
+function PayoutForm() {
   const router = useRouter();
   const returnTo = useSearchParams().get('returnTo');
   const stored = usePayoutAccount();
   const { save, isSaving } = useSavePayoutAccount();
 
-  const [sortCode, setSortCode] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountHolderName, setAccountHolderName] = useState('');
-  const [monzoHandle, setMonzoHandle] = useState('');
-  const [revolutTag, setRevolutTag] = useState('');
-  const [editing, setEditing] = useState<FieldKey | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [sort, setSort] = useState('');
+  const [account, setAccount] = useState('');
+  const [monzo, setMonzo] = useState('');
+  const [revolut, setRevolut] = useState('');
+  const [showHandles, setShowHandles] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [tried, setTried] = useState(false);
-  const [showOptional, setShowOptional] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [remember, setRemember] = useState(false);
 
   useEffect(() => {
     if (hydrated) return;
     if (DEMO_MODE) {
-      setSortCode(DEMO_PAYOUT.sortCode);
-      setAccountNumber(DEMO_PAYOUT.accountNumber);
-      setAccountHolderName(DEMO_PAYOUT.accountHolderName);
-      setHydrated(true);
-      return;
+      setName(DEMO_PAYOUT.accountHolderName); setSort(formatSort(DEMO_PAYOUT.sortCode)); setAccount(DEMO_PAYOUT.accountNumber);
+      setHydrated(true); return;
     }
     if (stored.isPending) return;
     if (stored.data) {
-      const pa = stored.data;
-      setSortCode(pa.sortCode);
-      setAccountNumber(pa.accountNumber);
-      setAccountHolderName(pa.accountHolderName);
-      setMonzoHandle(pa.monzoHandle ?? '');
-      setRevolutTag(pa.revolutTag ?? '');
-      if (pa.monzoHandle || pa.revolutTag) setShowOptional(true);
+      setName(stored.data.accountHolderName); setSort(formatSort(stored.data.sortCode)); setAccount(stored.data.accountNumber);
+      setMonzo(stored.data.monzoHandle ?? ''); setRevolut(stored.data.revolutTag ?? '');
+      if (stored.data.monzoHandle || stored.data.revolutTag) setShowHandles(true);
       setRemember(isPayoutAccountRemembered());
-    } else {
-      setEditing('name');
     }
     setHydrated(true);
   }, [hydrated, stored.isPending, stored.data]);
 
-  const nameError = tried ? validateName(accountHolderName) : null;
-  const sortError = tried ? validateSortCode(sortCode) : null;
-  const accountError = tried ? validateAccountNumber(accountNumber) : null;
-  const ready = !nameError && !sortError && !accountError;
+  const nameErr = tried && !name.trim() ? 'Whose account is this?' : null;
+  const sortErr = tried && digits(sort, 6).length !== 6 ? 'Six digits' : null;
+  const accErr = tried && digits(account, 8).length !== 8 ? 'Eight digits' : null;
 
   const onSave = async () => {
-    setSubmitError(null);
     setTried(true);
-    if (validateName(accountHolderName) || validateSortCode(sortCode) || validateAccountNumber(accountNumber)) {
-      // Open the first broken field so the fix is one tap away.
-      setEditing(validateName(accountHolderName) ? 'name' : validateSortCode(sortCode) ? 'sortCode' : 'accountNumber');
-      return;
-    }
+    setSubmitError(null);
+    if (!name.trim() || digits(sort, 6).length !== 6 || digits(account, 8).length !== 8) return;
     try {
       await save({
-        sortCode: digits(sortCode, 6),
-        accountNumber: digits(accountNumber, 8),
-        accountHolderName: accountHolderName.trim(),
-        ...(monzoHandle.trim() ? { monzoHandle: monzoHandle.trim() } : {}),
-        ...(revolutTag.trim() ? { revolutTag: revolutTag.trim() } : {}),
+        sortCode: digits(sort, 6),
+        accountNumber: digits(account, 8),
+        accountHolderName: name.trim(),
+        ...(cleanHandle(monzo) ? { monzoHandle: cleanHandle(monzo) } : {}),
+        ...(cleanHandle(revolut) ? { revolutTag: cleanHandle(revolut) } : {}),
       }, { remember });
       if (returnTo) router.replace(safeInternalPath(returnTo));
-      else if (window.history.length > 1) router.back();
       else router.replace('/');
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Could not save details.');
+      setSubmitError(err instanceof Error ? err.message : "Couldn't save.");
     }
   };
 
-  if (stored.isPending && !hydrated) return <CenterSpinner />;
-
-  const toggle = (k: FieldKey) => { if (!DEMO_MODE) setEditing(editing === k ? null : k); };
+  if (stored.isPending && !hydrated) return <Centre><Spin /></Centre>;
+  const field = (err: string | null) => ({ className: 'g-input', style: { height: 50, borderColor: err ? 'rgba(255,138,128,0.6)' : undefined } });
 
   return (
-    <>
-      <form className="screen screen--sticky stack" onSubmit={(e) => { e.preventDefault(); void onSave(); }}>
-        <Mini>your payout</Mini>
-        <DisplayText size="md" as="h2" className="mt-xs">Where should the money land?</DisplayText>
-        <BodyText className="mt-sm">Diners pay you direct. Your details reach them inside the QR code — they never touch our servers.</BodyText>
-        <Mini className="mt-sm">
-          {remember ? 'kept in this browser · never on our servers' : 'kept in this browser tab · cleared when you close it'}
-        </Mini>
-
-        {DEMO_MODE ? (
-          <Notice
-            className="mt-base"
-            title="Pre-filled for you"
-            detail="These are the demo's stand-in bank details — what the QR will encode for your guests. The fields are read-only here so you can focus on the rest of the flow."
-          />
-        ) : null}
-
-        <div className="pa-fields mt-lg">
-          <CollapsedRow label="account name" value={accountHolderName} placeholder="tap to add" error={nameError}
-            open={!DEMO_MODE && editing === 'name'} onToggle={() => toggle('name')} locked={DEMO_MODE}>
-            <EditField value={accountHolderName} onChange={setAccountHolderName} placeholder="e.g. Alice Cooper"
-              autoComplete="name" autoCapitalize="words" onDone={() => setEditing(null)} />
-          </CollapsedRow>
-          <CollapsedRow label="sort code" value={formatSort(sortCode)} placeholder="6 digits" error={sortError}
-            open={!DEMO_MODE && editing === 'sortCode'} onToggle={() => toggle('sortCode')} locked={DEMO_MODE}>
-            <EditField value={formatSort(sortCode)} onChange={(v) => setSortCode(formatSort(v))} placeholder="04-06-68"
-              inputMode="numeric" maxLength={8} onDone={() => setEditing(null)} />
-          </CollapsedRow>
-          <CollapsedRow label="account number" value={accountNumber} placeholder="8 digits" error={accountError}
-            open={!DEMO_MODE && editing === 'accountNumber'} onToggle={() => toggle('accountNumber')} locked={DEMO_MODE}>
-            <EditField value={accountNumber} onChange={(v) => setAccountNumber(digits(v, 8))} placeholder="00079660"
-              inputMode="numeric" maxLength={8} onDone={() => setEditing(null)} />
-          </CollapsedRow>
-        </div>
-
-        {DEMO_MODE ? null : !showOptional ? (
-          <button type="button" className="optional-toggle mt-base" onClick={() => setShowOptional(true)}>
-            <span className="optional-toggle__t">+ Add a Monzo or Revolut handle</span>
-            <Mini>optional · pay you in one tap</Mini>
-          </button>
-        ) : (
-          <div className="pa-fields mt-base">
-            <Mini className="mt-xs">faster pay · optional</Mini>
-            <CollapsedRow label="monzo handle" value={monzoHandle ? `monzo.me/${monzoHandle}` : ''} placeholder="tap to add"
-              open={editing === 'monzo'} onToggle={() => toggle('monzo')}>
-              <EditField value={monzoHandle} onChange={setMonzoHandle} placeholder="callum.davies" prefix="monzo.me/"
-                autoCapitalize="none" onDone={() => setEditing(null)}
-                hint={<FindHint steps={[
-                  'Open Monzo and tap your profile picture (top-left).',
-                  "Tap 'Get paid' or 'Share your account'.",
-                  "Copy the part after monzo.me/ — that's your handle.",
-                ]} />} />
-            </CollapsedRow>
-            <CollapsedRow label="revolut tag" value={revolutTag ? `revolut.me/${revolutTag}` : ''} placeholder="tap to add"
-              open={editing === 'revolut'} onToggle={() => toggle('revolut')}>
-              <EditField value={revolutTag} onChange={setRevolutTag} placeholder="callumd" prefix="revolut.me/"
-                autoCapitalize="none" onDone={() => setEditing(null)}
-                hint={<FindHint steps={[
-                  'Open Revolut and tap your profile picture (top-left).',
-                  "Your @username is shown under your name — that's your Revtag.",
-                  'Drop it in here without the @.',
-                ]} />} />
-            </CollapsedRow>
+    <Screen>
+      <Backdrop tone="deep" />
+      <TopBar left={<Fab href={returnTo ? safeInternalPath(returnTo) : '/'} label="Back" icon={<Back />} replace />} />
+      <Sheet
+        title="Where should the money land?"
+        sub="Friends get these in the QR. We never see them."
+        foot={<Btn type="submit" form="payout" busy={isSaving}>{returnTo ? 'Save and share the bill' : 'Save'}</Btn>}
+      >
+        <form id="payout" onSubmit={(e) => { e.preventDefault(); void onSave(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="g-field">
+            <label htmlFor="n" className="g-label" style={{ padding: 0 }}>Name on the account</label>
+            <input id="n" {...field(nameErr)} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoCapitalize="words" disabled={DEMO_MODE} autoFocus={!name} />
+            {nameErr ? <div className="g-error">{nameErr}</div> : null}
           </div>
-        )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <div className="g-field" style={{ flex: 1 }}>
+              <label htmlFor="s" className="g-label" style={{ padding: 0 }}>Sort code</label>
+              <input id="s" {...field(sortErr)} value={sort} onChange={(e) => setSort(formatSort(e.target.value))} inputMode="numeric" placeholder="00-00-00" maxLength={8} disabled={DEMO_MODE} />
+              {sortErr ? <div className="g-error">{sortErr}</div> : null}
+            </div>
+            <div className="g-field" style={{ flex: 1.4 }}>
+              <label htmlFor="a" className="g-label" style={{ padding: 0 }}>Account number</label>
+              <input id="a" {...field(accErr)} value={account} onChange={(e) => setAccount(digits(e.target.value, 8))} inputMode="numeric" placeholder="00000000" maxLength={8} disabled={DEMO_MODE} />
+              {accErr ? <div className="g-error">{accErr}</div> : null}
+            </div>
+          </div>
 
-        {DEMO_MODE ? null : (
-          <label className="remember mt-lg">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <span>
-              <span className="remember__t">Remember on this device</span>
-              <span className="remember__d">So you don&apos;t type them for every bill. They stay in this browser only. Leave it off on a shared device.</span>
-            </span>
-          </label>
-        )}
+          {DEMO_MODE ? null : !showHandles ? (
+            <button type="button" className="g-btn g-btn--sm" style={{ background: 'none', border: '1px dashed rgba(255,255,255,0.25)', color: 'var(--g-ink-2)' }} onClick={() => setShowHandles(true)}>
+              + Monzo or Revolut for one-tap pay
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div className="g-field" style={{ flex: 1 }}>
+                <label htmlFor="m" className="g-label" style={{ padding: 0 }}>monzo.me/</label>
+                <input id="m" className="g-input" style={{ height: 50 }} value={monzo} onChange={(e) => setMonzo(e.target.value)} placeholder="handle" autoCapitalize="none" autoCorrect="off" />
+              </div>
+              <div className="g-field" style={{ flex: 1 }}>
+                <label htmlFor="r" className="g-label" style={{ padding: 0 }}>revolut.me/</label>
+                <input id="r" className="g-input" style={{ height: 50 }} value={revolut} onChange={(e) => setRevolut(e.target.value)} placeholder="tag" autoCapitalize="none" autoCorrect="off" />
+              </div>
+            </div>
+          )}
 
-        {submitError ? <Notice className="mt-base" title="Couldn't save." detail={submitError} /> : null}
-        {/* hidden submit so Enter in any field saves */}
-        <button type="submit" hidden aria-hidden tabIndex={-1} />
-      </form>
-      <div className="sticky-bar">
-        <div className="sticky-bar__inner">
-          <Button size="lg" disabled={isSaving || (!ready && tried)} onClick={() => void onSave()}>
-            {isSaving ? <Spinner /> : 'Save details →'}
-          </Button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function CollapsedRow({ label, value, placeholder, error, open, onToggle, children, locked }: {
-  label: string; value: string; placeholder: string; error?: string | null; open: boolean; onToggle: () => void; children: ReactNode; locked?: boolean;
-}) {
-  return (
-    <div className={open ? 'pa-row pa-row--open' : 'pa-row'}>
-      <button type="button" className="pa-row__head" onClick={onToggle} disabled={locked} aria-expanded={open}>
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <span className="gdp-mini" style={{ display: 'block' }}>{label}</span>
-          {!open ? <span className={value ? 'pa-row__value' : 'pa-row__value pa-row__value--placeholder'} style={{ display: 'block' }}>{value || placeholder}</span> : null}
-          {!open && error ? <span className="pa-row__error" style={{ display: 'block' }}>{error}</span> : null}
-        </span>
-        {locked ? null : <span className={open ? 'pa-row__chev pa-row__chev--open' : 'pa-row__chev'} aria-hidden>{open ? '−' : '+'}</span>}
-      </button>
-      {open ? <div className="pa-edit">{children}</div> : null}
-    </div>
-  );
-}
-
-function EditField({ value, onChange, onDone, placeholder, inputMode, maxLength, autoCapitalize, autoComplete, prefix, hint }: {
-  value: string; onChange: (v: string) => void; onDone: () => void; placeholder?: string;
-  inputMode?: 'numeric' | 'text'; maxLength?: number; autoCapitalize?: string; autoComplete?: string; prefix?: string; hint?: ReactNode;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { const t = setTimeout(() => ref.current?.focus(), 50); return () => clearTimeout(t); }, []);
-  const onPaste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) onChange(text.trim());
-    } catch {
-      ref.current?.focus();
-    }
-  };
-  return (
-    <>
-      <div className="pa-input">
-        {prefix ? <span className="pa-input__prefix">{prefix}</span> : null}
-        <input
-          ref={ref}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          inputMode={inputMode}
-          maxLength={maxLength}
-          autoCapitalize={autoCapitalize}
-          autoComplete={autoComplete ?? 'off'}
-          autoCorrect="off"
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onDone(); } }}
-        />
-        <button type="button" className="pa-paste" onClick={onPaste} aria-label="Paste from clipboard">paste</button>
-      </div>
-      {hint ? <div className="hint-box">{hint}</div> : null}
-      <button type="button" className="pa-done" onClick={onDone}>done</button>
-    </>
-  );
-}
-
-function FindHint({ steps }: { steps: string[] }) {
-  return (
-    <div>
-      <Mini style={{ marginBottom: 4 }}>where to find it</Mini>
-      {steps.map((s, i) => (
-        <p key={i} className="hint-step"><b>{i + 1}. </b>{s}</p>
-      ))}
-    </div>
+          {DEMO_MODE ? null : (
+            <label className="g-checkbox" style={{ background: remember ? 'rgba(61,220,151,0.1)' : undefined, border: `1px solid ${remember ? 'rgba(61,220,151,0.25)' : 'transparent'}` }}>
+              <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+              <span>
+                <span className="g-checkbox__t">Save these for next time</span>
+                <span className="g-checkbox__d">Kept on this phone. Leave it off on a shared device.</span>
+              </span>
+            </label>
+          )}
+          {submitError ? <Notice error>{submitError}</Notice> : null}
+        </form>
+      </Sheet>
+    </Screen>
   );
 }

@@ -7,7 +7,7 @@ _Last updated 1 Nov 2026._
 ## State of main
 
 - **The app** is the Option D web UI. The whole flow is built: scan → check the bill → bank details → table fee (when Stripe is configured) → QR → guests claim and split → pay the lead → lead closes → everyone's emailed a report. See the [README](README.md) and [decisions](docs/decisions.md).
-- **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback.
+- **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback. A read has 22s in all (`PARSE_BUDGET_MS`, under API Gateway's 30s): Bedrock gets 12s, Gemini what's left, and running out answers 504 `PARSE_TIMEOUT`. When a read fails the photo stays on screen with *Try again* and *New photo*.
 - **Loading screens:** reading a bill shows the photo as a thumbnail beside the title and grey bill rows (`BillSkeleton` in `ui.tsx`), which Review bill also shows while it loads. After the table fee is paid, two stages tick off: payment, then QR code (`Steps` in `ui.tsx`).
 - **The dev API deploys** from `main` through GitHub Actions (OIDC). Dev and prod share one AWS account. Each has its own deploy role, trusted only by jobs in its GitHub environment; the dev job redeploys both role stacks. There's no staging; prod (`GdpBackendProd`) is defined but not deployed (setup steps in [docs/deploy.md](docs/deploy.md)). TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests and CI:** one workflow, `.github/workflows/ci.yml`, runs on every PR and push to main and ends in a single `gate` check. Unit, integration and the Playwright e2e suite (against `FakeApi`) all run in it. Visual baselines are CI's.

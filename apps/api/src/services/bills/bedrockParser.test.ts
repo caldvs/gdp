@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { AppError } from '../../errors/AppError.js';
 import { FallbackBillParser, createBillParser } from './bedrockParser.js';
 import { validateParsedBill } from './geminiParser.js';
-import type { BillParser, ParsedBillFromImage } from './parser.js';
+import {
+  parseTimeout,
+  withDeadline,
+  type BillParser,
+  type ParseOptions,
+  type ParsedBillFromImage,
+} from './parser.js';
 
 const bill: ParsedBillFromImage = {
   items: [{ name: 'Pizza', unitPricePence: 1200, quantity: 1, category: 'food' }],
@@ -66,6 +72,70 @@ describe('FallbackBillParser', () => {
       code: 'PARSE_LOW_CONFIDENCE',
     });
     expect(b.calls).toBe(0);
+  });
+});
+
+describe('FallbackBillParser time budget', () => {
+  /** A parser that never answers, and fails with a timeout when its signal aborts. */
+  const hangs = (model: string): BillParser & { signals: (AbortSignal | undefined)[] } => {
+    const p = {
+      model,
+      version: 'v1',
+      signals: [] as (AbortSignal | undefined)[],
+      parse: (_image: Uint8Array, _id: string, opts?: ParseOptions) => {
+        p.signals.push(opts?.signal);
+        return new Promise<never>((_, reject) => {
+          opts?.signal?.addEventListener('abort', () => reject(parseTimeout(model)));
+        });
+      },
+    };
+    return p;
+  };
+  const clock = (t: number) => ({ primaryMs: 20, minFallbackMs: 4_000, now: () => t });
+
+  it('gives up on a slow primary and lets the fallback read it', async () => {
+    const a = hangs('bedrock');
+    const b = parser('gemini', bill);
+    const outer = withDeadline(60_000, 0);
+    await expect(
+      new FallbackBillParser(a, b, clock(1_000)).parse(new Uint8Array(), 'r', { signal: outer }),
+    ).resolves.toMatchObject({ readBy: { model: 'gemini' } });
+    expect(b.calls).toBe(1);
+  });
+
+  it('skips the fallback when too little time is left', async () => {
+    const a = parser('bedrock', new AppError('PARSE_FAILED', 'Bedrock: ThrottlingException'));
+    const b = parser('gemini', bill);
+    // Deadline at 10s, and it's already 7s: 3s left is under the 4s minimum.
+    const outer = withDeadline(10_000, 0);
+    await expect(
+      new FallbackBillParser(a, b, clock(7_000)).parse(new Uint8Array(), 'r', { signal: outer }),
+    ).rejects.toMatchObject({ code: 'PARSE_TIMEOUT' });
+    expect(b.calls).toBe(0);
+  });
+
+  it('fails as a timeout, without a fallback, once the whole budget is spent', async () => {
+    const a = parser('bedrock', new AppError('PARSE_FAILED', 'aborted'));
+    const b = parser('gemini', bill);
+    const outer = AbortSignal.abort();
+    await expect(
+      new FallbackBillParser(a, b).parse(new Uint8Array(), 'r', { signal: outer }),
+    ).rejects.toMatchObject({ code: 'PARSE_TIMEOUT' });
+    expect(b.calls).toBe(0);
+  });
+
+  it("passes the caller's deadline to the fallback", async () => {
+    const a = parser('bedrock', new AppError('PARSE_FAILED', 'down'));
+    const b = hangs('gemini');
+    const outer = withDeadline(30, Date.now());
+    await expect(
+      new FallbackBillParser(a, b, { primaryMs: 20, minFallbackMs: 0, now: Date.now }).parse(
+        new Uint8Array(),
+        'r',
+        { signal: outer },
+      ),
+    ).rejects.toMatchObject({ code: 'PARSE_TIMEOUT' });
+    expect(b.signals[0]).toBe(outer);
   });
 });
 

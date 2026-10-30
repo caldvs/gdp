@@ -334,6 +334,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '504':
+          description: Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/bills/{billId}:
     parameters:
@@ -1240,6 +1245,7 @@ components:
                 - SHARE_CONFLICT
                 - PARSE_FAILED
                 - PARSE_LOW_CONFIDENCE
+                - PARSE_TIMEOUT
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
                 - PAYOUT_ACCOUNT_REQUIRED

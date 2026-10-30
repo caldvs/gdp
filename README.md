@@ -26,17 +26,23 @@ npm install
 npm run dev            # web app on http://localhost:8081, talking to the deployed dev API
 ```
 
-To run against a local backend instead:
+To run everything locally (needs Docker running):
 
 ```bash
-cp apps/api/.env.example apps/api/.env      # first time only; fill in secrets
-npm run dev:api                             # DynamoDB Local + MinIO in Docker, API on :3000
+npm run dev:api                                                # terminal 1: API on :3000
 echo 'NEXT_PUBLIC_API_BASE_URL=http://localhost:3000' > apps/web/.env.local
-npm run dev
+npm run dev                                                    # terminal 2: web on :8081
 ```
 
-With a localhost API the sign-in screen shows dev shortcuts (alice / bob / …); start the API with
-`AUTH_BYPASS_LOCAL=true` for those to work. Other web settings are listed in `apps/web/.env.example`.
+Locally, sign-in skips the emailed code: type any email and you're in. The same email always gets
+the same account (with its bills and sessions); a new email is a new user. The web app remembers the
+last email and signs you straight back in; *Sign out* in the menu lets you switch accounts, and the
+alice / bob / charlie / diana buttons are one-tap test accounts. The local DynamoDB and S3 data are
+kept in Docker volumes between restarts (`docker compose down -v` in `apps/api` wipes them).
+
+`npm run dev:api` reads `apps/api/.env` and `apps/api/.env.local` (put `GEMINI_API_KEY` there so
+bill scanning works). Dev sign-in only exists on the local server — never in the Lambda — and can be
+turned off with `AUTH_DEV_EMAIL_SIGNIN=false`. Other web settings are listed in `apps/web/.env.example`.
 
 ## Common commands
 

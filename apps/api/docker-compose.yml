@@ -4,7 +4,12 @@ services:
     container_name: gdp-ddb-local
     ports:
       - '8000:8000'
-    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
+    # Persisted to a named volume so local users, bills and sessions
+    # survive restarts. `docker compose down -v` wipes them.
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-dbPath', '/home/dynamodblocal/data']
+    user: root
+    volumes:
+      - ddb-data:/home/dynamodblocal/data
 
   s3:
     image: minio/minio:latest
@@ -19,3 +24,9 @@ services:
       # Permissive in dev only.
       - MINIO_API_CORS_ALLOW_ORIGIN=*
     command: ['server', '/data', '--address', ':9000', '--console-address', ':9001']
+    volumes:
+      - s3-data:/data
+
+volumes:
+  ddb-data:
+  s3-data:

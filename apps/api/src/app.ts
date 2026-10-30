@@ -32,6 +32,8 @@ export interface AppDeps {
   emailSender?: EmailSender;
   /** Override the JWT secret for tests (use a deterministic value). */
   sessionJwtSecret?: Uint8Array;
+  /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
+  devEmailSignIn?: boolean;
   /**
    * Pass a concrete provider for tests. Pass `null` to force manual mode.
    * Omit to fall back to env-driven default.
@@ -118,7 +120,14 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   app.route('/', opsRoutes);
   app.route('/', docsRoutes);
   if (sessionJwtSecret) {
-    app.route('/v1/auth', buildAuthRoutes({ emailSender, jwtSecret: sessionJwtSecret }));
+    app.route(
+      '/v1/auth',
+      buildAuthRoutes({
+        emailSender,
+        jwtSecret: sessionJwtSecret,
+        devEmailSignIn: deps.devEmailSignIn === true,
+      }),
+    );
   }
   app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
   app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver }));

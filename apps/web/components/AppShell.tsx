@@ -10,6 +10,7 @@ import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { useScreenTitleOverride } from '@/lib/screen';
 import { stashJoinFragment } from '@/lib/joinFragment';
+import { DEV_SIGNED_OUT_KEY } from '@/lib/config';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { Avatar } from './Avatar';
 import { Button, CenterSpinner, Notice, Spinner } from './ui';
@@ -187,6 +188,9 @@ function AppMenu({ onClose }: { onClose: () => void }) {
           onClick={async () => {
             onClose();
             await signOut();
+            // Local dev auto-signs in as the last account; don't immediately
+            // undo an explicit sign-out.
+            try { window.sessionStorage.setItem(DEV_SIGNED_OUT_KEY, '1'); } catch {}
             router.replace('/sign-in');
           }}
         >

@@ -1,16 +1,25 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { localStubVerifier } from './services/authStub.js';
+import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
+
+// Local development server. Never used by the Lambda (src/lambda.ts).
 
 const port = Number(process.env.PORT ?? 3000);
+const isProduction = process.env.NODE_ENV === 'production';
+const hasLocalDb = !!process.env.DYNAMODB_ENDPOINT;
+
 const bypass = process.env.AUTH_BYPASS_LOCAL === 'true';
+// Sign in with just an email (no code) — on by default for the local
+// stack, off with AUTH_DEV_EMAIL_SIGNIN=false.
+const devEmailSignIn = process.env.AUTH_DEV_EMAIL_SIGNIN !== 'false' && hasLocalDb && !isProduction;
 
 if (bypass) {
-  if (process.env.NODE_ENV === 'production') {
+  if (isProduction) {
     console.error('REFUSING TO START: AUTH_BYPASS_LOCAL=true with NODE_ENV=production is unsafe.');
     process.exit(1);
   }
-  if (!process.env.DYNAMODB_ENDPOINT) {
+  if (!hasLocalDb) {
     console.error(
       'REFUSING TO START: AUTH_BYPASS_LOCAL=true requires DYNAMODB_ENDPOINT (must be a local stack).',
     );
@@ -22,11 +31,38 @@ if (bypass) {
   );
 }
 
-const app = bypass ? createApp({ idTokenVerifier: localStubVerifier }) : createApp();
+// Session JWTs need a secret. Locally, fall back to a fixed dev-only one
+// so sign-ins survive restarts without any setup.
+const jwtSecretText =
+  process.env.SESSION_JWT_SECRET ??
+  (hasLocalDb && !isProduction ? 'local-dev-only-session-secret-not-for-prod' : undefined);
+const sessionJwtSecret = jwtSecretText ? new TextEncoder().encode(jwtSecretText) : undefined;
+const sessionVerifier = sessionJwtSecret ? createSessionTokenVerifier(sessionJwtSecret) : undefined;
+
+// With the bypass on, accept both `dev:<userId>` shortcut tokens and real
+// session tokens (from email sign-in).
+const idTokenVerifier: IdTokenVerifier | undefined =
+  bypass && sessionVerifier
+    ? (token) => (token.startsWith('dev:') ? localStubVerifier(token) : sessionVerifier(token))
+    : bypass
+      ? localStubVerifier
+      : sessionVerifier;
+
+if (devEmailSignIn) {
+  console.warn(
+    '⚠ Dev email sign-in on — POST /v1/auth/email/dev-sign-in signs in any email without a code.',
+  );
+}
+
+const app = createApp({
+  ...(idTokenVerifier ? { idTokenVerifier } : {}),
+  ...(sessionJwtSecret ? { sessionJwtSecret } : {}),
+  devEmailSignIn,
+});
 
 serve({ fetch: app.fetch, port }, (info) => {
   // eslint-disable-next-line no-console
   console.log(
-    `gdp-backend listening on http://localhost:${info.port}${bypass ? ' (auth-bypass)' : ''}`,
+    `gdp-backend listening on http://localhost:${info.port}${bypass ? ' (auth-bypass)' : ''}${devEmailSignIn ? ' (dev email sign-in)' : ''}`,
   );
 });

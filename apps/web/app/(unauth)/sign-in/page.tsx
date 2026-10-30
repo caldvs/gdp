@@ -3,16 +3,15 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@gdp/core/api';
-import { storeToken } from '@gdp/core/api/auth';
-import { useStartEmailOtp, useVerifyEmailOtp } from '@gdp/core/api/hooks/useEmailOtp';
+import { useDevEmailSignIn, useStartEmailOtp, useVerifyEmailOtp } from '@gdp/core/api/hooks/useEmailOtp';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
-import { DEV_SIGNIN_ENABLED } from '@/lib/config';
+import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { BodyText, Button, DisplayText, LinkButton, Mini, Spinner, TextField } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'AWAITING_CODE';
 const DEV_PRESETS = ['alice', 'bob', 'charlie', 'diana'];
+const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
 
 export default function SignInPage() {
@@ -34,6 +33,13 @@ export default function SignInPage() {
   );
 }
 
+function rememberDevEmail(email: string) {
+  try {
+    window.localStorage.setItem(LAST_EMAIL_KEY, email);
+    window.sessionStorage.removeItem(DEV_SIGNED_OUT_KEY);
+  } catch {}
+}
+
 function useDestination() {
   return safeInternalPath(useSearchParams().get('from'));
 }
@@ -48,6 +54,31 @@ function EmailOtpFlow() {
   const [resendCountdown, setResendCountdown] = useState(0);
   const startOtp = useStartEmailOtp();
   const verifyOtp = useVerifyEmailOtp();
+  const devSignIn = useDevEmailSignIn();
+  // Local dev: no code step, as long as the local API offers it.
+  const [devAvailable, setDevAvailable] = useState(DEV_SIGNIN_ENABLED);
+
+  // Local dev: sign straight back in as the last email used, unless the
+  // user just signed out in this tab (then let them pick an account).
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (!DEV_SIGNIN_ENABLED || autoTried.current) return;
+    autoTried.current = true;
+    let last: string | null = null;
+    let signedOut = false;
+    try {
+      last = window.localStorage.getItem(LAST_EMAIL_KEY);
+      signedOut = window.sessionStorage.getItem(DEV_SIGNED_OUT_KEY) === '1';
+    } catch {}
+    if (!last) return;
+    setEmail(last);
+    if (signedOut) return;
+    devSignIn.mutate(
+      { email: last },
+      { onSuccess: () => router.replace(dest), onError: () => setDevAvailable(false) },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -63,6 +94,21 @@ function EmailOtpFlow() {
       return;
     }
     setEmail(trimmed);
+    if (devAvailable) {
+      try {
+        await devSignIn.mutateAsync({ email: trimmed });
+        rememberDevEmail(trimmed);
+        router.replace(dest);
+        return;
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 404)) {
+          setEmailError("Couldn't sign in. Is the local API running?");
+          return;
+        }
+        // This API doesn't offer dev sign-in — use the normal code flow.
+        setDevAvailable(false);
+      }
+    }
     try {
       await startOtp.mutateAsync({ email: trimmed });
       setStage('AWAITING_CODE');
@@ -101,6 +147,8 @@ function EmailOtpFlow() {
     }
   };
 
+  const busy = startOtp.isPending || devSignIn.isPending;
+
   if (stage === 'EMAIL') {
     return (
       <form className="form-card" onSubmit={(e) => { e.preventDefault(); void handleStart(); }} noValidate>
@@ -114,11 +162,15 @@ function EmailOtpFlow() {
           autoComplete="email"
           autoCorrect="off"
           autoFocus
-          disabled={startOtp.isPending}
+          disabled={busy}
           error={emailError}
         />
-        <Button type="submit" disabled={startOtp.isPending}>{startOtp.isPending ? <Spinner /> : 'Email me a code →'}</Button>
-        <Mini className="t-center">we&apos;ll send a 6-digit code · no password</Mini>
+        <Button type="submit" disabled={busy}>
+          {busy ? <Spinner /> : devAvailable ? 'Continue →' : 'Email me a code →'}
+        </Button>
+        <Mini className="t-center">
+          {devAvailable ? 'local dev · no code needed · same email, same account' : "we'll send a 6-digit code · no password"}
+        </Mini>
       </form>
     );
   }
@@ -181,37 +233,35 @@ function CodeStage({ email, code, onCodeChange, onSubmit, onResend, onUseDiffere
   );
 }
 
+// Local dev shortcuts: one tap signs in as <name>@dev.local through the
+// same dev email sign-in, so each is a real, returning account.
 function DevSignIn() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const dest = useDestination();
-  const [custom, setCustom] = useState('');
-  const [busy, setBusy] = useState(false);
-  const signInAs = async (userId: string) => {
-    const trimmed = userId.trim();
-    if (!trimmed) return;
-    setBusy(true);
+  const devSignIn = useDevEmailSignIn();
+  const [error, setError] = useState<string | null>(null);
+  const signInAs = async (name: string) => {
+    setError(null);
+    const email = `${name}@dev.local`;
     try {
-      await storeToken(`dev:${trimmed}`);
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
+      await devSignIn.mutateAsync({ email });
+      rememberDevEmail(email);
       router.replace(dest);
-    } finally {
-      setBusy(false);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 404
+        ? 'This API has dev sign-in turned off.'
+        : "Couldn't sign in. Is the local API running?");
     }
   };
   return (
     <div className="dev-box">
-      <Mini>dev sign-in</Mini>
-      <p className="gdp-body" style={{ fontSize: 13 }}>Skips email OTP. Backend must run with AUTH_BYPASS_LOCAL=true.</p>
+      <Mini>dev accounts</Mini>
       <div className="dev-presets">
         {DEV_PRESETS.map((u) => (
-          <button key={u} type="button" disabled={busy} onClick={() => signInAs(u)}>{u}</button>
+          <button key={u} type="button" disabled={devSignIn.isPending} onClick={() => signInAs(u)}>{u}</button>
         ))}
       </div>
-      <form className="dev-row" onSubmit={(e) => { e.preventDefault(); void signInAs(custom); }}>
-        <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="custom user id" autoCapitalize="none" disabled={busy} />
-        <button type="submit" className="dev-go" disabled={busy || !custom.trim()}>Go</button>
-      </form>
+      {error ? <p className="gdp-body" style={{ fontSize: 13, color: 'var(--error-ink)' }}>{error}</p> : null}
     </div>
   );
 }

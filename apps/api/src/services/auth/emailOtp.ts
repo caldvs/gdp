@@ -101,31 +101,53 @@ export const createEmailOtpService = (deps: EmailOtpServiceDeps) => ({
 
     // Code matched; consume the OTP so it can't be reused.
     await otpStore.invalidate(email);
+    const result = await signInByEmail(email, deps.jwtSecret);
+    deps.logger?.info(
+      { event: 'otp.verify.ok', userId: result.user.userId, email },
+      'OTP verified',
+    );
+    return result;
+  },
 
-    const existing = await authIdentityStore.getByEmail(email);
-    let userId: string;
-    let displayName: string;
-    if (existing) {
-      userId = existing.userId;
-      const user = await userStore.get(userId);
-      displayName = user?.displayName ?? defaultDisplayName(email);
-    } else {
-      userId = uuidv7();
-      displayName = defaultDisplayName(email);
-      const now = new Date().toISOString();
-      await authIdentityStore.putByEmail({ email, userId, createdAt: now });
-      await userStore.putProfile({
-        userId,
-        email,
-        displayName,
-      });
+  /**
+   * LOCAL DEVELOPMENT ONLY — sign in by email with no code. Same account
+   * resolution as `verify`: a known email gets its existing user (and so
+   * its bills and sessions); a new email gets a new user. Only reachable
+   * when the local server registers the dev route (see src/local.ts).
+   */
+  async devSignIn(input: { email: string }): Promise<VerifyOtpResult> {
+    if (!isValidEmail(input.email)) {
+      throw new AppError('INVALID_INPUT', 'Email is not in a valid shape');
     }
-
-    const token = await mintSessionToken({ userId, email, name: displayName }, deps.jwtSecret);
-    deps.logger?.info({ event: 'otp.verify.ok', userId, email }, 'OTP verified');
-    return { token, user: { userId, email, displayName } };
+    const email = input.email.trim().toLowerCase();
+    const result = await signInByEmail(email, deps.jwtSecret);
+    deps.logger?.warn(
+      { event: 'auth.dev_sign_in', userId: result.user.userId, email },
+      'Dev sign-in (no code)',
+    );
+    return result;
   },
 });
+
+/** Look up (or create) the user for this email and mint a session JWT. */
+async function signInByEmail(email: string, jwtSecret: Uint8Array): Promise<VerifyOtpResult> {
+  const existing = await authIdentityStore.getByEmail(email);
+  let userId: string;
+  let displayName: string;
+  if (existing) {
+    userId = existing.userId;
+    const user = await userStore.get(userId);
+    displayName = user?.displayName ?? defaultDisplayName(email);
+  } else {
+    userId = uuidv7();
+    displayName = defaultDisplayName(email);
+    const now = new Date().toISOString();
+    await authIdentityStore.putByEmail({ email, userId, createdAt: now });
+    await userStore.putProfile({ userId, email, displayName });
+  }
+  const token = await mintSessionToken({ userId, email, name: displayName }, jwtSecret);
+  return { token, user: { userId, email, displayName } };
+}
 
 const defaultCode = (): string => {
   // randomInt is uniformly distributed in [0, 10**CODE_DIGITS).

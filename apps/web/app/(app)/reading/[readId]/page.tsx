@@ -34,7 +34,7 @@ export default function ReadingPage() {
   }, [billId, mine, router]);
 
   // A new photo taken from here: the scanner's own screens take over.
-  if (scanner.reading) return <>{scanner.inputs}{scanner.reading}</>;
+  if (scanner.screen) return <>{scanner.inputs}{scanner.screen}</>;
 
   const failed = read.data?.status === 'failed' || read.isError;
   if (failed) {

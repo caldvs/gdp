@@ -46,19 +46,8 @@ These parameters were configured in Checkout Studio and are already set correctl
 
 ### Deployed (dev, then prod)
 
-1. Create the secrets: `gdp-dev/stripe-secret-key` and `gdp-dev/stripe-webhook-secret` in Secrets Manager.
-2. Add them to the Lambda environment in [apps/api/infra/main.ts](apps/api/infra/main.ts), next to the TrueLayer ones:
-
-   ```ts
-   const stripeSecretKey = cdk.SecretValue.secretsManager(`gdp-${envName}/stripe-secret-key`);
-   const stripeWebhookSecret = cdk.SecretValue.secretsManager(`gdp-${envName}/stripe-webhook-secret`);
-   // in environment: { ... }
-   STRIPE_SECRET_KEY: stripeSecretKey.unsafeUnwrap(),
-   STRIPE_WEBHOOK_SECRET: stripeWebhookSecret.unsafeUnwrap(),
-   APP_BASE_URL: '<the deployed web app URL>',
-   ```
-
-   This isn't in the code yet because referencing secrets that don't exist fails the deploy.
+1. Create the secrets: `gdp-dev/stripe-secret-key` and `gdp-dev/stripe-webhook-secret` in Secrets Manager (eu-west-2).
+2. In GitHub → Settings → Environments → `dev`, add the variables `STRIPE_ENABLED` = `true` and `APP_BASE_URL` = the deployed web app URL. The next deploy passes both secrets to the Lambda (see `stripeEnv` in [apps/api/infra/main.ts](apps/api/infra/main.ts)).
 3. In Stripe, add a webhook endpoint at `<API URL>/webhooks/stripe` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 4. Set `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in the web app's build environment.
 5. Register the web app's domain under [Payment method domains](https://dashboard.stripe.com/settings/payment_method_domains), in sandbox and live, or Apple Pay and Google Pay won't show.

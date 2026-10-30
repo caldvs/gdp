@@ -46,6 +46,9 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'dev' }}
     env:
       ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
+      # Optional, from the GitHub environment's variables. See infra/main.ts.
+      STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
+      APP_BASE_URL: ${{ vars.APP_BASE_URL }}
     steps:
       - uses: actions/checkout@v6
 

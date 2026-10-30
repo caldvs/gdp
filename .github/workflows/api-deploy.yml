@@ -106,6 +106,9 @@ jobs:
           STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
           TRUELAYER_ENABLED: ${{ vars.TRUELAYER_ENABLED }}
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          # Optional custom API domain: both or neither (infra/main.ts).
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          API_CERT_ARN: ${{ vars.API_CERT_ARN }}
         run: |
           npx cdk deploy "${{ steps.stack.outputs.name }}" \
             --require-approval never \

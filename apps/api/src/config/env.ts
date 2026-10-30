@@ -58,6 +58,9 @@ const EnvSchema = z.object({
   // Where the web app lives; Stripe sends the lead back here if a payment
   // method needs a redirect (most don't: cards and wallets complete in place).
   APP_BASE_URL: z.string().url().default('http://localhost:8081'),
+  // Comma list of browser origins allowed to call the API (see
+  // allowedOrigins.ts). Unset allows any origin, for local dev only.
+  ALLOWED_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

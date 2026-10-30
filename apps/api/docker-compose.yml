@@ -12,7 +12,11 @@ services:
       - ddb-data:/home/dynamodblocal/data
 
   s3:
-    image: minio/minio:latest
+    # MinIO removed minio/minio from Docker Hub in Sept 2026; Chainguard
+    # publishes a maintained build with the same CLI. Runs as root here so
+    # it can write to the named volume.
+    image: cgr.dev/chainguard/minio:latest
+    user: root
     container_name: gdp-s3-local
     ports:
       - '9000:9000'

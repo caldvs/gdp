@@ -53,11 +53,15 @@ export type Payment = z.infer<typeof PaymentSchema>;
 //   guest pays via their own banking app, lead confirms receipt manually
 export const ManualTransferInstructionsSchema = z.object({
   type: z.literal('manual_transfer'),
-  bankDetails: z.object({
-    sortCode: z.string(),
-    accountNumber: z.string(),
-    accountHolderName: z.string(),
-  }),
+  // Absent when the lead's bank details only live on their device
+  // (ADR-0002) — the client uses the ones from the join QR instead.
+  bankDetails: z
+    .object({
+      sortCode: z.string(),
+      accountNumber: z.string(),
+      accountHolderName: z.string(),
+    })
+    .optional(),
   reference: z.string(),
   amountPence: z.number().int().positive(),
   links: z.object({

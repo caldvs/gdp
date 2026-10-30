@@ -1,6 +1,6 @@
 /**
  * Screenshot snapshots of the main screens at phone size: a cheap net for
- * the glass kit, where a lot of the look lives in inline styles.
+ * layout and spacing regressions.
  *
  * Baselines are the CI runner's (Linux Chromium) and live next to this
  * file in visual.spec.ts-snapshots/. To refresh them after a deliberate
@@ -43,44 +43,44 @@ function busyTable() {
 test('landing', async ({ page }) => {
   await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
   await page.goto('/sign-in');
-  await expect(page.getByRole('heading', { name: /Snap the bill/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Split the bill, get paid back' })).toBeVisible();
   await expect(page).toHaveScreenshot('landing.png', shot);
 });
 
 test('invite', async ({ page }) => {
   await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
   await page.goto(`/join/${CODE}#p=${fragmentFor()}`);
-  await expect(page.getByText('Callum invited you')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
   await expect(page).toHaveScreenshot('invite.png', shot);
 });
 
-test('camera home', async ({ page }) => {
+test('bills home', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.lead, '/');
-  await expect(page.getByRole('button', { name: 'Take the photo' })).toBeVisible();
-  await expect(page).toHaveScreenshot('camera.png', shot);
+  await expect(page.getByRole('heading', { name: 'Bills' })).toBeVisible();
+  await expect(page).toHaveScreenshot('bills.png', shot);
 });
 
-test('check the bill', async ({ page }) => {
+test('review the bill', async ({ page }) => {
   const api = new FakeApi({ serviceRate: 0.125 });
   await open(page, api, users.lead, `/confirm-bill/${api.bill.billId}`);
-  await expect(page.getByRole('heading', { name: 'Check the bill' })).toBeVisible();
-  await expect(page).toHaveScreenshot('check.png', shot);
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(page).toHaveScreenshot('review.png', shot);
 });
 
 test('the lead’s table', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.lead, `/session/${SID}`);
-  await expect(page.getByText('says they’ve sent it')).toBeVisible();
+  await expect(page.getByText('Says they’ve paid')).toBeVisible();
   await expect(page).toHaveScreenshot('lead-table.png', shot);
 });
 
-test('close sheet', async ({ page }) => {
+test('close dialog', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.lead, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Close the bill' }).click();
+  await page.getByRole('button', { name: 'Close bill' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page).toHaveScreenshot('close-sheet.png', shot);
+  await expect(page).toHaveScreenshot('close-dialog.png', shot);
 });
 
 test('guest pick', async ({ page }) => {
@@ -91,19 +91,19 @@ test('guest pick', async ({ page }) => {
   await expect(page).toHaveScreenshot('pick.png', shot);
 });
 
-test('split sheet', async ({ page }) => {
+test('split dialog', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.sam, `/session/${SID}`);
   await page.getByRole('button', { name: 'Split Lasagne' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page).toHaveScreenshot('split-sheet.png', shot);
+  await expect(page).toHaveScreenshot('split-dialog.png', shot);
 });
 
 test('pay', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.sam, `/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
   await page.getByRole('button', { name: 'Tick Lasagne' }).click();
-  await page.getByRole('link', { name: 'Pay Callum £17.25' }).click();
+  await page.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(page.getByText('gdp-0193ab12')).toBeVisible();
   await expect(page).toHaveScreenshot('pay.png', shot);
 });
@@ -111,7 +111,7 @@ test('pay', async ({ page }) => {
 test('guest table', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.sam, `/session/${SID}`);
-  await expect(page.getByText('Waiting for Callum to close the bill')).toBeVisible();
+  await expect(page.getByText('Callum will confirm')).toBeVisible();
   await expect(page).toHaveScreenshot('guest-table.png', shot);
 });
 
@@ -119,6 +119,6 @@ test('settled', async ({ page }) => {
   const api = busyTable();
   api.status = 'settled';
   await open(page, api, users.lead, `/session/${SID}`);
-  await expect(page.getByText('back in your account')).toBeVisible();
+  await expect(page.getByText('Bill closed')).toBeVisible();
   await expect(page).toHaveScreenshot('settled.png', shot);
 });

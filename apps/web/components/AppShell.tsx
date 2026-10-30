@@ -1,21 +1,83 @@
 'use client';
 
-import { useCallback, useEffect, type ReactNode } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { useMe } from '@gdp/core/api/hooks/useMe';
+import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { stashJoinFragment } from '@/lib/joinFragment';
-import { Btn, Centre, Notice, Spin } from './glass';
+import { Button, Centre, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
 
-/**
- * Auth gate for signed-in screens. There's no shared top bar any more:
- * each screen floats its own controls over the bill photo.
- */
+/** The site header: name on the left, burger on the right. */
+export function Header({ onMenu, menuOpen }: { onMenu?: () => void; menuOpen?: boolean }) {
+  return (
+    <header className="hdr">
+      <div className="hdr__in">
+        <Link href="/" className="brand">
+          <span className="brand__mark" aria-hidden>G</span>
+          Group Dine Pay
+        </Link>
+        {onMenu ? (
+          <button type="button" className="icon-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={!!menuOpen} aria-controls="main-menu" onClick={onMenu}>
+            {menuOpen ? <CloseIcon /> : <MenuIcon />}
+          </button>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+const MENU = [
+  { href: '/', label: 'Bills' },
+  { href: '/capture', label: 'Scan a bill' },
+  { href: '/join', label: 'Join a bill' },
+  null,
+  { href: '/account', label: 'Account' },
+  { href: '/payout-account', label: 'Bank details' },
+] as const;
+
+function Menu({ email, onClose }: { email?: string; onClose: () => void }) {
+  const router = useRouter();
+  const pathname = usePathname() ?? '/';
+  const signOut = useSignOut();
+  const first = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    first.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="menu" id="main-menu" role="dialog" aria-modal="true" aria-label="Menu">
+      <Header onMenu={onClose} menuOpen />
+      <nav className="menu__nav" aria-label="Main">
+        {MENU.map((m, i) => m === null ? <div key={i} className="menu__div" /> : (
+          <Link key={m.href} ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClose}>
+            {m.label}
+          </Link>
+        ))}
+      </nav>
+      <div className="menu__foot">
+        <div className="menu__foot-in">
+          <span className="small muted">{email}</span>
+          <Button tone="text" small onClick={() => { void signOut().then(() => router.replace('/sign-in')); }}>Sign out</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Auth gate and site chrome for signed-in screens. */
 export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname() ?? '/';
+  const [menu, setMenu] = useState(false);
+  useEffect(() => setMenu(false), [pathname]);
+
   // Idle sign-out: come back to where you were after signing in again.
   const goToSignIn = useCallback(() => {
     const from = window.location.pathname + window.location.search;
@@ -38,14 +100,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace(from && from !== '/' ? `/sign-in?from=${encodeURIComponent(from)}` : '/sign-in');
   }, [unauthenticated, pathname, router]);
 
-  if (me.isPending || unauthenticated) return <Centre><Spin /></Centre>;
-  if (me.isError) {
-    return (
+  const close = useCallback(() => setMenu(false), []);
+
+  let body: ReactNode = children;
+  if (me.isPending || unauthenticated) body = <Centre><Spinner /></Centre>;
+  else if (me.isError) {
+    body = (
       <Centre>
-        <Notice error title="Can't reach Group Dine Pay.">{me.error.message}</Notice>
-        <Btn tone="ghost" onClick={() => me.refetch()}>Try again</Btn>
+        <Notice tone="error" title="Can’t reach Group Dine Pay.">{me.error.message}</Notice>
+        <Button tone="secondary" small onClick={() => me.refetch()}>Try again</Button>
       </Centre>
     );
   }
-  return <>{children}</>;
+
+  return (
+    <div className="app">
+      <Header onMenu={me.data ? () => setMenu(true) : undefined} />
+      {body}
+      {menu ? <Menu email={me.data?.email} onClose={close} /> : null}
+    </div>
+  );
 }

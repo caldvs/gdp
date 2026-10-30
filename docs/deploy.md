@@ -173,7 +173,7 @@ counts, so `apps/web/vercel.json` switches Git deploys off for every branch
 except `preview` (`test.paymeback.dev`). `.github/workflows/web-deploy.yml`
 deploys instead:
 
-- **Production:** every two hours, main is deployed if the web app (or
+- **Production:** every hour, main is deployed if the web app (or
   `packages/core`, or the lockfile) changed since the last production deploy,
   which the `web-prod` tag marks. To ship now: Actions → Web Deploy → Run
   workflow.

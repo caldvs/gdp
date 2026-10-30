@@ -2,9 +2,9 @@ name: CI
 
 # One workflow for every PR and every push to main. Jobs are skipped by path,
 # but the workflow always runs, so the final `gate` job always reports. `gate`
-# is the single check that says whether a PR can merge. The repo is private on
-# the free plan, so GitHub itself can't block the merge button: don't merge
-# a PR unless `gate` passed on its latest commit.
+# is the single check that says whether a commit is good. Work is pushed
+# straight to main (no pull requests), so a red gate on main means fix or
+# revert at once.
 
 on:
   pull_request:

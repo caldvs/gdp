@@ -15,7 +15,7 @@ export default function BillsPage() {
 
   const all = sessions.data?.sessions ?? [];
   const open = all.filter(isOpen);
-  const past = all.filter((s) => !isOpen(s) && s.status !== 'abandoned');
+  const past = all.filter((s) => !isOpen(s));
 
   return (
     <>
@@ -38,7 +38,7 @@ export default function BillsPage() {
           <Section title="Past">
             <Box>
               {past.map((s) => (
-                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} tall title={venue(s)} sub={`${formatWhen(s.createdAt)} · ${s.role === 'lead' ? 'you hosted' : 'you joined'}`} end={s.myOwedPence !== undefined && s.role !== 'lead' ? formatGBP(s.myOwedPence) : undefined} />
+                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} tall title={venue(s)} sub={pastSub(s)} end={pastEnd(s)} />
               ))}
             </Box>
           </Section>
@@ -58,6 +58,15 @@ export default function BillsPage() {
 
 function venue(s: SessionSummary): string {
   return s.venue?.name ?? (s.role === 'lead' ? 'Your bill' : 'A bill you joined');
+}
+function pastSub(s: SessionSummary): string {
+  const when = formatWhen(s.createdAt);
+  if (s.status === 'abandoned') return `${when} · ${s.role === 'lead' ? 'you deleted it' : 'the host deleted it'}`;
+  return `${when} · ${s.role === 'lead' ? 'you hosted' : 'you joined'}`;
+}
+function pastEnd(s: SessionSummary) {
+  if (s.status === 'abandoned') return <Badge>Deleted</Badge>;
+  return s.myOwedPence !== undefined && s.role !== 'lead' ? formatGBP(s.myOwedPence) : undefined;
 }
 function openSub(s: SessionSummary): string {
   const when = formatWhen(s.createdAt);

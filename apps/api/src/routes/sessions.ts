@@ -156,6 +156,13 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     },
   );
 
+  r.post('/:sessionId/close', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    const sessionId = c.req.param('sessionId');
+    const session = await sessionService.close({ caller, sessionId });
+    return c.json(session);
+  });
+
   r.post('/:sessionId/abandon', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');

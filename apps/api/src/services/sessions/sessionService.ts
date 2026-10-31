@@ -624,6 +624,34 @@ export const sessionService = {
     );
   },
 
+  /**
+   * The lead closes the bill: "I've stopped waiting at the table." The
+   * session becomes `settled` whatever's still unpaid or unclaimed
+   * (unclaimed items are the lead's by implication). Guests who still
+   * owe can pay afterwards; paymentService accepts payments on a
+   * settled session for a participant who hasn't paid.
+   */
+  async close(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    if (session.creatorUserId !== input.caller.userId) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
+    if (session.status === 'settled') {
+      return projectForCaller(session, input.caller.userId);
+    }
+    if (session.status !== 'claiming' && session.status !== 'paying') {
+      throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't close`);
+    }
+    const { participants: _, ...meta } = session;
+    const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'settled' };
+    await sessionStore.putMeta(updatedMeta);
+    return projectForCaller(
+      { ...updatedMeta, participants: session.participants },
+      input.caller.userId,
+    );
+  },
+
   async abandon(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');

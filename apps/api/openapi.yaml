@@ -799,6 +799,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/close:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: closeSession
+      summary: Creator closes the bill (session becomes `settled`)
+      description: |
+        "I've stopped waiting at the table." Anything still unclaimed is the
+        creator's by implication. Guests who still owe can pay afterwards.
+        Idempotent: closing a settled session returns it unchanged.
+      responses:
+        '200':
+          description: Session, now in `settled`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is `setup` or `abandoned`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/abandon:
     parameters:
       - $ref: '#/components/parameters/SessionId'

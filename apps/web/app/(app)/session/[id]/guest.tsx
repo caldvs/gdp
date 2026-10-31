@@ -257,7 +257,7 @@ function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside }: {
   );
 }
 
-function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: number; busy: boolean; onDec: () => void; onInc: () => void; name: string }) {
+export function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: number; busy: boolean; onDec: () => void; onInc: () => void; name: string }) {
   const b = { border: 0, width: 32, padding: 0, fontSize: 18 } as const;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--g-fill-2)', borderRadius: 16, height: 32 }}>

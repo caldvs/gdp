@@ -60,7 +60,6 @@ function CheckBill() {
   // The table fee is paid on the last step before the QR code. Null = no
   // fee here (Stripe not set up on the API or the web app).
   const fee = useTableFeeStatus(billId, { enabled: !!STRIPE_PUBLISHABLE_KEY && !isMidSession });
-  const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
 
   const [items, setItems] = useState<DraftItem[]>([]);
   const [servicePounds, setServicePounds] = useState('0.00');
@@ -87,6 +86,9 @@ function CheckBill() {
   const servicePence = parsePence(servicePounds);
   const taxPence = parsePence(taxPounds);
   const totalPence = subtotalPence + servicePence + taxPence;
+  // Follow the total on screen (£2, or £3 over £100) so the button is right
+  // while editing; the server sets the actual charge.
+  const feeDue = fee.data?.status === 'unpaid' ? (totalPence > 10_000 ? 300 : 200) : null;
 
   const isDirty = useMemo(() => {
     const b = bill.data;
@@ -258,7 +260,7 @@ function CheckBill() {
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
           <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null && !isDirty ? `Pay ${formatGBP(feeDue)} fee & get QR code` : 'Continue'}
+            {feeDue !== null ? `Pay ${formatGBP(feeDue)} fee & get QR code` : 'Continue'}
           </Button>
         )}
       </ActionBar>

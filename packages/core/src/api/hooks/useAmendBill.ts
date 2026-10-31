@@ -11,6 +11,8 @@ export function useAmendBill(billId: string) {
       api<Bill>(`/v1/bills/${billId}/amend`, { method: 'POST', body }),
     onSuccess: (bill) => {
       qc.setQueryData(['bill', billId], bill);
+      // The table fee depends on the total (£2, or £3 over £100).
+      void qc.invalidateQueries({ queryKey: ['tableFee', billId] });
     },
   });
 }

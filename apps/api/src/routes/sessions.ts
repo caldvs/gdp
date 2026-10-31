@@ -7,6 +7,7 @@ import { sessionService } from '../services/sessions/sessionService.js';
 import { paymentService } from '../services/payments/paymentService.js';
 import {
   AddShareRequestSchema,
+  SetShareWaysRequestSchema,
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
   JoinByCodeRequestSchema,
@@ -93,8 +94,22 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
-      const { itemId } = c.req.valid('json');
-      const session = await sessionService.addShare({ caller, sessionId, itemId });
+      const { itemId, ways } = c.req.valid('json');
+      const session = await sessionService.addShare({ caller, sessionId, itemId, ways });
+      return c.json(session);
+    },
+  );
+
+  r.put(
+    '/:sessionId/shares/:itemId',
+    requireAuth(deps.idTokenVerifier),
+    zValidator('json', SetShareWaysRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const itemId = c.req.param('itemId');
+      const { ways } = c.req.valid('json');
+      const session = await sessionService.setShareWays({ caller, sessionId, itemId, ways });
       return c.json(session);
     },
   );

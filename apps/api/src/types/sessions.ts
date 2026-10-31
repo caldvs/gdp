@@ -57,12 +57,46 @@ export const LockClaimsRequestSchema = z.object({
 });
 export type LockClaimsRequest = z.infer<typeof LockClaimsRequestSchema>;
 
+// How many ways a shared item can be split.
+export const SHARE_WAYS_MIN = 2;
+export const SHARE_WAYS_MAX = 20;
+const WaysSchema = z.number().int().min(SHARE_WAYS_MIN).max(SHARE_WAYS_MAX);
+
 // POST /v1/sessions/:id/shares body — caller joins the splitter set
-// for a single item (ADR-0006).
+// for a single item (ADR-0006). `ways` is how many people shared the
+// item; it is only read when the caller *starts* the split (nobody else
+// in it yet). Joining an existing split ignores it.
 export const AddShareRequestSchema = z.object({
   itemId: z.string().uuid(),
+  ways: WaysSchema.optional(),
 });
 export type AddShareRequest = z.infer<typeof AddShareRequestSchema>;
+
+// PUT /v1/sessions/:id/shares/:itemId body — someone in the split
+// changes how many ways it is divided.
+export const SetShareWaysRequestSchema = z.object({ ways: WaysSchema });
+export type SetShareWaysRequest = z.infer<typeof SetShareWaysRequestSchema>;
+
+// Recent changes to a split, so the people in it can see what others did.
+export const ShareActivitySchema = z.object({
+  kind: z.enum(['started', 'joined', 'left', 'ways']),
+  byUserId: z.string(),
+  at: z.string().datetime(),
+  fromWays: z.number().int().optional(),
+  toWays: z.number().int().optional(),
+});
+export type ShareActivity = z.infer<typeof ShareActivitySchema>;
+
+// Stored per shared item (its own row, so concurrent edits to different
+// splits never collide). `version` guards read-modify-write.
+export const ShareSettingsSchema = z.object({
+  itemId: z.string().uuid(),
+  ways: WaysSchema,
+  version: z.number().int().min(1),
+  activity: z.array(ShareActivitySchema),
+});
+export type ShareSettings = z.infer<typeof ShareSettingsSchema>;
+export const SHARE_ACTIVITY_KEEP = 10;
 
 export const SessionSchema = z.object({
   sessionId: z.string().uuid(),
@@ -84,14 +118,23 @@ export const SessionSchema = z.object({
   // Computed at read time from participants' sharedItemIds (ADR-0006).
   // One entry per shared item; userIds is the splitter set. Empty when
   // no items are shared. Server-only — clients never set this.
+  //
+  // `ways` is how many people the item is divided between (fixed by
+  // whoever started the split, changeable by anyone in it). Each sharer
+  // owes unitPrice / ways; spots nobody has taken yet are unclaimed.
   shares: z
     .array(
       z.object({
         itemId: z.string().uuid(),
         userIds: z.array(z.string()),
+        ways: z.number().int().min(1),
+        activity: z.array(ShareActivitySchema),
       }),
     )
     .optional(),
+  // Storage-side split settings. Server-only: merged into `shares` and
+  // stripped before a session is returned.
+  shareSettings: z.array(ShareSettingsSchema).optional(),
   createdAt: z.string().datetime(),
   ttlAt: z.string().datetime().optional(),
 });

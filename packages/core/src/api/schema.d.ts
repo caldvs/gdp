@@ -423,9 +423,16 @@ export interface paths {
         /**
          * Caller joins the splitter set for a shared item (ADR-0006)
          * @description Adds the caller to the share set for `itemId`. Idempotent — calling
-         *     twice has no effect on the second call. The shared item's unit price
-         *     is split equally across all sharers at lock-claims time, with
-         *     deterministic largest-remainder rounding on the lowest userId.
+         *     twice has no effect on the second call.
+         *
+         *     The item is divided into `ways` equal spots and each sharer owes one
+         *     spot (largest-remainder rounding, remainder pennies to the lowest
+         *     userId). Whoever *starts* the split sets `ways` (default 2) — it's
+         *     how many people shared the item, not how many have joined yet.
+         *     Joining an existing split takes an open spot; if every spot is
+         *     already taken, `ways` goes up by one (refused with `SHARE_PAID` if
+         *     someone in the split has already paid). Spots nobody has taken are
+         *     unclaimed.
          *
          *     v1 simplification: only items with `quantity: 1` are shareable, and
          *     an item is in exactly one mode session-wide — claim-mode (unit
@@ -455,14 +462,22 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put?: never;
+        /**
+         * Someone in a split changes how many ways it is divided
+         * @description Only people in the split may call this. `ways` can't go below the
+         *     number of people already in it (`SHARE_WAYS_TOO_LOW`) and can't
+         *     change once anyone in it has a pending or succeeded payment
+         *     (`SHARE_PAID`). Recorded in the split's `activity` so the others
+         *     in it can be told.
+         */
+        put: operations["setShareWays"];
         post?: never;
         /**
          * Caller leaves the splitter set for a shared item (ADR-0006)
          * @description Removes the caller from the share set for `itemId`. Idempotent —
-         *     no-op if not in the set. If the caller is the last sharer, the
-         *     item reverts to no-share-at-all and will require unit claims at
-         *     lock-claims time.
+         *     no-op if not in the set. The number of ways stays the same (the
+         *     caller's spot reopens). If the caller is the last sharer, the
+         *     item reverts to no-share-at-all.
          */
         delete: operations["removeShare"];
         options?: never;
@@ -688,7 +703,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -904,11 +919,28 @@ export interface components {
                 /** Format: uuid */
                 itemId: string;
                 userIds: string[];
+                /**
+                 * @description How many people the item is divided between. Each sharer
+                 *     owes unitPrice / ways; `ways - userIds.length` spots are
+                 *     still open.
+                 */
+                ways: number;
+                /** @description Recent changes to this split, oldest first (last 10). */
+                activity: components["schemas"]["ShareActivity"][];
             }[];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             ttlAt?: string;
+        };
+        ShareActivity: {
+            /** @enum {string} */
+            kind: "started" | "joined" | "left" | "ways";
+            byUserId: string;
+            /** Format: date-time */
+            at: string;
+            fromWays?: number;
+            toWays?: number;
         };
         SessionSummary: {
             /** Format: uuid */
@@ -1795,6 +1827,8 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     itemId: string;
+                    /** @description How many people shared the item. Only read when starting the split. */
+                    ways?: number;
                 };
             };
         };
@@ -1813,8 +1847,55 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /**
              * @description Session is not in setup/claiming, item has quantity > 1
-             *     (`ITEM_NOT_SHAREABLE`), or the item is currently claimed
-             *     (`CLAIM_SHARE_CONFLICT`).
+             *     (`ITEM_NOT_SHAREABLE`), the item is currently claimed
+             *     (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
+             *     has paid (`SHARE_PAID`), or a concurrent edit kept winning
+             *     (`SHARE_CONFLICT`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setShareWays: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ways: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Caller isn't in the split (`SHARE_CONFLICT`), `ways` is below the
+             *     number of people in it (`SHARE_WAYS_TOO_LOW`), someone in it has
+             *     paid (`SHARE_PAID`), or the session isn't in setup/claiming.
              */
             409: {
                 headers: {

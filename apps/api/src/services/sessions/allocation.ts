@@ -21,6 +21,29 @@ import type { Participant } from '../../types/sessions.js';
  * that are neither fully claimed nor have at least one sharer. Empty share
  * sets (userIds: []) are treated as "no share at all" per ADR-0006.
  */
+/**
+ * Split one item's price into `ways` equal spots. The people who have
+ * joined take the first spots (sorted by userId, so the remainder penny
+ * lands on the lowest userId as before); spots nobody has taken stay
+ * unclaimed and are not returned. `ways` below the number of sharers
+ * (legacy data) falls back to the sharer count.
+ */
+export function splitShare(
+  unitPricePence: number,
+  sharers: readonly string[],
+  ways: number,
+): Map<string, number> {
+  const n = Math.max(ways, sharers.length);
+  const keys = [...sharers].sort();
+  const weights = new Map<string, number>(keys.map((u) => [u, 1]));
+  // Open spots sort after any real userId.
+  for (let i = keys.length; i < n; i++) weights.set(`\uffff#open${String(i).padStart(3, '0')}`, 1);
+  const all = apportionByWeight(unitPricePence, weights);
+  const out = new Map<string, number>();
+  for (const u of keys) out.set(u, all.get(u) ?? 0);
+  return out;
+}
+
 export function computeOwed(
   bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'>,
   participants: ReadonlyArray<
@@ -32,6 +55,9 @@ export function computeOwed(
       sharedItemIds?: readonly string[];
     }
   >,
+  // itemId → how many ways the split is divided. Missing → split between
+  // whoever has joined (pre-`ways` behaviour).
+  waysByItem: ReadonlyMap<string, number> = new Map(),
 ): Map<string, number> {
   const itemById = new Map(bill.items.map((it) => [it.itemId, it]));
 
@@ -50,8 +76,12 @@ export function computeOwed(
   // shared, so a non-empty sharer set covers the whole item.
   const unclaimed: string[] = [];
   for (const item of bill.items) {
-    const hasSharers = (sharersByItem.get(item.itemId)?.length ?? 0) > 0;
-    if (hasSharers) continue;
+    const sharerCount = sharersByItem.get(item.itemId)?.length ?? 0;
+    if (sharerCount > 0) {
+      // A split is complete once every spot is taken.
+      if (sharerCount < (waysByItem.get(item.itemId) ?? sharerCount)) unclaimed.push(item.itemId);
+      continue;
+    }
     const totalClaimed = participants.reduce(
       (sum, p) => sum + p.claimedItemIds.filter((id) => id === item.itemId).length,
       0,
@@ -77,11 +107,11 @@ export function computeOwed(
   for (const [itemId, sharers] of sharersByItem) {
     const item = itemById.get(itemId);
     if (!item || sharers.length === 0) continue;
-    // Equal split — apportionByWeight with all weights 1 reduces to an
-    // even split with deterministic remainder placement on the lowest
-    // userId. Reuse the same rounding algo we use for service / tax.
-    const weights = new Map<string, number>(sharers.map((u) => [u, 1]));
-    const shares = apportionByWeight(item.unitPricePence, weights);
+    const shares = splitShare(
+      item.unitPricePence,
+      sharers,
+      waysByItem.get(itemId) ?? sharers.length,
+    );
     for (const [userId, pence] of shares) {
       subtotalByUser.set(userId, (subtotalByUser.get(userId) ?? 0) + pence);
     }

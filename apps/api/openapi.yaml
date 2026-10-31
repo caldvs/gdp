@@ -587,9 +587,16 @@ paths:
       summary: Caller joins the splitter set for a shared item (ADR-0006)
       description: |
         Adds the caller to the share set for `itemId`. Idempotent — calling
-        twice has no effect on the second call. The shared item's unit price
-        is split equally across all sharers at lock-claims time, with
-        deterministic largest-remainder rounding on the lowest userId.
+        twice has no effect on the second call.
+
+        The item is divided into `ways` equal spots and each sharer owes one
+        spot (largest-remainder rounding, remainder pennies to the lowest
+        userId). Whoever *starts* the split sets `ways` (default 2) — it's
+        how many people shared the item, not how many have joined yet.
+        Joining an existing split takes an open spot; if every spot is
+        already taken, `ways` goes up by one (refused with `SHARE_PAID` if
+        someone in the split has already paid). Spots nobody has taken are
+        unclaimed.
 
         v1 simplification: only items with `quantity: 1` are shareable, and
         an item is in exactly one mode session-wide — claim-mode (unit
@@ -609,6 +616,11 @@ paths:
               required: [itemId]
               properties:
                 itemId: { type: string, format: uuid }
+                ways:
+                  type: integer
+                  minimum: 2
+                  maximum: 20
+                  description: How many people shared the item. Only read when starting the split.
       responses:
         '200':
           description: Updated session, with the caller now in the splitter set
@@ -621,8 +633,10 @@ paths:
         '409':
           description: |
             Session is not in setup/claiming, item has quantity > 1
-            (`ITEM_NOT_SHAREABLE`), or the item is currently claimed
-            (`CLAIM_SHARE_CONFLICT`).
+            (`ITEM_NOT_SHAREABLE`), the item is currently claimed
+            (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
+            has paid (`SHARE_PAID`), or a concurrent edit kept winning
+            (`SHARE_CONFLICT`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -634,15 +648,51 @@ paths:
         name: itemId
         required: true
         schema: { type: string, format: uuid }
+    put:
+      tags: [sessions]
+      operationId: setShareWays
+      summary: Someone in a split changes how many ways it is divided
+      description: |
+        Only people in the split may call this. `ways` can't go below the
+        number of people already in it (`SHARE_WAYS_TOO_LOW`) and can't
+        change once anyone in it has a pending or succeeded payment
+        (`SHARE_PAID`). Recorded in the split's `activity` so the others
+        in it can be told.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ways]
+              properties:
+                ways: { type: integer, minimum: 2, maximum: 20 }
+      responses:
+        '200':
+          description: Updated session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            Caller isn't in the split (`SHARE_CONFLICT`), `ways` is below the
+            number of people in it (`SHARE_WAYS_TOO_LOW`), someone in it has
+            paid (`SHARE_PAID`), or the session isn't in setup/claiming.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
     delete:
       tags: [sessions]
       operationId: removeShare
       summary: Caller leaves the splitter set for a shared item (ADR-0006)
       description: |
         Removes the caller from the share set for `itemId`. Idempotent —
-        no-op if not in the set. If the caller is the last sharer, the
-        item reverts to no-share-at-all and will require unit claims at
-        lock-claims time.
+        no-op if not in the set. The number of ways stays the same (the
+        caller's spot reopens). If the caller is the last sharer, the
+        item reverts to no-share-at-all.
       responses:
         '200':
           description: Updated session
@@ -1025,6 +1075,9 @@ components:
                 - CLAIMS_INCOMPLETE
                 - CLAIM_SHARE_CONFLICT
                 - ITEM_NOT_SHAREABLE
+                - SHARE_WAYS_TOO_LOW
+                - SHARE_PAID
+                - SHARE_CONFLICT
                 - PARSE_FAILED
                 - PARSE_LOW_CONFIDENCE
                 - RATE_LIMITED
@@ -1278,14 +1331,37 @@ components:
             Absent when no items are shared.
           items:
             type: object
-            required: [itemId, userIds]
+            required: [itemId, userIds, ways, activity]
             properties:
               itemId: { type: string, format: uuid }
               userIds:
                 type: array
                 items: { type: string }
+              ways:
+                type: integer
+                minimum: 1
+                description: |
+                  How many people the item is divided between. Each sharer
+                  owes unitPrice / ways; `ways - userIds.length` spots are
+                  still open.
+              activity:
+                type: array
+                description: Recent changes to this split, oldest first (last 10).
+                items: { $ref: '#/components/schemas/ShareActivity' }
         createdAt: { type: string, format: date-time }
         ttlAt: { type: string, format: date-time }
+
+    ShareActivity:
+      type: object
+      required: [kind, byUserId, at]
+      properties:
+        kind:
+          type: string
+          enum: [started, joined, left, ways]
+        byUserId: { type: string }
+        at: { type: string, format: date-time }
+        fromWays: { type: integer }
+        toWays: { type: integer }
 
     SessionSummary:
       type: object

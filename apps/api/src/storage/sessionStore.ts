@@ -7,13 +7,14 @@ import {
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
-import type { Session, Participant } from '../types/sessions.js';
+import type { Session, Participant, ShareSettings } from '../types/sessions.js';
 
 const SESSION_TTL_DAYS = 30;
 
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const META_SK = 'META';
 const partSk = (userId: string) => `PART#${userId}`;
+const shareSk = (itemId: string) => `SHARE#${itemId}`;
 const codePk = (code: string) => `JCODE#${code}`;
 const billLockPk = (billId: string) => `BILLLOCK#${billId}`;
 const userIdx = (userId: string) => `USER#${userId}`;
@@ -32,6 +33,17 @@ function participantItem(sessionId: string, ttlAt: number, p: Participant) {
   };
 }
 
+// Fields that live elsewhere (split settings have their own rows; shares
+// are derived on read) and must never be written into the META row.
+function metaOnly<T extends object>(meta: T): Omit<T, 'shares' | 'shareSettings'> {
+  const {
+    shares: _s,
+    shareSettings: _ss,
+    ...rest
+  } = meta as T & { shares?: unknown; shareSettings?: unknown };
+  return rest;
+}
+
 type SessionMetaRow = Omit<Session, 'participants'> & { pk: string; sk: string };
 
 const ttlEpochSeconds = (): number =>
@@ -48,7 +60,7 @@ export const sessionStore = {
     const metaRow: SessionMetaRow = {
       pk: sessionPk(session.sessionId),
       sk: META_SK,
-      ...meta,
+      ...metaOnly(meta),
       ttlAt: new Date(ttlAt * 1000).toISOString(),
     };
 
@@ -109,6 +121,7 @@ export const sessionStore = {
 
     let meta: Omit<Session, 'participants'> | null = null;
     const participants: Participant[] = [];
+    const shareSettings: ShareSettings[] = [];
 
     for (const raw of result.Items) {
       const { pk: _pk, sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ...rest } = raw;
@@ -116,11 +129,14 @@ export const sessionStore = {
         meta = rest as Omit<Session, 'participants'>;
       } else if (typeof sk === 'string' && sk.startsWith('PART#')) {
         participants.push(rest as Participant);
+      } else if (typeof sk === 'string' && sk.startsWith('SHARE#')) {
+        const { ttlAt: _ttl, ...settings } = rest;
+        shareSettings.push(settings as ShareSettings);
       }
     }
 
     if (!meta) return null;
-    return { ...meta, participants };
+    return { ...meta, participants, ...(shareSettings.length > 0 && { shareSettings }) };
   },
 
   async resolveJoinCode(code: string): Promise<{ sessionId: string } | null> {
@@ -148,6 +164,52 @@ export const sessionStore = {
   },
 
   /**
+   * Write a participant row together with the split settings for one
+   * item, atomically. `expectedVersion` is the settings version the
+   * caller read (null when there was no settings row); a concurrent
+   * change to the same split fails the whole write with
+   * ConditionalCheckFailed so the caller can re-read and retry.
+   * `settings: null` deletes the row (last sharer left).
+   */
+  async applyShareChange(input: {
+    sessionId: string;
+    participant?: Participant;
+    itemId: string;
+    settings: ShareSettings | null;
+    expectedVersion: number | null;
+  }): Promise<void> {
+    const ttlAt = ttlEpochSeconds();
+    const key = { pk: sessionPk(input.sessionId), sk: shareSk(input.itemId) };
+    const condition =
+      input.expectedVersion === null
+        ? { ConditionExpression: 'attribute_not_exists(pk)' }
+        : {
+            ConditionExpression: 'version = :v',
+            ExpressionAttributeValues: { ':v': input.expectedVersion },
+          };
+    const settingsOp: NonNullable<TransactWriteCommandInput['TransactItems']>[number] =
+      input.settings === null
+        ? { Delete: { TableName: TABLE_NAME, Key: key, ...condition } }
+        : {
+            Put: {
+              TableName: TABLE_NAME,
+              Item: { ...key, ttlAt, ...input.settings },
+              ...condition,
+            },
+          };
+    const items: NonNullable<TransactWriteCommandInput['TransactItems']> = [settingsOp];
+    if (input.participant) {
+      items.push({
+        Put: {
+          TableName: TABLE_NAME,
+          Item: participantItem(input.sessionId, ttlAt, input.participant),
+        },
+      });
+    }
+    await ddb.send(new TransactWriteCommand({ TransactItems: items }));
+  },
+
+  /**
    * Update only the session metadata row (status, etc.). Participants are
    * separate rows and updated by `putParticipant`.
    */
@@ -159,7 +221,7 @@ export const sessionStore = {
           pk: sessionPk(meta.sessionId),
           sk: META_SK,
           ttlAt: ttlEpochSeconds(),
-          ...meta,
+          ...metaOnly(meta),
         },
       }),
     );
@@ -185,7 +247,7 @@ export const sessionStore = {
                 pk: sessionPk(input.sessionMeta.sessionId),
                 sk: META_SK,
                 ttlAt,
-                ...input.sessionMeta,
+                ...metaOnly(input.sessionMeta),
               },
             },
           },
@@ -218,7 +280,7 @@ export const sessionStore = {
             pk: sessionPk(input.sessionMeta.sessionId),
             sk: META_SK,
             ttlAt,
-            ...input.sessionMeta,
+            ...metaOnly(input.sessionMeta),
           },
         },
       },
@@ -303,8 +365,7 @@ export const sessionStore = {
         const meta = metaBySessionId.get(id);
         if (!meta) return null;
         const partRow = partRows.find((r) => r.GSI1SK === id) as
-          | (Participant & { GSI1SK?: string })
-          | undefined;
+          (Participant & { GSI1SK?: string }) | undefined;
         const { venue: fullVenue, ...metaWithoutVenue } = meta;
         return {
           ...metaWithoutVenue,

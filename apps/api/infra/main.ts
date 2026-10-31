@@ -15,6 +15,7 @@ import type { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
+import { GithubDeployStack } from './githubDeploy.js';
 
 // apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
@@ -475,3 +476,11 @@ const region = 'eu-west-2';
 new GdpBackendStack(app, 'GdpBackendDev', { env: { region }, envName: 'dev' });
 new GdpBackendStack(app, 'GdpBackendStaging', { env: { region }, envName: 'staging' });
 new GdpBackendStack(app, 'GdpBackendProd', { env: { region }, envName: 'prod' });
+
+// One-off: OIDC role for .github/workflows/api-deploy.yml. See githubDeploy.ts.
+new GithubDeployStack(app, 'GdpGithubDeploy', {
+  env: { region },
+  repo: 'caldvs/gdp',
+  environments: ['dev', 'staging', 'prod'],
+  existingProviderArn: app.node.tryGetContext('githubOidcProviderArn') as string | undefined,
+});

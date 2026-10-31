@@ -7,7 +7,7 @@ import { ApiError, type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import {
-  useAbandonSession, useAddShare, useRemoveShare, useSession, useSetClaims, useSetReady, useSetShareWays, useShareSession,
+  useAbandonSession, useAddShare, useRemoveShare, useSession, useSetClaims, useSetShareWays, useShareSession,
 } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
 import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
@@ -118,7 +118,6 @@ function SetupLayout({ s, b, sessionId }: { s: Session; b: Bill; sessionId: stri
 function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; b: Bill; meUserId: string; isCreator: boolean; sessionId: string }) {
   const router = useRouter();
   const setClaims = useSetClaims(sessionId);
-  const setReady = useSetReady(sessionId);
   const abandon = useAbandonSession(sessionId);
   const addShare = useAddShare(sessionId);
   const removeShare = useRemoveShare(sessionId);
@@ -126,7 +125,6 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
   const showQr = useSearchParams().get('showQr');
   const [imageOpen, setImageOpen] = useState(false);
   const [confirmingAbandon, setConfirmingAbandon] = useState(false);
-  const [confirmingReady, setConfirmingReady] = useState(false);
   // Lands open straight after confirm-bill so the lead can show the table.
   const [qrOpen, setQrOpen] = useState(isCreator && showQr === '1');
 
@@ -163,7 +161,11 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
   };
   const startSplit = (itemId: string, ways: number) => addShare.mutate({ itemId, ways });
 
-  const picking = !myParticipant?.readyToLock || isCreator;
+  // Guests pay as they go (trust-based payments): picks stay editable
+  // until they start paying, then freeze so the amount can't drift.
+  const guestPaying = !isCreator && !!myParticipant &&
+    myParticipant.payment.status !== 'unpaid' && myParticipant.payment.status !== 'failed';
+  const leadFirst = firstName(leadName(s));
 
   const stickyHint = (() => {
     const paidCount = guests.filter((p) => p.payment.status === 'succeeded' || p.payment.status === 'pending').length;
@@ -179,12 +181,13 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
         <VenueHead
           bill={b}
           onViewBill={() => setImageOpen(true)}
-          titleOverride={isCreator ? 'Picking items' : 'Pick your items'}
+          titleOverride={isCreator ? 'Picking items' : guestPaying ? 'Your picks' : 'Pick your items'}
           counter={isCreator && guests.length > 0 ? `${readyGuests.length}/${guests.length} ready` : undefined}
         />
 
-        {!isCreator && myParticipant?.readyToLock ? (
-          <GuestReadyPreview sessionId={sessionId} leadName={leadName(s)} owedPence={myParticipant.owedPence ?? myProjectedPence} />
+        {guestPaying ? (
+          <Notice neutral className="mt-base" title={myParticipant?.payment.status === 'succeeded' ? `Paid. ${leadFirst} has it.` : 'Payment on its way.'}
+            detail="Your picks are locked now so the amount can't change. Ask the host if something's wrong." />
         ) : null}
 
         {isCreator && s.joinCode ? (
@@ -195,55 +198,52 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
           )
         ) : null}
 
-        {picking ? (
-          <>
-            <Receipt list className="mt-base">
-              {b.items.map((it) => {
-                const share = s.shares?.find((x) => x.itemId === it.itemId);
-                const sharers = (share?.userIds ?? []).map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
-                return (
-                  <ClaimRow
-                    key={it.itemId}
-                    item={it}
-                    myCount={counts.mine.get(it.itemId) ?? 0}
-                    othersCount={counts.others.get(it.itemId) ?? 0}
-                    claimers={counts.othersByItem.get(it.itemId) ?? []}
-                    sharers={sharers}
-                    share={share}
-                    sessionId={sessionId}
-                    nameOf={(uid) => firstName(s.participants.find((p) => p.userId === uid)?.displayName)}
-                    meUserId={meUserId}
-                    isCreator={isCreator}
-                    locked={!isCreator && !!myParticipant?.readyToLock}
-                    onClaim={() => claimOne(it)}
-                    onUnclaim={() => unclaimOne(it.itemId)}
-                    onToggleShare={() => toggleShare(it.itemId)}
-                    onStartSplit={(ways) => startSplit(it.itemId, ways)}
-                  />
-                );
-              })}
-            </Receipt>
-            <Rule />
-            {myParticipant ? (
-              <div className="running-total">
-                <div>
-                  <Mini>your share so far</Mini>
-                  <div className="running-total__v">{formatGBP(mySubtotalPence)}</div>
-                </div>
-                {extrasRate > 0 && mySubtotalPence > 0 ? (
-                  <div style={{ textAlign: 'right' }}>
-                    <Mini>≈ with service</Mini>
-                    <div className="running-total__hint">{formatGBP(myProjectedPence)}</div>
-                  </div>
-                ) : null}
+        <>
+        <Receipt list className="mt-base">
+          {b.items.map((it) => {
+            const share = s.shares?.find((x) => x.itemId === it.itemId);
+            const sharers = (share?.userIds ?? []).map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
+            return (
+              <ClaimRow
+                key={it.itemId}
+                item={it}
+                myCount={counts.mine.get(it.itemId) ?? 0}
+                othersCount={counts.others.get(it.itemId) ?? 0}
+                claimers={counts.othersByItem.get(it.itemId) ?? []}
+                sharers={sharers}
+                share={share}
+                sessionId={sessionId}
+                nameOf={(uid) => firstName(s.participants.find((p) => p.userId === uid)?.displayName)}
+                meUserId={meUserId}
+                isCreator={isCreator}
+                locked={guestPaying}
+                onClaim={() => claimOne(it)}
+                onUnclaim={() => unclaimOne(it.itemId)}
+                onToggleShare={() => toggleShare(it.itemId)}
+                onStartSplit={(ways) => startSplit(it.itemId, ways)}
+              />
+            );
+          })}
+        </Receipt>
+        <Rule />
+        {myParticipant ? (
+          <div className="running-total">
+            <div>
+              <Mini>your share so far</Mini>
+              <div className="running-total__v">{formatGBP(mySubtotalPence)}</div>
+            </div>
+            {extrasRate > 0 && mySubtotalPence > 0 ? (
+              <div style={{ textAlign: 'right' }}>
+                <Mini>≈ with service</Mini>
+                <div className="running-total__hint">{formatGBP(myProjectedPence)}</div>
               </div>
             ) : null}
-          </>
+          </div>
         ) : null}
+        </>
 
         <div className="stack gap-sm mt-md">
           {setClaims.isError ? <Notice title="Couldn't update claims." detail={setClaims.error.message} /> : null}
-          {setReady.isError ? <Notice title="Couldn't update status." detail={setReady.error.message} /> : null}
           {addShare.isError ? <Notice title="Couldn't join the share." detail={shareErrorMessage(addShare.error)} /> : null}
           {removeShare.isError ? <Notice title="Couldn't leave the share." detail={removeShare.error.message} /> : null}
         </div>
@@ -276,14 +276,14 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
       <div className="sticky-bar">
         <div className="sticky-bar__inner">
           {!isCreator && myParticipant ? (
-            myParticipant.readyToLock ? (
-              <Button variant="ghost" disabled={setReady.isPending} onClick={() => setReady.mutate({ ready: false })}>
-                {setReady.isPending ? 'Reopening…' : 'Edit my picks'}
+            guestPaying ? (
+              <Button href={`/session/${sessionId}/pay`}>View my payment →</Button>
+            ) : mySubtotalPence > 0 ? (
+              <Button href={`/session/${sessionId}/pay`}>
+                Pay {leadFirst} {formatGBP(myProjectedPence)} →
               </Button>
             ) : (
-              <Button disabled={setReady.isPending} onClick={() => setConfirmingReady(true)}>
-                {setReady.isPending ? <Spinner /> : "I'm done →"}
-              </Button>
+              <Button disabled>Claim what you had</Button>
             )
           ) : null}
           {isCreator ? <Mini className="sticky-bar__hint">{stickyHint}</Mini> : null}
@@ -299,15 +299,6 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
         destructive
         onCancel={() => setConfirmingAbandon(false)}
         onConfirm={() => { setConfirmingAbandon(false); abandon.mutate(undefined, { onSuccess: () => router.replace('/') }); }}
-      />
-      <ConfirmDialog
-        visible={confirmingReady}
-        title="All done picking?"
-        body="You can still edit your picks until the host splits the bill. If they split before you reopen, your picks are final."
-        confirmLabel="Yes, I'm done"
-        cancelLabel="Keep picking"
-        onCancel={() => setConfirmingReady(false)}
-        onConfirm={() => { setConfirmingReady(false); setReady.mutate({ ready: true }); }}
       />
     </>
   );
@@ -417,7 +408,7 @@ function ClaimRow({ item, myCount, othersCount, claimers, sharers, share, sessio
     <div className="claim__right">
       <span className="num claim__price">{priceLabel}</span>
       <div className="claim__ctl">
-        {state === 'mine' ? (
+        {state === 'mine' && !locked ? (
           <IconButton icon="minus" label={inShare ? `Leave the share for ${item.name}` : `Drop one ${item.name}`} onPress={handlePress} />
         ) : null}
         {state === 'joinable' && !locked ? <TextAction text="Join" label={`Join the share for ${item.name}`} onPress={handlePress} /> : null}
@@ -589,16 +580,6 @@ function LeadQrPanel({ joinCode, payout, onMinimise }: { joinCode: string; payou
         </div>
       </Receipt>
       <Button variant="ghost" onClick={onMinimise}>Hide · start claiming</Button>
-    </div>
-  );
-}
-
-function GuestReadyPreview({ sessionId, leadName: lead, owedPence }: { sessionId: string; leadName: string; owedPence: number }) {
-  const firstName = lead.split(' ')[0]?.toLowerCase() ?? 'the host';
-  return (
-    <div className="stack gap-sm mt-base">
-      <HeroAmount caption={`pay ${lead.toLowerCase()}`} amount={formatGBP(owedPence)} aside={`Straight to ${firstName}'s bank. We never touch your money.`} />
-      <Button href={`/session/${sessionId}/pay`}>Sort my payment →</Button>
     </div>
   );
 }

@@ -153,6 +153,28 @@ class GdpBackendStack extends cdk.Stack {
       `gdp-${envName}/truelayer-signing-private-key`,
     );
 
+    // Stripe (the lead's table fee) is off until its secrets exist:
+    // referencing a missing secret fails the deploy. Turn it on with
+    // STRIPE_ENABLED=true (a GitHub environment variable the deploy
+    // workflow passes through, or `-c stripe=true` locally) once
+    // gdp-<env>/stripe-secret-key and gdp-<env>/stripe-webhook-secret
+    // are in Secrets Manager. APP_BASE_URL is where Stripe sends the lead
+    // back after paying.
+    const stripeEnabled =
+      process.env.STRIPE_ENABLED === 'true' || this.node.tryGetContext('stripe') === 'true';
+    const appBaseUrl: string | undefined =
+      process.env.APP_BASE_URL || (this.node.tryGetContext('appBaseUrl') as string | undefined);
+    const stripeEnv: Record<string, string> = stripeEnabled
+      ? {
+          STRIPE_SECRET_KEY: cdk.SecretValue.secretsManager(
+            `gdp-${envName}/stripe-secret-key`,
+          ).unsafeUnwrap(),
+          STRIPE_WEBHOOK_SECRET: cdk.SecretValue.secretsManager(
+            `gdp-${envName}/stripe-webhook-secret`,
+          ).unsafeUnwrap(),
+        }
+      : {};
+
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(API_DIR, 'src/lambda.ts'),
@@ -191,6 +213,8 @@ class GdpBackendStack extends cdk.Stack {
         // lead confirms receipt manually. Free of TrueLayer fees. Switch
         // to `truelayer` once TL Live commercial onboarding is in place.
         PAYMENT_PROVIDER: 'manual',
+        ...stripeEnv,
+        ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,

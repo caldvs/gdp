@@ -14,6 +14,7 @@
     "@stripe/react-stripe-js": "^7.0.1",
     "@stripe/stripe-js": "^10.2.0",
     "@tanstack/react-query": "^5.100.9",
+    "@vercel/analytics": "^2.0.1",
     "lucide-react": "^1.65.0",
     "next": "^16.4.3",
     "qrcode.react": "^4.2.0",

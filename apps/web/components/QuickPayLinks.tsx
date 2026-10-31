@@ -29,7 +29,6 @@ export function QuickPayLinks({ monzoHandle, revolutTag, amountPence, note }: {
       {revolut && amountPence !== undefined ? (
         <Mini className="t-center">in revolut, enter {formatGBP(amountPence)}</Mini>
       ) : null}
-      <Mini className="t-center quick-pay__or">or pay by bank transfer</Mini>
     </div>
   );
 }

@@ -32,3 +32,13 @@ jobs:
       - run: npx playwright install --with-deps chromium webkit
         working-directory: apps/web
       - run: npm run e2e -w apps/web
+      # On failure, keep the report and any screenshots it wrote (including
+      # new visual baselines) so they can be inspected or committed.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright
+          path: |
+            apps/web/test-results/
+            apps/web/e2e/*-snapshots/
+          retention-days: 7

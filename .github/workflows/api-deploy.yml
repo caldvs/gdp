@@ -46,9 +46,6 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'dev' }}
     env:
       ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
-      # Optional, from the GitHub environment's variables. See infra/main.ts.
-      STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
-      APP_BASE_URL: ${{ vars.APP_BASE_URL }}
     steps:
       - uses: actions/checkout@v6
 
@@ -96,6 +93,12 @@ jobs:
           role-session-name: gh-actions-${{ env.ENV_NAME }}-${{ github.run_id }}
 
       - name: CDK deploy
+        # Only this step: the API's own config check (run by the tests
+        # above) rejects an empty APP_BASE_URL. Both come from the GitHub
+        # environment's variables; see infra/main.ts.
+        env:
+          STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
         run: |
           npx cdk deploy "${{ steps.stack.outputs.name }}" \
             --require-approval never \

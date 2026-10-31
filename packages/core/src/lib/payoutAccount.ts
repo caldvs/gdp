@@ -3,8 +3,10 @@
 //   0002-ephemeral-bank-details-via-qr.md
 //   0003-client-storage-strategy.md
 //
-// Web: persisted in sessionStorage, so it's cleared when the tab
-// closes. There's no real encryption here (ADR-0003 Phase 2 plans a
+// Web: sessionStorage by default, so it's cleared when the tab closes.
+// The lead can opt in to "Remember on this device", which keeps it in
+// localStorage instead (still this browser only, never our server).
+// There's no real encryption here (ADR-0003 Phase 2 plans a
 // PIN-derived WebCrypto layer). Ported from gdp-mobile minus the
 // native expo-secure-store / biometric path.
 export type PayoutAccount = {
@@ -39,21 +41,45 @@ function session(): Storage | null {
   }
 }
 
+function device(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export async function readPayoutAccount(): Promise<PayoutAccount | null> {
   if (cache !== undefined) return cache;
-  const raw = session()?.getItem(STORAGE_KEY) ?? null;
+  const raw = session()?.getItem(STORAGE_KEY) ?? device()?.getItem(STORAGE_KEY) ?? null;
   cache = raw ? safeParse(raw) : null;
   return cache;
 }
 
-export async function savePayoutAccount(account: PayoutAccount): Promise<void> {
-  session()?.setItem(STORAGE_KEY, JSON.stringify(account));
+/** True when the details are kept on this device beyond the tab. */
+export function isPayoutAccountRemembered(): boolean {
+  return device()?.getItem(STORAGE_KEY) != null;
+}
+
+export async function savePayoutAccount(
+  account: PayoutAccount,
+  opts: { remember?: boolean } = {},
+): Promise<void> {
+  const value = JSON.stringify(account);
+  if (opts.remember) {
+    device()?.setItem(STORAGE_KEY, value);
+    session()?.removeItem(STORAGE_KEY);
+  } else {
+    session()?.setItem(STORAGE_KEY, value);
+    device()?.removeItem(STORAGE_KEY);
+  }
   cache = account;
   notify();
 }
 
 export async function clearPayoutAccount(): Promise<void> {
   session()?.removeItem(STORAGE_KEY);
+  device()?.removeItem(STORAGE_KEY);
   cache = null;
   notify();
 }

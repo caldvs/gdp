@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePayoutAccount, useSavePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
+import { isPayoutAccountRemembered } from '@gdp/core/lib/payoutAccount';
 import { DEMO_MODE, DEMO_PAYOUT } from '@gdp/core/lib/demoMode';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { BodyText, Button, CenterSpinner, DisplayText, Mini, Notice, Spinner } from '@/components/ui';
@@ -57,6 +58,7 @@ function PayoutAccountForm() {
   const [tried, setTried] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [remember, setRemember] = useState(false);
 
   useEffect(() => {
     if (hydrated) return;
@@ -76,6 +78,7 @@ function PayoutAccountForm() {
       setMonzoHandle(pa.monzoHandle ?? '');
       setRevolutTag(pa.revolutTag ?? '');
       if (pa.monzoHandle || pa.revolutTag) setShowOptional(true);
+      setRemember(isPayoutAccountRemembered());
     } else {
       setEditing('name');
     }
@@ -102,7 +105,7 @@ function PayoutAccountForm() {
         accountHolderName: accountHolderName.trim(),
         ...(monzoHandle.trim() ? { monzoHandle: monzoHandle.trim() } : {}),
         ...(revolutTag.trim() ? { revolutTag: revolutTag.trim() } : {}),
-      });
+      }, { remember });
       if (returnTo) router.replace(safeInternalPath(returnTo));
       else if (window.history.length > 1) router.back();
       else router.replace('/');
@@ -121,7 +124,9 @@ function PayoutAccountForm() {
         <Mini>your payout</Mini>
         <DisplayText size="md" as="h2" className="mt-xs">Where should the money land?</DisplayText>
         <BodyText className="mt-sm">Diners pay you direct. Your details reach them inside the QR code — they never touch our servers.</BodyText>
-        <Mini className="mt-sm">kept in this browser tab · cleared when you close it</Mini>
+        <Mini className="mt-sm">
+          {remember ? 'kept in this browser · never on our servers' : 'kept in this browser tab · cleared when you close it'}
+        </Mini>
 
         {DEMO_MODE ? (
           <Notice
@@ -178,6 +183,16 @@ function PayoutAccountForm() {
                 ]} />} />
             </CollapsedRow>
           </div>
+        )}
+
+        {DEMO_MODE ? null : (
+          <label className="remember mt-lg">
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+            <span>
+              <span className="remember__t">Remember on this device</span>
+              <span className="remember__d">So you don&apos;t type them for every bill. They stay in this browser only. Leave it off on a shared device.</span>
+            </span>
+          </label>
         )}
 
         {submitError ? <Notice className="mt-base" title="Couldn't save." detail={submitError} /> : null}

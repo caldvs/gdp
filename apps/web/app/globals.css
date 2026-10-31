@@ -736,3 +736,15 @@ img { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- Confirm bill: tap-to-edit items on the review screen ---------- */
+.ritem--editable { width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; border-radius: 0; }
+.receipt > .ritem--editable:first-child { border-top: 0; }
+.ritem--editable:hover .ritem__name { text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.ritem__right { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.ritem__pencil { color: var(--mute-2); }
+.ritem--editable:hover .ritem__pencil { color: var(--accent); }
+.ritem--add { width: 100%; background: none; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; color: var(--accent); font-weight: 600; font-size: 14px; }
+.ritem-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; animation: fade-in .15s ease; }
+.ritem-edit__actions { display: flex; align-items: center; gap: 14px; }
+.link-btn--danger { color: var(--error-ink); }

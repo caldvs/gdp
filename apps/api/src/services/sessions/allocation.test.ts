@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeOwed, apportionByWeight } from './allocation.js';
+import { computeOwed, apportionByWeight, splitShare } from './allocation.js';
 import type { Bill } from '../../types/bills.js';
 
 const billOf = (
@@ -318,5 +318,50 @@ describe('computeOwed', () => {
       const owed = computeOwed(bill, participants);
       expect(owed.get('a')).toBe(2200);
     });
+  });
+});
+
+describe('splitShare', () => {
+  it('charges each sharer price / ways, leaving open spots unclaimed', () => {
+    const out = splitShare(1290, ['b', 'a'], 3);
+    expect([...out.entries()].sort()).toEqual([
+      ['a', 430],
+      ['b', 430],
+    ]);
+  });
+  it('puts remainder pennies on the lowest userId first', () => {
+    const out = splitShare(1000, ['b', 'a', 'c'], 3);
+    expect(out.get('a')).toBe(334);
+    expect(out.get('b')).toBe(333);
+    expect(out.get('c')).toBe(333);
+  });
+  it('never charges less than an even split between whoever joined', () => {
+    expect(splitShare(1000, ['a', 'b', 'c'], 2).get('a')).toBe(334);
+  });
+});
+
+describe('computeOwed with ways', () => {
+  const bill = {
+    items: [
+      {
+        itemId: 'i1',
+        name: 'Nachos',
+        unitPricePence: 1200,
+        quantity: 1,
+        category: 'food' as const,
+      },
+    ],
+    taxPence: 0,
+    serviceChargePence: 0,
+    totalPence: 1200,
+  };
+  it('treats a split with open spots as incomplete', () => {
+    expect(() =>
+      computeOwed(
+        bill as never,
+        [{ userId: 'a', claimedItemIds: [], sharedItemIds: ['i1'] }],
+        new Map([['i1', 2]]),
+      ),
+    ).toThrow('CLAIMS_INCOMPLETE');
   });
 });

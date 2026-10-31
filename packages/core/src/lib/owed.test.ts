@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectOwedPence, projectSubtotalPence } from './owed';
+import { projectOwedPence, projectSubtotalPence, sharePence } from './owed';
 
 const bill = {
   billId: 'b1',
@@ -19,7 +19,7 @@ const session = {
     { userId: 'alice', claimedItemIds: ['pizza', 'beer'], sharedItemIds: ['wine'] },
     { userId: 'bob', claimedItemIds: ['beer', 'beer'], sharedItemIds: ['wine'] },
   ],
-  shares: [{ itemId: 'wine', userIds: ['bob', 'alice'] }],
+  shares: [{ itemId: 'wine', userIds: ['bob', 'alice'], ways: 2, activity: [] }],
 } as never;
 
 describe('owed projection', () => {
@@ -34,5 +34,17 @@ describe('owed projection', () => {
 
   it('is zero for someone with no picks', () => {
     expect(projectOwedPence(session, bill, 'carol')).toBe(0);
+  });
+});
+
+describe('sharePence', () => {
+  it('divides by the number of ways, not by who has joined so far', () => {
+    expect(sharePence(1290, ['a'], 3, 'a')).toBe(430);
+  });
+  it('spreads leftover pennies one each in userId order', () => {
+    expect([sharePence(1000, ['c', 'a', 'b'], 3, 'a'), sharePence(1000, ['c', 'a', 'b'], 3, 'b')]).toEqual([334, 333]);
+  });
+  it('quotes the cost of joining for someone not yet in it', () => {
+    expect(sharePence(1200, ['a'], 3, 'z')).toBe(400);
   });
 });

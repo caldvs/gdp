@@ -7,10 +7,10 @@ import { ApiError, type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import {
-  useAbandonSession, useAddShare, useRemoveShare, useSession, useSetClaims, useSetReady, useShareSession,
+  useAbandonSession, useAddShare, useRemoveShare, useSession, useSetClaims, useSetReady, useSetShareWays, useShareSession,
 } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
-import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence } from '@gdp/core/lib/owed';
+import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
 import type { PayoutAccount } from '@gdp/core/lib/payoutAccount';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
@@ -29,6 +29,8 @@ type Participant = components['schemas']['Participant'];
 type Bill = components['schemas']['Bill'];
 type Session = components['schemas']['Session'];
 type BillItem = components['schemas']['BillItem'];
+type Share = NonNullable<Session['shares']>[number];
+type ShareActivity = components['schemas']['ShareActivity'];
 
 export default function SessionPage() {
   return (
@@ -159,6 +161,7 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
     if (inShare) removeShare.mutate({ itemId });
     else addShare.mutate({ itemId });
   };
+  const startSplit = (itemId: string, ways: number) => addShare.mutate({ itemId, ways });
 
   const picking = !myParticipant?.readyToLock || isCreator;
 
@@ -196,8 +199,8 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
           <>
             <Receipt list className="mt-base">
               {b.items.map((it) => {
-                const shareUserIds = s.shares?.find((x) => x.itemId === it.itemId)?.userIds ?? [];
-                const sharers = shareUserIds.map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
+                const share = s.shares?.find((x) => x.itemId === it.itemId);
+                const sharers = (share?.userIds ?? []).map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
                 return (
                   <ClaimRow
                     key={it.itemId}
@@ -206,12 +209,16 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
                     othersCount={counts.others.get(it.itemId) ?? 0}
                     claimers={counts.othersByItem.get(it.itemId) ?? []}
                     sharers={sharers}
+                    share={share}
+                    sessionId={sessionId}
+                    nameOf={(uid) => firstName(s.participants.find((p) => p.userId === uid)?.displayName)}
                     meUserId={meUserId}
                     isCreator={isCreator}
                     locked={!isCreator && !!myParticipant?.readyToLock}
                     onClaim={() => claimOne(it)}
                     onUnclaim={() => unclaimOne(it.itemId)}
                     onToggleShare={() => toggleShare(it.itemId)}
+                    onStartSplit={(ways) => startSplit(it.itemId, ways)}
                   />
                 );
               })}
@@ -306,20 +313,33 @@ function ClaimingLayout({ s, b, meUserId, isCreator, sessionId }: { s: Session; 
   );
 }
 
-function ClaimRow({ item, myCount, othersCount, claimers, sharers, meUserId, isCreator, locked, onClaim, onUnclaim, onToggleShare }: {
+function ClaimRow({ item, myCount, othersCount, claimers, sharers, share, sessionId, nameOf, meUserId, isCreator, locked, onClaim, onUnclaim, onToggleShare, onStartSplit }: {
   item: BillItem; myCount: number; othersCount: number; claimers: Participant[]; sharers: Participant[];
+  share: Share | undefined; sessionId: string; nameOf: (userId: string) => string;
   meUserId: string; isCreator: boolean; locked: boolean; onClaim: () => void; onUnclaim: () => void; onToggleShare: () => void;
+  onStartSplit: (ways: number) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // "How many people shared this?" — asked when starting a split.
+  const [startWays, setStartWays] = useState<number | null>(null);
+  // Someone in the split changing the number of ways.
+  const [editWays, setEditWays] = useState<number | null>(null);
+  const setShareWays = useSetShareWays(sessionId);
   const remaining = item.quantity - myCount - othersCount;
   const isUnclaimed = myCount === 0 && othersCount === 0;
   const isShared = sharers.length > 0;
   const inShare = sharers.some((p) => p.userId === meUserId);
 
-  const sortedSharers = isShared ? [...sharers].sort((a, b) => a.userId.localeCompare(b.userId)) : [];
-  const baseSharePence = isShared ? Math.floor(item.unitPricePence / sharers.length) : 0;
-  const shareRemainder = isShared ? item.unitPricePence - baseSharePence * sharers.length : 0;
-  const mySharePence = inShare ? baseSharePence + (meUserId === sortedSharers[0]?.userId ? shareRemainder : 0) : baseSharePence;
+  const userIds = share?.userIds ?? sharers.map((p) => p.userId);
+  const ways = share?.ways ?? userIds.length;
+  const openSpots = Math.max(0, ways - userIds.length);
+  // What I pay now (in it), or what joining would cost (not in it — if
+  // every spot is taken, joining makes it one more way).
+  const mySharePence = isShared
+    ? sharePence(item.unitPricePence, userIds, inShare || openSpots > 0 ? ways : ways + 1, meUserId)
+    : 0;
+  const baseSharePence = mySharePence;
+  const updates = useShareUpdates(sessionId, item.itemId, inShare ? share : undefined, meUserId);
 
   // Sharing is for single-unit items nobody has claimed yet (ADR-0006).
   const canShare = !locked && item.quantity === 1 && isUnclaimed && !isShared;
@@ -372,8 +392,23 @@ function ClaimRow({ item, myCount, othersCount, claimers, sharers, meUserId, isC
       <SharerStack sharers={sharers} />
       <span>
         {state === 'joinable'
-          ? sharers.length > 1 ? `${sharers.length} sharing · tap to join` : 'shared · tap to join'
-          : `splitting ${sharers.length} ways`}
+          ? openSpots > 0
+            ? `split ${ways} ways · ${openSpots} spot${openSpots === 1 ? '' : 's'} open`
+            : `split ${ways} ways · join to make it ${ways + 1}`
+          : `split ${ways} ways${openSpots > 0 ? ` · ${openSpots} spot${openSpots === 1 ? '' : 's'} open` : ''}`}
+        {state === 'mine' && !locked ? (
+          <>
+            {' · '}
+            <button
+              type="button"
+              className="ways-link claim__ctl"
+              onClick={() => { setEditWays(ways); updates.dismiss(); }}
+              aria-label={`Change how many ways ${item.name} is split`}
+            >
+              change
+            </button>
+          </>
+        ) : null}
       </span>
     </div>
   ) : undefined;
@@ -408,13 +443,120 @@ function ClaimRow({ item, myCount, othersCount, claimers, sharers, meUserId, isC
         onPress={!locked && (state === 'mine' || state === 'joinable') ? handlePress : undefined}
         right={right}
       />
-      {canShare && menuOpen ? (
+      {canShare && menuOpen && startWays === null ? (
         <div className="claim-menu">
-          <Button variant="quiet" onClick={() => { setMenuOpen(false); onToggleShare(); }}>Split this</Button>
+          <Button variant="quiet" onClick={() => { setMenuOpen(false); setStartWays(2); }}>Split this</Button>
+        </div>
+      ) : null}
+      {startWays !== null && !isShared ? (
+        <WaysPicker
+          title="How many people shared this?"
+          ways={startWays}
+          min={2}
+          pricePence={item.unitPricePence}
+          onChange={setStartWays}
+          confirmLabel="Split it"
+          onCancel={() => setStartWays(null)}
+          onConfirm={() => { onStartSplit(startWays); setStartWays(null); }}
+        />
+      ) : null}
+      {editWays !== null && inShare ? (
+        <WaysPicker
+          title="How many ways should it be split?"
+          hint={userIds.length > 1 ? `${userIds.length} of you are in it already, so it can't go lower.` : undefined}
+          ways={editWays}
+          min={Math.max(2, userIds.length)}
+          pricePence={item.unitPricePence}
+          onChange={setEditWays}
+          confirmLabel={editWays === ways ? 'No change' : 'Update'}
+          confirmDisabled={editWays === ways || setShareWays.isPending}
+          onCancel={() => { setEditWays(null); setShareWays.reset(); }}
+          onConfirm={() =>
+            setShareWays.mutate({ itemId: item.itemId, ways: editWays }, { onSuccess: () => setEditWays(null) })
+          }
+          error={setShareWays.isError ? shareErrorMessage(setShareWays.error) : undefined}
+        />
+      ) : null}
+      {updates.items.length > 0 && editWays === null ? (
+        <div className="share-update" role="status">
+          <div className="share-update__body">
+            {updates.items.map((a, i) => (
+              <div key={`${a.at}-${i}`}>{describeShareActivity(a, nameOf)}</div>
+            ))}
+            <div className="share-update__now">your part is now {formatGBP(mySharePence)}</div>
+          </div>
+          <button type="button" className="link-btn" onClick={updates.dismiss}>ok</button>
         </div>
       ) : null}
     </div>
   );
+}
+
+function WaysPicker({ title, hint, ways, min, pricePence, onChange, confirmLabel, confirmDisabled, onCancel, onConfirm, error }: {
+  title: string; hint?: string; ways: number; min: number; pricePence: number; onChange: (n: number) => void;
+  confirmLabel: string; confirmDisabled?: boolean; onCancel: () => void; onConfirm: () => void; error?: string;
+}) {
+  const max = 20;
+  return (
+    <div className="ways-picker">
+      <div className="ways-picker__title">{title}</div>
+      <div className="ways-picker__row">
+        <div className="qty">
+          <button type="button" aria-label="Fewer people" disabled={ways <= min} onClick={() => onChange(Math.max(min, ways - 1))}>−</button>
+          <span className="qty__v" aria-live="polite">{ways}</span>
+          <button type="button" aria-label="More people" disabled={ways >= max} onClick={() => onChange(Math.min(max, ways + 1))}>+</button>
+        </div>
+        <span className="ways-picker__each">{formatGBP(Math.ceil(pricePence / ways))} each</span>
+      </div>
+      {hint ? <div className="ways-picker__hint">{hint}</div> : null}
+      {error ? <div className="ways-picker__error">{error}</div> : null}
+      <div className="ways-picker__actions">
+        <button type="button" className="link-btn link-btn--mute" onClick={onCancel}>cancel</button>
+        <Button variant="quiet" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel}</Button>
+      </div>
+    </div>
+  );
+}
+
+function firstName(displayName: string | undefined): string {
+  return displayName?.split(' ')[0] || 'Someone';
+}
+
+function describeShareActivity(a: ShareActivity, nameOf: (userId: string) => string): string {
+  const who = nameOf(a.byUserId);
+  switch (a.kind) {
+    case 'ways':
+      return `${who} changed it from ${a.fromWays} to ${a.toWays} ways`;
+    case 'joined':
+      return a.toWays ? `${who} joined, so it's now ${a.toWays} ways` : `${who} joined the split`;
+    case 'left':
+      return `${who} left the split; their spot is open`;
+    default:
+      return `${who} started the split`;
+  }
+}
+
+/**
+ * Changes other people made to a split I'm in, since I last looked.
+ * "Since I last looked" = the later of when I dismissed the notice and my
+ * own most recent action on the split (so joining doesn't replay history).
+ */
+function useShareUpdates(sessionId: string, itemId: string, share: Share | undefined, meUserId: string) {
+  const key = `gdp.shareSeen.${sessionId}.${itemId}`;
+  const [seenAt, setSeenAt] = useState<string>('');
+  useEffect(() => {
+    try { setSeenAt(localStorage.getItem(key) ?? ''); } catch { /* storage unavailable */ }
+  }, [key]);
+  const activity = share?.activity ?? [];
+  const mine = activity.filter((a) => a.byUserId === meUserId).map((a) => a.at);
+  const baseline = [seenAt, ...mine].sort().at(-1) ?? '';
+  const items = activity.filter((a) => a.byUserId !== meUserId && a.kind !== 'started' && a.at > baseline).slice(-3);
+  const dismiss = () => {
+    const latest = activity.at(-1)?.at ?? new Date().toISOString();
+    setSeenAt(latest);
+    try { localStorage.setItem(key, latest); } catch { /* ignore */ }
+  };
+  return { items, dismiss };
 }
 
 function TextAction({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
@@ -707,5 +849,8 @@ function abandonBody(participantCount: number): string {
 function shareErrorMessage(err: ApiError): string {
   if (err.code === 'ITEM_NOT_SHAREABLE') return "Share isn't supported on multi-quantity items yet.";
   if (err.code === 'CLAIM_SHARE_CONFLICT') return 'This item is currently being claimed — ask the claimer to release it before sharing.';
+  if (err.code === 'SHARE_PAID') return "Someone in this split has already paid, so it can't change now.";
+  if (err.code === 'SHARE_WAYS_TOO_LOW') return 'More people are in it already. Someone needs to leave the split first.';
+  if (err.code === 'SHARE_CONFLICT') return err.message;
   return err.message;
 }

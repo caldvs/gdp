@@ -5,8 +5,7 @@ type Bill = components['schemas']['Bill'];
 
 /**
  * What a diner owes before the server has fixed `owedPence`: whole-unit
- * claims, plus shared items split equally with the remainder penny going
- * to the lowest userId (ADR-0006), then service + tax pro rata.
+ * claims, plus shared items split by the number of ways (ADR-0006), then service + tax pro rata.
  * Mirrors paymentService.computeOwedForParticipant on the backend.
  */
 export function projectSubtotalPence(session: Session, bill: Bill, userId: string): number {
@@ -19,11 +18,26 @@ export function projectSubtotalPence(session: Session, bill: Bill, userId: strin
     if (!sh.userIds.includes(userId)) return acc;
     const item = bill.items.find((x) => x.itemId === sh.itemId);
     if (!item) return acc;
-    const base = Math.floor(item.unitPricePence / sh.userIds.length);
-    const remainder = item.unitPricePence - base * sh.userIds.length;
-    return acc + base + (userId === [...sh.userIds].sort()[0] ? remainder : 0);
+    return acc + sharePence(item.unitPricePence, sh.userIds, sh.ways ?? sh.userIds.length, userId);
   }, 0);
   return claimSub + shareSub;
+}
+
+/**
+ * One person's part of a shared item: the price divided into `ways`
+ * equal spots, the leftover pennies going one each to the people in the
+ * split in userId order. Spots nobody has taken yet aren't anyone's.
+ * Mirrors splitShare in the API. Pass a userId not in the split to get
+ * what joining would cost.
+ */
+export function sharePence(unitPricePence: number, userIds: readonly string[], ways: number, userId: string): number {
+  const inSplit = userIds.includes(userId);
+  const members = inSplit ? userIds : [...userIds, userId];
+  const n = Math.max(ways, members.length);
+  const base = Math.floor(unitPricePence / n);
+  const remainder = unitPricePence - base * n;
+  const rank = [...members].sort().indexOf(userId);
+  return base + (rank < remainder ? 1 : 0);
 }
 
 export function extrasRate(bill: Bill): number {

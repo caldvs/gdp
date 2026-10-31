@@ -1,5 +1,6 @@
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
+import { sharePence } from '@gdp/core/lib/owed';
 import { Avatar } from './Avatar';
 import { Chip, Mini } from './ui';
 
@@ -13,8 +14,8 @@ export function DinerRow({ p, isMe, isLead, variant, items, billExtrasRate, shar
   onMarkReceived?: () => void; onChase?: () => void;
 }) {
   // While claiming, owedPence isn't computed yet — project it from picks
-  // the same way the server will at lock time (shares: floor-divide, the
-  // lowest userId takes the remainder; then pro-rata service + tax).
+  // the same way the server will at lock time (shares: price / number of
+  // ways; then pro-rata service + tax).
   let amountPence: number | undefined = p.owedPence ?? fallbackOwedPence;
   let shareCount = 0;
   if (variant === 'claiming' && items && billExtrasRate !== undefined) {
@@ -24,10 +25,7 @@ export function DinerRow({ p, isMe, isLead, variant, items, billExtrasRate, shar
       shareCount += 1;
       const item = items.find((x) => x.itemId === sh.itemId);
       if (!item) return acc;
-      const base = Math.floor(item.unitPricePence / sh.userIds.length);
-      const remainder = item.unitPricePence - base * sh.userIds.length;
-      const lowest = [...sh.userIds].sort()[0];
-      return acc + base + (p.userId === lowest ? remainder : 0);
+      return acc + sharePence(item.unitPricePence, sh.userIds, sh.ways ?? sh.userIds.length, p.userId);
     }, 0);
     amountPence = Math.round((claimSub + shareSub) * (1 + billExtrasRate));
   }

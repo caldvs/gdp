@@ -39,6 +39,8 @@ export function useCreateSession() {
       api<Session>('/v1/sessions', { method: 'POST', body: { billId } }),
     onSuccess: (session) => {
       qc.setQueryData(['session', session.sessionId], session);
+      // A bill's status changed: the home list (Open / Past) must not show it stale.
+      void qc.invalidateQueries({ queryKey: ['my-sessions'] });
     },
   });
 }
@@ -237,6 +239,8 @@ export function useShareSession(sessionId: string) {
     mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/share`, { method: 'POST' }),
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
+      // A bill's status changed: the home list (Open / Past) must not show it stale.
+      void qc.invalidateQueries({ queryKey: ['my-sessions'] });
     },
   });
 }
@@ -247,6 +251,8 @@ export function useCloseSession(sessionId: string) {
     mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/close`, { method: 'POST' }),
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
+      // A bill's status changed: the home list (Open / Past) must not show it stale.
+      void qc.invalidateQueries({ queryKey: ['my-sessions'] });
     },
   });
 }
@@ -257,6 +263,8 @@ export function useAbandonSession(sessionId: string) {
     mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/abandon`, { method: 'POST' }),
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
+      // A bill's status changed: the home list (Open / Past) must not show it stale.
+      void qc.invalidateQueries({ queryKey: ['my-sessions'] });
     },
   });
 }

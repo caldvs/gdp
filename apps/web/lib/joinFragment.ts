@@ -17,3 +17,12 @@ export function takeJoinFragment(): string | null {
     return null;
   }
 }
+
+/** Reads the stashed fragment without consuming it (the join screen takes it). */
+export function peekJoinFragment(): string | null {
+  try {
+    return window.sessionStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}

@@ -42,6 +42,8 @@ export default tseslint.config(
       '*.config.js',
       '*.config.ts',
       'eslint.config.js',
+      // One-off TrueLayer signing helper; not part of the TS project.
+      'scripts/_sign-ad-hoc.mjs',
     ],
   },
 );

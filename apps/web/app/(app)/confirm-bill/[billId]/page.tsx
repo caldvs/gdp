@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type components } from '@gdp/core/api';
@@ -9,61 +9,13 @@ import { useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
 import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
-import { Pencil } from 'lucide-react';
-import { useScreenTitle } from '@/lib/screen';
-import { BillImageModal } from '@/components/BillImageModal';
 import {
-  BillTotals, BodyText, Button, CenterSpinner, DisplayText, LinkButton, Mini, Notice,
-  Receipt, ReceiptItem, Rule, Spinner, TextField, TotalsRow,
-} from '@/components/ui';
+  Back, Backdrop, Btn, Centre, Close, Fab, KV, List, MiniBtn, Notice, Pencil, Plus, Price, Row, RowBody, Screen, Sheet, Spin, Tag, TopBar,
+} from '@/components/glass';
 
 type Bill = components['schemas']['Bill'];
 type BillItem = components['schemas']['BillItem'];
-type Category = BillItem['category'];
-type Course = NonNullable<BillItem['course']>;
-type DraftItem = { draftId: string; itemId?: string; name: string; unitPricePounds: string; quantity: number; category: Category; course?: Course };
-
-// Sections on the review screen, in the order a meal goes. Food the parser
-// couldn't place (and food on bills parsed before courses existed) goes under
-// "food". Grouping is display only: the items array, and so what gets saved,
-// keeps the bill's own order.
-type Section = Course | 'food' | 'drink' | 'other';
-const SECTIONS: Array<{ key: Section; label: string }> = [
-  { key: 'starter', label: 'Starters' },
-  { key: 'main', label: 'Mains' },
-  { key: 'side', label: 'Sides' },
-  { key: 'dessert', label: 'Desserts' },
-  { key: 'food', label: 'Food' },
-  { key: 'drink', label: 'Drinks' },
-  { key: 'other', label: 'Extras' },
-];
-const sectionOf = (it: DraftItem): Section =>
-  it.category === 'food' ? it.course ?? 'food' : it.category;
-
-// The choices offered in the item editor, and what each sets on the item.
-const SECTION_CHOICES: Array<{ key: Section; label: string; patch: Pick<DraftItem, 'category' | 'course'> }> = [
-  { key: 'starter', label: 'Starter', patch: { category: 'food', course: 'starter' } },
-  { key: 'main', label: 'Main', patch: { category: 'food', course: 'main' } },
-  { key: 'side', label: 'Side', patch: { category: 'food', course: 'side' } },
-  { key: 'dessert', label: 'Dessert', patch: { category: 'food', course: 'dessert' } },
-  { key: 'drink', label: 'Drink', patch: { category: 'drink', course: undefined } },
-  { key: 'other', label: 'Other', patch: { category: 'other', course: undefined } },
-];
-
-function existingSessionIdFromError(err: unknown): string | undefined {
-  if (!(err instanceof ApiError) || err.code !== 'SESSION_INVALID_STATE') return undefined;
-  const d = err.details as { sessionId?: unknown } | undefined;
-  return typeof d?.sessionId === 'string' ? d.sessionId : undefined;
-}
-
-function amendErrorMessage(err: Error, items: BillItem[]): string {
-  if (err instanceof ApiError && err.code === 'CLAIMS_EXCEED_QUANTITY') {
-    const d = err.details as { itemId?: string; claimed?: number; newQuantity?: number } | undefined;
-    const name = items.find((it) => it.itemId === d?.itemId)?.name ?? 'an item';
-    return `You set "${name}" to ${d?.newQuantity ?? '?'}, but ${d?.claimed ?? '?'} are already claimed. Raise the quantity, or ask diners to drop their claims first.`;
-  }
-  return err.message;
-}
+type DraftItem = { draftId: string; itemId?: string; name: string; unitPricePounds: string; quantity: number; category: BillItem['category']; course?: BillItem['course'] };
 
 const fromBillItem = (it: BillItem, idx: number): DraftItem => ({
   draftId: `existing-${it.itemId}-${idx}`,
@@ -74,29 +26,26 @@ const fromBillItem = (it: BillItem, idx: number): DraftItem => ({
   category: it.category,
   ...(it.category === 'food' && it.course ? { course: it.course } : {}),
 });
+const blankItem = (): DraftItem => ({ draftId: `new-${Math.random().toString(36).slice(2, 9)}`, name: '', unitPricePounds: '0.00', quantity: 1, category: 'food' });
+const parsePence = (s: string): number => { const n = Number(s); return !Number.isFinite(n) || n < 0 ? 0 : Math.round(n * 100); };
+const pounds = (p: number) => (p / 100).toFixed(2);
 
-const blankItem = (): DraftItem => ({
-  draftId: `new-${Math.random().toString(36).slice(2, 9)}`,
-  name: '',
-  unitPricePounds: '0.00',
-  quantity: 1,
-  category: 'food',
-});
-
-const parsePence = (s: string): number => {
-  const n = Number(s);
-  return !Number.isFinite(n) || n < 0 ? 0 : Math.round(n * 100);
-};
-
-export default function ConfirmBillPage() {
-  return (
-    <Suspense fallback={<CenterSpinner />}>
-      <ConfirmBill />
-    </Suspense>
-  );
+function existingSessionIdFromError(err: unknown): string | undefined {
+  if (!(err instanceof ApiError) || err.code !== 'SESSION_INVALID_STATE') return undefined;
+  const d = err.details as { sessionId?: unknown } | undefined;
+  return typeof d?.sessionId === 'string' ? d.sessionId : undefined;
 }
 
-function ConfirmBill() {
+export default function ConfirmBillPage() {
+  return <Suspense fallback={<Centre><Spin /></Centre>}><CheckBill /></Suspense>;
+}
+
+/**
+ * "Check the bill": the scanned lines over the photo. Tap a line to fix
+ * it; each fix saves when the editor closes. Service and tax are rows
+ * in the totals card and edit the same way.
+ */
+function CheckBill() {
   const { billId } = useParams<{ billId: string }>();
   const sessionId = useSearchParams().get('sessionId') ?? undefined;
   const isMidSession = !!sessionId;
@@ -112,24 +61,22 @@ function ConfirmBill() {
   const [servicePounds, setServicePounds] = useState('0.00');
   const [taxPounds, setTaxPounds] = useState('0.00');
   const [hydrated, setHydrated] = useState(false);
-  const [imageOpen, setImageOpen] = useState(false);
-  const [mode, setMode] = useState<'review' | 'edit'>(isMidSession ? 'edit' : 'review');
-  // Review screen: the item being edited in place, and its values before
-  // editing (so Escape / Cancel can put them back).
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingSnapshot, setEditingSnapshot] = useState<DraftItem | null>(null);
+  const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax'
+  const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
 
   useEffect(() => {
     if (bill.data && !hydrated) {
-      setItems(bill.data.items.map(fromBillItem));
-      setServicePounds((bill.data.serviceChargePence / 100).toFixed(2));
-      setTaxPounds((bill.data.taxPence / 100).toFixed(2));
+      hydrateFrom(bill.data);
       setHydrated(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bill.data, hydrated]);
 
-  const venueName = bill.data?.venue?.name;
-  useScreenTitle(mode === 'review' && items.length > 0 ? 'Review bill' : venueName ?? 'Bill');
+  const hydrateFrom = (b: Bill) => {
+    setItems(b.items.map(fromBillItem));
+    setServicePounds(pounds(b.serviceChargePence));
+    setTaxPounds(pounds(b.taxPence));
+  };
 
   const subtotalPence = useMemo(() => items.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0), [items]);
   const servicePence = parsePence(servicePounds);
@@ -143,61 +90,35 @@ function ConfirmBill() {
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
-        parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity || local.category !== server.category ||
-        (local.course ?? null) !== (server.course ?? null);
+        parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
   }, [bill.data, items, servicePence, taxPence]);
 
-  const existingSessionId = existingSessionIdFromError(createSession.error);
-
-  // Review screen: persist as soon as an inline edit is finished (or an
-  // item removed), so nothing is lost if the lead leaves the page.
+  // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
-    if (mode !== 'review' || editingId !== null || !hydrated || !isDirty || amend.isPending) return;
+    if (editing !== null || !hydrated || !isDirty || amend.isPending) return;
     void saveDraft();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, editingId, isDirty, hydrated]);
+  }, [editing, isDirty, hydrated]);
 
   const claimsByItemId = useMemo(() => {
-    const m = new Map<string, { count: number; names: string[] }>();
-    for (const p of session.data?.participants ?? []) {
-      const seen = new Set<string>();
-      for (const id of p.claimedItemIds) {
-        const entry = m.get(id) ?? { count: 0, names: [] };
-        entry.count += 1;
-        if (!seen.has(id)) { entry.names.push(p.displayName); seen.add(id); }
-        m.set(id, entry);
-      }
-    }
+    const m = new Map<string, number>();
+    for (const p of session.data?.participants ?? []) for (const id of p.claimedItemIds) m.set(id, (m.get(id) ?? 0) + 1);
     return m;
   }, [session.data]);
 
-  const updateItem = (draftId: string, patch: Partial<DraftItem>) =>
-    setItems((prev) => prev.map((it) => (it.draftId === draftId ? { ...it, ...patch } : it)));
+  const updateItem = (draftId: string, patch: Partial<DraftItem>) => setItems((prev) => prev.map((it) => (it.draftId === draftId ? { ...it, ...patch } : it)));
   const removeItem = (draftId: string) => setItems((prev) => prev.filter((it) => it.draftId !== draftId));
-
-  const startEditing = (it: DraftItem) => {
-    setEditingId(it.draftId);
-    setEditingSnapshot(it);
-  };
+  const startEditing = (it: DraftItem) => { setEditing(it.draftId); setSnapshot(it); };
   const cancelEditing = () => {
-    if (editingSnapshot) {
-      // A brand-new item that was never filled in just disappears.
-      if (!editingSnapshot.itemId && !editingSnapshot.name.trim()) removeItem(editingSnapshot.draftId);
-      else updateItem(editingSnapshot.draftId, editingSnapshot);
+    if (snapshot) {
+      if (!snapshot.itemId && !snapshot.name.trim()) removeItem(snapshot.draftId);
+      else updateItem(snapshot.draftId, snapshot);
     }
-    setEditingId(null);
-    setEditingSnapshot(null);
+    setEditing(null); setSnapshot(null);
   };
-  const finishEditing = () => {
-    setEditingId(null);
-    setEditingSnapshot(null);
-  };
-  const addAndEdit = () => {
-    const it = blankItem();
-    setItems((prev) => [...prev, it]);
-    startEditing(it);
-  };
+  const finishEditing = () => { setEditing(null); setSnapshot(null); };
+  const addAndEdit = () => { const it = blankItem(); setItems((prev) => [...prev, it]); startEditing(it); };
 
   const buildAmendPayload = () => ({
     items: items.map((it) => ({
@@ -212,28 +133,13 @@ function ConfirmBill() {
     serviceChargePence: servicePence,
   });
 
-  // Load a bill (fresh from the server, or the last saved one) into the
-  // editable draft. Items then carry their server itemIds, so later saves
-  // update them instead of re-adding them.
-  const hydrateFrom = (bill: Bill) => {
-    setItems(bill.items.map(fromBillItem));
-    setServicePounds((bill.serviceChargePence / 100).toFixed(2));
-    setTaxPounds((bill.taxPence / 100).toFixed(2));
-  };
-
   const saveDraft = async (): Promise<boolean> => {
     if (!isDirty) return true;
-    try {
-      hydrateFrom(await amend.mutateAsync(buildAmendPayload()));
-      return true;
-    } catch {
-      return false;
-    }
+    try { hydrateFrom(await amend.mutateAsync(buildAmendPayload())); return true; } catch { return false; }
   };
 
-  const onCreateSession = async () => {
+  const onShare = async () => {
     if (!billId) return;
-    // Diners need somewhere to pay — get the lead's bank details first.
     if (!payout.isPending && !payout.data) {
       router.push(`/payout-account?returnTo=${encodeURIComponent(`/confirm-bill/${billId}`)}`);
       return;
@@ -242,341 +148,151 @@ function ConfirmBill() {
     try {
       const created = await createSession.mutateAsync({ billId });
       await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
-      router.replace(`/session/${created.sessionId}?showQr=1`);
+      router.replace(`/session/${created.sessionId}/share`);
     } catch (err) {
       const existing = existingSessionIdFromError(err);
       if (existing) router.replace(`/session/${existing}`);
     }
   };
 
-  const onSaveAmend = async () => {
-    if (!billId || !sessionId) return;
+  const onSaveMidSession = async () => {
+    if (!sessionId) return;
     try {
       await amend.mutateAsync(buildAmendPayload());
       await queryClient.invalidateQueries({ queryKey: ['session', sessionId] });
       router.replace(`/session/${sessionId}`);
-    } catch {
-      // error shown inline
-    }
+    } catch { /* shown inline */ }
   };
 
-  if (bill.isPending || (bill.isSuccess && !hydrated)) return <CenterSpinner />;
+  if (bill.isPending || (bill.isSuccess && !hydrated)) return <Centre><Spin /></Centre>;
   if (bill.isError) {
-    return (
-      <div className="center">
-        <Notice title="Couldn't load the bill." detail={bill.error.message} />
-        <Button variant="ghost" href="/capture" replace>Start over</Button>
-      </div>
-    );
+    return <Centre><Notice error title="Couldn't load the bill.">{bill.error.message}</Notice><Btn tone="ghost" href="/" replace>Back</Btn></Centre>;
   }
-
   const b = bill.data as Bill & { parsedTotalPence?: number };
   const busy = amend.isPending || createSession.isPending;
-  const imageModal = <BillImageModal billId={billId} visible={imageOpen} onClose={() => setImageOpen(false)} />;
-
-  if (mode === 'review' && items.length === 0) {
-    return (
-      <div className="screen stack">
-        <Mini>hmm</Mini>
-        <DisplayText size="md" className="mt-xs">Drew a blank on this one.</DisplayText>
-        <BodyText className="mt-sm">Type the items in yourself, or grab another photo and we&apos;ll have another go.</BodyText>
-        <div className="stack gap-sm mt-lg">
-          <Notice title="Couldn't read any items." detail="Empty receipts usually mean a glare on the print or the bill was off-frame." />
-          <Button variant="ghost" onClick={() => setMode('edit')}>+ Add items manually</Button>
-          <Button href="/capture" replace>Retake the photo →</Button>
-        </div>
-        {imageModal}
-      </div>
-    );
-  }
-
-  if (mode === 'review') {
-    const venueLine = [
-      b.venue?.address?.split(',')[0]?.trim(),
-      b.parsedFrom?.parsedAt ? new Date(b.parsedFrom.parsedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null,
-    ].filter(Boolean).join(' · ');
-    // The item being edited stays in the section it started in until Done,
-    // so changing its section doesn't move the editor out from under you.
-    const placedIn = (it: DraftItem) =>
-      it.draftId === editingId && editingSnapshot ? sectionOf(editingSnapshot) : sectionOf(it);
-    const groups = SECTIONS
-      .map((sec) => {
-        const its = items.filter((it) => placedIn(it) === sec.key);
-        return { ...sec, items: its, totalPence: its.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0) };
-      })
-      .filter((g) => g.items.length > 0);
-    const hasCourses = groups.some((g) => g.key === 'starter' || g.key === 'main' || g.key === 'side' || g.key === 'dessert');
-    for (const g of groups) if (g.key === 'food' && hasCourses) g.label = 'Other food';
-    return (
-      <>
-        <div className="screen screen--sticky stack">
-          {b.venue?.name ? <DisplayText size="md" as="h2" className="mt-xs">{b.venue.name}</DisplayText> : null}
-          {venueLine ? <BodyText className="t-mute mt-xs">{venueLine}</BodyText> : null}
-          <BodyText className="mt-sm">Bill look right? Fix anything the scan got wrong, then split it.</BodyText>
-          <Receipt className="mt-base">
-            {groups.map((g) => (
-              <Fragment key={g.key}>
-                {groups.length > 1 ? (
-                  <div className="ritem-group">
-                    <span>{g.label}</span>
-                    <span className="ritem-group__sum">{formatGBP(g.totalPence)}</span>
-                  </div>
-                ) : null}
-                {g.items.map((it) =>
-                  it.draftId === editingId ? (
-                    <InlineItemEditor
-                      key={it.draftId}
-                      item={it}
-                      busy={amend.isPending}
-                      onChange={(patch) => updateItem(it.draftId, patch)}
-                      onDone={finishEditing}
-                      onCancel={cancelEditing}
-                      onRemove={() => { removeItem(it.draftId); setEditingId(null); setEditingSnapshot(null); }}
-                    />
-                  ) : (
-                    <button
-                      key={it.draftId}
-                      type="button"
-                      className="ritem ritem--editable"
-                      onClick={() => startEditing(it)}
-                      disabled={busy}
-                      aria-label={`Edit ${it.name || 'item'}`}
-                    >
-                      <span className="ritem__name">{it.quantity > 1 ? `${it.quantity}× ${it.name || 'Item'}` : it.name || 'Item'}</span>
-                      <span className="ritem__right">
-                        <span className="ritem__price">{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</span>
-                        <Pencil size={13} className="ritem__pencil" aria-hidden />
-                      </span>
-                    </button>
-                  ),
-                )}
-              </Fragment>
-            ))}
-            <button type="button" className="ritem ritem--add" onClick={addAndEdit} disabled={busy}>+ add an item</button>
-            <BillTotals subtotalPence={subtotalPence} servicePence={servicePence} taxPence={taxPence} totalPence={totalPence} />
-          </Receipt>
-          <Mini className="t-center mt-sm">tap an item to fix its name or price</Mini>
-          <ParsedTotalMismatch bill={b} computedTotalPence={totalPence} />
-          <LinkButton align="center" className="mt-md" onClick={() => setImageOpen(true)}>view original photo</LinkButton>
-          {createSession.isError && !existingSessionId ? (
-            <Notice className="mt-md" title="Couldn't start the session." detail={createSession.error.message} />
-          ) : null}
-          {amend.isError ? <Notice className="mt-md" title="Couldn't save." detail={amendErrorMessage(amend.error, b.items)} /> : null}
-          {existingSessionId ? (
-            <Button variant="ghost" className="mt-md" href={`/session/${existingSessionId}`} replace>Continue your existing session</Button>
-          ) : null}
-        </div>
-        <div className="sticky-bar">
-          <div className="sticky-bar__inner">
-            <div className="sticky-bar__row">
-              <Button variant="ghost" onClick={() => { setEditingId(null); setMode('edit'); }} disabled={busy}>Edit all</Button>
-              <Button disabled={busy || editingId !== null} onClick={onCreateSession}>{busy ? <Spinner /> : 'Open the session →'}</Button>
-            </div>
-          </div>
-        </div>
-        {imageModal}
-      </>
-    );
-  }
+  const existingSessionId = existingSessionIdFromError(createSession.error);
+  const printed = b.parsedTotalPence;
+  const mismatch = printed !== undefined && printed !== totalPence;
+  const sub = items.length === 0
+    ? 'Nothing read. Add the lines yourself, or retake.'
+    : [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
 
   return (
-    <>
-      <div className="screen screen--sticky stack">
-        <Mini>edit bill</Mini>
-        <DisplayText size="md" as="h2" className="mt-xs">Fix anything the parser got wrong.</DisplayText>
-        <BodyText className="mt-sm">
-          {isMidSession
-            ? 'Diners will be asked to re-confirm their picks after you save.'
-            : 'Names, prices, quantities, service — adjust whatever needs it.'}
-        </BodyText>
-        <LinkButton className="mt-sm" onClick={() => setImageOpen(true)}>view photo</LinkButton>
+    <Screen>
+      <Backdrop billId={billId} tone="dim" />
+      <TopBar
+        left={<Fab href={isMidSession ? `/session/${sessionId}` : '/'} label={isMidSession ? 'Back' : 'Cancel'} icon={isMidSession ? <Back /> : <Close />} replace />}
+        right={isMidSession ? undefined : <Fab href="/" label="Retake" replace>Retake</Fab>}
+      />
+      <Sheet
+        size="mid"
+        title={isMidSession ? 'Fix the bill' : 'Check the bill'}
+        sub={sub}
+        foot={
+          <>
+            {createSession.isError && !existingSessionId ? <Notice error title="Couldn't start the bill.">{createSession.error.message}</Notice> : null}
+            {amend.isError ? <Notice error title="Couldn't save.">{amend.error.message}</Notice> : null}
+            {existingSessionId ? <Btn tone="ghost" href={`/session/${existingSessionId}`} replace>Open the existing bill</Btn> : null}
+            {isMidSession ? (
+              <Btn busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Btn>
+            ) : (
+              <Btn busy={busy} disabled={editing !== null || items.length === 0} onClick={onShare}>Share with the table</Btn>
+            )}
+          </>
+        }
+      >
+        <List>
+          {items.map((it) =>
+            it.draftId === editing ? (
+              <ItemEditor
+                key={it.draftId}
+                item={it}
+                claimed={it.itemId ? claimsByItemId.get(it.itemId) ?? 0 : 0}
+                onChange={(patch) => updateItem(it.draftId, patch)}
+                onDone={finishEditing}
+                onCancel={cancelEditing}
+                onRemove={() => { removeItem(it.draftId); finishEditing(); }}
+              />
+            ) : (
+              <Row key={it.draftId} onClick={() => startEditing(it)} disabled={busy} ariaLabel={`Edit ${it.name || 'item'}`}>
+                <RowBody name={it.name || 'Item'} sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined} />
+                {it.quantity > 1 ? <span className="g-qty">{it.quantity}</span> : null}
+                <Price>{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</Price>
+                <span style={{ color: 'var(--g-mute-2)', display: 'flex' }} aria-hidden><Pencil /></span>
+              </Row>
+            ),
+          )}
+          <Row onClick={addAndEdit} disabled={busy || editing !== null} className="g-row--add"><Plus />Add a line</Row>
+        </List>
 
-        <div className="edit-items mt-base">
-          {items.map((it) => {
-            const claim = it.itemId ? claimsByItemId.get(it.itemId) : undefined;
-            return (
-              <div key={it.draftId} className="edit-item">
-                <div className="edit-item__row">
-                  <TextField
-                    variant="compact"
-                    aria-label="Item name"
-                    value={it.name}
-                    onChange={(e) => updateItem(it.draftId, { name: e.target.value })}
-                    placeholder="Item name"
-                    autoCorrect="off"
-                    disabled={busy}
-                  />
-                  <button
-                    type="button"
-                    className="remove-btn"
-                    aria-label={`Remove ${it.name || 'item'}`}
-                    onClick={() => removeItem(it.draftId)}
-                    disabled={busy}
-                  >
-                    ×
-                  </button>
-                </div>
-                {isMidSession && claim && claim.count > 0 ? (
-                  <div className="claim-badge">{claim.count} claim{claim.count === 1 ? '' : 's'} · {claim.names.join(', ').toLowerCase()}</div>
-                ) : null}
-                <div className="edit-item__row">
-                  <div className="price-field">
-                    <TextField
-                      variant="compact"
-                      aria-label={`Price of ${it.name || 'item'}`}
-                      value={it.unitPricePounds}
-                      onChange={(e) => updateItem(it.draftId, { unitPricePounds: e.target.value })}
-                      onBlur={() => updateItem(it.draftId, { unitPricePounds: (parsePence(it.unitPricePounds) / 100).toFixed(2) })}
-                      placeholder="0.00"
-                      inputMode="decimal"
-                      disabled={busy}
-                      prefix="£"
-                    />
-                    <span className="hint-inline">each</span>
-                  </div>
-                  <div className="qty">
-                    <button type="button" aria-label="Decrease quantity" disabled={busy || it.quantity <= 1}
-                      onClick={() => updateItem(it.draftId, { quantity: Math.max(1, it.quantity - 1) })}>−</button>
-                    <span className="qty__v">{it.quantity}×</span>
-                    <button type="button" aria-label="Increase quantity" disabled={busy}
-                      onClick={() => updateItem(it.draftId, { quantity: it.quantity + 1 })}>+</button>
-                  </div>
-                  <span className="line-total">{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <button type="button" className="add-item mt-md" onClick={() => setItems((prev) => [...prev, blankItem()])} disabled={busy}>
-          + add item
-        </button>
-
-        <div className="edit-totals">
-          <TotalsRow label="subtotal" value={formatGBP(subtotalPence)} />
-          <div className="edit-total">
-            <Mini>service charge</Mini>
-            <TextField variant="compact" aria-label="Service charge" value={servicePounds} onChange={(e) => setServicePounds(e.target.value)}
-              inputMode="decimal" disabled={busy} prefix="£" />
-          </div>
-          <div className="edit-total">
-            <Mini>tax</Mini>
-            <TextField variant="compact" aria-label="Tax" value={taxPounds} onChange={(e) => setTaxPounds(e.target.value)}
-              inputMode="decimal" disabled={busy} prefix="£" />
-          </div>
-          <Rule style={{ margin: '6px 0' }} />
-          <TotalsRow label="TOTAL" value={formatGBP(totalPence)} emphasis="strong" />
-        </div>
-        <ParsedTotalMismatch bill={b} computedTotalPence={totalPence} />
-        {amend.isError ? <Notice className="mt-md" title="Couldn't save." detail={amendErrorMessage(amend.error, b.items)} /> : null}
-      </div>
-
-      <div className="sticky-bar">
-        <div className="sticky-bar__inner">
-          <div className="sticky-bar__row">
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                if (isMidSession) {
-                  router.replace(`/session/${sessionId}`);
-                } else {
-                  hydrateFrom(b);
-                  amend.reset();
-                  setMode('review');
-                }
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={busy || items.length === 0 || (isMidSession && !isDirty)}
-              onClick={() => {
-                if (isMidSession) void onSaveAmend();
-                else void saveDraft().then((ok) => ok && setMode('review'));
-              }}
-            >
-              {busy ? <Spinner /> : isMidSession && !isDirty ? 'No changes' : 'Save changes →'}
-            </Button>
-          </div>
-        </div>
-      </div>
-      {imageModal}
-    </>
+        <List>
+          <KV k="Subtotal" v={formatGBP(subtotalPence)} />
+          {editing === 'service' ? (
+            <MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} />
+          ) : (
+            <Row onClick={() => setEditing('service')} className="g-row--kv" ariaLabel="Edit service charge">
+              <span>Service{subtotalPence > 0 && servicePence > 0 ? ` ${Math.round((servicePence / subtotalPence) * 1000) / 10}%` : ''}</span>
+              <Tag tone="accent">{formatGBP(servicePence)}</Tag>
+            </Row>
+          )}
+          {editing === 'tax' ? (
+            <MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} />
+          ) : taxPence > 0 || editing === null ? (
+            <Row onClick={() => setEditing('tax')} className="g-row--kv" ariaLabel="Edit tax">
+              <span>Tax</span>
+              <span>{taxPence > 0 ? formatGBP(taxPence) : <span style={{ color: 'var(--g-mute-2)', fontWeight: 500 }}>none</span>}</span>
+            </Row>
+          ) : null}
+        </List>
+        <List strong><KV k="Total" v={formatGBP(totalPence)} total /></List>
+      </Sheet>
+    </Screen>
   );
 }
 
-function InlineItemEditor({ item, busy, onChange, onDone, onCancel, onRemove }: {
-  item: DraftItem; busy: boolean; onChange: (patch: Partial<DraftItem>) => void;
-  onDone: () => void; onCancel: () => void; onRemove: () => void;
+function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
+  item: DraftItem; claimed: number; onChange: (p: Partial<DraftItem>) => void; onDone: () => void; onCancel: () => void; onRemove: () => void;
 }) {
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') { e.preventDefault(); onDone(); }
     if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
   };
+  const minQty = Math.max(1, claimed);
   return (
-    <div className="ritem-edit" onKeyDown={onKey}>
-      <TextField
-        variant="compact"
-        aria-label="Item name"
-        value={item.name}
-        onChange={(e) => onChange({ name: e.target.value })}
-        placeholder="Item name"
-        autoCorrect="off"
-        autoFocus
-      />
-      <div className="edit-item__row">
-        <div className="price-field">
-          <TextField
-            variant="compact"
-            aria-label={`Price of ${item.name || 'item'}`}
-            value={item.unitPricePounds}
-            onChange={(e) => onChange({ unitPricePounds: e.target.value })}
-            onBlur={() => onChange({ unitPricePounds: (parsePence(item.unitPricePounds) / 100).toFixed(2) })}
-            onFocus={(e) => e.target.select()}
-            placeholder="0.00"
-            inputMode="decimal"
-            prefix="£"
-          />
-          {item.quantity > 1 ? <span className="hint-inline">each</span> : null}
+    <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--g-line)', background: 'rgba(61,220,151,0.06)' }} onKeyDown={onKey}>
+      <input className="g-input" aria-label="Item name" value={item.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="What was it?" autoCorrect="off" autoFocus style={{ height: 48 }} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="g-input-wrap" style={{ flex: 1, minWidth: 0, height: 48 }}>
+          <span className="g-input-wrap__prefix">£</span>
+          <input aria-label="Price each" style={{ minWidth: 0, width: '100%' }} value={item.unitPricePounds} onChange={(e) => onChange({ unitPricePounds: e.target.value })} onBlur={() => onChange({ unitPricePounds: pounds(parsePence(item.unitPricePounds)) })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="0.00" />
         </div>
-        <div className="qty">
-          <button type="button" aria-label="Decrease quantity" disabled={item.quantity <= 1}
-            onClick={() => onChange({ quantity: Math.max(1, item.quantity - 1) })}>−</button>
-          <span className="qty__v">{item.quantity}×</span>
-          <button type="button" aria-label="Increase quantity" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 40, borderRadius: 20, background: 'var(--g-fill-2)', padding: '0 2px', flex: 'none' }}>
+          <button type="button" className="g-mini-btn" style={{ border: 0, width: 36, padding: 0, fontSize: 18 }} aria-label="One fewer" disabled={item.quantity <= minQty} onClick={() => onChange({ quantity: Math.max(minQty, item.quantity - 1) })}>−</button>
+          <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{item.quantity}</span>
+          <button type="button" className="g-mini-btn" style={{ border: 0, width: 36, padding: 0, fontSize: 18 }} aria-label="One more" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
         </div>
       </div>
-      <div className="course-pick" role="radiogroup" aria-label="Section">
-        {SECTION_CHOICES.map((c) => {
-          const on = sectionOf(item) === c.key;
-          return (
-            <button key={c.key} type="button" role="radio" aria-checked={on}
-              className={on ? 'course-pick__opt course-pick__opt--on' : 'course-pick__opt'}
-              onClick={() => onChange(c.patch)}>
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
-      <div className="ritem-edit__actions">
-        <button type="button" className="link-btn link-btn--danger" onClick={onRemove} disabled={busy}>remove</button>
+      {claimed > 0 ? <div className="g-foot-note" style={{ textAlign: 'left' }}>{claimed} already claimed, so it can&apos;t go below {claimed}.</div> : null}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <MiniBtn onClick={onRemove} disabled={claimed > 0} style={{ color: claimed > 0 ? undefined : 'var(--g-danger)', height: 40 }}>Remove</MiniBtn>
         <span style={{ flex: 1 }} />
-        <button type="button" className="link-btn link-btn--mute" onClick={onCancel}>cancel</button>
-        <Button variant="quiet" onClick={onDone}>Done</Button>
+        <MiniBtn onClick={onCancel} style={{ height: 40 }}>Cancel</MiniBtn>
+        <MiniBtn solid onClick={onDone} style={{ height: 40, padding: '0 16px' }}>Done</MiniBtn>
       </div>
     </div>
   );
 }
 
-function ParsedTotalMismatch({ bill, computedTotalPence }: { bill: Bill & { parsedTotalPence?: number }; computedTotalPence: number }) {
-  const parsed = bill.parsedTotalPence;
-  if (parsed === undefined || parsed === computedTotalPence) return null;
-  const delta = computedTotalPence - parsed;
+function MoneyEditor({ label, value, onChange, onDone }: { label: string; value: string; onChange: (v: string) => void; onDone: () => void }) {
   return (
-    <Notice
-      className="mt-md"
-      title="Worth a double-check."
-      detail={`The receipt's printed total is ${formatGBP(parsed)} but the items + extras add up to ${formatGBP(computedTotalPence)} (${delta > 0 ? '+' : '−'}${formatGBP(Math.abs(delta))}). Might be a parser miss or a discount on the bill — review the items and adjust if needed.`}
-    />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid var(--g-line)' }}>
+      <span style={{ flex: 1, fontSize: 15, color: 'var(--g-ink-2)' }}>{label}</span>
+      <div className="g-input-wrap" style={{ width: 130, height: 44 }}>
+        <span className="g-input-wrap__prefix">£</span>
+        <input aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => onChange(pounds(parsePence(value)))} onFocus={(e) => e.target.select()} inputMode="decimal" autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); onDone(); } }} />
+      </div>
+      <MiniBtn solid onClick={onDone} style={{ height: 40 }}>Done</MiniBtn>
+    </div>
   );
 }

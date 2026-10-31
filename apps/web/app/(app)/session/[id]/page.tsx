@@ -385,9 +385,10 @@ function ClaimRow({ item, myCount, othersCount, claimers, sharers, meUserId, isC
         {state === 'mine' ? (
           <IconButton icon="minus" label={inShare ? `Leave the share for ${item.name}` : `Drop one ${item.name}`} onPress={handlePress} />
         ) : null}
-        {state === 'joinable' && !locked ? <IconButton icon="plus" label={`Join the share for ${item.name}`} onPress={handlePress} /> : null}
-        {!locked && (state === 'default' || (state === 'mine' && !inShare && remaining > 0)) ? (
-          <IconButton icon="plus" label={state === 'mine' ? `Claim another ${item.name}` : `Claim ${item.name}`} onPress={onClaim} />
+        {state === 'joinable' && !locked ? <TextAction text="Join" label={`Join the share for ${item.name}`} onPress={handlePress} /> : null}
+        {!locked && state === 'default' ? <TextAction text="Claim" label={`Claim ${item.name}`} onPress={onClaim} /> : null}
+        {!locked && state === 'mine' && !inShare && remaining > 0 ? (
+          <IconButton icon="plus" label={`Claim another ${item.name}`} onPress={onClaim} />
         ) : null}
         {state === 'default' && canShare ? (
           <IconButton icon="more" label={`More options for ${item.name}`} active={menuOpen} onPress={() => setMenuOpen((v) => !v)} />
@@ -413,6 +414,14 @@ function ClaimRow({ item, myCount, othersCount, claimers, sharers, meUserId, isC
         </div>
       ) : null}
     </div>
+  );
+}
+
+function TextAction({ text, label, onPress }: { text: string; label: string; onPress: () => void }) {
+  return (
+    <button type="button" className="claim-btn" aria-label={label} onClick={(e) => { e.stopPropagation(); onPress(); }}>
+      {text}
+    </button>
   );
 }
 

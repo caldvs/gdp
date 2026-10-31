@@ -182,7 +182,8 @@ describe('POST /v1/payments/:id/mark-paid — payer claims they paid', () => {
       status: string;
       participants: { userId: string; payment: { status: string } }[];
     };
-    expect(body.status).toBe('settled');
+    // Everyone paying no longer settles the bill; the lead closes it.
+    expect(body.status).not.toBe('settled');
     const part = body.participants.find((p) => p.userId === guest);
     expect(part?.payment.status).toBe('succeeded');
   });

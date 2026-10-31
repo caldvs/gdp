@@ -48,6 +48,24 @@ test('email step validates before calling the API', async ({ page }) => {
   expect(called).toBe(true);
 });
 
+test('the code step survives a reload while fetching the code', async ({ page }) => {
+  await unauthenticated(page);
+  await noDevSignIn(page);
+  await page.route('**/v1/auth/email/start', (route) => route.fulfill({ json: { ok: true } }));
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill('alice@example.com');
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByLabel('6-digit code')).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel('6-digit code')).toBeVisible();
+  await expect(page.getByText('alice@example.com')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Different email' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Email')).toBeVisible();
+});
+
 test('signed-in home lists your bills, with Scan and the menu', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('gdp.idToken', 'test-token');

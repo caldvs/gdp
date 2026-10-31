@@ -92,10 +92,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     setClaims.mutate({ claimedItemIds: next });
   };
   const hero = guests.length === 0
-    ? <Hero title="Nobody's joined yet" note="Show the QR" />
+    ? <Hero title="Nobody’s joined yet" note="Show the QR" />
     : toCome > 0
       ? <Hero kicker="to come" amount={formatGBP(toCome)} note={`${paidCount} of ${guests.length} paid`} />
-      : <Hero title="Everyone's paid" note={unclaimed.length ? 'A few things are still unclaimed' : 'You can close the bill'} />;
+      : <Hero title="Everyone’s paid" note={unclaimed.length ? 'A few things are still unclaimed' : 'You can close the bill'} />;
 
   return (
     <Screen>

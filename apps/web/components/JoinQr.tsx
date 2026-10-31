@@ -27,8 +27,8 @@ export function useJoinUrl(joinCode: string | undefined, payout: PayoutAccount |
 
 export function JoinQr({ url, size = 240 }: { url: string | null; size?: number }) {
   return (
-    <div className="qr-card" style={{ width: size + 34, height: size + 34 }}>
-      {url ? <QRCodeSVG value={url} size={size} level="M" bgColor="#ffffff" fgColor="#0f1417" title="Scan to join this bill" /> : null}
+    <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {url ? <QRCodeSVG value={url} size={size} level="M" bgColor="#ffffff" fgColor="#0B0C0E" title="Scan to join this bill" /> : null}
     </div>
   );
 }

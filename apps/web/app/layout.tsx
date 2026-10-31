@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { DEMO_MODE } from '@gdp/core/lib/demoMode';
-import { THEME_PREPAINT_SCRIPT } from '@/lib/theme';
 import { Providers } from './providers';
 import './globals.css';
+import './glass.css';
 
 const inter = Inter({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-inter' });
 
@@ -17,18 +17,12 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f8f9' },
-    { media: '(prefers-color-scheme: dark)', color: '#0f1417' },
-  ],
+  themeColor: '#0B0C0E',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-GB" data-theme="light" className={inter.variable} suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_PREPAINT_SCRIPT }} />
-      </head>
+    <html lang="en-GB" data-theme="dark" className={inter.variable}>
       <body>
         <Providers>{children}</Providers>
       </body>

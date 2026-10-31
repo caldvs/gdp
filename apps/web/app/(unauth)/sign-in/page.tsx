@@ -8,7 +8,8 @@ import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { decodePayoutFromQR, readPayoutFragment } from '@gdp/core/lib/qrPayload';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
-import { Avatar, Back, Backdrop, Btn, CameraIcon, Fab, Notice, Screen, Sheet, Spin, TopBar } from '@/components/glass';
+import Link from 'next/link';
+import { Box, Button, Notice, Page, Row, Section, Title } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'AWAITING_CODE';
 const DEV_PRESETS = ['alice', 'bob', 'charlie', 'diana'];
@@ -16,13 +17,8 @@ const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
 
 /**
- * The front door. A first visit sees the landing; "Snap a bill" and
- * "Sign in" open the email-code sheet. Arriving from a join link shows
- * who invited you instead.
- *
- * Signing in is still required to do anything, so the sheet is one tap
- * away rather than hidden. Name-only guest join and optional accounts
- * are API work that comes next.
+ * The front door. Signed-out visitors see what the app does and sign in
+ * with an email code. Arriving from a join link shows whose bill it is.
  */
 export default function SignInPage() {
   return (
@@ -48,77 +44,32 @@ function useInvite(): Invite | null {
 
 function Landing() {
   const invite = useInvite();
-  const [open, setOpen] = useState(!!invite);
-  useEffect(() => { if (invite) setOpen(true); }, [invite]);
 
   if (invite) {
     const first = invite.hostName?.split(' ')[0];
     return (
-      <Screen>
-        <Backdrop tone="soft" />
-        <Sheet
-          head={
-            <header style={{ padding: '14px 20px 6px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar name={invite.hostName ?? 'Host'} size={44} />
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>{invite.hostName ? `${first} invited you` : "You're invited"}</div>
-                <div style={{ fontSize: 13, color: 'var(--g-mute)', marginTop: 2 }}>code {invite.code}</div>
-              </div>
-            </header>
-          }
-        >
-          <EmailOtpFlow cta="Continue" />
-          {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
-        </Sheet>
-      </Screen>
+      <Page>
+        <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
+        <EmailOtpFlow cta="Continue" />
+        {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
+      </Page>
     );
   }
 
   return (
-    <Screen>
-      <Backdrop tone="soft" />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(11,12,14,0.1) 0%, rgba(11,12,14,0.35) 40%, rgba(11,12,14,0.95) 100%)' }} aria-hidden />
-      <TopBar
-        left={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--g-accent)', color: 'var(--g-on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 800 }} aria-hidden>GD</span>
-            <span style={{ fontSize: 15, fontWeight: 600 }}>Group Dine Pay</span>
-          </div>
-        }
-        right={<Fab label="Sign in" onClick={() => setOpen(true)}>Sign in</Fab>}
-      />
-
-      {!open ? (
-        <div style={{ position: 'absolute', left: 24, right: 24, bottom: 'max(36px, env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', gap: 22, zIndex: 2 }}>
-          <h1 style={{ fontSize: 38, fontWeight: 700, lineHeight: 1.08, letterSpacing: '-0.02em', margin: 0 }}>Snap the bill.<br />Friends pay you back.</h1>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {['Snap the bill', 'Friends tick what they had', 'They pay you direct'].map((t, i) => (
-              <div key={t} style={{ flex: 1, borderRadius: 16, background: 'rgba(20,22,26,0.7)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', padding: '12px 12px 10px' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--g-accent)' }}>{i + 1}</div>
-                <div style={{ fontSize: 12, color: 'var(--g-ink-2)', marginTop: 2, lineHeight: 1.35 }}>{t}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <Btn onClick={() => setOpen(true)} style={{ height: 56, fontSize: 17 }}><CameraIcon />Snap a bill</Btn>
-            <Btn tone="ghost" href="/join">I&apos;ve got a code from a friend</Btn>
-          </div>
-        </div>
-      ) : (
-        <Sheet
-          head={
-            <header className="g-sheet__head" style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', left: 8, top: -4 }}><Fab label="Back" icon={<Back />} onClick={() => setOpen(false)} /></div>
-              <h1 className="g-sheet__title" style={{ fontSize: 20 }}>Sign in</h1>
-              <p className="g-sheet__sub">We&apos;ll email you a code. No password.</p>
-            </header>
-          }
-        >
-          <EmailOtpFlow cta="Email me a code" />
-          {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
-        </Sheet>
-      )}
-    </Screen>
+    <Page>
+      <Title title="Split the bill, get paid back" sub="Scan the bill. Friends pick what they had and pay you by bank transfer." />
+      <Box>
+        <Row title="1. Scan the bill" sub="We read the items and prices." />
+        <Row title="2. Share a code with the table" sub="Friends open it on their phones." />
+        <Row title="3. Everyone pays you back" sub="Straight to your bank account." />
+      </Box>
+      <Section title="Sign in or create an account">
+        <EmailOtpFlow cta="Email me a code" />
+      </Section>
+      {DEV_SIGNIN_ENABLED ? <DevSignIn /> : null}
+      <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
+    </Page>
   );
 }
 
@@ -232,11 +183,11 @@ function EmailOtpFlow({ cta }: { cta: string }) {
   if (stage === 'EMAIL') {
     return (
       <form onSubmit={(e) => { e.preventDefault(); void handleStart(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="g-field">
-          <label htmlFor="email" className="g-label" style={{ padding: 0 }}>Email</label>
+        <div className="field">
+          <label htmlFor="email">Email</label>
           <input
             id="email"
-            className="g-input"
+            className={emailError ? 'input input--invalid' : 'input'}
             type="email"
             value={email}
             onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(null); }}
@@ -244,15 +195,16 @@ function EmailOtpFlow({ cta }: { cta: string }) {
             autoCapitalize="none"
             autoComplete="email"
             autoCorrect="off"
-            autoFocus
+            enterKeyHint="go"
             disabled={busy}
+            aria-invalid={!!emailError}
+            aria-describedby={emailError ? 'email-err' : 'email-hint'}
           />
-          {emailError ? <div className="g-error">{emailError}</div> : null}
+          {emailError ? <div id="email-err" className="field__err">{emailError}</div> : (
+            <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no code needed.' : 'We’ll email you a 6-digit code. No password.'}</div>
+          )}
         </div>
-        <Btn type="submit" busy={busy}>{devAvailable ? 'Continue' : cta}</Btn>
-        <div className="g-foot-note">
-          {devAvailable ? 'local dev · no code needed' : 'New here? The first code makes your account.'}
-        </div>
+        <Button type="submit" busy={busy}>{devAvailable ? 'Continue' : cta}</Button>
       </form>
     );
   }
@@ -260,31 +212,30 @@ function EmailOtpFlow({ cta }: { cta: string }) {
   const canResend = resendCountdown <= 0 && !startOtp.isPending;
   return (
     <form onSubmit={(e) => { e.preventDefault(); void handleVerify(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="g-foot-note" style={{ textAlign: 'left' }}>Sent to <b style={{ color: 'var(--g-ink)' }}>{email}</b></div>
-      <input
-        className="g-input g-input--mono"
-        aria-label="6-digit code"
-        value={code}
-        onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) void handleVerify(v); }}
-        placeholder="123456"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        autoFocus
-        maxLength={6}
-        disabled={verifyOtp.isPending}
-        style={{ textAlign: 'center', fontSize: 26, letterSpacing: '0.3em', height: 60 }}
-      />
-      {verifyOtp.isError ? <Notice error>That code didn&apos;t work. Check your email, or send a new one.</Notice> : null}
-      <Btn type="submit" busy={verifyOtp.isPending} disabled={code.length !== 6}>Sign in</Btn>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--g-mute)', padding: '0 4px' }}>
-        <button type="button" onClick={handleResend} disabled={!canResend} style={{ background: 'none', border: 0, color: canResend ? 'var(--g-accent)' : 'var(--g-mute)', fontWeight: 600, padding: 0, font: 'inherit', cursor: canResend ? 'pointer' : 'default' }}>
-          {startOtp.isPending ? 'Sending…' : canResend ? 'Resend' : `Resend in ${resendCountdown}s`}
-        </button>
-        <button type="button" onClick={() => { setStage('EMAIL'); setCode(''); verifyOtp.reset(); }} style={{ background: 'none', border: 0, color: 'var(--g-accent)', fontWeight: 600, padding: 0, font: 'inherit', cursor: 'pointer' }}>
-          Different email
-        </button>
+      <div className="field">
+        <label htmlFor="otp">6-digit code</label>
+        <input
+          id="otp"
+          className="input input--code"
+          value={code}
+          onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) void handleVerify(v); }}
+          placeholder="123456"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          autoFocus
+          maxLength={6}
+          disabled={verifyOtp.isPending}
+        />
+        <div className="field__hint">Sent to <b>{email}</b></div>
       </div>
-      {verifyOtp.isPending ? <div style={{ display: 'flex', justifyContent: 'center' }}><Spin /></div> : null}
+      {verifyOtp.isError ? <Notice tone="error">That code didn’t work. Check your email, or send a new one.</Notice> : null}
+      <Button type="submit" busy={verifyOtp.isPending} disabled={code.length !== 6}>Sign in</Button>
+      <div className="btn-row">
+        <Button tone="text" onClick={handleResend} disabled={!canResend}>
+          {startOtp.isPending ? 'Sending…' : canResend ? 'Resend code' : `Resend in ${resendCountdown}s`}
+        </Button>
+        <Button tone="text" onClick={() => { setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
+      </div>
     </form>
   );
 }
@@ -306,14 +257,13 @@ function DevSignIn() {
     }
   };
   return (
-    <div style={{ marginTop: 8 }}>
-      <div className="g-label">dev accounts</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '8px 8px 0' }}>
+    <Section title="Dev accounts">
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {DEV_PRESETS.map((u) => (
-          <button key={u} type="button" className="g-mini-btn" style={{ height: 36 }} disabled={devSignIn.isPending} onClick={() => signInAs(u)}>{u}</button>
+          <Button key={u} tone="secondary" small disabled={devSignIn.isPending} onClick={() => signInAs(u)}>{u}</Button>
         ))}
       </div>
-      {error ? <div className="g-error" style={{ padding: '8px 8px 0' }}>{error}</div> : null}
-    </div>
+      {error ? <div className="field__err">{error}</div> : null}
+    </Section>
   );
 }

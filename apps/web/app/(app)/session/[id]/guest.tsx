@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * The guest's side: tick what you had (Pick), then watch the table until
- * the lead closes the bill (GuestTable). Pay lives in ./pay.
+ * The guest's side: tick what you had (Pick), then see where things
+ * stand until the lead closes the bill (GuestTable). Pay lives in ./pay.
  */
 import { useMemo, useState } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
@@ -10,8 +10,8 @@ import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp
 import { formatGBP } from '@gdp/core/lib/money';
 import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
 import {
-  Avatar, Back, Backdrop, Btn, Check, Fab, Faces, Hero, KV, Label, List, Notice, Paid, Price, RowBody, Screen, Sheet, Tick, TopBar, firstName,
-} from '@/components/glass';
+  ActionBar, BackLink, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
+} from '@/components/ui';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -52,26 +52,19 @@ export function itemStatuses(s: Session, b: Bill, meUserId: string): ItemStatus[
   });
 }
 
-/** A read-only bill line: open (nobody's yet), done (someone's), or yours. */
+/** A read-only bill line: open (nobody's yet), someone else's, or yours. */
 export function ItemLine({ st }: { st: ItemStatus }) {
   const { item, left, mine, who, share } = st;
   const open = left > 0;
-  const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
+  const name = item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name;
   const seats = share ? Math.max(0, share.ways - share.userIds.length) : 0;
   const sub = share
-    ? `${who.join(', ')} · split ${share.ways} ways${seats ? ` · ${seats} seat${seats === 1 ? '' : 's'} open` : ''}`
+    ? `Shared ${share.ways} ways · ${who.join(', ')}${seats ? ` · ${seats} open` : ''}`
     : who.length > 0 ? `${who.join(', ')}${open ? ` · ${left} left` : ''}` : undefined;
-  return (
-    <div className={`g-row${!open && mine === 0 ? ' g-row--done' : ''}${mine > 0 && !open ? ' g-row--on' : ''}`}>
-      {open ? <Check on={false} /> : <span className={`g-check${mine > 0 ? ' g-check--on' : ' g-check--done'}`} aria-hidden><Tick size={14} /></span>}
-      <RowBody name={name} sub={sub} />
-      {share ? (
-        <Price mute={mine === 0} note="each">{formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, ''))}</Price>
-      ) : (
-        <Price mute={open || mine === 0}>{formatGBP(item.unitPricePence * (mine > 0 ? mine : item.quantity))}</Price>
-      )}
-    </div>
-  );
+  const price = share
+    ? formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, ''))
+    : formatGBP(item.unitPricePence * (mine > 0 ? mine : open ? left : item.quantity));
+  return <Row title={name} sub={sub} end={price} muted={!open && mine === 0} />;
 }
 export const owedFor = (s: Session, b: Bill, p: Participant) => p.owedPence ?? projectOwedPence(s, b, p.userId);
 
@@ -135,23 +128,11 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const err = setClaims.error?.message ?? (addShare.error ? shareError(addShare.error) : undefined) ?? removeShare.error?.message;
 
   return (
-    <Screen>
-      <Backdrop billId={s.billId} tone="deep" />
-      <TopBar left={<Fab href="/" label="Home" icon={<Back />} replace />} title={b.venue?.name} />
-      <Sheet
-        size="tall"
-        title="What did you have?"
-        sub={`${hostFirst}’s bill · ${formatGBP(b.totalPence)}`}
-        foot={
-          <>
-            <Btn href={`/session/${s.sessionId}/pay`} disabled={owed <= 0 || busy}>
-              {owed > 0 ? `Pay ${hostFirst} ${formatGBP(owed)}` : 'Tick what you had'}
-            </Btn>
-            {owed > 0 && rate > 0 ? <p className="g-foot-note">{formatGBP(subtotal)} + service</p> : null}
-          </>
-        }
-      >
-        <List>
+    <>
+      <Page sub>
+        <BackLink href="/">Bills</BackLink>
+        <Title title="What did you have?" sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} />
+        <Box>
           {b.items.map((item) => {
             const mine = counts.mine.get(item.itemId) ?? 0;
             const others = counts.others.get(item.itemId) ?? 0;
@@ -163,7 +144,6 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
               const openSeats = Math.max(0, share.ways - share.userIds.length);
               const myWays = inShare || openSeats > 0 ? share.ways : share.ways + 1;
               const each = sharePence(item.unitPricePence, share.userIds, myWays, meUserId);
-              const people = share.userIds.map((uid) => s.participants.find((p) => p.userId === uid)).filter((p): p is Participant => !!p);
               return (
                 <PickRow
                   key={item.itemId}
@@ -172,18 +152,16 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   label={inShare ? `Leave the split for ${item.name}` : `Join the split for ${item.name}`}
                   onTap={() => (inShare ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
                   name={item.name}
-                  sub={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Faces people={people.map((p) => ({ name: p.displayName, seed: p.userId }))} spare={openSeats} /> {share.ways} ways</span>}
-                  price={<Price note="each">{formatGBP(each)}</Price>}
-                  aside={inShare ? <button type="button" className="g-mini-btn" onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways}</button> : undefined}
+                  sub={splitSub(s, share, meUserId)}
+                  price={<>{formatGBP(each)}<span className="each">each</span></>}
+                  aside={inShare ? <Button tone="text" small onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways} ways</Button> : undefined}
                 />
               );
             }
 
             if (mine === 0 && left === 0) {
               const names = (counts.who.get(item.itemId) ?? []).map((p) => firstName(p.displayName)).join(', ');
-              return (
-                <PickRow key={item.itemId} taken name={item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name} sub={names} price={<Price mute>{formatGBP(item.unitPricePence * item.quantity)}</Price>} />
-              );
+              return <PickRow key={item.itemId} taken name={item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name} sub={names} price={formatGBP(item.unitPricePence * item.quantity)} />;
             }
 
             if (item.quantity > 1) {
@@ -194,12 +172,10 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   busy={busy}
                   label={mine > 0 ? `${item.name}: ${mine} of ${item.quantity}` : `Take one ${item.name}`}
                   onTap={mine > 0 ? undefined : () => claimOne(item)}
-                  name={`${item.quantity}× ${item.name}`}
+                  name={`${item.name} × ${item.quantity}`}
                   sub={others > 0 && mine === 0 ? `${others} taken · ${formatGBP(item.unitPricePence)} each` : `${formatGBP(item.unitPricePence)} each`}
-                  price={<Price mute={mine === 0}>{formatGBP(item.unitPricePence * (mine || 1))}</Price>}
-                  aside={mine > 0 ? (
-                    <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} />
-                  ) : undefined}
+                  price={formatGBP(item.unitPricePence * (mine || 1))}
+                  aside={mine > 0 ? <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} /> : undefined}
                 />
               );
             }
@@ -212,14 +188,25 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                 label={mine > 0 ? `Untick ${item.name}` : `Tick ${item.name}`}
                 onTap={() => (mine > 0 ? dropOne(item.itemId) : claimOne(item))}
                 name={item.name}
-                price={<Price mute={mine === 0}>{formatGBP(item.unitPricePence)}</Price>}
-                aside={mine === 0 ? <button type="button" className="g-mini-btn" onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</button> : undefined}
+                price={formatGBP(item.unitPricePence)}
+                aside={mine === 0 ? <Button tone="text" small onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</Button> : undefined}
               />
             );
           })}
-        </List>
-        {err ? <Notice error>{err}</Notice> : null}
-      </Sheet>
+        </Box>
+        {err ? <Notice tone="error">{err}</Notice> : null}
+      </Page>
+      <ActionBar stack>
+        {owed > 0 ? (
+          <div className="actionbar__total">
+            <span className="muted">Your share{rate > 0 ? ' incl. service' : ''}</span>
+            <b data-testid="your-share">{formatGBP(owed)}</b>
+          </div>
+        ) : null}
+        <Button href={`/session/${s.sessionId}/pay`} disabled={owed <= 0 || busy}>
+          {owed > 0 ? 'Continue to payment' : 'Tick what you had'}
+        </Button>
+      </ActionBar>
 
       {splitting ? (
         <SplitSheet
@@ -237,43 +224,50 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           }}
         />
       ) : null}
-    </Screen>
+    </>
   );
 }
 
-/** A tick row with an optional control on the right that isn't part of the tap target. */
+/** "Shared 2 ways with Priya · 1 open" */
+export function splitSub(s: Session, share: Share, meUserId: string): string {
+  const others = share.userIds.filter((u) => u !== meUserId).map((u) => firstName(s.participants.find((p) => p.userId === u)?.displayName));
+  const seats = Math.max(0, share.ways - share.userIds.length);
+  return [`Shared ${share.ways} ways${others.length ? ` with ${others.join(', ')}` : ''}`, seats ? `${seats} open` : null].filter(Boolean).join(' · ');
+}
+
+/** A tick row: the whole row is the tap target; a control on the right (Split, a stepper) sits outside it. */
 export function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside }: {
   on?: boolean; taken?: boolean; busy?: boolean; label?: string; onTap?: () => void; name: string; sub?: React.ReactNode; price: React.ReactNode; aside?: React.ReactNode;
 }) {
-  const cls = ['g-row', on && 'g-row--on', taken && 'g-row--taken'].filter(Boolean).join(' ');
+  const tick = <span className={`tick${on ? ' tick--on' : taken ? ' tick--done' : ''}`} aria-hidden>{on || taken ? <TickIcon size={16} /> : null}</span>;
   const body = (
     <>
-      <Check on={!!on} />
-      <RowBody name={name} sub={sub} />
-      {aside ? null : price}
+      {tick}
+      <span className="row__main">
+        <span className="row__title">{name}</span>
+        {sub ? <span className="row__sub">{sub}</span> : null}
+      </span>
     </>
   );
   return (
-    <div className={cls} style={{ padding: 0 }}>
+    <div className={`pick${taken ? ' pick--taken' : ''}`}>
       {onTap ? (
-        <button type="button" className="g-row" style={{ flex: 1, minWidth: 0, background: 'none', border: 0, color: 'inherit', font: 'inherit', textAlign: 'left' }} onClick={onTap} disabled={busy} aria-pressed={!!on} aria-label={label}>
-          {body}
-        </button>
+        <button type="button" className="pick__tap" onClick={onTap} disabled={busy} aria-pressed={!!on} aria-label={label}>{body}</button>
       ) : (
-        <div className="g-row" style={{ flex: 1, minWidth: 0, background: 'none' }}>{body}</div>
+        <div className="pick__tap" style={{ cursor: 'default' }}>{body}</div>
       )}
-      {aside ? <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 14, flex: 'none' }}>{aside}{price}</div> : null}
+      {aside}
+      <span className="row__end">{price}</span>
     </div>
   );
 }
 
 export function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: number; busy: boolean; onDec: () => void; onInc: () => void; name: string }) {
-  const b = { border: 0, width: 32, padding: 0, fontSize: 18 } as const;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--g-fill-2)', borderRadius: 16, height: 32 }}>
-      <button type="button" className="g-mini-btn" style={b} aria-label={`One fewer ${name}`} disabled={busy} onClick={onDec}>−</button>
-      <span style={{ minWidth: 16, textAlign: 'center', fontSize: 14, fontWeight: 700 }} aria-live="polite">{n}</span>
-      <button type="button" className="g-mini-btn" style={b} aria-label={`One more ${name}`} disabled={busy || n >= max} onClick={onInc}>+</button>
+    <span className="stepper">
+      <button type="button" aria-label={`One fewer ${name}`} disabled={busy} onClick={onDec}>−</button>
+      <span aria-live="polite">{n}</span>
+      <button type="button" aria-label={`One more ${name}`} disabled={busy || n >= max} onClick={onInc}>+</button>
     </span>
   );
 }
@@ -282,116 +276,98 @@ export function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, o
   item: BillItem; ways: number; min: number; busy: boolean; error?: string; onChange: (n: number) => void; onCancel: () => void; onOk: () => void;
 }) {
   return (
-    <>
-      <div className="g-overlay" onClick={onCancel} aria-hidden />
-      {/* Full-screen, click-through layer so the dialog has a real box (for
-          assistive tech and tests) while taps outside the sheet reach the overlay. */}
-      <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }}>
-        <Sheet
-          className="g-sheet--solid"
-          title={`Split ${item.name}`}
-          sub={formatGBP(item.unitPricePence)}
-          foot={
-            <>
-              <Btn busy={busy} onClick={onOk}>{formatGBP(Math.ceil(item.unitPricePence / ways))} each</Btn>
-              <Btn tone="ghost" onClick={onCancel}>Cancel</Btn>
-            </>
-          }
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, padding: '6px 0' }}>
-            <button type="button" className="g-fab g-fab--icon" style={{ width: 52, height: 52, borderRadius: 26, fontSize: 24 }} aria-label="Fewer people" disabled={ways <= min} onClick={() => onChange(ways - 1)}>−</button>
-            <span style={{ fontSize: 40, fontWeight: 700, minWidth: 56, textAlign: 'center' }} aria-live="polite">{ways}</span>
-            <button type="button" className="g-fab g-fab--icon" style={{ width: 52, height: 52, borderRadius: 26, fontSize: 24 }} aria-label="More people" disabled={ways >= 20} onClick={() => onChange(ways + 1)}>+</button>
-          </div>
-          <p className="g-foot-note">people, including you</p>
-          {error ? <Notice error>{error}</Notice> : null}
-        </Sheet>
+    <Dialog
+      title={`Split ${item.name}`}
+      onClose={onCancel}
+      actions={
+        <>
+          <Button busy={busy} onClick={onOk}>{formatGBP(Math.ceil(item.unitPricePence / ways))} each</Button>
+          <Button tone="secondary" onClick={onCancel}>Cancel</Button>
+        </>
+      }
+    >
+      <p className="muted">{formatGBP(item.unitPricePence)} between how many people, including you?</p>
+      <div className="ways">
+        <span className="stepper">
+          <button type="button" aria-label="Fewer people" disabled={ways <= min} onClick={() => onChange(ways - 1)}>−</button>
+        </span>
+        <b aria-live="polite">{ways}</b>
+        <span className="stepper">
+          <button type="button" aria-label="More people" disabled={ways >= 20} onClick={() => onChange(ways + 1)}>+</button>
+        </span>
       </div>
-    </>
+      {error ? <Notice tone="error">{error}</Notice> : null}
+    </Dialog>
   );
 }
 
-/* ============================ the table (guest) ============================ */
+/* ============================ after paying (guest) ============================ */
 
 export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
+  const [more, setMore] = useState(false);
   const me = s.participants.find((p) => p.userId === meUserId);
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
-  const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const closed = s.status === 'settled';
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
-  const openCount = statuses.filter((x) => x.left > 0).length;
+  const open = statuses.filter((x) => x.left > 0);
 
   const myOwed = me ? owedFor(s, b, me) : 0;
   const status = me?.payment.status;
-  const hero = status === 'succeeded'
-    ? <Hero kicker={`${hostFirst} has your`} amount={formatGBP(myOwed)} />
-    : status === 'pending' && me?.payment.status === 'pending' && me.payment.payerClaimedPaidAt
-      ? <Hero kicker={`sent to ${hostFirst}`} amount={formatGBP(myOwed)} note={`Waiting for ${hostFirst} to confirm`} />
-      : closed
-        ? <Hero kicker={`you owe ${hostFirst}`} amount={formatGBP(myOwed)} />
-        : null;
+  const sent = me?.payment.status === 'pending' && !!me.payment.payerClaimedPaidAt;
+  const mustPay = closed && status !== 'succeeded' && status !== 'self_paid' && !sent && myOwed > 0;
 
   return (
-    <Screen>
-      <Backdrop billId={s.billId} tone="deep" />
-      <TopBar left={<Fab href="/" label="Home" icon={<Back />} replace />} title={b.venue?.name} />
-      <Sheet
-        size="tall"
-        head={hero ? <div className="g-sheet__head">{hero}</div> : undefined}
-        foot={
-          closed && status !== 'succeeded' && status !== 'pending' && myOwed > 0
-            ? <Btn href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(myOwed)}</Btn>
-            : <Btn tone={closed ? 'accent' : 'ghost'} href="/" replace>{closed ? 'Done' : 'Close'}</Btn>
-        }
-      >
-        {!closed ? (
-          <>
-            <Label>{openCount > 0 ? `${openCount} still unclaimed` : 'Everything’s claimed'}</Label>
-            <List>
-              {statuses.map((st) => <ItemLine key={st.item.itemId} st={st} />)}
-            </List>
-            {openCount > 0 ? <p className="g-foot-note">One of these yours? Tell {hostFirst}.</p> : null}
-          </>
+    <>
+      <Page sub>
+        <BackLink href="/">Bills</BackLink>
+        <Title title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
+        {status === 'succeeded' ? (
+          <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(myOwed)}`}>You’re all settled.</Notice>
+        ) : sent ? (
+          <Notice tone="ok" title={`You’ve marked ${formatGBP(myOwed)} as paid`}>{hostFirst} will confirm when it arrives.</Notice>
+        ) : mustPay ? (
+          <Notice title={`You owe ${hostFirst} ${formatGBP(myOwed)}`} />
         ) : null}
 
-        <Label>{closed ? 'Bill closed' : 'Who’s paid'}</Label>
-        <List>
-          {guests.map((p) => {
-            const saysPaid = p.payment.status === 'pending' && !!p.payment.payerClaimedPaidAt;
-            return (
-              <div key={p.userId} className="g-row" style={{ gap: 12 }}>
-                <Avatar name={p.displayName} seed={p.userId} size={32} />
-                <RowBody name={p.userId === meUserId ? 'You' : firstName(p.displayName)} sub={isPaid(p) ? undefined : saysPaid ? 'sent' : 'not yet'} />
-                {isPaid(p) ? <Paid>{formatGBP(owedFor(s, b, p))}</Paid> : <Price mute>{formatGBP(owedFor(s, b, p))}</Price>}
-              </div>
-            );
-          })}
-        </List>
-        {!closed ? <p className="g-foot-note">Waiting for {hostFirst} to close the bill</p> : null}
-
         {me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? (
-          <>
-            <Label>You had</Label>
-            <List>
+          <Section title="You had">
+            <Box>
               {[...new Set(me.claimedItemIds)].map((id) => {
                 const item = b.items.find((x) => x.itemId === id);
                 if (!item) return null;
                 const n = me.claimedItemIds.filter((x) => x === id).length;
-                return <KV key={id} k={n > 1 ? `${n}× ${item.name}` : item.name} v={formatGBP(item.unitPricePence * n)} />;
+                return <Row key={id} title={n > 1 ? `${item.name} × ${n}` : item.name} end={formatGBP(item.unitPricePence * n)} />;
               })}
               {me.sharedItemIds.map((id) => {
                 const item = b.items.find((x) => x.itemId === id);
                 const share = s.shares?.find((x) => x.itemId === id);
                 if (!item || !share) return null;
-                return <KV key={id} k={`${item.name} · split ${share.ways}`} v={formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, meUserId))} />;
+                return <Row key={id} title={item.name} sub={splitSub(s, share, meUserId)} end={formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, meUserId))} />;
               })}
-              <KV k="Your total" v={formatGBP(myOwed)} total />
-            </List>
-          </>
+            </Box>
+            <Totals><TotalLine tone="total" k={b.serviceChargePence > 0 || b.taxPence > 0 ? 'Your total incl. service' : 'Your total'} v={formatGBP(myOwed)} /></Totals>
+          </Section>
         ) : null}
-        {closed && status === 'succeeded' ? <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}><div className="g-done g-rise"><Tick size={36} /></div></div> : null}
-      </Sheet>
-    </Screen>
+
+        {!closed && open.length > 0 ? (
+          <Section title="Still to claim">
+            <Box>{open.map((st) => <ItemLine key={st.item.itemId} st={st} />)}</Box>
+            {more ? <Notice>Let {hostFirst} know. They can take it on their bill and you can settle up between you.</Notice> : null}
+          </Section>
+        ) : null}
+
+        {!closed ? <p className="small muted">{hostFirst} closes the bill once everyone’s paid.</p> : null}
+      </Page>
+      <ActionBar stack>
+        {mustPay ? (
+          <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(myOwed)}</Button>
+        ) : !closed && open.length > 0 && !more ? (
+          <Button tone="secondary" onClick={() => setMore(true)}>I had something else</Button>
+        ) : (
+          <Button tone={closed ? 'primary' : 'secondary'} href="/" replace>{closed ? 'Done' : 'Back to bills'}</Button>
+        )}
+      </ActionBar>
+    </>
   );
 }

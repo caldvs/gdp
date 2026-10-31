@@ -10,8 +10,8 @@ import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
-  Back, Backdrop, Btn, Centre, Close, Fab, KV, List, MiniBtn, Notice, Pencil, Plus, Price, Row, RowBody, Screen, Sheet, Spin, Tag, TopBar,
-} from '@/components/glass';
+  ActionBar, BackLink, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Spinner, Title, TotalLine, Totals,
+} from '@/components/ui';
 
 type Bill = components['schemas']['Bill'];
 type BillItem = components['schemas']['BillItem'];
@@ -37,13 +37,12 @@ function existingSessionIdFromError(err: unknown): string | undefined {
 }
 
 export default function ConfirmBillPage() {
-  return <Suspense fallback={<Centre><Spin /></Centre>}><CheckBill /></Suspense>;
+  return <Suspense fallback={<Centre><Spinner /></Centre>}><CheckBill /></Suspense>;
 }
 
 /**
- * "Check the bill": the scanned lines over the photo. Tap a line to fix
- * it; each fix saves when the editor closes. Service and tax are rows
- * in the totals card and edit the same way.
+ * Review the bill: the scanned lines in a list. Tap a line to fix it;
+ * each fix saves when the editor closes. Service and tax edit the same way.
  */
 function CheckBill() {
   const { billId } = useParams<{ billId: string }>();
@@ -164,9 +163,9 @@ function CheckBill() {
     } catch { /* shown inline */ }
   };
 
-  if (bill.isPending || (bill.isSuccess && !hydrated)) return <Centre><Spin /></Centre>;
+  if (bill.isPending || (bill.isSuccess && !hydrated)) return <Centre><Spinner /></Centre>;
   if (bill.isError) {
-    return <Centre><Notice error title="Couldn't load the bill.">{bill.error.message}</Notice><Btn tone="ghost" href="/" replace>Back</Btn></Centre>;
+    return <Centre><Notice tone="error" title="Couldn’t load the bill.">{bill.error.message}</Notice><Button tone="secondary" href="/" replace>Back to bills</Button></Centre>;
   }
   const b = bill.data as Bill & { parsedTotalPence?: number };
   const busy = amend.isPending || createSession.isPending;
@@ -174,34 +173,17 @@ function CheckBill() {
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
   const sub = items.length === 0
-    ? 'Nothing read. Add the lines yourself, or retake.'
+    ? 'Nothing read. Add the items yourself, or scan again.'
     : [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+  const servicePct = subtotalPence > 0 && servicePence > 0 ? ` ${Math.round((servicePence / subtotalPence) * 1000) / 10}%` : '';
 
   return (
-    <Screen>
-      <Backdrop billId={billId} tone="dim" />
-      <TopBar
-        left={<Fab href={isMidSession ? `/session/${sessionId}` : '/'} label={isMidSession ? 'Back' : 'Cancel'} icon={isMidSession ? <Back /> : <Close />} replace />}
-        right={isMidSession ? undefined : <Fab href="/" label="Retake" replace>Retake</Fab>}
-      />
-      <Sheet
-        size="mid"
-        title={isMidSession ? 'Fix the bill' : 'Check the bill'}
-        sub={sub}
-        foot={
-          <>
-            {createSession.isError && !existingSessionId ? <Notice error title="Couldn't start the bill.">{createSession.error.message}</Notice> : null}
-            {amend.isError ? <Notice error title="Couldn't save.">{amend.error.message}</Notice> : null}
-            {existingSessionId ? <Btn tone="ghost" href={`/session/${existingSessionId}`} replace>Open the existing bill</Btn> : null}
-            {isMidSession ? (
-              <Btn busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Btn>
-            ) : (
-              <Btn busy={busy} disabled={editing !== null || items.length === 0} onClick={onShare}>Share with the table</Btn>
-            )}
-          </>
-        }
-      >
-        <List>
+    <>
+      <Page sub>
+        {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
+        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={sub} />
+
+        <Box>
           {items.map((it) =>
             it.draftId === editing ? (
               <ItemEditor
@@ -214,39 +196,57 @@ function CheckBill() {
                 onRemove={() => { removeItem(it.draftId); finishEditing(); }}
               />
             ) : (
-              <Row key={it.draftId} onClick={() => startEditing(it)} disabled={busy} ariaLabel={`Edit ${it.name || 'item'}`}>
-                <RowBody name={it.name || 'Item'} sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined} />
-                {it.quantity > 1 ? <span className="g-qty">{it.quantity}</span> : null}
-                <Price>{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</Price>
-                <span style={{ color: 'var(--g-mute-2)', display: 'flex' }} aria-hidden><Pencil /></span>
-              </Row>
+              <RowButton
+                key={it.draftId}
+                onClick={() => startEditing(it)}
+                disabled={busy || (editing !== null)}
+                label={`Edit ${it.name || 'item'}`}
+                title={it.quantity > 1 ? `${it.name || 'Item'} × ${it.quantity}` : it.name || 'Item'}
+                sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined}
+                end={formatGBP(parsePence(it.unitPricePounds) * it.quantity)}
+                chevron
+              />
             ),
           )}
-          <Row onClick={addAndEdit} disabled={busy || editing !== null} className="g-row--add"><Plus />Add a line</Row>
-        </List>
+          <button type="button" className="row row--add" onClick={addAndEdit} disabled={busy || editing !== null}>
+            <PlusIcon />Add item
+          </button>
+        </Box>
 
-        <List>
-          <KV k="Subtotal" v={formatGBP(subtotalPence)} />
+        <Totals>
+          <TotalLine k="Subtotal" v={formatGBP(subtotalPence)} />
           {editing === 'service' ? (
             <MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} />
           ) : (
-            <Row onClick={() => setEditing('service')} className="g-row--kv" ariaLabel="Edit service charge">
-              <span>Service{subtotalPence > 0 && servicePence > 0 ? ` ${Math.round((servicePence / subtotalPence) * 1000) / 10}%` : ''}</span>
-              <Tag tone="accent">{formatGBP(servicePence)}</Tag>
-            </Row>
+            <TotalLine
+              k={<>Service{servicePct} · <button type="button" className="link-btn" onClick={() => setEditing('service')} disabled={editing !== null} aria-label="Change service charge">change</button></>}
+              v={formatGBP(servicePence)}
+            />
           )}
           {editing === 'tax' ? (
             <MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} />
-          ) : taxPence > 0 || editing === null ? (
-            <Row onClick={() => setEditing('tax')} className="g-row--kv" ariaLabel="Edit tax">
-              <span>Tax</span>
-              <span>{taxPence > 0 ? formatGBP(taxPence) : <span style={{ color: 'var(--g-mute-2)', fontWeight: 500 }}>none</span>}</span>
-            </Row>
-          ) : null}
-        </List>
-        <List strong><KV k="Total" v={formatGBP(totalPence)} total /></List>
-      </Sheet>
-    </Screen>
+          ) : (
+            <TotalLine
+              tone={taxPence > 0 ? undefined : 'mute'}
+              k={<>Tax · <button type="button" className="link-btn" onClick={() => setEditing('tax')} disabled={editing !== null} aria-label="Change tax">change</button></>}
+              v={taxPence > 0 ? formatGBP(taxPence) : 'None'}
+            />
+          )}
+          <TotalLine tone="total" k="Total" v={formatGBP(totalPence)} />
+        </Totals>
+
+        {createSession.isError && !existingSessionId ? <Notice tone="error" title="Couldn’t start the bill.">{createSession.error.message}</Notice> : null}
+        {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
+        {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
+      </Page>
+      <ActionBar>
+        {isMidSession ? (
+          <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
+        ) : (
+          <Button grow busy={busy} disabled={editing !== null || items.length === 0} onClick={onShare}>Continue</Button>
+        )}
+      </ActionBar>
+    </>
   );
 }
 
@@ -259,25 +259,34 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
   };
   const minQty = Math.max(1, claimed);
   return (
-    <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 8, borderBottom: '1px solid var(--g-line)', background: 'rgba(61,220,151,0.06)' }} onKeyDown={onKey}>
-      <input className="g-input" aria-label="Item name" value={item.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="What was it?" autoCorrect="off" autoFocus style={{ height: 48 }} />
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <div className="g-input-wrap" style={{ flex: 1, minWidth: 0, height: 48 }}>
-          <span className="g-input-wrap__prefix">£</span>
-          <input aria-label="Price each" style={{ minWidth: 0, width: '100%' }} value={item.unitPricePounds} onChange={(e) => onChange({ unitPricePounds: e.target.value })} onBlur={() => onChange({ unitPricePounds: pounds(parsePence(item.unitPricePounds)) })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="0.00" />
+    <div className="editor" onKeyDown={onKey}>
+      <div className="field">
+        <label htmlFor={`name-${item.draftId}`}>Item</label>
+        <input id={`name-${item.draftId}`} className="input" value={item.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="What was it?" autoCorrect="off" autoFocus />
+      </div>
+      <div className="editor__row">
+        <div className="field" style={{ flex: 1, minWidth: 0 }}>
+          <label htmlFor={`price-${item.draftId}`}>Price each</label>
+          <div className="money">
+            <span>£</span>
+            <input id={`price-${item.draftId}`} className="input" value={item.unitPricePounds} onChange={(e) => onChange({ unitPricePounds: e.target.value })} onBlur={() => onChange({ unitPricePounds: pounds(parsePence(item.unitPricePounds)) })} onFocus={(e) => e.target.select()} inputMode="decimal" placeholder="0.00" />
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 40, borderRadius: 20, background: 'var(--g-fill-2)', padding: '0 2px', flex: 'none' }}>
-          <button type="button" className="g-mini-btn" style={{ border: 0, width: 36, padding: 0, fontSize: 18 }} aria-label="One fewer" disabled={item.quantity <= minQty} onClick={() => onChange({ quantity: Math.max(minQty, item.quantity - 1) })}>−</button>
-          <span style={{ minWidth: 24, textAlign: 'center', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{item.quantity}</span>
-          <button type="button" className="g-mini-btn" style={{ border: 0, width: 36, padding: 0, fontSize: 18 }} aria-label="One more" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
+        <div className="field" style={{ flex: 'none' }}>
+          <span className="field__label">Quantity</span>
+          <div className="stepper" style={{ height: 52 }}>
+            <button type="button" aria-label="One fewer" disabled={item.quantity <= minQty} onClick={() => onChange({ quantity: Math.max(minQty, item.quantity - 1) })}>−</button>
+            <span aria-live="polite">{item.quantity}</span>
+            <button type="button" aria-label="One more" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
+          </div>
         </div>
       </div>
-      {claimed > 0 ? <div className="g-foot-note" style={{ textAlign: 'left' }}>{claimed} already claimed, so it can&apos;t go below {claimed}.</div> : null}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <MiniBtn onClick={onRemove} disabled={claimed > 0} style={{ color: claimed > 0 ? undefined : 'var(--g-danger)', height: 40 }}>Remove</MiniBtn>
+      {claimed > 0 ? <p className="field__hint">{claimed} already claimed, so it can’t go below {claimed}.</p> : null}
+      <div className="btn-row btn-row--end">
+        <Button tone="text" small onClick={onRemove} disabled={claimed > 0} className={claimed > 0 ? undefined : 'btn--text-danger'}>Remove</Button>
         <span style={{ flex: 1 }} />
-        <MiniBtn onClick={onCancel} style={{ height: 40 }}>Cancel</MiniBtn>
-        <MiniBtn solid onClick={onDone} style={{ height: 40, padding: '0 16px' }}>Done</MiniBtn>
+        <Button tone="secondary" small onClick={onCancel}>Cancel</Button>
+        <Button small onClick={onDone}>Done</Button>
       </div>
     </div>
   );
@@ -285,14 +294,18 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
 
 function MoneyEditor({ label, value, onChange, onDone }: { label: string; value: string; onChange: (v: string) => void; onDone: () => void }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid var(--g-line)' }}>
-      <span style={{ flex: 1, fontSize: 15, color: 'var(--g-ink-2)' }}>{label}</span>
-      <div className="g-input-wrap" style={{ width: 130, height: 44 }}>
-        <span className="g-input-wrap__prefix">£</span>
-        <input aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => onChange(pounds(parsePence(value)))} onFocus={(e) => e.target.select()} inputMode="decimal" autoFocus
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); onDone(); } }} />
+    <div className="editor" style={{ borderRadius: 'var(--radius)' }}>
+      <div className="editor__row">
+        <div className="field" style={{ flex: 1 }}>
+          <label htmlFor={`money-${label}`}>{label}</label>
+          <div className="money">
+            <span>£</span>
+            <input id={`money-${label}`} className="input" value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => onChange(pounds(parsePence(value)))} onFocus={(e) => e.target.select()} inputMode="decimal" autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); onDone(); } }} />
+          </div>
+        </div>
+        <Button onClick={onDone}>Done</Button>
       </div>
-      <MiniBtn solid onClick={onDone} style={{ height: 40 }}>Done</MiniBtn>
     </div>
   );
 }

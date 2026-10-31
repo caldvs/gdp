@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { api, ApiError, type components } from '@gdp/core/api';
 import { scrubFragmentFromUrl, storeSessionPayoutFromFragment } from '@gdp/core/lib/sessionPayout';
 import { takeJoinFragment } from '@/lib/joinFragment';
-import { Backdrop, Btn, Notice, Screen, Sheet, Spin } from '@/components/glass';
+import { ActionBar, Button, Notice, Page, Spinner, Title } from '@/components/ui';
 
 type Session = components['schemas']['Session'];
 
@@ -65,15 +65,12 @@ export default function JoinPage() {
   }, [code, router]);
 
   return (
-    <Screen>
-      <Backdrop tone="deep" />
-      <Sheet
-        title={state.kind === 'error' ? 'Couldn’t join' : 'Joining…'}
-        sub={code ? decodeURIComponent(code).toUpperCase() : undefined}
-        foot={state.kind === 'error' ? <Btn href="/" replace>Home</Btn> : undefined}
-      >
-        {state.kind === 'error' ? <Notice error>{state.message}</Notice> : <div style={{ display: 'flex', justifyContent: 'center', padding: 12 }}><Spin /></div>}
-      </Sheet>
-    </Screen>
+    <>
+      <Page>
+        <Title title={state.kind === 'error' ? 'Couldn’t join' : 'Joining…'} sub={code ? `Code ${decodeURIComponent(code).toUpperCase()}` : undefined} />
+        {state.kind === 'error' ? <Notice tone="error">{state.message}</Notice> : <Spinner label="Joining" />}
+      </Page>
+      {state.kind === 'error' ? <ActionBar><Button grow href="/join" replace>Try another code</Button></ActionBar> : null}
+    </>
   );
 }

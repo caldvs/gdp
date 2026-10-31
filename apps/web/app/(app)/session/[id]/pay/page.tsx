@@ -18,7 +18,7 @@ import { monzoPayUrl, revolutPayUrl } from '@gdp/core/lib/quickPay';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { copyText } from '@/lib/clipboard';
-import { Back, Backdrop, Btn, Centre, CopyIcon, External, Fab, Hero, List, Notice, Screen, Sheet, Spin, Tick, TopBar, firstName } from '@/components/glass';
+import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Notice, Page, Spinner, TickIcon, Title, firstName } from '@/components/ui';
 import { owedFor } from '../guest';
 
 type Instructions = components['schemas']['PaymentInstructions'];
@@ -61,8 +61,8 @@ export default function PayPage() {
   // Once the host has the money, this device no longer needs their bank details.
   useEffect(() => { if (status === 'succeeded') clearSessionPayout(id); }, [status, id]);
 
-  if (session.isPending || me.isPending || (session.isSuccess && bill.isPending)) return <Centre><Spin /></Centre>;
-  if (session.isError) return <Centre><Notice error title="Couldn’t load the bill.">{session.error.message}</Notice></Centre>;
+  if (session.isPending || me.isPending || (session.isSuccess && bill.isPending)) return <Centre><Spinner /></Centre>;
+  if (session.isError) return <Centre><Notice tone="error" title="Couldn’t load the bill.">{session.error.message}</Notice></Centre>;
   if (!s || !bill.data || !mine || isCreator) return null;
 
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
@@ -82,68 +82,59 @@ export default function PayPage() {
   const fmtSort = (sc: string) => sc.replace(/(\d{2})(?=\d)/g, '$1-');
 
   const canSend = mine.payment.status === 'pending' && !sentAt;
-  const foot = status === 'succeeded'
-    ? <Btn href={`/session/${id}`} replace>Done</Btn>
+  const done = status === 'succeeded' || !!sentAt;
+  const action = status === 'succeeded'
+    ? <Button grow href={`/session/${id}`} replace>Done</Button>
     : sentAt
-      ? <Btn tone="light" href={`/session/${id}`} replace>Back to the table</Btn>
+      ? <Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button>
       : status === 'failed' || (status === 'unpaid' && startError)
-        ? <Btn busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Btn>
-        : <Btn busy={markPaid.isPending} disabled={!canSend} onClick={() => mine.payment.status === 'pending' && markPaid.mutate(mine.payment.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve sent it</Btn>;
+        ? <Button grow busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Button>
+        : <Button grow busy={markPaid.isPending} disabled={!canSend} onClick={() => mine.payment.status === 'pending' && markPaid.mutate(mine.payment.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve paid</Button>;
 
   return (
-    <Screen>
-      <Backdrop billId={s.billId} tone="deep" />
-      <TopBar left={sentAt || status === 'succeeded' ? undefined : <Fab href={`/session/${id}`} label="Back" icon={<Back />} replace />} title={bill.data.venue?.name} />
-      <Sheet
-        head={
-          <div className="g-sheet__head">
-            <Hero
-              kicker={status === 'succeeded' ? `${hostFirst} has your` : sentAt ? `sent to ${hostFirst}` : `pay ${hostFirst}`}
-              amount={formatGBP(amount)}
-              note={status === 'succeeded' ? undefined : sentAt ? `Waiting for ${hostFirst} to confirm` : 'Straight to their bank'}
-            />
-          </div>
-        }
-        foot={foot}
-      >
-        {status === 'succeeded' ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}><div className="g-done g-rise"><Tick size={36} /></div></div>
-        ) : (
+    <>
+      <Page sub>
+        {done ? <BackLink href="/">Bills</BackLink> : <BackLink href={`/session/${id}`}>Your items</BackLink>}
+        <Title
+          title={status === 'succeeded' ? `${hostFirst} has your ${formatGBP(amount)}` : sentAt ? `You’ve paid ${hostFirst} ${formatGBP(amount)}` : `Pay ${hostFirst} ${formatGBP(amount)}`}
+          sub={status === 'succeeded' ? bill.data.venue?.name : sentAt ? `Waiting for ${hostFirst} to confirm.` : 'By bank transfer. Tap a detail to copy it.'}
+        />
+        {done ? null : (
           <>
-            {monzo || revolut ? (
-              <div style={{ display: 'flex', gap: 8 }}>
-                {monzo ? <a className="g-btn g-btn--light" style={{ flex: 1 }} href={monzo} target="_blank" rel="noopener noreferrer">Monzo <External /></a> : null}
-                {revolut ? <a className="g-btn g-btn--light" style={{ flex: 1 }} href={revolut} target="_blank" rel="noopener noreferrer">Revolut <External /></a> : null}
-              </div>
-            ) : null}
             {bd ? (
-              <List>
+              <Box>
                 <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />
                 <CopyRow k="Sort code" v={fmtSort(bd.sortCode)} copied={copied === 's'} onCopy={() => copy('s', bd.sortCode)} />
-                <CopyRow k="Account" v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
+                <CopyRow k="Account no." v={bd.accountNumber} label="account number" copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
                 {reference ? <CopyRow k="Reference" v={reference} copied={copied === 'r'} onCopy={() => copy('r', reference)} /> : null}
-              </List>
+              </Box>
             ) : initiate.isPending ? (
-              <Centre><Spin /></Centre>
+              <Spinner />
             ) : (
-              <Notice title={`No bank details from ${hostFirst} yet.`}>Scan their QR again with this phone.</Notice>
+              <Notice title={`No bank details from ${hostFirst} yet.`}>Scan their QR code again with this phone.</Notice>
             )}
-            {startError ? <Notice error>{startError}</Notice> : null}
-            {markPaid.isError ? <Notice error>{markPaid.error.message}</Notice> : null}
+            {monzo || revolut ? (
+              <div className="btn-row">
+                {monzo ? <a className="btn btn--secondary" href={monzo} target="_blank" rel="noopener noreferrer">Pay with Monzo</a> : null}
+                {revolut ? <a className="btn btn--secondary" href={revolut} target="_blank" rel="noopener noreferrer">Pay with Revolut</a> : null}
+              </div>
+            ) : null}
+            {startError ? <Notice tone="error">{startError}</Notice> : null}
+            {markPaid.isError ? <Notice tone="error">{markPaid.error.message}</Notice> : null}
           </>
         )}
-      </Sheet>
-    </Screen>
+      </Page>
+      <ActionBar>{action}</ActionBar>
+    </>
   );
 }
 
-function CopyRow({ k, v, copied, onCopy }: { k: string; v: string; copied: boolean; onCopy: () => void }) {
+function CopyRow({ k, v, label, copied, onCopy }: { k: string; v: string; label?: string; copied: boolean; onCopy: () => void }) {
   return (
-    <button type="button" className="g-row g-row--kv" style={{ background: 'none', border: 0, color: 'inherit', font: 'inherit', cursor: 'pointer' }} onClick={onCopy} aria-label={`Copy ${k.toLowerCase()}`}>
-      <span>{k}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontVariantNumeric: 'tabular-nums', color: 'var(--g-ink)', fontWeight: 600 }}>
-        {v}
-        <span style={{ color: copied ? 'var(--g-accent)' : 'var(--g-mute)', display: 'inline-flex' }}>{copied ? <Tick size={14} /> : <CopyIcon />}</span>
+    <button type="button" className="row" onClick={onCopy} aria-label={`Copy ${label ?? k.toLowerCase()}`}>
+      <span className="row__main"><span className="row__sub">{k}</span><span className="row__title" style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{v}</span></span>
+      <span style={{ color: copied ? 'var(--ok-ink)' : 'var(--mute)', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+        {copied ? <><TickIcon size={18} />Copied</> : <CopyIcon />}
       </span>
     </button>
   );

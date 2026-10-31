@@ -28,28 +28,29 @@ test('history: All / Hosted / Joined, and a joined row shows the tick only once 
   ];
   const lead = await diner(browser, api, users.lead);
   await lead.goto('/history');
-  const rows = lead.locator('.g-list a.g-row');
+  const rows = lead.locator('.box a.row');
   await expect(rows).toHaveCount(4);
 
-  await lead.getByRole('tab', { name: 'Hosted' }).click();
+  await lead.getByLabel('Show').selectOption('hosted');
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText('Gennaro');
-  await expect(rows.first()).toContainText('open');
-  await expect(rows.nth(1)).toContainText('closed');
+  await expect(rows.first()).toContainText('Open');
+  await expect(rows.nth(1)).toContainText('Closed');
 
-  await lead.getByRole('tab', { name: 'Joined' }).click();
+  await lead.getByLabel('Show').selectOption('joined');
   await expect(rows).toHaveCount(2);
-  await expect(rows.filter({ hasText: 'Dishoom' }).locator('.g-paid')).toContainText('£28.40');
-  await expect(rows.filter({ hasText: 'Rudy’s' }).locator('.g-paid')).toHaveCount(0);
+  await expect(rows.filter({ hasText: 'Dishoom' }).locator('.badge--ok')).toContainText('£28.40');
+  await expect(rows.filter({ hasText: 'Rudy’s' }).locator('.badge--ok')).toHaveCount(0);
   await expect(rows.filter({ hasText: 'Rudy’s' })).toContainText('£15.50');
 });
 
-test('account → sign out → the front door, and a deep link afterwards asks you to sign in', async ({ browser }) => {
+test('menu → account → sign out → the front door, and a deep link afterwards asks you to sign in', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   await lead.goto('/');
-  await lead.getByRole('link', { name: 'Your bills and account' }).click();
-  await expect(lead.getByRole('heading', { name: 'Callum Davies' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Open menu' }).click();
+  await lead.getByRole('link', { name: 'Account' }).click();
+  await expect(lead.getByRole('heading', { name: 'Account' })).toBeVisible();
   await expect(lead.getByText('callum@example.com')).toBeVisible();
   await lead.getByRole('button', { name: 'Sign out' }).click();
   await expect(lead).toHaveURL(/\/sign-in$/);
@@ -60,12 +61,12 @@ test('a failed poll doesn’t blank the table; the next one recovers', async ({ 
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   await lead.goto(`/session/${SID}`);
-  await expect(lead.getByRole('button', { name: 'Close the bill' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
   api.faults.push({ kind: 'session-get-500', times: 1 });
   api.join(users.sam);
   // Across the failed poll the table stays up, then Sam appears.
   await expect(lead.getByText('Sam', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(lead.getByRole('button', { name: 'Close the bill' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
 });
 
 test('starting a payment fails once: Try again works and only one payment is open', async ({ browser }) => {
@@ -74,8 +75,8 @@ test('starting a payment fails once: Try again works and only one payment is ope
   await sam.goto(`/session/${SID}`);
   await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
   api.faults.push({ kind: 'initiate-500', times: 1 });
-  await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
-  await expect(sam.getByRole('alert').filter({ hasText: /boom|Couldn|Our side/ }).or(sam.getByText('boom'))).toBeVisible();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  await expect(sam.getByRole('alert').filter({ hasText: /boom|Couldn|Our side/ }).or(sam.getByText('boom')).first()).toBeVisible();
   await sam.getByRole('button', { name: 'Try again' }).click();
   await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
   const initiates = api.requests.filter((r) => r.method === 'POST' && r.path === `/v1/sessions/${SID}/payments`);

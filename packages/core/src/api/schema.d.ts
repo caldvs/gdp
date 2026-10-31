@@ -692,6 +692,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/billing/table-fee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start paying the table fee for a bill
+         * @description The lead pays a flat fee to share a bill: £2, or £3 when the bill total is over £100.
+         *     Creates a Stripe Checkout Session for the embedded form (`ui_mode: form`) and returns
+         *     its client secret. The payment is recorded only by the Stripe webhook.
+         */
+        post: operations["startTableFeeCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/table-fee/{billId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        /** Whether the table fee for a bill is paid */
+        get: operations["getTableFeeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stripe event webhook
+         * @description Verified with the `Stripe-Signature` header and `STRIPE_WEBHOOK_SECRET`.
+         *     `checkout.session.completed` (and `checkout.session.async_payment_succeeded`) with
+         *     `payment_status: paid` records the bill's table fee. Every verified event gets `200`,
+         *     including repeats; an invalid signature gets `401`.
+         */
+        post: operations["stripeWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/truelayer": {
         parameters: {
             query?: never;
@@ -721,13 +785,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        StartTableFeeRequest: {
+            /** Format: uuid */
+            billId: string;
+        };
+        TableFeeCheckout: {
+            /** @description Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`. */
+            client_secret: string;
+            /** @enum {integer} */
+            amountPence: 200 | 300;
+        };
+        TableFeeStatus: {
+            /** Format: uuid */
+            billId: string;
+            /** @enum {string} */
+            status: "paid" | "unpaid";
+            amountPence: number;
+            /** Format: date-time */
+            paidAt?: string;
+        };
         ErrorResponse: {
             error: {
                 /**
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -2302,6 +2385,101 @@ export interface operations {
             };
             /** @description Payment is not in `pending` (e.g. already succeeded or failed) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startTableFeeCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTableFeeRequest"];
+            };
+        };
+        responses: {
+            /** @description Client secret for the embedded form */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableFeeCheckout"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The fee for this bill is already paid (`TABLE_FEE_PAID`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stripe error, or no active price for the fee */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getTableFeeStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fee status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TableFeeStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    stripeWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid signature */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -30,3 +30,6 @@ export const DEV_SIGNIN_ENABLED =
 
 /** Set in sessionStorage on sign-out so local dev doesn't auto sign straight back in. */
 export const DEV_SIGNED_OUT_KEY = 'gdp.dev.signedOut';
+
+/** Stripe publishable key for the table-fee form. Null hides the form. */
+export const STRIPE_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || null;

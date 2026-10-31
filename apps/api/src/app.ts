@@ -24,6 +24,12 @@ import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
 import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
+import Stripe from 'stripe';
+import { createTableFeeService, type TableFeeStore } from './services/billing/tableFee.js';
+import { tableFeeStore as defaultTableFeeStore } from './storage/tableFeeStore.js';
+import { billStore } from './storage/billStore.js';
+import { buildBillingRoutes } from './routes/billing.js';
+import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
 
 export interface AppDeps {
   idTokenVerifier?: IdTokenVerifier;
@@ -39,6 +45,13 @@ export interface AppDeps {
    * Omit to fall back to env-driven default.
    */
   paymentProvider?: PaymentProvider | null;
+  /**
+   * Stripe client for the lead's table fee. Omit to build one from
+   * STRIPE_SECRET_KEY; pass `null` to leave the billing routes unmounted.
+   */
+  stripe?: Stripe | null;
+  stripeWebhookSecret?: string;
+  tableFeeStore?: TableFeeStore;
 }
 
 const sessionJwtSecretFromEnv = (): Uint8Array => {
@@ -142,6 +155,27 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   // No webhook route in manual mode — there's no provider sending events.
   if (paymentProvider) {
     app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
+  }
+
+  // The lead's table fee, paid through Stripe's embedded form.
+  const stripe =
+    deps.stripe === undefined
+      ? env.STRIPE_SECRET_KEY
+        ? new Stripe(env.STRIPE_SECRET_KEY)
+        : null
+      : deps.stripe;
+  if (stripe) {
+    const tableFees = createTableFeeService({
+      stripe,
+      store: deps.tableFeeStore ?? defaultTableFeeStore,
+      getBill: (billId) => billStore.getLatest(billId),
+      appBaseUrl: env.APP_BASE_URL,
+    });
+    app.route('/v1/billing', buildBillingRoutes({ idTokenVerifier, tableFees }));
+    const webhookSecret = deps.stripeWebhookSecret ?? env.STRIPE_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      app.route('/webhooks', buildStripeWebhookRoutes({ stripe, webhookSecret, tableFees }));
+    }
   }
 
   app.notFound((c) =>

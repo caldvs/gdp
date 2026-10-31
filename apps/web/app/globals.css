@@ -374,12 +374,12 @@ img { max-width: 100%; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;
 }
 .icon-tap {
-  width: 40px; height: 40px; border-radius: 12px; flex: none;
+  width: 44px; height: 44px; border-radius: 12px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; border: 0; color: var(--ink);
 }
 .icon-tap:hover { background: var(--surface-2); }
-.icon-tap--back { margin-left: -10px; }
+.icon-tap--back { margin-left: -12px; }
 
 /* ---------- Sticky bottom action bar ---------- */
 .sticky-bar {
@@ -486,10 +486,10 @@ img { max-width: 100%; }
 .claim__sub--accent { color: var(--accent); }
 .claim__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .claim__price { min-width: 56px; text-align: right; }
-.claim__ctl { width: 100px; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.claim__ctl { width: 112px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
 .claim-menu { display: flex; justify-content: flex-end; padding: 0 4px 10px; animation: fade-in .2s ease; }
 .icon-btn {
-  width: 26px; height: 26px; border-radius: 50%; flex: none;
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-2); color: var(--ink); border: 0;
 }
@@ -610,7 +610,7 @@ img { max-width: 100%; }
 .menu__item:hover { background: var(--surface-2); }
 .menu__block { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 8px; }
 .menu__row { display: flex; gap: 8px; }
-.menu__row .btn { width: auto; flex: none; padding: 10px 16px; }
+.menu__row .btn { width: auto; flex: none; min-height: 44px; padding: 10px 16px; }
 .menu__code {
   flex: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: var(--r-row);
   background: var(--surface); padding: 10px 12px; font-size: 16px; letter-spacing: .2em;
@@ -620,7 +620,7 @@ img { max-width: 100%; }
 .menu__error { font-size: 13px; color: var(--error-ink); }
 .menu__divider { height: 1px; background: var(--line); margin: 4px 0; }
 .segmented { display: flex; border: 1px solid var(--line-strong); background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 3px; }
-.segmented button { flex: 1; border: 0; background: transparent; border-radius: 7px; padding: 7px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.segmented button { flex: 1; min-height: 40px; border: 0; background: transparent; border-radius: 7px; padding: 7px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
 .segmented button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
 /* ---------- Demo banner ---------- */
@@ -698,8 +698,8 @@ img { max-width: 100%; }
 .price-field { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
 .price-field .field { flex: 1; min-width: 0; }
 .hint-inline { font-size: 12px; color: var(--mute); }
-.qty { display: inline-flex; align-items: center; gap: 6px; flex: none; }
-.qty button { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--ink); font-size: 16px; font-weight: 600; }
+.qty { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.qty button { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--ink); font-size: 16px; font-weight: 600; }
 .qty button:disabled { opacity: .35; }
 .qty__v { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 .line-total { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -743,7 +743,7 @@ img { max-width: 100%; }
 /* ---------- Settled / ended ---------- */
 .check-disc { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
 .big-amount { font-size: 40px; line-height: 44px; font-weight: 700; color: var(--ink); text-align: center; font-variant-numeric: tabular-nums; }
-.back-link { display: inline-flex; align-items: center; gap: 4px; align-self: center; font-size: 13px; color: var(--mute); background: none; border: 0; padding: 8px; }
+.back-link { display: inline-flex; align-items: center; gap: 4px; align-self: center; min-height: 44px; font-size: 13px; color: var(--mute); background: none; border: 0; padding: 8px 12px; }
 .back-link:hover { color: var(--ink); }
 .danger-wrap .btn--ghost { color: var(--error-ink); }
 
@@ -827,7 +827,7 @@ img { max-width: 100%; }
 
 /* Text "Claim" / "Join" action on a claim row */
 .claim-btn {
-  height: 30px; padding: 0 12px; border-radius: 999px; flex: none;
+  height: 36px; padding: 0 14px; border-radius: 999px; flex: none;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
   font-size: 13px; font-weight: 600; letter-spacing: .01em;
@@ -866,10 +866,10 @@ img { max-width: 100%; }
 .receipt > .ritem-group:first-child { padding-top: 4px; }
 .receipt > .ritem-group + * { border-top: 0; }
 .ritem-group__sum { font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; font-weight: 500; color: var(--mute-2); }
-.course-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.course-pick { display: flex; flex-wrap: wrap; gap: 8px; }
 .course-pick__opt {
   border: 1px solid var(--line-strong); background: none; color: var(--ink-2);
-  border-radius: 99px; padding: 6px 12px; font-size: 13px; font-weight: 500;
+  border-radius: 99px; min-height: 36px; padding: 6px 14px; font-size: 13px; font-weight: 500;
   transition: background .15s, border-color .15s, color .15s;
 }
 .course-pick__opt:hover { border-color: var(--mute-2); }
@@ -890,3 +890,31 @@ img { max-width: 100%; }
 .remember input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--accent); }
 .remember__t { display: block; font-size: 15px; font-weight: 600; color: var(--ink); }
 .remember__d { display: block; font-size: 13px; line-height: 1.45; color: var(--mute); margin-top: 2px; }
+
+/* ---------- Tap targets (WCAG 2.5.5: 44×44 CSS px) ----------
+   Small controls keep their look; an invisible ::after grows the area
+   that takes the tap. Insets only extend sideways where neighbours are
+   at least 12px apart, so two targets never overlap. */
+.icon-btn, .icon-round, .qty button, .remove-btn, .claim-btn, .course-pick__opt,
+.link-btn, .btn--quiet, .diner__action, .copy-chip, .pa-paste, .pa-done, .ways-link {
+  position: relative;
+}
+.icon-btn::after, .icon-round::after, .qty button::after, .remove-btn::after, .claim-btn::after,
+.course-pick__opt::after, .link-btn::after, .btn--quiet::after, .diner__action::after,
+.copy-chip::after, .pa-paste::after, .pa-done::after, .ways-link::after {
+  content: ''; position: absolute;
+}
+.icon-btn::after, .icon-round::after { inset: -6px; }            /* 32 -> 44 */
+.qty button::after, .remove-btn::after { inset: -4px; }          /* 36 -> 44 */
+.claim-btn::after, .course-pick__opt::after { inset: -4px 0; }   /* 36 tall -> 44 */
+.link-btn::after { inset: -11px 0; }                              /* 22 -> 44 */
+.btn--quiet::after { inset: -9px 0; }                             /* ~27 -> 44+ */
+.diner__action::after { inset: -9px 0; }                          /* 26-28 -> 44 */
+.copy-chip::after { inset: -7px 0; }                              /* 31 -> 44 */
+.pa-paste::after { inset: -9px 0; }                               /* 27 -> 44 */
+.pa-done::after { inset: -10px -4px; }                            /* 25 -> 44 */
+.ways-link::after { inset: -14px -6px; }                          /* inline text link */
+.segmented button { position: relative; }
+.segmented button::after { content: ''; position: absolute; inset: -3px 0; }  /* 40 + track padding */
+.menu__item { min-height: 44px; }
+.ritem-edit .course-pick { margin-bottom: 8px; }  /* keeps its tap area clear of remove / cancel */

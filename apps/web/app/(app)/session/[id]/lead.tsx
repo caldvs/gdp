@@ -348,7 +348,9 @@ function Confirm({ title, body, ok, danger, busy, error, onOk, onCancel }: {
   return (
     <>
       <div className="g-overlay" onClick={onCancel} aria-hidden />
-      <div role="dialog" aria-modal="true" aria-labelledby="g-confirm-t" style={{ position: 'fixed', inset: 'auto 0 0 0', zIndex: 50 }}>
+      {/* Full-screen, click-through layer so the dialog has a real box (for
+          assistive tech and tests) while taps outside the sheet reach the overlay. */}
+      <div role="dialog" aria-modal="true" aria-labelledby="g-confirm-t" style={{ position: 'fixed', inset: 0, zIndex: 50, pointerEvents: 'none' }}>
         <Sheet
           className="g-sheet--solid"
           title={<span id="g-confirm-t">{title}</span>}

@@ -143,7 +143,7 @@ export class FakeApi {
       this.signedIn.add(user.userId); this.join(user);
       return json({ token: 'test-token', user });
     }
-    if (path === '/v1/me') return this.signedIn.has(user.userId) ? json(user) : err('AUTH_MISSING', 'No token', 401);
+    if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 

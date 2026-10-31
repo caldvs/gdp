@@ -15,7 +15,17 @@ type FriendlyError = { title: string; body?: string };
 function humanizeError(err: unknown): FriendlyError {
   if (err instanceof ApiError) {
     switch (err.code) {
-      case 'PARSE_FAILED': return { title: "Couldn't read that one.", body: 'Try better light, or a flatter shot.' };
+      case 'PARSE_FAILED': {
+        // The API uses one code for "the model couldn't read it" and "we
+        // couldn't talk to the model". Only the first is the photo's fault.
+        const d = (err.details ?? {}) as { status?: number; body?: string };
+        if (/reach Gemini/i.test(err.message)) return { title: 'Couldn’t reach the bill reader.', body: 'Is the API online? Check its terminal.' };
+        if (/Gemini returned/i.test(err.message)) {
+          const why = d.status === 400 || d.status === 403 ? 'The Gemini API key was rejected.' : d.status === 429 ? 'Gemini is rate-limiting us.' : `Gemini answered ${d.status ?? '?'}.`;
+          return { title: 'The bill reader said no.', body: `${why} Not the photo’s fault.` };
+        }
+        return { title: 'Couldn’t read that one.', body: 'Try better light, or a flatter shot.' };
+      }
       case 'PARSE_LOW_CONFIDENCE': return { title: 'A few lines came out fuzzy.', body: 'You can fix them on the next screen.' };
       case 'IMAGE_TOO_LARGE': return { title: 'That photo is too big.', body: 'Try one under 10 MB.' };
       default:

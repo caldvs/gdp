@@ -16,6 +16,7 @@ import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { chaseDiner, shouldShowChase } from '@/lib/chase';
 import { DinerRow } from '@/components/DinerRow';
 import { PaymentDetailsReceipt } from '@/components/PaymentDetailsReceipt';
+import { QuickPayLinks } from '@/components/QuickPayLinks';
 import { BodyText, Button, CenterSpinner, DisplayText, HeroAmount, Mini, Notice, Rule, SessionChip, Spinner } from '@/components/ui';
 
 type Participant = components['schemas']['Participant'];
@@ -159,6 +160,9 @@ function GuestPayBlock({ participant, projectedOwedPence, creator, sessionId, in
         amount={amountPence !== undefined ? formatGBP(amountPence) : '—'}
         note={`Goes straight to ${firstName}'s bank. We never see your money.`}
       />
+      {participant.payment.status === 'unpaid' || participant.payment.status === 'pending' ? (
+        <QuickPayLinks monzoHandle={qr?.monzoHandle} revolutTag={qr?.revolutTag} amountPence={amountPence} note={reference} />
+      ) : null}
       {accountHolderName && sortCode && accountNumber ? (
         <PaymentDetailsReceipt bankDetails={{ accountHolderName, sortCode, accountNumber }} reference={reference} amountPence={amountPence} />
       ) : payPending ? (

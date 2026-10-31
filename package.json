@@ -18,7 +18,7 @@
     "test": "npm run test --workspaces --if-present",
     "gen:api": "npm run gen:api -w packages/core",
     "check:contrast": "node scripts/check-contrast.mjs",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "dev:local": "concurrently -k -n api,web -c cyan,green \"npm run dev -w apps/api\" \"wait-on -t 180000 http-get://localhost:3000/healthz && NEXT_PUBLIC_API_BASE_URL=http://localhost:3000 npm run dev -w apps/web\""
   },
   "devDependencies": {

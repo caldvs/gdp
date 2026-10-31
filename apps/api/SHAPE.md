@@ -184,9 +184,7 @@ settled     terminal success
     "code": "BILL_NOT_FOUND",
     "message": "Human-safe message",
     "requestId": "req_01J...",
-    "details": {
-      /* optional, omitted in prod */
-    }
+    "details": {/* optional, omitted in prod */}
   }
 }
 ```

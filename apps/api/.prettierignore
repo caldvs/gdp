@@ -4,3 +4,4 @@ cdk.out
 coverage
 *.lock
 package-lock.json
+scripts/_sign-ad-hoc.mjs

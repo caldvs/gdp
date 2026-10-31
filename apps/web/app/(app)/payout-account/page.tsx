@@ -7,7 +7,7 @@ import { isPayoutAccountRemembered } from '@gdp/core/lib/payoutAccount';
 import { cleanHandle } from '@gdp/core/lib/quickPay';
 import { DEMO_MODE, DEMO_PAYOUT } from '@gdp/core/lib/demoMode';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
-import { Back, Backdrop, Btn, Centre, Fab, Notice, Screen, Sheet, Spin, TopBar } from '@/components/glass';
+import { ActionBar, BackLink, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
 
 const digits = (s: string, max: number) => s.replace(/\D/g, '').slice(0, max);
 function formatSort(raw: string): string {
@@ -18,11 +18,11 @@ function formatSort(raw: string): string {
 }
 
 export default function PayoutAccountPage() {
-  return <Suspense fallback={<Centre><Spin /></Centre>}><PayoutForm /></Suspense>;
+  return <Suspense fallback={<Centre><Spinner /></Centre>}><PayoutForm /></Suspense>;
 }
 
 /**
- * "Where should the money land?" Three fields, optional Monzo/Revolut,
+ * Bank details: three fields, optional Monzo/Revolut,
  * and "Save these for next time". Until accounts exist server-side,
  * saving means localStorage on this device (see payoutAccount.ts).
  */
@@ -82,66 +82,64 @@ function PayoutForm() {
     }
   };
 
-  if (stored.isPending && !hydrated) return <Centre><Spin /></Centre>;
-  const field = (err: string | null) => ({ className: 'g-input', style: { height: 50, borderColor: err ? 'rgba(255,138,128,0.6)' : undefined } });
+  if (stored.isPending && !hydrated) return <Centre><Spinner /></Centre>;
+  const back = returnTo ? safeInternalPath(returnTo) : '/';
+  const cls = (err: string | null) => (err ? 'input input--invalid' : 'input');
 
   return (
-    <Screen>
-      <Backdrop tone="deep" />
-      <TopBar left={<Fab href={returnTo ? safeInternalPath(returnTo) : '/'} label="Back" icon={<Back />} replace />} />
-      <Sheet
-        title="Where should the money land?"
-        sub="Friends get these in the QR. We never see them."
-        foot={<Btn type="submit" form="payout" busy={isSaving}>{returnTo ? 'Save and share the bill' : 'Save'}</Btn>}
-      >
-        <form id="payout" onSubmit={(e) => { e.preventDefault(); void onSave(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div className="g-field">
-            <label htmlFor="n" className="g-label" style={{ padding: 0 }}>Name on the account</label>
-            <input id="n" {...field(nameErr)} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoCapitalize="words" disabled={DEMO_MODE} autoFocus={!name} />
-            {nameErr ? <div className="g-error">{nameErr}</div> : null}
+    <>
+      <Page sub>
+        <BackLink href={back}>Back</BackLink>
+        <Title title="Bank details" sub="Where friends send your money. It goes in the QR code; we never see it." />
+        <form id="payout" onSubmit={(e) => { e.preventDefault(); void onSave(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div className="field">
+            <label htmlFor="n">Name on the account</label>
+            <input id="n" className={cls(nameErr)} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoCapitalize="words" disabled={DEMO_MODE} autoFocus={!name} aria-invalid={!!nameErr} aria-describedby={nameErr ? 'n-err' : undefined} />
+            {nameErr ? <div id="n-err" className="field__err">{nameErr}</div> : null}
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <div className="g-field" style={{ flex: 1 }}>
-              <label htmlFor="s" className="g-label" style={{ padding: 0 }}>Sort code</label>
-              <input id="s" {...field(sortErr)} value={sort} onChange={(e) => setSort(formatSort(e.target.value))} inputMode="numeric" placeholder="00-00-00" maxLength={8} disabled={DEMO_MODE} />
-              {sortErr ? <div className="g-error">{sortErr}</div> : null}
+          <div className="editor__row" style={{ alignItems: 'flex-start' }}>
+            <div className="field" style={{ flex: 1, minWidth: 0 }}>
+              <label htmlFor="s">Sort code</label>
+              <input id="s" className={cls(sortErr)} value={sort} onChange={(e) => setSort(formatSort(e.target.value))} inputMode="numeric" placeholder="00-00-00" maxLength={8} disabled={DEMO_MODE} aria-invalid={!!sortErr} aria-describedby={sortErr ? 's-err' : undefined} />
+              {sortErr ? <div id="s-err" className="field__err">{sortErr}</div> : null}
             </div>
-            <div className="g-field" style={{ flex: 1.4 }}>
-              <label htmlFor="a" className="g-label" style={{ padding: 0 }}>Account number</label>
-              <input id="a" {...field(accErr)} value={account} onChange={(e) => setAccount(digits(e.target.value, 8))} inputMode="numeric" placeholder="00000000" maxLength={8} disabled={DEMO_MODE} />
-              {accErr ? <div className="g-error">{accErr}</div> : null}
+            <div className="field" style={{ flex: 1.4, minWidth: 0 }}>
+              <label htmlFor="a">Account number</label>
+              <input id="a" className={cls(accErr)} value={account} onChange={(e) => setAccount(digits(e.target.value, 8))} inputMode="numeric" placeholder="00000000" maxLength={8} disabled={DEMO_MODE} aria-invalid={!!accErr} aria-describedby={accErr ? 'a-err' : undefined} />
+              {accErr ? <div id="a-err" className="field__err">{accErr}</div> : null}
             </div>
           </div>
 
           {DEMO_MODE ? null : !showHandles ? (
-            <button type="button" className="g-btn g-btn--sm" style={{ background: 'none', border: '1px dashed rgba(255,255,255,0.25)', color: 'var(--g-ink-2)' }} onClick={() => setShowHandles(true)}>
-              + Monzo or Revolut for one-tap pay
-            </button>
+            <Button tone="text" onClick={() => setShowHandles(true)} style={{ justifyContent: 'flex-start', padding: 0 }}>Add Monzo or Revolut (optional)</Button>
           ) : (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div className="g-field" style={{ flex: 1 }}>
-                <label htmlFor="m" className="g-label" style={{ padding: 0 }}>monzo.me/</label>
-                <input id="m" className="g-input" style={{ height: 50 }} value={monzo} onChange={(e) => setMonzo(e.target.value)} placeholder="handle" autoCapitalize="none" autoCorrect="off" />
+            <>
+              <div className="field">
+                <label htmlFor="m">Monzo username</label>
+                <div className="money"><span>monzo.me/</span><input id="m" className="input" style={{ paddingLeft: 104 }} value={monzo} onChange={(e) => setMonzo(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
               </div>
-              <div className="g-field" style={{ flex: 1 }}>
-                <label htmlFor="r" className="g-label" style={{ padding: 0 }}>revolut.me/</label>
-                <input id="r" className="g-input" style={{ height: 50 }} value={revolut} onChange={(e) => setRevolut(e.target.value)} placeholder="tag" autoCapitalize="none" autoCorrect="off" />
+              <div className="field">
+                <label htmlFor="r">Revolut username</label>
+                <div className="money"><span>revolut.me/</span><input id="r" className="input" style={{ paddingLeft: 112 }} value={revolut} onChange={(e) => setRevolut(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
               </div>
-            </div>
+            </>
           )}
 
           {DEMO_MODE ? null : (
-            <label className="g-checkbox" style={{ background: remember ? 'rgba(61,220,151,0.1)' : undefined, border: `1px solid ${remember ? 'rgba(61,220,151,0.25)' : 'transparent'}` }}>
+            <label className="check">
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
               <span>
-                <span className="g-checkbox__t">Save these for next time</span>
-                <span className="g-checkbox__d">Kept on this phone. Leave it off on a shared device.</span>
+                Save these for next time
+                <span className="field__hint" style={{ display: 'block' }}>Kept on this device. Leave it off on a shared one.</span>
               </span>
             </label>
           )}
-          {submitError ? <Notice error>{submitError}</Notice> : null}
+          {submitError ? <Notice tone="error">{submitError}</Notice> : null}
         </form>
-      </Sheet>
-    </Screen>
+      </Page>
+      <ActionBar>
+        <Button type="submit" form="payout" grow busy={isSaving}>{returnTo ? 'Save and continue' : 'Save'}</Button>
+      </ActionBar>
+    </>
   );
 }

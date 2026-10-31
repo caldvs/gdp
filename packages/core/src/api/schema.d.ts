@@ -547,6 +547,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Creator closes the bill (session becomes `settled`)
+         * @description "I've stopped waiting at the table." Anything still unclaimed is the
+         *     creator's by implication. Guests who still owe can pay afterwards.
+         *     Idempotent: closing a settled session returns it unchanged.
+         */
+        post: operations["closeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/abandon": {
         parameters: {
             query?: never;
@@ -2033,6 +2057,39 @@ export interface operations {
              *     (`CLAIMS_INCOMPLETE`), or participants not ready
              *     (`PARTICIPANTS_NOT_READY`).
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, now in `settled` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
             409: {
                 headers: {
                     [name: string]: unknown;

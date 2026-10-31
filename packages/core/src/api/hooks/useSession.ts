@@ -230,6 +230,16 @@ export function useShareSession(sessionId: string) {
   });
 }
 
+export function useCloseSession(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<Session, ApiError, void>({
+    mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/close`, { method: 'POST' }),
+    onSuccess: (session) => {
+      qc.setQueryData(['session', sessionId], session);
+    },
+  });
+}
+
 export function useAbandonSession(sessionId: string) {
   const qc = useQueryClient();
   return useMutation<Session, ApiError, void>({

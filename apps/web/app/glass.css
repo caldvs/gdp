@@ -69,6 +69,8 @@ body { font-family: var(--font-inter), 'Inter', system-ui, -apple-system, sans-s
 .g-sheet__title { font-size: 17px; font-weight: 600; margin: 0; }
 .g-sheet__sub { font-size: 13px; color: var(--g-mute); margin: 2px 0 0; }
 .g-sheet__body { flex: 1; min-height: 0; overflow: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
+.g-sheet__body > * { flex: none; }
+.g-sheet--solid { background: #15171B; }
 .g-sheet__foot { flex: none; padding: 12px 12px max(14px, env(safe-area-inset-bottom)); border-top: 1px solid var(--g-line); display: flex; flex-direction: column; gap: 8px; }
 @keyframes g-rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 

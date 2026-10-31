@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   baselines:
@@ -27,3 +27,14 @@ jobs:
         with:
           name: visual-baselines
           path: apps/web/e2e/visual.spec.ts-snapshots/
+      # Commit the new baselines back to the branch it ran on, so a design
+      # change needs no download-and-commit by hand. Never on main.
+      - name: Commit baselines to the branch
+        if: github.ref_name != 'main'
+        run: |
+          git config user.name "caldvs"
+          git config user.email "42970938+caldvs@users.noreply.github.com"
+          git add apps/web/e2e/visual.spec.ts-snapshots/
+          if git diff --cached --quiet; then echo "Baselines unchanged"; exit 0; fi
+          git commit -m "Update visual baselines"
+          git push

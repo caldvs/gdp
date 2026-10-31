@@ -811,13 +811,46 @@ paths:
       description: |
         "I've stopped waiting at the table." Anything still unclaimed is the
         creator's by implication. Guests who still owe can pay afterwards.
-        Idempotent: closing a settled session returns it unchanged.
+        Every diner is emailed their bill report (see `emailSessionReport`).
+        Idempotent: closing a settled session returns it unchanged and sends
+        nothing.
       responses:
         '200':
           description: Session, now in `settled`
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is `setup` or `abandoned`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/report:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: emailSessionReport
+      summary: Email the caller their bill report
+      description: |
+        The lead's report lists every diner (themselves included): what each
+        had, their share of service and tax, and whether they've paid. A
+        guest's lists only what they had and paid. Works while the bill is
+        open (current state) and after it's closed. Every diner is also
+        emailed their report automatically when the lead closes the bill.
+      responses:
+        '202':
+          description: Report sent to the caller's email
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent: { type: boolean }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':

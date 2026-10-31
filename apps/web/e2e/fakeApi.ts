@@ -48,6 +48,8 @@ export class FakeApi {
   serviceChargePence: number;
   participants: Participant[];
   shares: Share[] = [];
+  /** Who asked to be emailed a report, in order. */
+  reportsTo: string[] = [];
   faults: Fault[] = [];
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
@@ -175,6 +177,11 @@ export class FakeApi {
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/abandon`) { this.status = 'abandoned'; return json(this.session()); }
+    if (path === `/v1/sessions/${SID}/report` && method === 'POST') {
+      if (this.status === 'setup' || this.status === 'abandoned') return err('SESSION_INVALID_STATE', `Session is ${this.status}`, 409);
+      this.reportsTo.push(user.userId);
+      return json({ sent: true }, 202);
+    }
     if (path === `/v1/sessions/${SID}/close` && method === 'POST') {
       if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
       if (this.status === 'setup' || this.status === 'abandoned') return err('SESSION_INVALID_STATE', `Session is ${this.status}`, 409);

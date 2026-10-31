@@ -562,9 +562,37 @@ export interface paths {
          * Creator closes the bill (session becomes `settled`)
          * @description "I've stopped waiting at the table." Anything still unclaimed is the
          *     creator's by implication. Guests who still owe can pay afterwards.
-         *     Idempotent: closing a settled session returns it unchanged.
+         *     Every diner is emailed their bill report (see `emailSessionReport`).
+         *     Idempotent: closing a settled session returns it unchanged and sends
+         *     nothing.
          */
         post: operations["closeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email the caller their bill report
+         * @description The lead's report lists every diner (themselves included): what each
+         *     had, their share of service and tax, and whether they've paid. A
+         *     guest's lists only what they had and paid. Works while the bill is
+         *     open (current state) and after it's closed. Every diner is also
+         *     emailed their report automatically when the lead closes the bill.
+         */
+        post: operations["emailSessionReport"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2168,6 +2196,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    emailSessionReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Report sent to the caller's email */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                    };
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -29,10 +29,11 @@ npm run dev            # web app on http://localhost:8081, talking to the deploy
 To run everything locally (needs Docker running):
 
 ```bash
-npm run dev:api                                                # terminal 1: API on :3000
-echo 'NEXT_PUBLIC_API_BASE_URL=http://localhost:3000' > apps/web/.env.local
-npm run dev                                                    # terminal 2: web on :8081
+npm run dev:local      # API on :3000 + web on :8081, web pointed at the local API
 ```
+
+(Or separately: `npm run dev:api` in one terminal, and `npm run dev` with
+`NEXT_PUBLIC_API_BASE_URL=http://localhost:3000` in `apps/web/.env.local` in another.)
 
 Locally, sign-in skips the emailed code: type any email and you're in. The same email always gets
 the same account (with its bills and sessions); a new email is a new user. The web app remembers the
@@ -50,6 +51,7 @@ turned off with `AUTH_DEV_EMAIL_SIGNIN=false`. Other web settings are listed in 
 | --- | --- |
 | `npm run dev` | Web app (Next.js) on :8081 |
 | `npm run dev:api` | API locally on :3000 |
+| `npm run dev:local` | API + web together, web using the local API |
 | `npm run build` | Production build of the web app |
 | `npm run typecheck` | All workspaces |
 | `npm test` | Unit tests: `packages/core` + `apps/api` |

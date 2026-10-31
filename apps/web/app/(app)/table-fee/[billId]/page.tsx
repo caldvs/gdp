@@ -4,6 +4,8 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe, type StripeCheckoutFormConfirmEvent } from '@stripe/stripe-js';
 import { CheckoutForm, CheckoutFormProvider, useCheckoutForm } from '@stripe/react-stripe-js/checkout';
+import { api, ApiError } from '@gdp/core/api';
+import { useCreateSession } from '@gdp/core/api/hooks/useSession';
 import { useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { BackLink, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
@@ -44,9 +46,24 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const status = useTableFeeStatus(billId, { poll: confirmed });
   const paid = status.data?.status === 'paid';
 
+  // Paid: open the table and go straight to the QR code (F4).
+  const createSession = useCreateSession();
+  const started = useRef(false);
   useEffect(() => {
-    if (paid) router.replace(`/confirm-bill/${billId}?fee=paid`);
-  }, [paid, billId, router]);
+    if (!paid || started.current) return;
+    started.current = true;
+    void (async () => {
+      try {
+        const created = await createSession.mutateAsync({ billId });
+        await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
+        router.replace(`/session/${created.sessionId}/share`);
+      } catch (err) {
+        const d = err instanceof ApiError ? (err.details as { sessionId?: unknown } | undefined) : undefined;
+        if (typeof d?.sessionId === 'string') router.replace(`/session/${d.sessionId}`);
+        else router.replace(`/confirm-bill/${billId}`);
+      }
+    })();
+  }, [paid, billId, router, createSession]);
 
   const back = <BackLink href={`/confirm-bill/${billId}`}>Table fee</BackLink>;
 
@@ -67,8 +84,16 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
       </Page>
     );
   }
+  if (status.data === null) {
+    return (
+      <Page sub>
+        {back}
+        <Notice tone="error" title="Payments aren’t set up.">The API has no STRIPE_SECRET_KEY.</Notice>
+      </Page>
+    );
+  }
   if (confirmed || paid) {
-    return <Centre><Spinner label="Confirming payment" /></Centre>;
+    return <Centre><Spinner label={paid ? 'Getting your QR code' : 'Confirming payment'} /></Centre>;
   }
 
   return (

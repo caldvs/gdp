@@ -56,6 +56,7 @@ export class FakeApi {
   /** Sessions listed on /v1/me/sessions (the home tray and History). */
   mySessions: Record<string, unknown>[] = [];
   private seq = 0;
+  pinnedBillVersion = 1;
 
   constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[] } = {}) {
     this.items = opts.items ?? items;
@@ -70,7 +71,7 @@ export class FakeApi {
   get bill() {
     const subtotalPence = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     return {
-      billId: BID, versionNumber: 1, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
+      billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'gemini', parserVersion: 'v2', parsedAt: '2026-10-31T12:00:00.000Z' },
       venue: { name: 'Gennaro', address: '12 King Street, Manchester' }, createdAt: '2026-10-31T12:00:00.000Z',
     };
@@ -78,7 +79,7 @@ export class FakeApi {
 
   session() {
     return {
-      sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: 1, joinCode: CODE,
+      sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
     };
   }
@@ -159,6 +160,7 @@ export class FakeApi {
       const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number };
       this.items = b.items.map((it) => ({ itemId: it.itemId ?? `00000000-0000-4000-8000-${String(900 + ++this.seq).padStart(12, '0')}`, name: it.name, unitPricePence: it.unitPricePence, quantity: it.quantity, category: it.category }));
       this.serviceChargePence = b.serviceChargePence;
+      this.pinnedBillVersion += 1;
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);

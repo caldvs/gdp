@@ -4,7 +4,9 @@ import {
   buildJoinUrl,
   decodePayoutFromQR,
   encodePayoutForQR,
+  MAX_LINK_TTL_MS,
   PAYOUT_TTL_MS,
+  SHARED_LINK_TTL_MS,
   readPayoutFragment,
 } from './qrPayload';
 
@@ -73,6 +75,41 @@ describe('encodePayoutForQR / decodePayoutFromQR', () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.reason).toBe('unsupported_version');
+  });
+});
+
+describe('shared-link expiry (x)', () => {
+  const ACCOUNT = { accountHolderName: 'Alice Cooper', sortCode: '040668', accountNumber: '00079660' };
+  const T0 = Date.UTC(2026, 9, 31, 12, 0, 0);
+
+  it('a QR payload (no ttl) still expires after 10 minutes', () => {
+    const enc = encodePayoutForQR(ACCOUNT, T0);
+    expect(decodePayoutFromQR(enc, T0 + 9 * 60_000)).toMatchObject({ ok: true, expired: false });
+    expect(decodePayoutFromQR(enc, T0 + 11 * 60_000)).toMatchObject({ ok: true, expired: true });
+  });
+
+  it('a shared link works for SHARED_LINK_TTL_MS', () => {
+    const enc = encodePayoutForQR(ACCOUNT, T0, SHARED_LINK_TTL_MS);
+    expect(decodePayoutFromQR(enc, T0 + 6 * 3600_000)).toMatchObject({ ok: true, expired: false });
+    expect(decodePayoutFromQR(enc, T0 + SHARED_LINK_TTL_MS - 60_000)).toMatchObject({ ok: true, expired: false });
+    expect(decodePayoutFromQR(enc, T0 + SHARED_LINK_TTL_MS + 60_000)).toMatchObject({ ok: true, expired: true });
+  });
+
+  it('caps a requested ttl at MAX_LINK_TTL_MS', () => {
+    const enc = encodePayoutForQR(ACCOUNT, T0, 365 * 24 * 3600_000);
+    expect(decodePayoutFromQR(enc, T0 + MAX_LINK_TTL_MS + 60_000)).toMatchObject({ ok: true, expired: true });
+  });
+
+  it('caps a crafted far-future x at MAX_LINK_TTL_MS from iat', () => {
+    const crafted = { v: 1, n: 'Mallory', s: '040668', a: '00079660', iat: Math.floor(T0 / 1000), x: Math.floor(T0 / 1000) + 10 * 365 * 24 * 3600 };
+    const enc = Buffer.from(JSON.stringify(crafted)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    expect(decodePayoutFromQR(enc, T0 + MAX_LINK_TTL_MS + 60_000)).toMatchObject({ ok: true, expired: true });
+  });
+
+  it('buildJoinUrl passes the ttl through', () => {
+    const url = buildJoinUrl('https://gdp.app', 'ABC123', ACCOUNT, T0, SHARED_LINK_TTL_MS);
+    const frag = readPayoutFragment(url.slice(url.indexOf('#')));
+    expect(decodePayoutFromQR(frag, T0 + 24 * 3600_000)).toMatchObject({ ok: true, expired: false });
   });
 });
 

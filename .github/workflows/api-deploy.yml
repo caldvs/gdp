@@ -74,6 +74,17 @@ jobs:
             prod)    echo "name=GdpBackendProd"    >>"$GITHUB_OUTPUT" ;;
           esac
 
+      # Prints the OIDC subject AWS checks against the role's trust policy,
+      # so a "Not authorized to perform AssumeRoleWithWebIdentity" error can
+      # be matched to what GitHub actually sent. None of these are secret.
+      - name: Show OIDC claims
+        run: |
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          payload=$(echo "$token" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="$payload="; done
+          echo "$payload" | base64 -d | jq '{sub, aud, environment, repository}'
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
         with:

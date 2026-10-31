@@ -4,14 +4,16 @@ import {
   readSessionPayout,
   clearSessionPayout,
   scrubFragmentFromUrl,
+  GUEST_KEEP_MS,
 } from './sessionPayout';
 import { encodePayoutForQR } from './qrPayload';
 
-// Per-test sessionStorage shim. Vitest's jsdom doesn't reset state
-// between tests in the same file, so we clear manually.
+// Vitest's jsdom doesn't reset storage between tests in the same file,
+// so we clear manually.
 function clearStorage() {
   if (typeof window !== 'undefined') {
     window.sessionStorage.clear();
+    window.localStorage.clear();
   }
 }
 
@@ -61,20 +63,36 @@ describe('sessionPayout', () => {
     expect(reason).toBe('expired');
   });
 
-  it('readSessionPayout re-evaluates TTL on each read and clears expired', () => {
+  it('keeps accepted details past the 10-minute link TTL', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-13T12:00:00Z'));
-    const fragment = `#p=${encodePayoutForQR(FRESH_PAYOUT)}`;
-    storeSessionPayoutFromFragment('s1', fragment);
+    storeSessionPayoutFromFragment('s1', `#p=${encodePayoutForQR(FRESH_PAYOUT)}`);
 
-    expect(readSessionPayout('s1')).not.toBeNull();
+    // Paying from home that evening, well past the link's 10 minutes.
+    vi.setSystemTime(new Date('2026-05-13T21:30:00Z'));
+    expect(readSessionPayout('s1')).toEqual(FRESH_PAYOUT);
+  });
 
-    // Advance 11 minutes — past the 10-min TTL.
-    vi.setSystemTime(new Date('2026-05-13T12:11:00Z'));
+  it('survives the tab closing (localStorage, not sessionStorage)', () => {
+    storeSessionPayoutFromFragment('s1', `#p=${encodePayoutForQR(FRESH_PAYOUT)}`);
+    window.sessionStorage.clear();
+    expect(readSessionPayout('s1')).toEqual(FRESH_PAYOUT);
+  });
+
+  it('drops details older than GUEST_KEEP_MS and clears them', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-13T12:00:00Z'));
+    storeSessionPayoutFromFragment('s1', `#p=${encodePayoutForQR(FRESH_PAYOUT)}`);
+
+    vi.setSystemTime(new Date(Date.now() + GUEST_KEEP_MS + 60_000));
     expect(readSessionPayout('s1')).toBeNull();
+    expect(window.localStorage.getItem('gdp.sessionPayout.s1')).toBeNull();
+  });
 
-    // The expired entry should have been cleared from storage too.
-    expect(window.sessionStorage.getItem('gdp.sessionPayout.s1')).toBeNull();
+  it('ignores entries written by the old sessionStorage format', () => {
+    // No storedAt: written before this change; treat as nothing stored.
+    window.localStorage.setItem('gdp.sessionPayout.s1', JSON.stringify({ encoded: encodePayoutForQR(FRESH_PAYOUT) }));
+    expect(readSessionPayout('s1')).toBeNull();
   });
 
   it('clearSessionPayout removes the entry', () => {

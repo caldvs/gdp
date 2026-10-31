@@ -13,6 +13,7 @@ import { useConfirmPayment, useMarkPaymentPaid } from '@gdp/core/api/hooks/usePa
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { formatGBP } from '@gdp/core/lib/money';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
+import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { chaseDiner, shouldShowChase } from '@/lib/chase';
 import { DinerRow } from '@/components/DinerRow';
 import { PaymentDetailsReceipt } from '@/components/PaymentDetailsReceipt';
@@ -138,6 +139,13 @@ function GuestPayBlock({ participant, projectedOwedPence, creator, sessionId, in
     initiatedRef.current = true;
     onPay();
   }, [isUnpaid, payPending, onPay]);
+
+  // Once the host has confirmed the money arrived, the guest no longer
+  // needs the host's bank details on this device.
+  const paidUp = participant.payment.status === 'succeeded';
+  useEffect(() => {
+    if (paidUp) clearSessionPayout(sessionId);
+  }, [paidUp, sessionId]);
 
   // ADR-0002: the details the lead shared in the QR are the source of
   // truth; the server's copy (if any) is a legacy fallback.

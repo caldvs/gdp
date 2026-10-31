@@ -20,6 +20,49 @@ type BillItem = components['schemas']['BillItem'];
 type Share = NonNullable<Session['shares']>[number];
 
 const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment.status === 'self_paid';
+
+/**
+ * Every bill line in bill order with who has it, so lists keep their shape
+ * while people claim: a row changes state instead of vanishing.
+ */
+export type ItemStatus = { item: BillItem; left: number; mine: number; who: string[] };
+export function itemStatuses(s: Session, b: Bill, meUserId: string): ItemStatus[] {
+  const taken = new Map<string, number>();
+  const mine = new Map<string, number>();
+  const who = new Map<string, string[]>();
+  const add = (id: string, p: Participant) => {
+    taken.set(id, (taken.get(id) ?? 0) + 1);
+    if (p.userId === meUserId) mine.set(id, (mine.get(id) ?? 0) + 1);
+    const l = who.get(id) ?? [];
+    const n = p.userId === meUserId ? 'you' : firstName(p.displayName);
+    if (!l.includes(n)) l.push(n);
+    who.set(id, l);
+  };
+  for (const p of s.participants) for (const id of p.claimedItemIds) add(id, p);
+  for (const sh of s.shares ?? []) {
+    if (sh.userIds.length === 0) continue;
+    taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + 1);
+    const names = sh.userIds.map((uid) => (uid === meUserId ? 'you' : firstName(s.participants.find((p) => p.userId === uid)?.displayName)));
+    who.set(sh.itemId, [...(who.get(sh.itemId) ?? []), ...names]);
+    if (sh.userIds.includes(meUserId)) mine.set(sh.itemId, (mine.get(sh.itemId) ?? 0) + 1);
+  }
+  return b.items.map((item) => ({ item, left: Math.max(0, item.quantity - (taken.get(item.itemId) ?? 0)), mine: mine.get(item.itemId) ?? 0, who: who.get(item.itemId) ?? [] }));
+}
+
+/** A read-only bill line: open (nobody's yet), done (someone's), or yours. */
+export function ItemLine({ st }: { st: ItemStatus }) {
+  const { item, left, mine, who } = st;
+  const open = left > 0;
+  const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
+  const sub = who.length > 0 ? `${who.join(', ')}${open ? ` · ${left} left` : ''}` : undefined;
+  return (
+    <div className={`g-row${!open && mine === 0 ? ' g-row--done' : ''}${mine > 0 && !open ? ' g-row--on' : ''}`}>
+      {open ? <Check on={false} /> : <span className={`g-check${mine > 0 ? ' g-check--on' : ' g-check--done'}`} aria-hidden><Tick size={14} /></span>}
+      <RowBody name={name} sub={sub} />
+      <Price mute={open || mine === 0}>{formatGBP(item.unitPricePence * (mine > 0 ? mine : item.quantity))}</Price>
+    </div>
+  );
+}
 export const owedFor = (s: Session, b: Bill, p: Participant) => p.owedPence ?? projectOwedPence(s, b, p.userId);
 
 function useCounts(s: Session, meUserId: string) {
@@ -264,12 +307,8 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
   const hostFirst = firstName(host?.displayName);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const closed = s.status === 'settled';
-  const unclaimed = useMemo(() => {
-    const taken = new Map<string, number>();
-    for (const p of s.participants) for (const id of p.claimedItemIds) taken.set(id, (taken.get(id) ?? 0) + 1);
-    for (const sh of s.shares ?? []) if (sh.userIds.length > 0) taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + 1);
-    return b.items.map((item) => ({ item, left: item.quantity - (taken.get(item.itemId) ?? 0) })).filter((x) => x.left > 0);
-  }, [s, b]);
+  const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
+  const openCount = statuses.filter((x) => x.left > 0).length;
 
   const myOwed = me ? owedFor(s, b, me) : 0;
   const status = me?.payment.status;
@@ -294,19 +333,13 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
             : <Btn tone={closed ? 'accent' : 'ghost'} href="/" replace>{closed ? 'Done' : 'Close'}</Btn>
         }
       >
-        {unclaimed.length > 0 && !closed ? (
+        {!closed ? (
           <>
-            <Label>Nobody’s claimed</Label>
+            <Label>{openCount > 0 ? `${openCount} still unclaimed` : 'Everything’s claimed'}</Label>
             <List>
-              {unclaimed.map(({ item, left }) => (
-                <div key={item.itemId} className="g-row">
-                  <Check on={false} />
-                  <RowBody name={left > 1 ? `${left}× ${item.name}` : item.name} />
-                  <Price mute>{formatGBP(item.unitPricePence * left)}</Price>
-                </div>
-              ))}
+              {statuses.map((st) => <ItemLine key={st.item.itemId} st={st} />)}
             </List>
-            <p className="g-foot-note">One of these yours? Tell {hostFirst}.</p>
+            {openCount > 0 ? <p className="g-foot-note">One of these yours? Tell {hostFirst}.</p> : null}
           </>
         ) : null}
 

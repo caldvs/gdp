@@ -12,6 +12,7 @@ import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, s
 import {
   ActionBar, BackLink, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
+import { BillTools } from '@/components/BillTools';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -132,6 +133,7 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <Title title="What did you have?" sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} />
+        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />
         <Box>
           {b.items.map((item) => {
             const mine = counts.mine.get(item.itemId) ?? 0;
@@ -322,6 +324,7 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <Title title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
+        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />
         {status === 'succeeded' ? (
           <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(myOwed)}`}>You’re all settled.</Notice>
         ) : sent ? (

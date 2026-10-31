@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type components } from '@gdp/core/api';
@@ -20,7 +20,35 @@ import {
 type Bill = components['schemas']['Bill'];
 type BillItem = components['schemas']['BillItem'];
 type Category = BillItem['category'];
-type DraftItem = { draftId: string; itemId?: string; name: string; unitPricePounds: string; quantity: number; category: Category };
+type Course = NonNullable<BillItem['course']>;
+type DraftItem = { draftId: string; itemId?: string; name: string; unitPricePounds: string; quantity: number; category: Category; course?: Course };
+
+// Sections on the review screen, in the order a meal goes. Food the parser
+// couldn't place (and food on bills parsed before courses existed) goes under
+// "food". Grouping is display only: the items array, and so what gets saved,
+// keeps the bill's own order.
+type Section = Course | 'food' | 'drink' | 'other';
+const SECTIONS: Array<{ key: Section; label: string }> = [
+  { key: 'starter', label: 'Starters' },
+  { key: 'main', label: 'Mains' },
+  { key: 'side', label: 'Sides' },
+  { key: 'dessert', label: 'Desserts' },
+  { key: 'food', label: 'Food' },
+  { key: 'drink', label: 'Drinks' },
+  { key: 'other', label: 'Extras' },
+];
+const sectionOf = (it: DraftItem): Section =>
+  it.category === 'food' ? it.course ?? 'food' : it.category;
+
+// The choices offered in the item editor, and what each sets on the item.
+const SECTION_CHOICES: Array<{ key: Section; label: string; patch: Pick<DraftItem, 'category' | 'course'> }> = [
+  { key: 'starter', label: 'Starter', patch: { category: 'food', course: 'starter' } },
+  { key: 'main', label: 'Main', patch: { category: 'food', course: 'main' } },
+  { key: 'side', label: 'Side', patch: { category: 'food', course: 'side' } },
+  { key: 'dessert', label: 'Dessert', patch: { category: 'food', course: 'dessert' } },
+  { key: 'drink', label: 'Drink', patch: { category: 'drink', course: undefined } },
+  { key: 'other', label: 'Other', patch: { category: 'other', course: undefined } },
+];
 
 function existingSessionIdFromError(err: unknown): string | undefined {
   if (!(err instanceof ApiError) || err.code !== 'SESSION_INVALID_STATE') return undefined;
@@ -44,6 +72,7 @@ const fromBillItem = (it: BillItem, idx: number): DraftItem => ({
   unitPricePounds: (it.unitPricePence / 100).toFixed(2),
   quantity: it.quantity,
   category: it.category,
+  ...(it.category === 'food' && it.course ? { course: it.course } : {}),
 });
 
 const blankItem = (): DraftItem => ({
@@ -114,7 +143,8 @@ function ConfirmBill() {
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
-        parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity || local.category !== server.category;
+        parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity || local.category !== server.category ||
+        (local.course ?? null) !== (server.course ?? null);
     });
   }, [bill.data, items, servicePence, taxPence]);
 
@@ -176,6 +206,7 @@ function ConfirmBill() {
       unitPricePence: parsePence(it.unitPricePounds),
       quantity: Math.max(1, Math.floor(it.quantity)),
       category: it.category,
+      ...(it.category === 'food' && it.course ? { course: it.course } : {}),
     })),
     taxPence,
     serviceChargePence: servicePence,
@@ -264,6 +295,18 @@ function ConfirmBill() {
       b.venue?.address?.split(',')[0]?.trim(),
       b.parsedFrom?.parsedAt ? new Date(b.parsedFrom.parsedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null,
     ].filter(Boolean).join(' · ');
+    // The item being edited stays in the section it started in until Done,
+    // so changing its section doesn't move the editor out from under you.
+    const placedIn = (it: DraftItem) =>
+      it.draftId === editingId && editingSnapshot ? sectionOf(editingSnapshot) : sectionOf(it);
+    const groups = SECTIONS
+      .map((sec) => {
+        const its = items.filter((it) => placedIn(it) === sec.key);
+        return { ...sec, items: its, totalPence: its.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0) };
+      })
+      .filter((g) => g.items.length > 0);
+    const hasCourses = groups.some((g) => g.key === 'starter' || g.key === 'main' || g.key === 'side' || g.key === 'dessert');
+    for (const g of groups) if (g.key === 'food' && hasCourses) g.label = 'Other food';
     return (
       <>
         <div className="screen screen--sticky stack">
@@ -271,34 +314,44 @@ function ConfirmBill() {
           {venueLine ? <BodyText className="t-mute mt-xs">{venueLine}</BodyText> : null}
           <BodyText className="mt-sm">Bill look right? Fix anything the scan got wrong, then split it.</BodyText>
           <Receipt className="mt-base">
-            {items.map((it) =>
-              it.draftId === editingId ? (
-                <InlineItemEditor
-                  key={it.draftId}
-                  item={it}
-                  busy={amend.isPending}
-                  onChange={(patch) => updateItem(it.draftId, patch)}
-                  onDone={finishEditing}
-                  onCancel={cancelEditing}
-                  onRemove={() => { removeItem(it.draftId); setEditingId(null); setEditingSnapshot(null); }}
-                />
-              ) : (
-                <button
-                  key={it.draftId}
-                  type="button"
-                  className="ritem ritem--editable"
-                  onClick={() => startEditing(it)}
-                  disabled={busy}
-                  aria-label={`Edit ${it.name || 'item'}`}
-                >
-                  <span className="ritem__name">{it.quantity > 1 ? `${it.quantity}× ${it.name || 'Item'}` : it.name || 'Item'}</span>
-                  <span className="ritem__right">
-                    <span className="ritem__price">{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</span>
-                    <Pencil size={13} className="ritem__pencil" aria-hidden />
-                  </span>
-                </button>
-              ),
-            )}
+            {groups.map((g) => (
+              <Fragment key={g.key}>
+                {groups.length > 1 ? (
+                  <div className="ritem-group">
+                    <span>{g.label}</span>
+                    <span className="ritem-group__sum">{formatGBP(g.totalPence)}</span>
+                  </div>
+                ) : null}
+                {g.items.map((it) =>
+                  it.draftId === editingId ? (
+                    <InlineItemEditor
+                      key={it.draftId}
+                      item={it}
+                      busy={amend.isPending}
+                      onChange={(patch) => updateItem(it.draftId, patch)}
+                      onDone={finishEditing}
+                      onCancel={cancelEditing}
+                      onRemove={() => { removeItem(it.draftId); setEditingId(null); setEditingSnapshot(null); }}
+                    />
+                  ) : (
+                    <button
+                      key={it.draftId}
+                      type="button"
+                      className="ritem ritem--editable"
+                      onClick={() => startEditing(it)}
+                      disabled={busy}
+                      aria-label={`Edit ${it.name || 'item'}`}
+                    >
+                      <span className="ritem__name">{it.quantity > 1 ? `${it.quantity}× ${it.name || 'Item'}` : it.name || 'Item'}</span>
+                      <span className="ritem__right">
+                        <span className="ritem__price">{formatGBP(parsePence(it.unitPricePounds) * it.quantity)}</span>
+                        <Pencil size={13} className="ritem__pencil" aria-hidden />
+                      </span>
+                    </button>
+                  ),
+                )}
+              </Fragment>
+            ))}
             <button type="button" className="ritem ritem--add" onClick={addAndEdit} disabled={busy}>+ add an item</button>
             <BillTotals subtotalPence={subtotalPence} servicePence={servicePence} taxPence={taxPence} totalPence={totalPence} />
           </Receipt>
@@ -492,6 +545,18 @@ function InlineItemEditor({ item, busy, onChange, onDone, onCancel, onRemove }: 
           <span className="qty__v">{item.quantity}×</span>
           <button type="button" aria-label="Increase quantity" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
         </div>
+      </div>
+      <div className="course-pick" role="radiogroup" aria-label="Section">
+        {SECTION_CHOICES.map((c) => {
+          const on = sectionOf(item) === c.key;
+          return (
+            <button key={c.key} type="button" role="radio" aria-checked={on}
+              className={on ? 'course-pick__opt course-pick__opt--on' : 'course-pick__opt'}
+              onClick={() => onChange(c.patch)}>
+              {c.label}
+            </button>
+          );
+        })}
       </div>
       <div className="ritem-edit__actions">
         <button type="button" className="link-btn link-btn--danger" onClick={onRemove} disabled={busy}>remove</button>

@@ -1166,6 +1166,10 @@ components:
         unitPricePence: { type: integer, format: int64, minimum: 0 }
         quantity: { type: integer, minimum: 1 }
         category: { type: string, enum: [food, drink, other] }
+        course:
+          type: string
+          enum: [starter, main, side, dessert]
+          description: Food items only. The parser's best guess at the course, for grouping in the UI. May be absent.
 
     Bill:
       type: object
@@ -1524,6 +1528,7 @@ components:
               unitPricePence: { type: integer, format: int64, minimum: 0 }
               quantity: { type: integer, minimum: 1 }
               category: { type: string, enum: [food, drink, other] }
+              course: { type: string, enum: [starter, main, side, dessert] }
         taxPence: { type: integer, format: int64, minimum: 0 }
         serviceChargePence: { type: integer, format: int64, minimum: 0 }
 

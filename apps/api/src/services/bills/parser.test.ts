@@ -1,0 +1,31 @@
+import { describe, expect, it } from 'vitest';
+import { ParsedBillFromImageSchema } from './parser.js';
+
+const base = { taxPence: 0, serviceChargePence: 0, currency: 'GBP' as const };
+const item = (extra: Record<string, unknown>) => ({
+  name: 'Lasagne',
+  unitPricePence: 1725,
+  quantity: 1,
+  category: 'food',
+  ...extra,
+});
+
+describe('ParsedBillFromImageSchema course', () => {
+  it('keeps a valid course', () => {
+    const r = ParsedBillFromImageSchema.parse({ ...base, items: [item({ course: 'main' })] });
+    expect(r.items[0]?.course).toBe('main');
+  });
+
+  it('drops null or unknown courses instead of failing the parse', () => {
+    const r = ParsedBillFromImageSchema.parse({
+      ...base,
+      items: [item({ course: null }), item({ course: 'entree' })],
+    });
+    expect(r.items.map((i) => i.course)).toEqual([undefined, undefined]);
+  });
+
+  it('accepts items with no course', () => {
+    const r = ParsedBillFromImageSchema.parse({ ...base, items: [item({})] });
+    expect(r.items[0]?.course).toBeUndefined();
+  });
+});

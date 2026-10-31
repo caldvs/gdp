@@ -140,3 +140,15 @@ test('closing with everything claimed and paid: the dialog says so and "your par
   await expect(lead.getByText('£99.75').first()).toBeVisible();
   await expect(lead.locator('.totals__line', { hasText: 'Your part' })).toContainText('£4.25');
 });
+
+test('the lead’s QR page shows people as they arrive', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead);
+  await lead.getByRole('link', { name: 'QR code' }).click();
+  const table = lead.getByRole('list', { name: 'At the table' });
+  await expect(table).toContainText('You');
+  await expect(lead.getByText('People appear here as they join.')).toBeVisible();
+  api.join(users.sam);
+  await expect(table).toContainText('Sam', POLL);
+  await expect(lead.getByText('At the table · 2')).toBeVisible();
+});

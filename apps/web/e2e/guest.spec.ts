@@ -131,3 +131,34 @@ test('guest table after the lead closes: what they paid, the tick, Done goes hom
   await sam.getByRole('link', { name: 'Done' }).click();
   await expect(sam).toHaveURL(/\/$/);
 });
+
+test('a guest can pass the QR on, and see who’s at the table', async ({ browser }) => {
+  const api = new FakeApi();
+  const { page: sam } = await ctxFor(browser, api, users.sam);
+  await sam.goto(`/join/${CODE}#p=${fragmentFor()}`);
+  await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
+  await sam.getByRole('link', { name: 'QR code' }).click();
+  await expect(sam.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
+  await expect(sam.getByText(CODE)).toBeVisible();
+  await expect(sam.getByText('Pass it on to anyone at Callum’s table.')).toBeVisible();
+  const table = sam.getByRole('list', { name: 'At the table' });
+  await expect(table).toContainText('Callum');
+  await expect(table).toContainText('You');
+  // Someone else arrives: they appear without a refresh.
+  api.join(users.tom);
+  await expect(table).toContainText('Tom', POLL);
+  await sam.getByRole('link', { name: 'Back to your items' }).click();
+  await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible();
+});
+
+test('everyone can open the bill photo', async ({ browser }) => {
+  const api = new FakeApi();
+  const { page: sam } = await ctxFor(browser, api, users.sam);
+  await sam.goto(`/session/${SID}`);
+  await sam.getByRole('button', { name: 'Bill photo' }).click();
+  const dialog = sam.getByRole('dialog', { name: 'Bill photo' });
+  // The fake has no image, so it says so rather than spinning forever.
+  await expect(dialog).toContainText('The photo isn’t available for this bill.');
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
+});

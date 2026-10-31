@@ -631,7 +631,12 @@ export const sessionService = {
    * owe can pay afterwards; paymentService accepts payments on a
    * settled session for a participant who hasn't paid.
    */
-  async close(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
+  async close(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    /** Runs once, when this call is the one that settles the bill. */
+    onClosed?: (sessionId: string) => Promise<void>;
+  }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     if (session.creatorUserId !== input.caller.userId) {
@@ -646,6 +651,7 @@ export const sessionService = {
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'settled' };
     await sessionStore.putMeta(updatedMeta);
+    await input.onClosed?.(session.sessionId);
     return projectForCaller(
       { ...updatedMeta, participants: session.participants },
       input.caller.userId,

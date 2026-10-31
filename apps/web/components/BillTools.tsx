@@ -1,13 +1,15 @@
 'use client';
 
 /**
- * "QR code" and "Bill photo" for anyone at the table. Guests can pass the
- * code on to people the host isn't sitting near, and everyone can check
- * the photo of the bill against what they had.
+ * "QR code", "Bill photo" and "Email me" for anyone at the table. Guests
+ * can pass the code on to people the host isn't sitting near, everyone can
+ * check the photo of the bill against what they had, and anyone can email
+ * themselves a report of the bill (the lead's lists every diner).
  */
 import { useState } from 'react';
 import { useBillImageUrl } from '@gdp/core/api/hooks/useBillImageUrl';
-import { Button, Dialog, PhotoIcon, QrIcon, Spinner } from './ui';
+import { useEmailReport } from '@gdp/core/api/hooks/useSession';
+import { Button, Dialog, MailIcon, PhotoIcon, QrIcon, Spinner, TickIcon } from './ui';
 
 export function BillTools({ sessionId, billId, showQr }: { sessionId: string; billId: string; showQr: boolean }) {
   const [photo, setPhoto] = useState(false);
@@ -16,9 +18,27 @@ export function BillTools({ sessionId, billId, showQr }: { sessionId: string; bi
       <div className="tools">
         {showQr ? <Button tone="secondary" small href={`/session/${sessionId}/share`}><QrIcon />QR code</Button> : null}
         <Button tone="secondary" small onClick={() => setPhoto(true)}><PhotoIcon />Bill photo</Button>
+        <EmailReport sessionId={sessionId} />
       </div>
       {photo ? <BillPhoto billId={billId} onClose={() => setPhoto(false)} /> : null}
     </>
+  );
+}
+
+function EmailReport({ sessionId }: { sessionId: string }) {
+  const report = useEmailReport(sessionId);
+  const label = report.isPending ? 'Sending…' : report.isSuccess ? 'Emailed' : report.isError ? 'Try again' : 'Email me';
+  return (
+    <Button
+      tone="secondary"
+      small
+      onClick={() => report.mutate()}
+      disabled={report.isPending || report.isSuccess}
+      aria-label={report.isSuccess ? 'Report emailed to you' : 'Email me a report of this bill'}
+    >
+      {report.isSuccess ? <TickIcon size={18} /> : <MailIcon />}
+      <span aria-live="polite">{label}</span>
+    </Button>
   );
 }
 

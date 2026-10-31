@@ -25,7 +25,7 @@ const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment
  * Every bill line in bill order with who has it, so lists keep their shape
  * while people claim: a row changes state instead of vanishing.
  */
-export type ItemStatus = { item: BillItem; left: number; mine: number; who: string[] };
+export type ItemStatus = { item: BillItem; left: number; mine: number; who: string[]; share?: Share };
 export function itemStatuses(s: Session, b: Bill, meUserId: string): ItemStatus[] {
   const taken = new Map<string, number>();
   const mine = new Map<string, number>();
@@ -46,20 +46,30 @@ export function itemStatuses(s: Session, b: Bill, meUserId: string): ItemStatus[
     who.set(sh.itemId, [...(who.get(sh.itemId) ?? []), ...names]);
     if (sh.userIds.includes(meUserId)) mine.set(sh.itemId, (mine.get(sh.itemId) ?? 0) + 1);
   }
-  return b.items.map((item) => ({ item, left: Math.max(0, item.quantity - (taken.get(item.itemId) ?? 0)), mine: mine.get(item.itemId) ?? 0, who: who.get(item.itemId) ?? [] }));
+  return b.items.map((item) => {
+    const share = s.shares?.find((x) => x.itemId === item.itemId && x.userIds.length > 0);
+    return { item, left: Math.max(0, item.quantity - (taken.get(item.itemId) ?? 0)), mine: mine.get(item.itemId) ?? 0, who: who.get(item.itemId) ?? [], ...(share ? { share } : {}) };
+  });
 }
 
 /** A read-only bill line: open (nobody's yet), done (someone's), or yours. */
 export function ItemLine({ st }: { st: ItemStatus }) {
-  const { item, left, mine, who } = st;
+  const { item, left, mine, who, share } = st;
   const open = left > 0;
   const name = item.quantity > 1 ? `${item.quantity}× ${item.name}` : item.name;
-  const sub = who.length > 0 ? `${who.join(', ')}${open ? ` · ${left} left` : ''}` : undefined;
+  const seats = share ? Math.max(0, share.ways - share.userIds.length) : 0;
+  const sub = share
+    ? `${who.join(', ')} · split ${share.ways} ways${seats ? ` · ${seats} seat${seats === 1 ? '' : 's'} open` : ''}`
+    : who.length > 0 ? `${who.join(', ')}${open ? ` · ${left} left` : ''}` : undefined;
   return (
     <div className={`g-row${!open && mine === 0 ? ' g-row--done' : ''}${mine > 0 && !open ? ' g-row--on' : ''}`}>
       {open ? <Check on={false} /> : <span className={`g-check${mine > 0 ? ' g-check--on' : ' g-check--done'}`} aria-hidden><Tick size={14} /></span>}
       <RowBody name={name} sub={sub} />
-      <Price mute={open || mine === 0}>{formatGBP(item.unitPricePence * (mine > 0 ? mine : item.quantity))}</Price>
+      {share ? (
+        <Price mute={mine === 0} note="each">{formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, ''))}</Price>
+      ) : (
+        <Price mute={open || mine === 0}>{formatGBP(item.unitPricePence * (mine > 0 ? mine : item.quantity))}</Price>
+      )}
     </div>
   );
 }
@@ -232,7 +242,7 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 }
 
 /** A tick row with an optional control on the right that isn't part of the tap target. */
-function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside }: {
+export function PickRow({ on, taken, busy, label, onTap, name, sub, price, aside }: {
   on?: boolean; taken?: boolean; busy?: boolean; label?: string; onTap?: () => void; name: string; sub?: React.ReactNode; price: React.ReactNode; aside?: React.ReactNode;
 }) {
   const cls = ['g-row', on && 'g-row--on', taken && 'g-row--taken'].filter(Boolean).join(' ');
@@ -268,7 +278,7 @@ export function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: 
   );
 }
 
-function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, onOk }: {
+export function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, onOk }: {
   item: BillItem; ways: number; min: number; busy: boolean; error?: string; onChange: (n: number) => void; onCancel: () => void; onOk: () => void;
 }) {
   return (

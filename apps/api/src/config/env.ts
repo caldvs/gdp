@@ -20,16 +20,14 @@ const EnvSchema = z.object({
   // local dev / tests can wire a deterministic value via AppDeps.
   SESSION_JWT_SECRET: z.string().min(16).optional(),
 
-  GEMINI_API_KEY: z.string().optional(),
-  // Bedrock model (or inference profile) that reads bills. When set it is
-  // the main reader and Gemini, if its key is set, is the fallback.
+  // Bedrock model (or inference profile) that reads bills, on the AWS
+  // credentials in use. Unset, bill reading fails with a clear error.
   BEDROCK_MODEL_ID: z.string().optional(),
-
-  // Google Places (New) — used by GooglePlacesVenueResolver to enrich
-  // the venue Gemini extracts from a bill image with a stable placeId
-  // and coordinates. Optional: when unset, the app falls back to a
-  // no-op resolver that just passes the parsed text through.
-  GOOGLE_PLACES_API_KEY: z.string().optional(),
+  // How the venue read off the bill is looked up. `amazon-location` fills in
+  // the full address and coordinates (Amazon Location Service, cached for
+  // good in VENUEQ# rows); `none` keeps the text on the bill. Deployed
+  // stacks use amazon-location.
+  VENUE_LOOKUP: z.enum(['none', 'amazon-location']).default('none'),
 
   // Verified SES sender address. When unset, transactional email is
   // logged to stdout via ConsoleEmailSender instead of being sent.

@@ -10,7 +10,7 @@ The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it, *Cont
 2. `POST /v1/billing/table-fee` checks the bill is the caller's and unpaid, picks the price by lookup key (`table_fee_2` or `table_fee_3`), and creates a Checkout Session with `client_reference_id` and `metadata.billId`.
 3. The page mounts the form. Cards and wallets finish in place; anything that needs a redirect comes back to the same page with `?session_id=`.
 4. Stripe calls `POST /webhooks/stripe`. After the signature check, `checkout.session.completed` with `payment_status: paid` writes `FEE#<billId>` (once; repeats write nothing). The row has no TTL: it's a tax record.
-5. The page polls `GET /v1/billing/table-fee/<billId>` until it's `paid`, then continues to the QR.
+5. The page polls `GET /v1/billing/table-fee/<billId>?session_id=<cs_…>` until it's `paid`, then continues to the QR. If the webhook hasn't landed, the API asks Stripe about that Checkout Session and records the fee itself when it's the caller's, for this bill, and paid. So a late or missing webhook (locally, no `stripe listen`) no longer leaves the page spinning. After 30 seconds unpaid the page stops polling and offers *Check again*.
 
 **Exempt leads.** An email on `TABLE_FEE_EXEMPT_EMAILS` gets status `waived` (£0): *Continue* goes straight to the QR, and `POST /v1/billing/table-fee` refuses with `TABLE_FEE_WAIVED`. The same addresses sign in without a code (`/v1/auth/email/start` returns the session). A fee paid before the address was added still shows as `paid`.
 

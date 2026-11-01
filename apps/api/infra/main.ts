@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
 import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
+import { CostReportStack } from './costReport.js';
 import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
 // apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
@@ -159,12 +160,12 @@ class GdpBackendStack extends cdk.Stack {
       });
     }
 
-    // The bill reader: Claude Haiku on Bedrock through the EU cross-region
+    // The bill reader: Claude Sonnet 4.6 on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Override with
     // `-c bedrockModelId=…`.
     const bedrockModelId =
       (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
-      'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+      'eu.anthropic.claude-sonnet-4-6';
 
     const apiLogs = new logs.LogGroup(this, 'ApiHandlerLogs', {
       retention: envName === 'prod' ? logs.RetentionDays.SIX_MONTHS : logs.RetentionDays.ONE_MONTH,
@@ -695,4 +696,14 @@ new GithubDeployStack(app, 'GdpGithubDeployProd', {
   repo: 'caldvs/gdp',
   repoWithIds: 'caldvs@42970938/gdp@1440859247',
   existingProviderArn,
+});
+
+// Daily AWS cost email to Callum (the whole account: dev and prod share it).
+// Addresses live in SSM so they stay out of this public repo.
+new CostReportStack(app, 'GdpCostReport', {
+  env: { region },
+  toParameter: '/gdp/cost-report-to',
+  fromParameter: '/gdp-dev/ses-from-email',
+  apiDir: API_DIR,
+  repoRoot: REPO_ROOT,
 });

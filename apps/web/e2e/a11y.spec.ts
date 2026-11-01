@@ -20,18 +20,10 @@ async function open(page: Page, api: FakeApi, user: User | null, to: string) {
 }
 
 /**
- * Findings that were already there when this check was added (1 Nov 2026),
- * by rule and the start of the element's selector. New ones fail. Fixing
- * these changes visual baselines or e2e selectors, so each fix removes its
- * entry in the same PR.
+ * Findings to tolerate, by rule and the start of the element's selector.
+ * Empty: fix new findings rather than listing them.
  */
-const KNOWN: { rule: string; target: RegExp; why: string }[] = [
-  { rule: 'color-contrast', target: /^\.pick--taken/, why: 'lines someone else took are greyed below 4.5:1' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="Copy /, why: 'copy buttons show the value, are named "Copy …"' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="Edit /, why: 'Review bill rows show name and price, are named "Edit …"' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="(Hand back|Join the split for|Take|Take one|Tick|Untick|Split|Leave the split for) /, why: 'pick rows are named by action, not the visible text' },
-  { rule: 'link-in-text-block', target: /^a\[href\$="join"\]/, why: 'the "join" link on the landing page is colour-only' },
-];
+const KNOWN: { rule: string; target: RegExp; why: string }[] = [];
 
 async function audit(page: Page) {
   const { violations } = await new AxeBuilder({ page })

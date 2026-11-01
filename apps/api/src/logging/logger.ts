@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 
 export const baseLogger = pino({
   level: env.LOG_LEVEL,
-  base: { service: 'gdp-backend', env: env.NODE_ENV },
+  base: { service: 'gdp-backend', env: env.APP_ENV },
   redact: {
     paths: [
       'req.headers.authorization',

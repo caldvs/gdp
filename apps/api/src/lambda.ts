@@ -1,6 +1,11 @@
 import { handle } from 'hono/aws-lambda';
-import { app } from './app.js';
-import { isSelfCheckEvent, runSelfCheck } from './ops/selfCheck.js';
+import { loadRuntimeSecrets } from './config/runtimeSecrets.js';
+
+// Secrets first: env.ts validates process.env when it's imported, so the app
+// (and everything that reads env) is imported only after they're loaded.
+await loadRuntimeSecrets(process.env);
+const { app } = await import('./app.js');
+const { isSelfCheckEvent, runSelfCheck } = await import('./ops/selfCheck.js');
 
 const http = handle(app);
 

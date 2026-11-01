@@ -15,7 +15,7 @@ import type { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
-import { GithubDeployStack } from './githubDeploy.js';
+import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
 
 // apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
@@ -302,11 +302,11 @@ class GdpBackendStack extends cdk.Stack {
         resources: ['*'],
       }),
     );
-    // Lets the GitHub deploy role (infra/githubDeploy.ts) invoke the function
-    // directly for that check. Granted here rather than in that stack so the
-    // normal CI deploy keeps it in step with the function.
+    // Lets this environment's GitHub deploy role (infra/githubDeploy.ts)
+    // invoke the function directly for that check. Granted here rather than
+    // in that stack so the normal CI deploy keeps it in step with the function.
     fn.grantInvoke(
-      iam.Role.fromRoleName(this, 'GithubDeployRole', 'gdp-github-deploy', { mutable: true }),
+      iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), { mutable: true }),
     );
 
     const httpApi = new apigw.HttpApi(this, 'HttpApi', {
@@ -621,13 +621,29 @@ const region = 'eu-west-2';
 new GdpBackendStack(app, 'GdpBackendDev', { env: { region }, envName: 'dev' });
 new GdpBackendStack(app, 'GdpBackendProd', { env: { region }, envName: 'prod' });
 
-// OIDC role for .github/workflows/api-deploy.yml, trusted only by jobs in the
-// `dev` GitHub environment. The dev deploy job keeps it up to date.
-// See githubDeploy.ts.
+// Dev and prod share this AWS account (Callum's call, 1 Nov 2026). Every
+// resource is named per environment, and each Lambda can only read its own
+// gdp-<env>/* secrets. What keeps a dev run away from prod is GitHub: each
+// deploy role is trusted only by jobs in its own GitHub environment, and the
+// `prod` environment is limited to main with a required reviewer. (Both roles
+// can assume the shared CDK bootstrap roles, so AWS itself doesn't separate
+// them; a second account would.)
+//
+// OIDC roles for .github/workflows/api-deploy.yml. The dev deploy job keeps
+// both up to date. They share the account's one GitHub OIDC provider. See
+// githubDeploy.ts.
+const existingProviderArn = app.node.tryGetContext('githubOidcProviderArn') as string | undefined;
 new GithubDeployStack(app, 'GdpGithubDeploy', {
   env: { region },
   environment: 'dev',
   repo: 'caldvs/gdp',
   repoWithIds: 'caldvs@42970938/gdp@1440859247',
-  existingProviderArn: app.node.tryGetContext('githubOidcProviderArn') as string | undefined,
+  existingProviderArn,
+});
+new GithubDeployStack(app, 'GdpGithubDeployProd', {
+  env: { region },
+  environment: 'prod',
+  repo: 'caldvs/gdp',
+  repoWithIds: 'caldvs@42970938/gdp@1440859247',
+  existingProviderArn,
 });

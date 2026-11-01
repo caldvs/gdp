@@ -28,7 +28,7 @@ Until the cut-over (#78), Vercel Production also runs as `dev` against the dev A
 
 ## Domains
 
-`paymeback.dev` was bought on Vercel, and its DNS lives there (no Route 53).
+`paymeback.dev` was bought on Vercel, and its DNS lives there (no Route 53). Diagrams of how it fits together: [architecture/domains.md](architecture/domains.md).
 
 | Name | Points at |
 | --- | --- |

@@ -115,9 +115,10 @@ export class FakeApi {
   }
 
   /** Wire this fake into a browser context signed in as `user`. */
-  async attach(ctx: BrowserContext, user: User, opts: { signedIn?: boolean; lastActiveAgoMs?: number } = {}) {
+  /** `atTable: false` signs the user in without seating them (a newcomer). */
+  async attach(ctx: BrowserContext, user: User, opts: { signedIn?: boolean; lastActiveAgoMs?: number; atTable?: boolean } = {}) {
     const signedIn = opts.signedIn ?? true;
-    if (signedIn) { this.join(user); this.signedIn.add(user.userId); }
+    if (signedIn) { if (opts.atTable !== false) this.join(user); this.signedIn.add(user.userId); }
     await ctx.addInitScript(({ signedIn, ago }) => {
       if (signedIn) {
         localStorage.setItem('gdp.idToken', 'test-token');
@@ -171,7 +172,15 @@ export class FakeApi {
     if (path === '/v1/sessions' && method === 'POST') { this.status = 'setup'; return json(this.session(), 201); }
     if (path === '/v1/sessions/by-code') return (body().code as string) === CODE ? json({ sessionId: SID }) : err('NOT_FOUND', 'No session with that code', 404);
     if (path === `/v1/sessions/${SID}/share`) { this.status = 'claiming'; return json(this.session()); }
-    if (path === `/v1/sessions/${SID}/join`) { this.join(user); return json(this.session()); }
+    if (path === `/v1/sessions/${SID}/join`) {
+      // Like the API: someone already at the table gets back in whatever the
+      // state; newcomers only while the bill is open.
+      if (!this.participants.some((p) => p.userId === user.userId) && this.status !== 'claiming') {
+        return err('SESSION_INVALID_STATE', this.status === 'settled' ? 'This bill has been closed' : 'Session is not accepting joins', 409, { status: this.status });
+      }
+      this.join(user);
+      return json(this.session());
+    }
     if (path === `/v1/sessions/${SID}` && method === 'GET') {
       if (this.takeFault('session-get-500')) return err('INTERNAL_ERROR', 'boom', 500);
       return json(this.session());

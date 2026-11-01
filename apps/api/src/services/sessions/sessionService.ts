@@ -156,11 +156,19 @@ export const sessionService = {
   async join(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    if (session.status !== 'claiming') {
-      throw new AppError('SESSION_INVALID_STATE', 'Session is not accepting joins');
-    }
+    // Someone already at the table gets back in whatever the state, e.g. a
+    // guest reopening the link to pay after the lead has closed the bill.
     if (session.participants.some((p) => p.userId === input.caller.userId)) {
       return projectForCaller(session, input.caller.userId);
+    }
+    if (session.status !== 'claiming') {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        session.status === 'settled'
+          ? 'This bill has been closed'
+          : 'Session is not accepting joins',
+        { status: session.status },
+      );
     }
 
     const newParticipant: Participant = {

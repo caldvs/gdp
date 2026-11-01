@@ -186,6 +186,26 @@ describe('POST /v1/payments/:id/confirm — collector marks manual receipt', () 
     expect(body.events.at(-1)?.source).toBe('api');
   });
 
+  it('the lead can confirm a payment that arrives after closing the bill', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId } = await buildPayingSession(app, creator, [guest]);
+    const close = await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(close.status).toBe(200);
+    const paymentId = await initiate(app, sessionId, guest);
+
+    const res = await app.request(`/v1/payments/${paymentId}/confirm`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { status: string }).status).toBe('succeeded');
+  });
+
   it('does not settle the session when the last guest is confirmed (the lead closes it)', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;

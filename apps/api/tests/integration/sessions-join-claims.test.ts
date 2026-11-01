@@ -180,6 +180,40 @@ describe('Join code resolution and joining', () => {
     });
     expect(res.status).toBe(409);
   });
+
+  it('after close: someone already at the table gets back in, a newcomer is told it is closed', async () => {
+    const app = buildApp();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const newcomer = `n-${uuidv7()}`;
+    const { sessionId } = await buildSharedSession(app, creator);
+    await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    await app.request(`/v1/sessions/${sessionId}/close`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+
+    const back = await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    expect(back.status).toBe(200);
+    expect(((await back.json()) as { status: string }).status).toBe('settled');
+
+    const late = await app.request(`/v1/sessions/${sessionId}/join`, {
+      method: 'POST',
+      headers: makeAuth(newcomer),
+    });
+    expect(late.status).toBe(409);
+    const body = (await late.json()) as { error: { code: string; details: { status: string } } };
+    expect(body.error).toMatchObject({
+      code: 'SESSION_INVALID_STATE',
+      details: { status: 'settled' },
+    });
+  });
 });
 
 describe('POST /v1/sessions/:id/claims', () => {

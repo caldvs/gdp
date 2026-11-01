@@ -200,6 +200,51 @@ export function Spinner({ label = 'Loading' }: { label?: string }) {
   return <span className="spin" role="status" aria-label={label} />;
 }
 
+const SKELETON_WIDTHS = [55, 40, 62, 46, 70, 50];
+
+/** Grey rows in the shape of a bill, shown while one is being read or loaded. */
+export function BillSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="box" aria-hidden="true">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="row skel-row">
+          <span className="skel" style={{ width: 20 }} />
+          <span className="skel" style={{ width: `${SKELETON_WIDTHS[i % SKELETON_WIDTHS.length]}%` }} />
+          <span className="skel skel--end" style={{ width: 52 }} />
+        </div>
+      ))}
+      <div className="row skel-row">
+        <span className="skel skel--lg" style={{ width: 60 }} />
+        <span className="skel skel--lg skel--end" style={{ width: 70 }} />
+      </div>
+    </div>
+  );
+}
+
+export type StepState = 'todo' | 'busy' | 'done';
+
+/** A short list of stages, each waiting, in progress or done. */
+export function Steps({ steps }: { steps: { label: string; state: StepState }[] }) {
+  return (
+    <div className="steps" role="status" aria-live="polite">
+      {steps.map((s) => (
+        <div key={s.label} className={cx('row', 'step', `step--${s.state}`)}>
+          <span className="step__icon" aria-hidden="true">
+            {s.state === 'done' ? (
+              <svg className="step__tick" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg>
+            ) : s.state === 'busy' ? (
+              <span className="spin spin--sm" />
+            ) : (
+              <span className="step__dot" />
+            )}
+          </span>
+          {s.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Centre({ children }: { children: ReactNode }) {
   return <div className="centre">{children}</div>;
 }

@@ -7,7 +7,13 @@ import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
 import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
-import { readByOf, type BillParser, type ParsedBillFromImage, type ReadBy } from './parser.js';
+import {
+  PARSE_BUDGET_MS,
+  readByOf,
+  type BillParser,
+  type ParsedBillFromImage,
+  type ReadBy,
+} from './parser.js';
 import type { VenueResolver } from './venueResolver.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -20,6 +26,8 @@ export const parseService = {
     parser: BillParser;
     venueResolver: VenueResolver;
   }): Promise<Bill> {
+    // One budget for the whole read, started now so the S3 fetch counts.
+    const signal = AbortSignal.timeout(PARSE_BUDGET_MS);
     const key = uploadKey(input.userId, input.uploadId);
 
     let bytes: Uint8Array;
@@ -74,7 +82,7 @@ export const parseService = {
       );
     }
 
-    const parsed = await input.parser.parse(bytes, input.requestId);
+    const parsed = await input.parser.parse(bytes, input.requestId, { signal });
     const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
     const bill = BillSchema.parse(
       buildBillV1({
@@ -145,7 +153,7 @@ function buildBillV1(args: {
     taxPence: args.parsed.taxPence,
     serviceChargePence: args.parsed.serviceChargePence,
     totalPence,
-    // Persist Gemini's read-of-the-printed-total alongside the computed
+    // Persist the reader's read-of-the-printed-total alongside the computed
     // total. If they disagree the client surfaces a "check this bill"
     // hint; we don't gate the parse on it.
     ...(args.parsed.totalPence !== undefined ? { parsedTotalPence: args.parsed.totalPence } : {}),

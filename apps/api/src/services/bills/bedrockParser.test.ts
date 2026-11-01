@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { AppError } from '../../errors/AppError.js';
-import { FallbackBillParser, createBillParser } from './bedrockParser.js';
-import { validateParsedBill } from './geminiParser.js';
-import type { BillParser, ParsedBillFromImage } from './parser.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
+import { BedrockBillParser, createBillParser } from './bedrockParser.js';
+import { validateParsedBill } from './billPrompt.js';
+import type { ParsedBillFromImage } from './parser.js';
 
 const bill: ParsedBillFromImage = {
   items: [{ name: 'Pizza', unitPricePence: 1200, quantity: 1, category: 'food' }],
@@ -11,77 +11,46 @@ const bill: ParsedBillFromImage = {
   currency: 'GBP',
 };
 
-const parser = (
-  model: string,
-  result: ParsedBillFromImage | AppError,
-): BillParser & { calls: number } => {
-  const p = {
-    model,
-    version: 'v1',
-    calls: 0,
-    parse: () => {
-      p.calls += 1;
-      return result instanceof AppError ? Promise.reject(result) : Promise.resolve(result);
-    },
-  };
-  return p;
-};
-
-describe('FallbackBillParser', () => {
-  it('uses the primary when it works', async () => {
-    const a = parser('bedrock', bill);
-    const b = parser('gemini', bill);
-    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual({
-      ...bill,
-      readBy: { model: 'bedrock', version: 'v1' },
-    });
-    expect(b.calls).toBe(0);
-  });
-
-  it('falls back when the primary fails', async () => {
-    const a = parser('bedrock', new AppError('PARSE_FAILED', 'Bedrock: ThrottlingException'));
-    const b = parser('gemini', bill);
-    // The bill is credited to the fallback that read it, not the primary.
-    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual({
-      ...bill,
-      readBy: { model: 'gemini', version: 'v1' },
-    });
-    expect(b.calls).toBe(1);
-  });
-
-  it('keeps the innermost reader when fallbacks are nested', async () => {
-    const a = parser('bedrock', new AppError('PARSE_FAILED', 'down'));
-    const b = parser('gemini', new AppError('PARSE_FAILED', 'down'));
-    const c = parser('other', bill);
-    const chain = new FallbackBillParser(a, new FallbackBillParser(b, c));
-    await expect(chain.parse(new Uint8Array(), 'r')).resolves.toMatchObject({
-      readBy: { model: 'other' },
-    });
-  });
-
-  it("doesn't retry a photo nothing could be read from", async () => {
-    const a = parser('bedrock', new AppError('PARSE_LOW_CONFIDENCE', 'No items'));
-    const b = parser('gemini', bill);
-    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).rejects.toMatchObject({
-      code: 'PARSE_LOW_CONFIDENCE',
-    });
-    expect(b.calls).toBe(0);
-  });
-});
-
 describe('createBillParser', () => {
-  it('prefers Bedrock, with Gemini behind it', () => {
-    const p = createBillParser({
-      bedrockModelId: 'eu.model',
-      region: 'eu-west-2',
-      geminiApiKey: 'k',
-    });
-    expect(p).toBeInstanceOf(FallbackBillParser);
+  it('reads with Bedrock when a model is set', () => {
+    const p = createBillParser({ bedrockModelId: 'eu.model', region: 'eu-west-2' });
+    expect(p).toBeInstanceOf(BedrockBillParser);
     expect(p.model).toBe('eu.model');
   });
 
-  it('uses Gemini alone without a Bedrock model', () => {
-    expect(createBillParser({ region: 'eu-west-2', geminiApiKey: 'k' }).model).toMatch(/gemini/);
+  it('fails clearly without a Bedrock model', async () => {
+    const p = createBillParser({ region: 'eu-west-2' });
+    expect(p.model).toBe('none');
+    await expect(p.parse(new Uint8Array(), 'r')).rejects.toThrow(/BEDROCK_MODEL_ID/);
+  });
+});
+
+describe('BedrockBillParser time limit', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('passes the signal to Bedrock and reports a timeout when it fires', async () => {
+    const send = vi
+      .spyOn(BedrockRuntimeClient.prototype, 'send')
+      .mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    const signal = AbortSignal.abort();
+    await expect(
+      new BedrockBillParser('eu.model', 'eu-west-2').parse(new Uint8Array(), 'r', { signal }),
+    ).rejects.toMatchObject({ code: 'PARSE_TIMEOUT' });
+    expect(send.mock.calls[0]?.[1]).toEqual({ abortSignal: signal });
+  });
+
+  it('still reports other Bedrock errors as PARSE_FAILED', async () => {
+    vi.spyOn(BedrockRuntimeClient.prototype, 'send').mockRejectedValue(
+      Object.assign(new Error('slow down'), {
+        name: 'ThrottlingException',
+        $metadata: { httpStatusCode: 429 },
+      }),
+    );
+    await expect(
+      new BedrockBillParser('eu.model', 'eu-west-2').parse(new Uint8Array(), 'r', {
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ code: 'PARSE_FAILED', details: { status: 429 } });
   });
 });
 

@@ -5,6 +5,7 @@ import { otpStore } from '../../storage/otpStore.js';
 import { authIdentityStore } from '../../storage/authIdentityStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { mintSessionToken } from './sessionToken.js';
+import { isTestAccountEmail, TEST_ACCOUNT_DOMAIN } from './testAccounts.js';
 import type { EmailSender } from '../email/sender.js';
 import type { Logger } from '../../logging/logger.js';
 
@@ -124,6 +125,27 @@ export const createEmailOtpService = (deps: EmailOtpServiceDeps) => ({
     deps.logger?.warn(
       { event: 'auth.dev_sign_in', userId: result.user.userId, email },
       'Dev sign-in (no code)',
+    );
+    return result;
+  },
+
+  /**
+   * LOCAL AND DEV ONLY — sign in to a test account with no code. Only
+   * `@test.invalid` addresses, so a real person's account can't be reached
+   * this way. Reachable only when the app mounts the route (see app.ts).
+   */
+  async testSignIn(input: { email: string }): Promise<VerifyOtpResult> {
+    const email = input.email.trim().toLowerCase();
+    if (!isValidEmail(email) || !isTestAccountEmail(email)) {
+      throw new AppError(
+        'INVALID_INPUT',
+        `Test accounts must use an @${TEST_ACCOUNT_DOMAIN} address`,
+      );
+    }
+    const result = await signInByEmail(email, deps.jwtSecret);
+    deps.logger?.warn(
+      { event: 'auth.test_sign_in', userId: result.user.userId, email },
+      'Test account sign-in (no code)',
     );
     return result;
   },

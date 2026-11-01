@@ -23,6 +23,7 @@ export const ErrorCodes = {
   TABLE_FEE_PAID: { http: 409 },
   PARSE_FAILED: { http: 422 },
   PARSE_LOW_CONFIDENCE: { http: 422 },
+  PARSE_TIMEOUT: { http: 504 },
   RATE_LIMITED: { http: 429 },
   PAYMENT_PROVIDER_ERROR: { http: 502 },
   INTERNAL_ERROR: { http: 500 },

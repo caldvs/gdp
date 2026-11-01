@@ -40,7 +40,7 @@ export const users = {
 export type Fault =
   | { kind: 'session-get-500'; times: number }
   | { kind: 'initiate-500'; times: number }
-  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE'; message: string; details?: Record<string, unknown> };
+  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT'; message: string; details?: Record<string, unknown> };
 
 export class FakeApi {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';
@@ -74,7 +74,7 @@ export class FakeApi {
     const subtotalPence = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     return {
       billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
-      parsedFrom: { imageHash: 'a'.repeat(64), parser: 'gemini', parserVersion: 'v2', parsedAt: '2026-10-31T12:00:00.000Z' },
+      parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
       venue: { name: 'Gennaro', address: '12 King Street, Manchester' }, createdAt: '2026-10-31T12:00:00.000Z',
     };
   }
@@ -155,7 +155,7 @@ export class FakeApi {
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
     if (path === '/v1/bills/parse') {
       const f = this.takeFault('parse');
-      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : 422, f.details);
+      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : f.code === 'PARSE_TIMEOUT' ? 504 : 422, f.details);
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);

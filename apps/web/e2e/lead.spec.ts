@@ -64,21 +64,34 @@ test('parse errors say what went wrong', async ({ browser }) => {
     await lead.locator('input[capture]').setInputFiles(PHOTO);
   };
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Failed to reach Gemini API' });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: TimeoutError' });
   await snap();
   await expect(lead.getByText('Couldn’t reach the bill reader.')).toBeVisible({ timeout: 15_000 });
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini returned 403', details: { status: 403 } });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: AccessDeniedException', details: { status: 403 } });
   await snap();
   await expect(lead.getByText('The bill reader turned us away. Not the photo’s fault.')).toBeVisible({ timeout: 15_000 });
 
-  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini output failed schema validation' });
+  api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock output failed schema validation' });
   await snap();
   await expect(lead.getByText('Couldn’t read that one.')).toBeVisible({ timeout: 15_000 });
 
   api.faults.push({ kind: 'parse', code: 'IMAGE_TOO_LARGE', message: 'too big' });
   await snap();
   await expect(lead.getByText('That photo is too big.')).toBeVisible({ timeout: 15_000 });
+});
+
+test('a slow read keeps the photo, and Try again reads it', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, '/');
+
+  api.faults.push({ kind: 'parse', code: 'PARSE_TIMEOUT', message: 'Bedrock took too long to read the bill' });
+  await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await expect(lead.getByRole('heading', { name: 'That took too long.' })).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByRole('img', { name: 'Your bill' })).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Try again' }).click();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
 });
 
 test('fixing the bill mid-session: a picking guest and a sent guest both see the new price', async ({ browser }) => {

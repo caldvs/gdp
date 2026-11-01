@@ -4,7 +4,7 @@ name: Web Deploy
 # count. So pushes don't deploy (apps/web/vercel.json switches Git deploys off
 # for every branch but `preview`, which serves test.paymeback.dev). Instead:
 #
-# - Production: every two hours, deploy main if the web app changed since the
+# - Production: every hour, deploy main if the web app changed since the
 #   last production deploy. The `web-prod` tag marks what's live. Run it by
 #   hand (Actions → Web Deploy → Run workflow) to ship straight away.
 # - Previews: add the `preview` label to a PR. Each push to a labelled PR
@@ -14,7 +14,7 @@ name: Web Deploy
 
 on:
   schedule:
-    - cron: '17 */2 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       force:

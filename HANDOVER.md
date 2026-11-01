@@ -34,7 +34,7 @@ _Last updated 1 Nov 2026._
 
 ## Known problems
 
-- Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out every two hours from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret.
+- Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out hourly from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret.
 - No golden receipts yet: add photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.

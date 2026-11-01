@@ -36,8 +36,8 @@ export default defineConfig({
       // Floors. Raise them as tests land; never lower them to make a PR pass.
       // The PR gate also fails on a drop of more than 1 point against main.
       thresholds: {
-        lines: 34,
-        branches: 24,
+        lines: 85,
+        branches: 68,
       },
     },
   },

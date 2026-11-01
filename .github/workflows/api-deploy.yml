@@ -155,6 +155,12 @@ jobs:
             -c "githubOidcProviderArn=arn:aws:iam::${acct}:oidc-provider/token.actions.githubusercontent.com"
           echo "Prod deploy role: $(jq -r '.GdpGithubDeployProd.DeployRoleArnOutput' cdk-outputs.roles.json)" >>"$GITHUB_STEP_SUMMARY"
 
+      # The daily cost email (infra/costReport.ts): one for the whole
+      # account, so from the dev job only, like the role stacks.
+      - name: Deploy cost report
+        if: env.ENV_NAME == 'dev'
+        run: npx cdk deploy GdpCostReport --require-approval never
+
       - name: Upload CDK outputs
         if: always()
         uses: actions/upload-artifact@v7

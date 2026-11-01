@@ -1176,6 +1176,15 @@ paths:
       tags: [billing]
       operationId: getTableFeeStatus
       summary: Whether the table fee for a bill is paid
+      description: |
+        With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
+        Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
+      parameters:
+        - in: query
+          name: session_id
+          required: false
+          description: The Checkout Session the page just confirmed (`cs_…`).
+          schema: { type: string }
       responses:
         '200':
           description: Fee status

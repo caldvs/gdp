@@ -28,12 +28,17 @@ export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
     },
   );
 
-  // Whether the fee is paid yet. The page polls this after confirming, because
-  // the webhook — not the browser — is what records the payment.
+  // Whether the fee is paid yet. The page polls this after confirming. The
+  // webhook records the payment; `session_id` lets this check Stripe directly
+  // when the webhook is late or never arrives.
   r.get('/table-fee/:billId', requireAuth(deps.idTokenVerifier), async (c) => {
+    const sessionId = c.req.query('session_id');
     const status = await deps.tableFees.status({
       caller: callerOf(c),
       billId: c.req.param('billId'),
+      ...(sessionId && /^cs_[A-Za-z0-9_]+$/.test(sessionId)
+        ? { checkoutSessionId: sessionId }
+        : {}),
     });
     return c.json(status);
   });

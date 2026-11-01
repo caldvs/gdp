@@ -3,6 +3,7 @@
 Hono on Node 22, run as one AWS Lambda behind API Gateway, with a single DynamoDB table and an S3 bucket for bill photos. Infrastructure is CDK (`infra/main.ts`). Run `npm install` from the repo root, not here.
 
 - `openapi.yaml` is the contract. After changing it, run `npm run gen:api` from the root to regenerate the client types.
+- The running API serves its docs: `/swagger` (Swagger UI, with _Try it out_ against that server; _Authorize_ takes a session JWT) and `/docs` (Redoc, read-only). Locally: http://localhost:3000/swagger.
 - The diagrams in [`docs/architecture`](../../docs/architecture/README.md) show every route, AWS resource and DynamoDB item.
 
 ## Layout

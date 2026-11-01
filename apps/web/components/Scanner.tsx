@@ -1,11 +1,13 @@
 'use client';
 
 /**
- * Snap or pick a bill photo, upload it and start reading it in the
- * background, then hand over to /reading/[id], which waits for the read.
+ * Snap or pick a bill photo, check it ("All in?"), upload it and start
+ * reading it in the background, then hand over to /reading/[id], which
+ * waits for the read. Snapping uses our own camera (Camera.tsx) where the
+ * browser allows it, else the phone's camera app.
  * `useScanner()` gives a page the hidden inputs, the open() calls (which
  * must run from a tap so the browser allows the camera), any error, and
- * the view to show until the read has started.
+ * the screen to show until the read has started.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,7 +15,8 @@ import { ApiError } from '@gdp/core/api';
 import { useStartBillRead } from '@gdp/core/api/hooks/useBillRead';
 import { setPendingRead } from '@gdp/core/lib/pendingRead';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
-import { Button } from './ui';
+import { ActionBar, Button, Page, Title } from './ui';
+import { Camera, hasLiveCamera } from './Camera';
 import { ReadingFailed, ReadingWait, stashPhoto, useSlow } from './Reading';
 
 export type ScanError = { title: string; body?: string };
@@ -57,35 +60,38 @@ export function humanizeReadError(error: { code: string; message: string; detail
   return humanizeScanError(new ApiError(error.code === 'PARSE_TIMEOUT' ? 504 : 422, error.code, error.message, undefined, error.details));
 }
 
+type Source = 'camera' | 'library';
+
 export function useScanner() {
   const router = useRouter();
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
-  // 'failed': the upload or the start of the read went wrong; the photo
-  // stays so it can be tried again. Once the read has started, the
-  // reading page (/reading/[id]) takes over.
-  const [busy, setBusy] = useState<'processing' | 'uploading' | 'failed' | null>(null);
+  // 'camera': our own camera is open. 'checking': the photo is shown with
+  // Retake and Use photo, nothing uploaded yet. 'failed': the upload or the
+  // start of the read went wrong; the photo stays so it can be tried again.
+  // Once the read has started, the reading page (/reading/[id]) takes over.
+  const [busy, setBusy] = useState<'camera' | 'processing' | 'checking' | 'uploading' | 'failed' | null>(null);
   const [photo, setPhoto] = useState<ProcessedImage | null>(null);
+  const [source, setSource] = useState<Source>('camera');
   const [error, setError] = useState<ScanError | null>(null);
   const [since, setSince] = useState<number>();
   const slow = useSlow(8_000, since);
   const start = useStartBillRead();
 
-  const handleFile = useCallback(async (file: File | undefined) => {
+  const handleFile = useCallback(async (file: File | undefined, from: Source = 'library') => {
     if (!file) return;
     setError(null);
-    setSince(Date.now());
+    setSource(from);
     setBusy('processing');
     try {
       const img = await processImage(file, file.name);
       setPhoto(img);
-      setBusy('uploading');
-      start.mutate(img);
+      setBusy('checking');
     } catch (e) {
       setError(humanizeScanError(e));
       setBusy(null);
     }
-  }, [start]);
+  }, []);
 
   useEffect(() => {
     if (start.isSuccess && start.data) {
@@ -107,30 +113,70 @@ export function useScanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start.isSuccess, start.isError, start.data, start.error]);
 
-  const cancel = () => { start.reset(); setPhoto(null); setBusy(null); setError(null); };
-  const retry = () => {
+  // Our camera where the browser has one; the phone's camera app otherwise.
+  const openCamera = () => {
+    setError(null);
+    if (hasLiveCamera()) setBusy('camera');
+    else camera.current?.click();
+  };
+  const openLibrary = () => library.current?.click();
+  const dropPhoto = () => {
+    if (photo) URL.revokeObjectURL(photo.uri);
+    setPhoto(null);
+  };
+
+  const cancel = () => { start.reset(); dropPhoto(); setBusy(null); setError(null); };
+  const sendPhoto = () => {
     if (!photo) return;
     setError(null);
+    setSince(Date.now());
     setBusy('uploading');
     start.mutate(photo);
   };
-  const pick = (e: React.ChangeEvent<HTMLInputElement>) => { void handleFile(e.target.files?.[0]); e.target.value = ''; };
+  const retake = () => {
+    dropPhoto();
+    setBusy(null);
+    if (source === 'library') openLibrary();
+    else openCamera();
+  };
+  const pickFrom = (from: Source) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    void handleFile(e.target.files?.[0], from);
+    e.target.value = '';
+  };
 
   const inputs: ReactNode = (
     <>
-      <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={pick} aria-label="Take a photo of the bill" />
-      <input ref={library} type="file" accept="image/*,.heic,.heif" hidden onChange={pick} aria-label="Choose a photo of the bill" />
+      <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={pickFrom('camera')} aria-label="Take a photo of the bill" />
+      <input ref={library} type="file" accept="image/*,.heic,.heif" hidden onChange={pickFrom('library')} aria-label="Choose a photo of the bill" />
     </>
   );
 
-  const reading: ReactNode =
-    busy === 'failed' && photo ? (
+  const screen: ReactNode =
+    busy === 'camera' ? (
+      <Camera
+        onPhoto={(file) => void handleFile(file, 'camera')}
+        onClose={() => setBusy(null)}
+        onLibrary={openLibrary}
+        onSystemCamera={() => { setBusy(null); camera.current?.click(); }}
+      />
+    ) : busy === 'checking' && photo ? (
+      <>
+        <Page>
+          <Title title="All in?" sub="Check you can see the name and the total." />
+          <img src={photo.uri} alt="Your photo of the bill" className="check-photo" />
+        </Page>
+        <ActionBar>
+          <Button tone="secondary" onClick={retake}>Retake</Button>
+          <Button grow onClick={sendPhoto}>Use photo</Button>
+        </ActionBar>
+      </>
+    ) : busy === 'failed' && photo ? (
       <ReadingFailed
         photo={photo.uri}
         error={error ?? { title: 'Couldn’t read that one.' }}
         onCancel={cancel}
-        onNewPhoto={() => camera.current?.click()}
-        onRetry={retry}
+        onNewPhoto={openCamera}
+        onRetry={sendPhoto}
       />
     ) : busy === 'processing' || busy === 'uploading' || (start.isSuccess && start.data?.kind === 'reading') ? (
       <ReadingWait
@@ -143,11 +189,12 @@ export function useScanner() {
 
   return {
     inputs,
-    reading,
+    /** The scanner's own screen (camera, photo check, waiting, failed), or null. */
+    screen,
     // Shown by the page only when there's no photo to keep (the photo itself couldn't be prepared).
     error: busy === 'failed' ? null : error,
-    openCamera: () => camera.current?.click(),
-    openLibrary: () => library.current?.click(),
+    openCamera,
+    openLibrary,
     handleFile,
   };
 }

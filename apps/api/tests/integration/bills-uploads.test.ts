@@ -103,6 +103,47 @@ describe('POST /v1/bills/uploads', () => {
     expect(body.billId).toBe(knownBillId);
   });
 
+  it('hands out a fresh slot for a known photo when skipCache is set (local)', async () => {
+    const knownHash = sha256Of(`skip-${uuidv7()}`);
+    await billStore.indexImageHash(userId, knownHash, uuidv7());
+
+    const res = await app.request('/v1/bills/uploads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        sha256: knownHash,
+        sizeBytes: 1024,
+        mimeType: 'image/jpeg',
+        skipCache: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { status: string }).status).toBe('new');
+  });
+
+  it('ignores skipCache where it is not allowed', async () => {
+    const strict = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(sampleParsedBill),
+      allowSkipCache: false,
+    });
+    const knownHash = sha256Of(`noskip-${uuidv7()}`);
+    const knownBillId = uuidv7();
+    await billStore.indexImageHash(userId, knownHash, knownBillId);
+
+    const res = await strict.request('/v1/bills/uploads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        sha256: knownHash,
+        sizeBytes: 1024,
+        mimeType: 'image/jpeg',
+        skipCache: true,
+      }),
+    });
+    expect(await res.json()).toMatchObject({ status: 'duplicate', billId: knownBillId });
+  });
+
   it("does NOT leak another user's billId via hash dedupe", async () => {
     const knownHash = sha256Of(`crossuser-${uuidv7()}`);
     const otherUser = `other-${uuidv7()}`;

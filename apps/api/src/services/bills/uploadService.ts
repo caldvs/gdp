@@ -29,10 +29,14 @@ export const uploadService = {
     sha256: string;
     sizeBytes: number;
     mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+    /** Don't return an earlier bill for this photo (local testing). */
+    skipCache?: boolean;
   }): Promise<UploadResult> {
     // Hash index is scoped per-user so a hash collision across users
     // never reveals one user's billId to another.
-    const existing = await billStore.findByImageHash(input.userId, input.sha256);
+    const existing = input.skipCache
+      ? null
+      : await billStore.findByImageHash(input.userId, input.sha256);
     if (existing) {
       return { status: 'duplicate', billId: existing.billId };
     }

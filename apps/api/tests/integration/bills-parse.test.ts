@@ -3,8 +3,6 @@ import { v7 as uuidv7 } from 'uuid';
 import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
-import { FallbackBillParser } from '../../src/services/bills/bedrockParser.js';
-import { AppError } from '../../src/errors/AppError.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
 import {
   fakeVerifier,
@@ -108,16 +106,14 @@ describe('POST /v1/bills/parse', () => {
     expect(bill.parsedFrom.parser).toBe('fixture');
   });
 
-  it('credits the bill to the fallback model when the primary fails', async () => {
-    const primary = {
+  it('credits the bill to the model a result says read it', async () => {
+    const parser = {
       model: 'eu.anthropic.claude-haiku',
-      version: 'v2',
-      parse: () => Promise.reject(new AppError('PARSE_FAILED', 'Bedrock: ThrottlingException')),
+      version: 'v3',
+      parse: () =>
+        Promise.resolve({ ...sampleParsedBill, readBy: { model: 'other-model', version: 'v9' } }),
     };
-    const app = createApp({
-      idTokenVerifier: fakeVerifier,
-      billParser: new FallbackBillParser(primary, new FixtureBillParser(sampleParsedBill)),
-    });
+    const app = createApp({ idTokenVerifier: fakeVerifier, billParser: parser });
     const userId = `u-${uuidv7()}`;
     const uploadId = uuidv7();
     await putObject(userId, uploadId, uniqueImageBytes());
@@ -132,7 +128,7 @@ describe('POST /v1/bills/parse', () => {
     });
     expect(res.status).toBe(200);
     const bill = (await res.json()) as { parsedFrom: { parser: string; parserVersion: string } };
-    expect(bill.parsedFrom).toMatchObject({ parser: 'fixture', parserVersion: 'v1' });
+    expect(bill.parsedFrom).toMatchObject({ parser: 'other-model', parserVersion: 'v9' });
   });
 
   it('returns a cached response on idempotency replay', async () => {
@@ -281,7 +277,7 @@ describe('POST /v1/bills/parse', () => {
   });
 
   it('surfaces parsedTotalPence diverging from the computed totalPence', async () => {
-    // Pretend Gemini misread the receipt: the printed total it returned
+    // Pretend the reader misread the receipt: the printed total it returned
     // is £35.00 (3500) but the items + service + tax compute to £32.06
     // (3206). The bill's totalPence is the computed value; the printed
     // value lives alongside it so the client can flag the discrepancy.

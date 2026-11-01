@@ -215,7 +215,7 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Gemini 2.5 Flash for v0), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
          *     the image hash. Idempotent via `Idempotency-Key`.
          */
         post: operations["parseBill"];
@@ -971,7 +971,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example gemini-2.5-flash */
+                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;
@@ -1069,7 +1069,7 @@ export interface components {
              * @description Denormalised from the pinned bill at session-create time so the
              *     frontend can render a venue strapline without a second round-trip.
              *     Optional — predates this field on old sessions, and not every bill
-             *     has a venue Gemini could extract.
+             *     has a venue the reader could extract.
              */
             venue?: components["schemas"]["Venue"];
             /**

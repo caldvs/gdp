@@ -21,6 +21,10 @@ import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
 import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
 import {
+  AmazonLocationVenueResolver,
+  amazonLocationSearch,
+} from './services/bills/locationVenueResolver.js';
+import {
   createReadRunner,
   createReadService,
   inProcessDispatcher,
@@ -28,7 +32,6 @@ import {
   type ReadDispatcher,
   type ReadJob,
 } from './services/bills/readService.js';
-import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
 import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
@@ -75,13 +78,12 @@ const sessionJwtSecretFromEnv = (): Uint8Array => {
 const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
-const defaultVenueResolver = (): VenueResolver => {
-  if (!env.GOOGLE_PLACES_API_KEY) return new NoopVenueResolver();
-  return new GooglePlacesVenueResolver({
-    apiKey: env.GOOGLE_PLACES_API_KEY,
-    logger: baseLogger,
-  });
-};
+// The venue Bedrock read off the bill, looked up with Amazon Location
+// Service when VENUE_LOOKUP=amazon-location (deployed), else used as read.
+const defaultVenueResolver = (): VenueResolver =>
+  env.VENUE_LOOKUP === 'amazon-location'
+    ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
+    : new NoopVenueResolver();
 
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
@@ -114,7 +116,6 @@ const defaultBillParser = (): BillParser =>
   createBillParser({
     bedrockModelId: env.BEDROCK_MODEL_ID,
     region: env.AWS_REGION,
-    geminiApiKey: env.GEMINI_API_KEY,
   });
 
 /**

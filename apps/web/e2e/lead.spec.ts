@@ -81,6 +81,24 @@ test('parse errors say what went wrong', async ({ browser }) => {
   await expect(lead.getByText('That photo is too big.')).toBeVisible({ timeout: 15_000 });
 });
 
+test('leave while the bill is read: Bills shows it, then opens it when it’s ready', async ({ browser }) => {
+  const api = new FakeApi();
+  api.holdReads = true;
+  const lead = await diner(browser, api, users.lead, '/');
+
+  await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await expect(lead.getByRole('heading', { name: 'Reading your bill' })).toBeVisible({ timeout: 15_000 });
+  await lead.getByRole('link', { name: 'Back to bills' }).click();
+
+  await expect(lead.getByRole('heading', { name: 'Bills' })).toBeVisible();
+  await expect(lead.getByRole('link', { name: /Reading your bill/ })).toBeVisible();
+
+  api.holdReads = false;
+  await expect(lead.getByRole('link', { name: /Bill read/ })).toBeVisible({ timeout: 10_000 });
+  await lead.getByRole('link', { name: /Bill read/ }).click();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+});
+
 test('a slow read keeps the photo, and Try again reads it', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, '/');

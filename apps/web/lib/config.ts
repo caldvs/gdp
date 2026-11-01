@@ -1,3 +1,5 @@
+import { testToolsEnabled } from '@gdp/core/lib/buildEnv';
+
 // NEXT_PUBLIC_* values are inlined at build time — restart `npm run dev`
 // after changing them.
 
@@ -39,13 +41,18 @@ export const WEB_APP_ENV = process.env.NEXT_PUBLIC_APP_ENV || 'local';
 
 /**
  * The test bar (sign in as test accounts, one tab at a time). On for dev
- * builds, and locally when talking to a local API. Never in prod, and off
- * in CI's e2e build (local, no API URL configured). NEXT_PUBLIC_TEST_TOOLS=0
- * turns it off.
+ * builds, and locally when talking to a local API. Never in prod or on
+ * Vercel Production, and off in CI's e2e build (local, no API URL
+ * configured). NEXT_PUBLIC_TEST_TOOLS=0 turns it off.
  */
-export const TEST_TOOLS_ENABLED =
-  process.env.NEXT_PUBLIC_TEST_TOOLS !== '0' &&
-  (WEB_APP_ENV === 'dev' || (WEB_APP_ENV === 'local' && DEV_SIGNIN_ENABLED));
+export const TEST_TOOLS_ENABLED = testToolsEnabled(
+  {
+    NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
+    NEXT_PUBLIC_TEST_TOOLS: process.env.NEXT_PUBLIC_TEST_TOOLS,
+    NEXT_PUBLIC_VERCEL_ENV: process.env.NEXT_PUBLIC_VERCEL_ENV,
+  },
+  DEV_SIGNIN_ENABLED,
+);
 
 /** Set in sessionStorage on sign-out so local dev doesn't auto sign straight back in. */
 export const DEV_SIGNED_OUT_KEY = 'gdp.dev.signedOut';

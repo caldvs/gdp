@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEnvProblems, webAppEnv } from './buildEnv';
+import { buildEnvProblems, testToolsEnabled, webAppEnv } from './buildEnv';
 
 const API = 'https://abc.execute-api.eu-west-2.amazonaws.com';
 
@@ -56,5 +56,29 @@ describe('buildEnvProblems', () => {
     expect(buildEnvProblems({ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'sk_test_1' })).toEqual([
       'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is a secret key; it must be a pk_ key',
     ]);
+  });
+});
+
+describe('testToolsEnabled', () => {
+  it('is on for dev builds', () => {
+    expect(testToolsEnabled({ NEXT_PUBLIC_APP_ENV: 'dev' }, false)).toBe(true);
+    expect(testToolsEnabled({ NEXT_PUBLIC_APP_ENV: 'dev', NEXT_PUBLIC_VERCEL_ENV: 'preview' }, false)).toBe(true);
+  });
+
+  it('is on locally only against a local API', () => {
+    expect(testToolsEnabled({}, true)).toBe(true);
+    expect(testToolsEnabled({}, false)).toBe(false);
+  });
+
+  it('is never on in prod', () => {
+    expect(testToolsEnabled({ NEXT_PUBLIC_APP_ENV: 'prod' }, true)).toBe(false);
+  });
+
+  it('is off on Vercel Production even when built as dev', () => {
+    expect(testToolsEnabled({ NEXT_PUBLIC_APP_ENV: 'dev', NEXT_PUBLIC_VERCEL_ENV: 'production' }, false)).toBe(false);
+  });
+
+  it('can be switched off', () => {
+    expect(testToolsEnabled({ NEXT_PUBLIC_APP_ENV: 'dev', NEXT_PUBLIC_TEST_TOOLS: '0' }, true)).toBe(false);
   });
 });

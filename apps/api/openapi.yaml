@@ -345,7 +345,8 @@ paths:
       description: |
         Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
         (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
-        the image hash. Idempotent via `Idempotency-Key`.
+        the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
+        Idempotent via `Idempotency-Key`.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -380,6 +381,59 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '504':
           description: Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/bills/reads:
+    post:
+      tags: [bills]
+      operationId: startBillRead
+      summary: Start reading an uploaded image in the background
+      description: |
+        Same read as `POST /v1/bills/parse`, but it runs in the background (with 45s rather than 22s)
+        and this returns at once. Poll `GET /v1/bills/reads/{readId}` until it's `done` (open `billId`)
+        or `failed` (the same error the synchronous parse would have returned). Idempotent via
+        `Idempotency-Key`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ParseRequest' }
+      responses:
+        '202':
+          description: Reading has started (or, if it couldn't be started, has already failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillRead' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+
+  /v1/bills/reads/{readId}:
+    get:
+      tags: [bills]
+      operationId: getBillRead
+      summary: How a background read is going
+      description: |
+        Only the user who started the read can see it. A read still `reading` after 90s is reported as
+        `failed` with `PARSE_TIMEOUT`. Reads are kept for a day.
+      parameters:
+        - name: readId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The read
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillRead' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: No such read for this user
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1719,6 +1773,25 @@ components:
       required: [uploadId]
       properties:
         uploadId: { type: string, format: uuid }
+
+    BillRead:
+      type: object
+      required: [readId, status]
+      properties:
+        readId: { type: string, format: uuid }
+        status: { type: string, enum: [reading, done, failed] }
+        billId:
+          type: string
+          format: uuid
+          description: Set when `done`
+        error:
+          type: object
+          description: Set when `failed`. `code` is one of the API's error codes.
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
 
     AmendBillRequest:
       type: object

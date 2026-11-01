@@ -107,7 +107,9 @@ describe('background bill reads', () => {
     const userId = `u-${uuidv7()}`;
     const bytes = uniqueImageBytes();
     const readOnce = async (extra: { skipCache?: boolean }) => {
-      const started = (await (await start(app, userId, await upload(userId, bytes), extra)).json()) as Read;
+      const started = (await (
+        await start(app, userId, await upload(userId, bytes), extra)
+      ).json()) as Read;
       return settle(app, userId, started.readId);
     };
 

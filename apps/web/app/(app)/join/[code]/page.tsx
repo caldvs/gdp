@@ -56,7 +56,9 @@ export default function JoinPage() {
         setState({
           kind: 'error',
           message: e instanceof ApiError
-            ? e.code === 'NOT_FOUND' ? "We couldn't find a session with that code." : e.message
+            ? e.code === 'NOT_FOUND' ? "We couldn't find a session with that code."
+              : e.code === 'SESSION_INVALID_STATE' && (e.details as { status?: string } | undefined)?.status === 'settled' ? 'This bill’s already closed. Ask the host if you still owe.'
+              : e.message
             : (e as Error)?.message ?? 'Could not join',
         });
       }

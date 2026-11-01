@@ -2,9 +2,8 @@
 // payment actually completes locally. `npm run dev:local` runs this alongside
 // the API and web as the `pay` process.
 //
-// Without it, paying with a test card succeeds in Stripe's form but the page
-// spins forever: the fee is only recorded when `checkout.session.completed`
-// reaches POST /webhooks/stripe, and Stripe can't reach localhost.
+// Without it the payment still completes (the status check asks Stripe about
+// the Checkout Session directly), but webhook handling goes untested locally.
 //
 // Degrades gracefully: if the Stripe CLI isn't installed / logged in, it prints
 // how to enable local payments and then idles, so it never tears down the API

@@ -819,7 +819,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Whether the table fee for a bill is paid */
+        /**
+         * Whether the table fee for a bill is paid
+         * @description With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
+         *     Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
+         */
         get: operations["getTableFeeStatus"];
         put?: never;
         post?: never;
@@ -2721,7 +2725,10 @@ export interface operations {
     };
     getTableFeeStatus: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The Checkout Session the page just confirmed (`cs_…`). */
+                session_id?: string;
+            };
             header?: never;
             path: {
                 billId: string;

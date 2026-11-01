@@ -165,8 +165,20 @@ One-off, in the Vercel dashboard:
 
    The build fails if these don't match (see Environments above).
 
-4. Deploy. Every push to `main` then deploys production; every PR gets a
-   preview URL.
+4. **Settings → Tokens:** create a token and add it to the repo as the
+   `VERCEL_TOKEN` Actions secret.
+
+Pushes don't deploy: Hobby allows 100 deployments a day and every push
+counts, so `apps/web/vercel.json` switches Git deploys off for every branch
+except `preview` (`test.paymeback.dev`). `.github/workflows/web-deploy.yml`
+deploys instead:
+
+- **Production:** every two hours, main is deployed if the web app (or
+  `packages/core`, or the lockfile) changed since the last production deploy,
+  which the `web-prod` tag marks. To ship now: Actions → Web Deploy → Run
+  workflow.
+- **PR previews:** add the `preview` label. Each push to the PR then deploys a
+  preview and comments its URL.
 
 `NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back
 to the page's own origin, which is right on Vercel.

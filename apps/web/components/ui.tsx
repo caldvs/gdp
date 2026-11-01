@@ -147,8 +147,26 @@ export function ActionBar({ children, stack }: { children: ReactNode; stack?: bo
 
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
 
-export function Avatar({ name, you }: { name: string; you?: boolean }) {
-  return <span className={cx('avatar', you && 'avatar--you')} aria-hidden>{initials(name)}</span>;
+export function Avatar({ name, you, sm }: { name: string; you?: boolean; sm?: boolean }) {
+  return <span className={cx('avatar', you && 'avatar--you', sm && 'avatar--sm')} aria-hidden>{initials(name)}</span>;
+}
+
+/**
+ * Who has an item, as initials instead of names — reads faster, and scales
+ * to several claimants without crowding the row. The names themselves stay
+ * for screen readers (visually hidden): avatars alone aren't accessible.
+ */
+export function AvatarStack({ names, max = 4 }: { names: string[]; max?: number }) {
+  if (names.length === 0) return null;
+  const shown = names.slice(0, max);
+  const extra = names.length - shown.length;
+  return (
+    <span className="avatar-stack">
+      <span className="vh">{names.join(', ')}</span>
+      {shown.map((n, i) => <Avatar key={i} name={n} sm you={n === 'you' || n === 'You'} />)}
+      {extra > 0 ? <span className="avatar avatar--sm avatar--more" aria-hidden>+{extra}</span> : null}
+    </span>
+  );
 }
 
 /** Who's at the table: an initial and first name each, in the order they joined. */

@@ -15,10 +15,10 @@ import { coverLeftovers } from '@gdp/core/lib/leftovers';
 import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  ActionBar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Avatar, Row, Section, Stats, Title, TotalLine, Totals, firstName,
+  ActionBar, AvatarStack, BackLink, Badge, Box, Button, Dialog, Notice, Page, Avatar, Row, Section, Stats, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
-import { PickRow, SplitSheet, Stepper, itemStatuses, splitSub } from './guest';
+import { PickRow, SplitSheet, Stepper, itemStatuses, splitSub, useChangeFeed } from './guest';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -70,12 +70,16 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const [splitting, setSplitting] = useState<{ item: BillItem; ways: number; share?: Share } | null>(null);
   const [closing, setClosing] = useState(false);
   const [binning, setBinning] = useState(false);
+  // #123: an item a tap just lost the race for, and whether taken-by-others rows are folded away.
+  const [raceLostItemId, setRaceLostItemId] = useState<string | null>(null);
+  const [hideTaken, setHideTaken] = useState(false);
 
   const me = s.participants.find((p) => p.userId === meUserId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const toCome = guests.reduce((acc, p) => (isPaid(p) ? acc : acc + owedFor(s, b, p)), 0);
   const collected = guests.reduce((acc, p) => (isPaid(p) ? acc + owedFor(s, b, p) : acc), 0);
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
+  const { changes, liveText } = useChangeFeed(statuses);
   const unclaimed = statuses.filter((x) => x.left > 0);
   const unclaimedPence = unclaimed.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0);
   // What "I'll cover these" takes: every unclaimed unit that isn't in a split.
@@ -86,7 +90,18 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 
   const takeOne = (itemId: string) => {
     if (!me) return;
-    setClaims.mutate({ claimedItemIds: [...me.claimedItemIds, itemId] });
+    setRaceLostItemId(null);
+    setClaims.mutate(
+      { claimedItemIds: [...me.claimedItemIds, itemId] },
+      {
+        onError: (e) => {
+          const errItemId = e instanceof ApiError ? (e.details as { itemId?: string } | undefined)?.itemId : undefined;
+          if (e instanceof ApiError && e.code === 'SESSION_INVALID_STATE' && errItemId === itemId) {
+            setRaceLostItemId(itemId);
+          }
+        },
+      },
+    );
   };
   const dropOne = (itemId: string) => {
     if (!me) return;
@@ -100,6 +115,91 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     if (!me || coverable.length === 0) return;
     setClaims.mutate({ claimedItemIds: cover.claimedItemIds });
   };
+
+  // #123: rows stay in bill order and in place; a taken-by-others row never
+  // vanishes, it just flashes and says what happened.
+  const rows = statuses.map(({ item, left, mine, who, share }) => {
+    const others = who.filter((n) => n !== 'you');
+    const name = item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name;
+    const change = changes.get(item.itemId);
+    if (share) {
+      // A split: anyone can join, the lead included.
+      const inIt = share.userIds.includes(meUserId);
+      const seats = Math.max(0, share.ways - share.userIds.length);
+      const myWays = inIt || seats > 0 ? share.ways : share.ways + 1;
+      return {
+        taken: false,
+        el: (
+          <PickRow
+            key={item.itemId}
+            on={inIt}
+            changed={!!change}
+            busy={busy}
+            action={inIt ? 'Leave the split for' : 'Join the split for'}
+            onTap={() => (inIt ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
+            name={name}
+            sub={change?.text ?? splitSub(s, share, meUserId)}
+            price={<>{formatGBP(sharePence(item.unitPricePence, share.userIds, myWays, meUserId))}<span className="each">each</span></>}
+            aside={inIt ? <Button tone="text" small onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways} ways</Button> : undefined}
+          />
+        ),
+      };
+    }
+    if (mine > 0 && item.quantity > 1) {
+      return {
+        taken: false,
+        el: (
+          <PickRow
+            key={item.itemId}
+            on
+            changed={!!change}
+            name={name}
+            sub={change?.text ?? (others.length ? `You and ${others.join(', ')}` : `${formatGBP(item.unitPricePence)} each`)}
+            price={formatGBP(item.unitPricePence * mine)}
+            aside={<Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => takeOne(item.itemId)} name={item.name} />}
+          />
+        ),
+      };
+    }
+    if (left > 0) {
+      const sub = [others.length ? others.join(', ') : 'Not claimed', item.quantity > 1 ? `${left} left · ${formatGBP(item.unitPricePence)} each` : null].filter(Boolean).join(' · ');
+      return {
+        taken: false,
+        el: (
+          <PickRow
+            key={item.itemId}
+            changed={!!change}
+            busy={busy}
+            action="Take"
+            onTap={() => takeOne(item.itemId)}
+            name={name}
+            sub={change?.text ?? sub}
+            price={formatGBP(item.unitPricePence * left)}
+            aside={others.length > 0 ? <AvatarStack names={others} /> : item.quantity === 1 ? <Button tone="text" small onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</Button> : undefined}
+          />
+        ),
+      };
+    }
+    if (mine > 0) {
+      return { taken: false, el: <PickRow key={item.itemId} on busy={busy} action="Hand back" onTap={() => dropOne(item.itemId)} name={name} sub="You" price={formatGBP(item.unitPricePence)} /> };
+    }
+    const justTaken = raceLostItemId === item.itemId;
+    return {
+      taken: true,
+      el: (
+        <PickRow
+          key={item.itemId}
+          taken
+          changed={!!change || justTaken}
+          name={name}
+          sub={justTaken ? `${others[others.length - 1] ?? 'Someone'} just took this` : change?.text}
+          aside={<AvatarStack names={others} />}
+          price={formatGBP(item.unitPricePence * item.quantity)}
+        />
+      ),
+    };
+  });
+  const leadRows = { rows, taken: rows.filter((r) => r.taken) };
 
   return (
     <>
@@ -125,61 +225,17 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         </Section>
 
         <Section title={unclaimed.length > 0 ? `Items · ${formatGBP(unclaimedPence)} not claimed yet` : 'Items · all claimed'}>
+          <div className="vh" aria-live="polite">{liveText}</div>
+          {!hideTaken && leadRows.taken.length > 0 ? (
+            <p className="small muted" style={{ textAlign: 'right' }}>
+              <button type="button" className="link-btn" onClick={() => setHideTaken(true)}>Hide taken</button>
+            </p>
+          ) : null}
           <Box>
-            {statuses.map(({ item, left, mine, who, share }) => {
-              const others = who.filter((n) => n !== 'you');
-              const name = item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name;
-              if (share) {
-                // A split: anyone can join, the lead included.
-                const inIt = share.userIds.includes(meUserId);
-                const seats = Math.max(0, share.ways - share.userIds.length);
-                const myWays = inIt || seats > 0 ? share.ways : share.ways + 1;
-                return (
-                  <PickRow
-                    key={item.itemId}
-                    on={inIt}
-                    busy={busy}
-                    action={inIt ? 'Leave the split for' : 'Join the split for'}
-                    onTap={() => (inIt ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
-                    name={name}
-                    sub={splitSub(s, share, meUserId)}
-                    price={<>{formatGBP(sharePence(item.unitPricePence, share.userIds, myWays, meUserId))}<span className="each">each</span></>}
-                    aside={inIt ? <Button tone="text" small onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways} ways</Button> : undefined}
-                  />
-                );
-              }
-              if (mine > 0 && item.quantity > 1) {
-                return (
-                  <PickRow
-                    key={item.itemId}
-                    on
-                    name={name}
-                    sub={others.length ? `You and ${others.join(', ')}` : `${formatGBP(item.unitPricePence)} each`}
-                    price={formatGBP(item.unitPricePence * mine)}
-                    aside={<Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => takeOne(item.itemId)} name={item.name} />}
-                  />
-                );
-              }
-              if (left > 0) {
-                const sub = [others.length ? others.join(', ') : 'Not claimed', item.quantity > 1 ? `${left} left · ${formatGBP(item.unitPricePence)} each` : null].filter(Boolean).join(' · ');
-                return (
-                  <PickRow
-                    key={item.itemId}
-                    busy={busy}
-                    action="Take"
-                    onTap={() => takeOne(item.itemId)}
-                    name={name}
-                    sub={sub}
-                    price={formatGBP(item.unitPricePence * left)}
-                    aside={item.quantity === 1 ? <Button tone="text" small onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</Button> : undefined}
-                  />
-                );
-              }
-              if (mine > 0) {
-                return <PickRow key={item.itemId} on busy={busy} action="Hand back" onTap={() => dropOne(item.itemId)} name={name} sub="You" price={formatGBP(item.unitPricePence)} />;
-              }
-              return <PickRow key={item.itemId} taken name={name} sub={others.join(', ')} price={formatGBP(item.unitPricePence * item.quantity)} />;
-            })}
+            {(hideTaken ? leadRows.rows.filter((r) => !r.taken) : leadRows.rows).map((r) => r.el)}
+            {hideTaken && leadRows.taken.length > 0 ? (
+              <button type="button" className="pick pick--fold" onClick={() => setHideTaken(false)}>Show taken ({leadRows.taken.length})</button>
+            ) : null}
           </Box>
           {coverable.length > 0 ? (
             <Button tone="secondary" busy={setClaims.isPending} onClick={coverAll}>I’ll cover these · {formatGBP(coverPence)}</Button>

@@ -566,7 +566,7 @@ class GdpBackendStack extends cdk.Stack {
     dashboard.addWidgets(
       logsWidget('Crashes and timeouts (outside the app logger)', 24, 6, [
         'fields @timestamp, @message',
-        'filter ispresent(level) = 0',
+        'filter not ispresent(level)',
         'filter @message like /Task timed out|Runtime\\.|Error|ERROR|Unhandled/',
         'sort @timestamp desc',
         'limit 50',

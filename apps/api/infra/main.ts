@@ -23,19 +23,16 @@ const API_DIR = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = path.resolve(API_DIR, '../..');
 const API_DIR_FROM_REPO_ROOT = path.relative(REPO_ROOT, API_DIR) || '.';
 
-type EnvName = 'dev' | 'staging' | 'prod';
+type EnvName = 'dev' | 'prod';
 
 interface GdpStackProps extends cdk.StackProps {
   envName: EnvName;
 }
 
 // Map our short env names to the values the runtime zod schema expects
-// (env.ts EnvSchema NODE_ENV: 'development' | 'test' | 'staging' | 'production').
-const nodeEnvFor = (e: EnvName): 'development' | 'staging' | 'production' => {
-  if (e === 'prod') return 'production';
-  if (e === 'staging') return 'staging';
-  return 'development';
-};
+// (env.ts EnvSchema NODE_ENV: 'development' | 'test' | 'production').
+const nodeEnvFor = (e: EnvName): 'development' | 'production' =>
+  e === 'prod' ? 'production' : 'development';
 
 class GdpBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GdpStackProps) {
@@ -100,14 +97,6 @@ class GdpBackendStack extends cdk.Stack {
     });
 
     // Public-ish config — SSM Parameter Store, resolved at deploy time.
-    const trueLayerClientId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/gdp-${envName}/truelayer-client-id`,
-    );
-    const trueLayerSigningKid = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/gdp-${envName}/truelayer-signing-kid`,
-    );
     // Verified SES sender address. Set once via:
     //   aws ssm put-parameter --name /gdp-{env}/ses-from-email --type String ...
     //   aws ses verify-email-identity --email-address <same address>
@@ -143,15 +132,34 @@ class GdpBackendStack extends cdk.Stack {
       this,
       `/gdp-${envName}/google-places-api-key`,
     );
-    const trueLayerClientSecret = cdk.SecretValue.secretsManager(
-      `gdp-${envName}/truelayer-client-secret`,
-    );
-    const trueLayerWebhookSecret = cdk.SecretValue.secretsManager(
-      `gdp-${envName}/truelayer-webhook-secret`,
-    );
-    const trueLayerSigningPrivateKey = cdk.SecretValue.secretsManager(
-      `gdp-${envName}/truelayer-signing-private-key`,
-    );
+    // TrueLayer (pay-by-bank) is off: PAYMENT_PROVIDER is `manual`. Its
+    // secrets are only referenced with TRUELAYER_ENABLED=true (a GitHub
+    // environment variable, or `-c truelayer=true` locally), so a new
+    // environment doesn't need placeholder TrueLayer secrets to deploy.
+    const trueLayerEnabled =
+      process.env.TRUELAYER_ENABLED === 'true' || this.node.tryGetContext('truelayer') === 'true';
+    const trueLayerEnv: Record<string, string> = trueLayerEnabled
+      ? {
+          TRUELAYER_CLIENT_ID: ssm.StringParameter.valueForStringParameter(
+            this,
+            `/gdp-${envName}/truelayer-client-id`,
+          ),
+          TRUELAYER_SIGNING_KID: ssm.StringParameter.valueForStringParameter(
+            this,
+            `/gdp-${envName}/truelayer-signing-kid`,
+          ),
+          TRUELAYER_CLIENT_SECRET: cdk.SecretValue.secretsManager(
+            `gdp-${envName}/truelayer-client-secret`,
+          ).unsafeUnwrap(),
+          TRUELAYER_WEBHOOK_SECRET: cdk.SecretValue.secretsManager(
+            `gdp-${envName}/truelayer-webhook-secret`,
+          ).unsafeUnwrap(),
+          TRUELAYER_SIGNING_PRIVATE_KEY_PEM: cdk.SecretValue.secretsManager(
+            `gdp-${envName}/truelayer-signing-private-key`,
+          ).unsafeUnwrap(),
+          TRUELAYER_ENVIRONMENT: 'sandbox',
+        }
+      : {};
 
     // Stripe (the lead's table fee) is off until its secrets exist:
     // referencing a missing secret fails the deploy. Turn it on with
@@ -215,12 +223,7 @@ class GdpBackendStack extends cdk.Stack {
         GOOGLE_PLACES_API_KEY: googlePlacesKey,
         SES_FROM_EMAIL: sesFromEmail,
 
-        TRUELAYER_CLIENT_ID: trueLayerClientId,
-        TRUELAYER_CLIENT_SECRET: trueLayerClientSecret.unsafeUnwrap(),
-        TRUELAYER_WEBHOOK_SECRET: trueLayerWebhookSecret.unsafeUnwrap(),
-        TRUELAYER_SIGNING_KID: trueLayerSigningKid,
-        TRUELAYER_SIGNING_PRIVATE_KEY_PEM: trueLayerSigningPrivateKey.unsafeUnwrap(),
-        TRUELAYER_ENVIRONMENT: 'sandbox',
+        ...trueLayerEnv,
         // `manual` = guests pay the lead via their own banking app (Monzo/
         // Revolut deep links if available, raw sort+account otherwise),
         // lead confirms receipt manually. Free of TrueLayer fees. Switch
@@ -321,7 +324,9 @@ class GdpBackendStack extends cdk.Stack {
     // We resolve it from the API endpoint so a stack re-create still produces
     // a coherent value in the Lambda env — but the Console-side URL must be
     // updated by hand if the API endpoint ever changes.
-    fn.addEnvironment('TRUELAYER_RETURN_URI', `${httpApi.apiEndpoint}/v1/payments/return`);
+    if (trueLayerEnabled) {
+      fn.addEnvironment('TRUELAYER_RETURN_URI', `${httpApi.apiEndpoint}/v1/payments/return`);
+    }
 
     // ---------------- Observability: alarms ----------------
 
@@ -620,12 +625,14 @@ const app = new cdk.App();
 const region = 'eu-west-2';
 
 new GdpBackendStack(app, 'GdpBackendDev', { env: { region }, envName: 'dev' });
-new GdpBackendStack(app, 'GdpBackendStaging', { env: { region }, envName: 'staging' });
 new GdpBackendStack(app, 'GdpBackendProd', { env: { region }, envName: 'prod' });
 
-// One-off: OIDC role for .github/workflows/api-deploy.yml. See githubDeploy.ts.
+// OIDC role for .github/workflows/api-deploy.yml, trusted only by jobs in the
+// `dev` GitHub environment. The dev deploy job keeps it up to date.
+// See githubDeploy.ts.
 new GithubDeployStack(app, 'GdpGithubDeploy', {
   env: { region },
+  environment: 'dev',
   repo: 'caldvs/gdp',
   repoWithIds: 'caldvs@42970938/gdp@1440859247',
   existingProviderArn: app.node.tryGetContext('githubOidcProviderArn') as string | undefined,

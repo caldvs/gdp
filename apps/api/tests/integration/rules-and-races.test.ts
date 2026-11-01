@@ -166,8 +166,10 @@ describe('known bugs (it.fails until fixed)', () => {
     const change = await claim(app, t.sessionId, g, [t.tiramisu.itemId]);
     expect(change.status).toBe(409);
   });
+});
 
-  it.fails('closing a bill releases it, so the lead can share it again', async () => {
+describe('closing a bill', () => {
+  it('releases it, so the lead can share it again', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     expect((await post(app, `/v1/sessions/${t.sessionId}/close`, t.lead)).status).toBe(200);
@@ -176,49 +178,59 @@ describe('known bugs (it.fails until fixed)', () => {
     expect(again.status).toBe(201);
   });
 
-  it.fails('removing a split line from the bill removes the split too', async () => {
+  it('guests can still read the bill and pay afterwards', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 2);
-    const shared = await post(app, `/v1/sessions/${t.sessionId}/shares`, t.guests[0]!, {
-      itemId: t.wine.itemId,
-      ways: 2,
+    const [paid, late] = t.guests as [string, string];
+    await claim(app, t.sessionId, paid, [t.pizza.itemId]);
+    await payAndConfirm(app, t.sessionId, paid, t.lead);
+    await claim(app, t.sessionId, late, [t.tiramisu.itemId]);
+    expect((await post(app, `/v1/sessions/${t.sessionId}/close`, t.lead)).status).toBe(200);
+
+    for (const g of [paid, late]) {
+      const bill = await app.request(`/v1/bills/${t.bill.billId}`, { headers: makeAuth(g) });
+      expect(bill.status, g).toBe(200);
+    }
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, late)).status).toBe(201);
+
+    // Someone who was never at the table still can't.
+    const stranger = await app.request(`/v1/bills/${t.bill.billId}`, {
+      headers: makeAuth(`x-${uuidv7()}`),
     });
-    expect(shared.status).toBe(200);
+    expect(stranger.status).toBe(404);
+  });
+
+  it("amending the bill after closing doesn't change the closed session's bill", async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    await post(app, `/v1/sessions/${t.sessionId}/close`, t.lead);
+    const before = await getSession(app, t.sessionId, g);
 
     const amend = await post(
       app,
       `/v1/bills/${t.bill.billId}/amend`,
       t.lead,
-      amendBody([t.pizza, t.ipa, t.tiramisu]),
+      amendBody([{ ...t.pizza, unitPricePence: 9999 }, t.ipa, t.tiramisu, t.wine]),
     );
     expect(amend.status).toBe(200);
-
-    const s = await getSession(app, t.sessionId, t.lead);
-    expect(s.shares?.find((x) => x.itemId === t.wine.itemId)).toBeUndefined();
-    expect(s.participants.every((p) => !p.sharedItemIds.includes(t.wine.itemId))).toBe(true);
+    const after = (await getSession(app, t.sessionId, g)) as Session & {
+      pinnedBillVersion: number;
+    };
+    expect(after.pinnedBillVersion).toBe((before as typeof after).pinnedBillVersion);
+    const pinned = await app.request(
+      `/v1/bills/${t.bill.billId}?version=${after.pinnedBillVersion}`,
+      { headers: makeAuth(g) },
+    );
+    const items = ((await pinned.json()) as { items: Item[] }).items;
+    expect(items.find((i) => i.itemId === t.pizza.itemId)!.unitPricePence).toBe(1450);
   });
-  // Claims are a read-check-write with no condition on the write, so two
-  // simultaneous claims both pass the check.
-  it.fails(
-    'two guests grabbing the last unit at once: one gets it, the item is never over-claimed',
-    async () => {
-      const app = buildApp();
-      const t = await claimingTable(app, 2);
-      const [g0, g1] = t.guests as [string, string];
-      const results = await Promise.all([
-        claim(app, t.sessionId, g0, [t.pizza.itemId]),
-        claim(app, t.sessionId, g1, [t.pizza.itemId]),
-      ]);
-      const s = await getSession(app, t.sessionId, t.lead);
-      expect(unitsClaimed(s, t.pizza.itemId)).toBeLessThanOrEqual(1);
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-    },
-  );
 });
 
-describe('amending the bill under claims (current behaviour, pending a decision)', () => {
-  // See "Amending a bill mid-session" in claude/test-and-coverage-plan.md.
-  // These pin today's behaviour so a change to it is deliberate.
+describe('amending the bill under claims', () => {
+  // Decided 1 Nov: no freeze on lines a guest has paid for. The lead can
+  // still remove or re-price them; only orphaning claims is refused.
 
   it('lowering a quantity below the units claimed is refused', async () => {
     const app = buildApp();
@@ -236,7 +248,7 @@ describe('amending the bill under claims (current behaviour, pending a decision)
     );
   });
 
-  it("removing a line a paid guest claimed is accepted today, and drops the guest's claim", async () => {
+  it("removing a line a paid guest claimed is allowed and drops the guest's claim", async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     const g = t.guests[0]!;
@@ -256,7 +268,7 @@ describe('amending the bill under claims (current behaviour, pending a decision)
     expect(guest.payment.status).toBe('succeeded');
   });
 
-  it('re-pricing a line a paid guest claimed is accepted today', async () => {
+  it('re-pricing a line a paid guest claimed is allowed', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     const g = t.guests[0]!;
@@ -270,6 +282,35 @@ describe('amending the bill under claims (current behaviour, pending a decision)
       amendBody([{ ...t.pizza, unitPricePence: 9999 }, t.ipa, t.tiramisu, t.wine]),
     );
     expect(amend.status).toBe(200);
+  });
+
+  it('removing a split line removes the split too', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const shared = await post(app, `/v1/sessions/${t.sessionId}/shares`, t.guests[0]!, {
+      itemId: t.wine.itemId,
+      ways: 2,
+    });
+    expect(shared.status).toBe(200);
+
+    const amend = await post(
+      app,
+      `/v1/bills/${t.bill.billId}/amend`,
+      t.lead,
+      amendBody([t.pizza, t.ipa, t.tiramisu]),
+    );
+    expect(amend.status).toBe(200);
+
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(s.shares?.find((x) => x.itemId === t.wine.itemId)).toBeUndefined();
+    expect(s.participants.every((p) => !p.sharedItemIds.includes(t.wine.itemId))).toBe(true);
+    const row = await ddb.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: `SESS#${t.sessionId}`, sk: `SHARE#${t.wine.itemId}` },
+      }),
+    );
+    expect(row.Item).toBeUndefined();
   });
 });
 
@@ -317,6 +358,33 @@ describe('storage invariants', () => {
 });
 
 describe('races', () => {
+  it('two guests grabbing the last unit at once: one gets it, the other is told it has gone', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const [g0, g1] = t.guests as [string, string];
+    const results = await Promise.all([
+      claim(app, t.sessionId, g0, [t.pizza.itemId]),
+      claim(app, t.sessionId, g1, [t.pizza.itemId]),
+    ]);
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(unitsClaimed(s, t.pizza.itemId)).toBe(1);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+  });
+
+  it('a claim racing a split of the same item: never both', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const [g0, g1] = t.guests as [string, string];
+    await Promise.all([
+      claim(app, t.sessionId, g0, [t.wine.itemId]),
+      post(app, `/v1/sessions/${t.sessionId}/shares`, g1, { itemId: t.wine.itemId, ways: 2 }),
+    ]);
+    const s = await getSession(app, t.sessionId, t.lead);
+    const claimed = unitsClaimed(s, t.wine.itemId) > 0;
+    const split = (s.shares ?? []).some((x) => x.itemId === t.wine.itemId && x.userIds.length > 0);
+    expect(claimed && split).toBe(false);
+  });
+
   it('six guests grabbing one pint each of six: all get one, never more than six', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 6);

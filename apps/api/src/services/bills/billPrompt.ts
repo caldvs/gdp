@@ -13,9 +13,10 @@ RULES:
 - "category": "food" for edible plates, "drink" for beverages (alcoholic or not), "other" for cover charges, deposits, fees.
 - "course" (food items only; omit for drinks and other): "starter" for starters, small plates, antipasti and nibbles like olives or bread; "main" for main dishes, pizzas, pastas, burgers and grills; "side" for sides like chips, fries, salads served alongside, vegetables or extra sauces; "dessert" for desserts, ice cream and cheese boards. Use section headings printed on the bill when present; otherwise judge from the dish name and price. If genuinely unsure, omit it.
 - DO NOT include service charge or tax in items. They are separate top-level fields.
-- DO NOT invent items. If the bill is unreadable, return items: [] and explain in venue.name.
+- DO NOT invent items.
 - Kitchen notes ("rare", "no onions", "table 4") are NOT items.
-- "venue": the business's trading name and its full address exactly as printed on the bill (street, town, postcode), joined with ", ". Take them from the header or footer, not from card-machine or payment-processor lines. Omit any part that isn't printed; never guess or complete an address from memory.
+- "venue.name" is the restaurant, café or bar's trading name. Look for it in the header or logo text at the top, the "Thank you for visiting …" line, or the business name next to the VAT number at the bottom. Copy it as printed (fix only obvious OCR case, e.g. "MAIORA" → "Maiora"). Never put anything else in venue.name; omit it if no name is printed.
+- "venue.address": the full address exactly as printed on the bill (street, town, postcode), joined with ", ". Take the name and address from the header or footer, not from card-machine or payment-processor lines. Omit any part that isn't printed; never guess or complete an address from memory.
 
 Return ONLY valid JSON matching this schema, no preamble:
 {

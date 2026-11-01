@@ -91,6 +91,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/email/test-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to a test account without a code (local and dev only)
+         * @description For trying the app as several people at once. Only `@test.invalid`
+         *     addresses (reserved, so never a real person's), and only where the
+         *     server enables it: local and dev, never prod (404 there). A known
+         *     address gets its existing account; a new one gets a new account.
+         */
+        post: operations["testAccountSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -192,10 +215,55 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Gemini 2.5 Flash for v0), validates the parser output with zod, persists `Bill` v1, and indexes
-         *     the image hash. Idempotent via `Idempotency-Key`.
+         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
+         *     Idempotent via `Idempotency-Key`.
          */
         post: operations["parseBill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start reading an uploaded image in the background
+         * @description Same read as `POST /v1/bills/parse`, but it runs in the background (with 45s rather than 22s)
+         *     and this returns at once. Poll `GET /v1/bills/reads/{readId}` until it's `done` (open `billId`)
+         *     or `failed` (the same error the synchronous parse would have returned). Idempotent via
+         *     `Idempotency-Key`.
+         */
+        post: operations["startBillRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/reads/{readId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How a background read is going
+         * @description Only the user who started the read can see it. A read still `reading` after 90s is reported as
+         *     `failed` with `PARSE_TIMEOUT`. Reads are kept for a day.
+         */
+        get: operations["getBillRead"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -838,7 +906,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -948,7 +1016,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example gemini-2.5-flash */
+                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;
@@ -1046,7 +1114,7 @@ export interface components {
              * @description Denormalised from the pinned bill at session-create time so the
              *     frontend can render a venue strapline without a second round-trip.
              *     Optional — predates this field on old sessions, and not every bill
-             *     has a venue Gemini could extract.
+             *     has a venue the reader could extract.
              */
             venue?: components["schemas"]["Venue"];
             /**
@@ -1195,6 +1263,25 @@ export interface components {
         ParseRequest: {
             /** Format: uuid */
             uploadId: string;
+        };
+        BillRead: {
+            /** Format: uuid */
+            readId: string;
+            /** @enum {string} */
+            status: "reading" | "done" | "failed";
+            /**
+             * Format: uuid
+             * @description Set when `done`
+             */
+            billId?: string;
+            /** @description Set when `failed`. `code` is one of the API's error codes. */
+            error?: {
+                code: string;
+                message: string;
+                details?: {
+                    [key: string]: unknown;
+                };
+            };
         };
         AmendBillRequest: {
             items: {
@@ -1485,6 +1572,52 @@ export interface operations {
             };
         };
     };
+    testAccountSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. Same shape as `verifyEmailOtp`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Test accounts are off on this server. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getCurrentUser: {
         parameters: {
             query?: never;
@@ -1639,6 +1772,77 @@ export interface operations {
             429: components["responses"]["RateLimited"];
             /** @description Upstream parser provider error */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startBillRead: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Reading has started (or, if it couldn't be started, has already failed) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["IdempotencyConflict"];
+        };
+    };
+    getBillRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                readId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No such read for this user */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

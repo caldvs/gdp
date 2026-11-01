@@ -34,6 +34,19 @@ export const DEV_SIGNIN_ENABLED =
   /^https:\/\/[a-z0-9-]+\.ngrok(-free)?\.app/i.test(CONFIGURED_API_BASE_URL) ||
   process.env.NEXT_PUBLIC_DEV_SIGNIN === '1';
 
+/** Which environment this build is for (see packages/core/src/lib/buildEnv.ts). */
+export const WEB_APP_ENV = process.env.NEXT_PUBLIC_APP_ENV || 'local';
+
+/**
+ * The test bar (sign in as test accounts, one tab at a time). On for dev
+ * builds, and locally when talking to a local API. Never in prod, and off
+ * in CI's e2e build (local, no API URL configured). NEXT_PUBLIC_TEST_TOOLS=0
+ * turns it off.
+ */
+export const TEST_TOOLS_ENABLED =
+  process.env.NEXT_PUBLIC_TEST_TOOLS !== '0' &&
+  (WEB_APP_ENV === 'dev' || (WEB_APP_ENV === 'local' && DEV_SIGNIN_ENABLED));
+
 /** Set in sessionStorage on sign-out so local dev doesn't auto sign straight back in. */
 export const DEV_SIGNED_OUT_KEY = 'gdp.dev.signedOut';
 

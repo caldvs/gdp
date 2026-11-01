@@ -40,7 +40,7 @@ export const users = {
 export type Fault =
   | { kind: 'session-get-500'; times: number }
   | { kind: 'initiate-500'; times: number }
-  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE'; message: string; details?: Record<string, unknown> };
+  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT'; message: string; details?: Record<string, unknown> };
 
 export class FakeApi {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';
@@ -51,6 +51,11 @@ export class FakeApi {
   /** Who asked to be emailed a report, in order. */
   reportsTo: string[] = [];
   faults: Fault[] = [];
+  /** How many polls a background read stays `reading` before it finishes. */
+  readPolls = 0;
+  /** Set to hold every read at `reading` until it's cleared. */
+  holdReads = false;
+  private reads = new Map<string, { polls: number; error?: { code: string; message: string; details?: Record<string, unknown> } }>();
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in through the OTP flow (and so pass /v1/me). */
@@ -74,7 +79,7 @@ export class FakeApi {
     const subtotalPence = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     return {
       billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
-      parsedFrom: { imageHash: 'a'.repeat(64), parser: 'gemini', parserVersion: 'v2', parsedAt: '2026-10-31T12:00:00.000Z' },
+      parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
       venue: { name: 'Gennaro', address: '12 King Street, Manchester' }, createdAt: '2026-10-31T12:00:00.000Z',
     };
   }
@@ -153,9 +158,24 @@ export class FakeApi {
     // ---- bills
     if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://mockapi.test/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
+    if (path === '/v1/bills/reads' && method === 'POST') {
+      const f = this.takeFault('parse');
+      const readId = `00000000-0000-4000-8000-${String(700 + ++this.seq).padStart(12, '0')}`;
+      this.reads.set(readId, { polls: 0, ...(f ? { error: { code: f.code, message: f.message, ...(f.details ? { details: f.details } : {}) } } : {}) });
+      return json({ readId, status: 'reading' }, 202);
+    }
+    if (path.startsWith('/v1/bills/reads/') && method === 'GET') {
+      const readId = path.slice('/v1/bills/reads/'.length);
+      const r = this.reads.get(readId);
+      if (!r) return err('NOT_FOUND', 'Read not found', 404);
+      r.polls += 1;
+      if (this.holdReads || r.polls <= this.readPolls) return json({ readId, status: 'reading' });
+      if (r.error) return json({ readId, status: 'failed', error: r.error });
+      return json({ readId, status: 'done', billId: BID });
+    }
     if (path === '/v1/bills/parse') {
       const f = this.takeFault('parse');
-      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : 422, f.details);
+      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : f.code === 'PARSE_TIMEOUT' ? 504 : 422, f.details);
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);

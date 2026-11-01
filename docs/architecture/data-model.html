@@ -107,11 +107,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>9</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>8</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 960" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 1150" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -224,7 +224,7 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="428" y="430">  quantity, category, course }</text>
 <text class="t-attr" x="428" y="448">subtotalPence, taxPence,</text>
 <text class="t-attr" x="428" y="466">  serviceChargePence, totalPence</text>
-<text class="t-attr" x="428" y="484">venue { placeId, name, address, lat, lng }</text>
+<text class="t-attr" x="428" y="484">venue { name, address, placeId, lat, lng }</text>
 <text class="t-attr" x="428" y="502">parsedFrom { imageHash, parser,</text>
 <text class="t-attr" x="428" y="520">  parserVersion, parsedAt, uploadId }</text>
 <rect class="node" x="410" y="582" width="320" height="142" rx="10"/>
@@ -239,17 +239,30 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="428" y1="670" x2="712" y2="670"/>
 <text class="t-attr" x="428" y="688">Stripe checkout state, amount</text>
 <text class="t-attr" x="428" y="706">kept as a tax record</text>
-<rect class="node" x="410" y="768" width="320" height="124" rx="10"/>
-<rect class="band band-bill" x="410" y="768" width="6" height="124" rx="3"/>
-<text class="t-title" x="428" y="795">Venue cache</text>
-<rect class="chip-ttl" x="659.8" y="781" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="687.9" y="795" text-anchor="middle">90 days</text>
+<rect class="node" x="410" y="768" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="768" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="795">Venue lookup</text>
+<rect class="chip-none" x="666.4" y="781" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="795" text-anchor="middle">No TTL</text>
 <text class="t-keylab" x="428" y="820">pk</text>
 <text class="t-key" x="484" y="820">VENUEQ#{name+address key}</text>
 <text class="t-keylab" x="428" y="842">sk</text>
 <text class="t-key" x="484" y="842">same as pk</text>
 <line class="rule" x1="428" y1="856" x2="712" y2="856"/>
-<text class="t-attr" x="428" y="874">resolved Google Places venue</text>
+<text class="t-attr" x="428" y="874">Amazon Location answer, or no match</text>
+<text class="t-attr" x="428" y="892">source = amazon-location</text>
+<rect class="node" x="410" y="954" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="954" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="981">Bill read</text>
+<rect class="chip-ttl" x="673.0" y="967" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="694.5" y="981" text-anchor="middle">1 day</text>
+<text class="t-keylab" x="428" y="1006">pk</text>
+<text class="t-key" x="484" y="1006">READ#{readId}</text>
+<text class="t-keylab" x="428" y="1028">sk</text>
+<text class="t-key" x="484" y="1028">READ</text>
+<line class="rule" x1="428" y1="1042" x2="712" y2="1042"/>
+<text class="t-attr" x="428" y="1060">userId, uploadId, status reading|done|failed</text>
+<text class="t-attr" x="428" y="1078">billId when done, error when failed</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>
@@ -358,6 +371,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>OTP#email:{e}</code></td><td class="op">Get</td></tr>
             <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
+            <tr><td>Background read</td><td><code>READ#{id}</code></td><td class="op">Get</td></tr>
             <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
             <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
             <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
@@ -389,9 +403,9 @@ ul.plain strong { color: var(--ink); }
 
       <h2>Lifetimes</h2>
       <ul class="plain">
-        <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees.</li>
+        <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees, venue lookups.</li>
         <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks.</li>
-        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, venue cache 90 days.</li>
+        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, bill reads 1 day.</li>
       </ul>
     </section>
   </div>

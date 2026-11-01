@@ -1,5 +1,3 @@
-/* eslint-disable no-console -- CLI script, console is the whole point */
-
 /**
  * TrueLayer sandbox smoke. Creates one real sandbox payment and prints the
  * hosted-payment-page URL so you can click through `mock_payments_gb_redirect`.

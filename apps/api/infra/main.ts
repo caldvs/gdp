@@ -182,6 +182,11 @@ class GdpBackendStack extends cdk.Stack {
       (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
       'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
 
+    const apiLogs = new logs.LogGroup(this, 'ApiHandlerLogs', {
+      retention: envName === 'prod' ? logs.RetentionDays.SIX_MONTHS : logs.RetentionDays.ONE_MONTH,
+      removalPolicy,
+    });
+
     const fn = new nodejs.NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(API_DIR, 'src/lambda.ts'),
@@ -254,11 +259,7 @@ class GdpBackendStack extends cdk.Stack {
           ],
         },
       },
-      logGroup: new logs.LogGroup(this, 'ApiHandlerLogs', {
-        retention:
-          envName === 'prod' ? logs.RetentionDays.SIX_MONTHS : logs.RetentionDays.ONE_MONTH,
-        removalPolicy,
-      }),
+      logGroup: apiLogs,
     });
 
     table.grantReadWriteData(fn);
@@ -506,6 +507,70 @@ class GdpBackendStack extends cdk.Stack {
           }),
         ],
       }),
+    );
+
+    // ---------------- Dashboard: logs ----------------
+    // Logs Insights queries over the API's JSON logs (pino: level, msg,
+    // event, path, status, latencyMs, requestId). Each panel shows the
+    // dashboard's time range.
+
+    const logsWidget = (title: string, width: number, height: number, lines: string[]) =>
+      new cw.LogQueryWidget({
+        title,
+        width,
+        height,
+        logGroupNames: [apiLogs.logGroupName],
+        view: cw.LogQueryVisualizationType.TABLE,
+        queryLines: lines,
+      });
+
+    dashboard.addWidgets(
+      logsWidget('Errors and warnings', 24, 8, [
+        'fields @timestamp, level, msg, method, path, status, err.message, requestId',
+        "filter level in ['error', 'fatal', 'warn']",
+        'sort @timestamp desc',
+        'limit 100',
+      ]),
+    );
+
+    dashboard.addWidgets(
+      logsWidget('Recent requests', 12, 8, [
+        'fields @timestamp, method, path, status, latencyMs, requestId',
+        "filter msg = 'request'",
+        'sort @timestamp desc',
+        'limit 100',
+      ]),
+      logsWidget('Requests by route and status', 12, 8, [
+        "filter msg = 'request'",
+        'stats count(*) as requests, avg(latencyMs) as avgMs, max(latencyMs) as maxMs by method, path, status',
+        'sort requests desc',
+        'limit 50',
+      ]),
+    );
+
+    dashboard.addWidgets(
+      logsWidget('Bill reading (scan, Bedrock, Gemini)', 12, 8, [
+        'fields @timestamp, level, event, msg, path, status, latencyMs, err.message, requestId',
+        'filter event like /^bill\\./ or path like /bills\\/(parse|uploads)/',
+        'sort @timestamp desc',
+        'limit 100',
+      ]),
+      logsWidget('Emails, sign-in and payments', 12, 8, [
+        'fields @timestamp, level, event, msg, path, status, requestId',
+        'filter event like /^(email|report|otp|auth)\\./ or path like /webhooks|billing|payments/',
+        'sort @timestamp desc',
+        'limit 100',
+      ]),
+    );
+
+    dashboard.addWidgets(
+      logsWidget('Crashes and timeouts (outside the app logger)', 24, 6, [
+        'fields @timestamp, @message',
+        'filter ispresent(level) = 0',
+        'filter @message like /Task timed out|Runtime\\.|Error|ERROR|Unhandled/',
+        'sort @timestamp desc',
+        'limit 50',
+      ]),
     );
 
     new cdk.CfnOutput(this, 'ApiUrlOutput', { value: httpApi.apiEndpoint });

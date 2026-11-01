@@ -104,7 +104,7 @@ test('tapping a bank detail copies the raw value', async ({ browser, browserName
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'Copy sort code' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('040668');
-  await sam.getByRole('button', { name: 'Copy account number' }).click();
+  await sam.getByRole('button', { name: 'Copy Account no.' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('00079660');
   await sam.getByRole('button', { name: 'Copy reference' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('gdp-0193ab12');

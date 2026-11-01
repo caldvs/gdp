@@ -1,6 +1,6 @@
 # Decisions
 
-What's been decided and still holds. Change a decision here in the same PR as the code that changes it. Don't undo one without asking Callum.
+What's been decided and still holds. Change a decision here in the same commit as the code that changes it. Don't undo one without asking Callum.
 
 Code comments cite the two numbered decisions as ADR-0002 and ADR-0006.
 
@@ -52,6 +52,8 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Bill reports.** Closing a bill emails every diner what they had and paid; the lead also gets what each diner paid for. Emails should come from the site's own domain once there is one.
 
 ## Technical
+
+- **No pull requests** (decided 1 Nov 2026). Work is committed and pushed straight to `main` after running the checks locally (`CLAUDE.md`, *Pushing to main*). A red `gate` or failed deploy on main is fixed or reverted at once. The repo is public, so Actions minutes are free.
 
 - **Money is integer pence, GBP only.**
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).

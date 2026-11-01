@@ -18,8 +18,9 @@ const words = (s: string) =>
   );
 
 /**
- * The item a discount belongs to: the one it names, else the only item that
- * shares a word with the discount's name ("Coffee & Cannoli LRG" → "LGR
+ * The item a discount belongs to: the one it names exactly, else the only item
+ * sharing a word with the name it gives for the item, else the only item
+ * sharing a word with the discount's own name ("Coffee & Cannoli LRG" → "LGR
  * Cannoli"). -1 when there's no single match.
  */
 function targetOf(lines: PricedLine[], d: Discount): number {
@@ -27,15 +28,26 @@ function targetOf(lines: PricedLine[], d: Discount): number {
     const exact = lines.findIndex((l) => norm(l.name) === norm(d.appliesTo!));
     if (exact >= 0) return exact;
   }
-  const key = words(`${d.appliesTo ?? ''} ${d.name}`);
-  const hits = lines.flatMap((l, i) => ([...words(l.name)].some((w) => key.has(w)) ? [i] : []));
-  return hits.length === 1 ? hits[0]! : -1;
+  for (const text of [d.appliesTo, d.name]) {
+    if (!text) continue;
+    const key = words(text);
+    const hits = new Set(
+      lines.flatMap((l) => ([...words(l.name)].some((w) => key.has(w)) ? [norm(l.name)] : [])),
+    );
+    if (hits.size === 1) {
+      const [name] = hits;
+      return lines.findIndex((l) => norm(l.name) === name);
+    }
+  }
+  return -1;
 }
 
-/** Takes `cut` pence off a line, keeping whole pence per unit (may split it in two). */
-function reduceLine<T extends PricedLine>(line: T, cut: number): T[] {
-  if (cut <= 0) return [line];
-  const total = Math.max(0, line.unitPricePence * line.quantity - cut);
+/**
+ * Prices a line from what it costs in all (`total` pence over `line.quantity`
+ * units), keeping whole pence per unit: a total that doesn't divide evenly
+ * becomes two lines, the first carrying the extra pennies.
+ */
+export function splitTotal<T extends PricedLine>(line: T, total: number): T[] {
   const base = Math.floor(total / line.quantity);
   const extra = total - base * line.quantity; // units that carry one more penny
   if (extra === 0) return [{ ...line, unitPricePence: base }];
@@ -43,6 +55,12 @@ function reduceLine<T extends PricedLine>(line: T, cut: number): T[] {
     { ...line, unitPricePence: base + 1, quantity: extra },
     { ...line, unitPricePence: base, quantity: line.quantity - extra },
   ];
+}
+
+/** Takes `cut` pence off a line, keeping whole pence per unit (may split it in two). */
+function reduceLine<T extends PricedLine>(line: T, cut: number): T[] {
+  if (cut <= 0) return [line];
+  return splitTotal(line, Math.max(0, line.unitPricePence * line.quantity - cut));
 }
 
 /** Splits `amount` across lines by line total (largest remainder), never more than a line is worth. */

@@ -26,6 +26,18 @@ describe('applyDiscounts', () => {
     expect(out).toEqual([line('Espresso', 325), line('LGR Cannoli', 300), line('Flat White', 375)]);
   });
 
+  it("falls back to the discount's own name when the item it names is ambiguous", () => {
+    const out = applyDiscounts(
+      [line('Espresso Martini', 1300, 5), line('Espresso', 325), line('LGR Cannoli', 350, 2)],
+      [{ name: 'Coffee & Cannoli LRG', amountPence: 400, appliesTo: 'Espresso coffee' }],
+    );
+    expect(out).toEqual([
+      line('Espresso Martini', 1300, 5),
+      line('Espresso', 325),
+      line('LGR Cannoli', 150, 2),
+    ]);
+  });
+
   it('shares the discount when more than one item shares a word with it', () => {
     const out = applyDiscounts(
       [line('Pork Cutlet', 1000), line('Dough Pet Pork', 1000)],

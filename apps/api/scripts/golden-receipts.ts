@@ -28,6 +28,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createBillParser } from '../src/services/bills/bedrockParser.js';
+import { readByOf } from '../src/services/bills/parser.js';
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/receipts');
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -100,8 +101,7 @@ async function main(): Promise<number> {
         `golden-${name}`,
       );
       const problems = checkReceipt(expected, read);
-      // Which model answered (a fallback chain says so on the result).
-      const by = (read as { readBy?: { model: string } }).readBy?.model ?? parser.model;
+      const by = readByOf(parser, read).model;
       const ms = Date.now() - started;
       if (problems.length === 0) {
         console.log(

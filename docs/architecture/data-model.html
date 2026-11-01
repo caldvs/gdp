@@ -107,11 +107,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>13</b> item types</span><span><b>2</b> GSIs</span><span><b>7</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>9</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 880" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 960" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -136,8 +136,8 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M804,380 L732,380" marker-end="url(#ah)"/>
 <text x="760.0" y="372" text-anchor="middle">billId</text>
 </g>
-<g class="edge "><path d="M950.0,684 L950.0,642" marker-end="url(#ah)"/>
-<text x="960.0" y="667" text-anchor="start">sessionId</text>
+<g class="edge "><path d="M950.0,764 L950.0,722" marker-end="url(#ah)"/>
+<text x="960.0" y="747" text-anchor="start">sessionId</text>
 </g>
 <g class="edge dashed"><path d="M804,540 L760,540 L760,560 L380,560 L380,355.0 L352,355.0" marker-end="url(#ah)"/>
 <text x="610.0" y="553" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
@@ -224,7 +224,7 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="428" y="430">  quantity, category, course }</text>
 <text class="t-attr" x="428" y="448">subtotalPence, taxPence,</text>
 <text class="t-attr" x="428" y="466">  serviceChargePence, totalPence</text>
-<text class="t-attr" x="428" y="484">venue { name, address }</text>
+<text class="t-attr" x="428" y="484">venue { placeId, name, address, lat, lng }</text>
 <text class="t-attr" x="428" y="502">parsedFrom { imageHash, parser,</text>
 <text class="t-attr" x="428" y="520">  parserVersion, parsedAt, uploadId }</text>
 <rect class="node" x="410" y="582" width="320" height="142" rx="10"/>
@@ -239,6 +239,17 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="428" y1="670" x2="712" y2="670"/>
 <text class="t-attr" x="428" y="688">Stripe checkout state, amount</text>
 <text class="t-attr" x="428" y="706">kept as a tax record</text>
+<rect class="node" x="410" y="768" width="320" height="124" rx="10"/>
+<rect class="band band-bill" x="410" y="768" width="6" height="124" rx="3"/>
+<text class="t-title" x="428" y="795">Venue cache</text>
+<rect class="chip-ttl" x="659.8" y="781" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="687.9" y="795" text-anchor="middle">90 days</text>
+<text class="t-keylab" x="428" y="820">pk</text>
+<text class="t-key" x="484" y="820">VENUEQ#{name+address key}</text>
+<text class="t-keylab" x="428" y="842">sk</text>
+<text class="t-key" x="484" y="842">same as pk</text>
+<line class="rule" x1="428" y1="856" x2="712" y2="856"/>
+<text class="t-attr" x="428" y="874">resolved Google Places venue</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>
@@ -250,9 +261,9 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="864" y="154">same as pk</text>
 <line class="rule" x1="808" y1="168" x2="1092" y2="168"/>
 <text class="t-attr" x="808" y="186">sessionId, lockedAt</text>
-<text class="t-attr" x="808" y="204">create-if-absent; deleted on abandon</text>
-<rect class="node key" x="790" y="266" width="320" height="374" rx="10"/>
-<rect class="band band-sess" x="790" y="266" width="6" height="374" rx="3"/>
+<text class="t-attr" x="808" y="204">create-if-absent; deleted on close or abandon</text>
+<rect class="node key" x="790" y="266" width="320" height="454" rx="10"/>
+<rect class="band band-sess" x="790" y="266" width="6" height="454" rx="3"/>
 <text class="t-title" x="808" y="293">Session</text>
 <rect class="chip-ttl" x="1039.8" y="279" width="56.199999999999996" height="20" rx="10"/>
 <text class="t-chip" x="1067.9" y="293" text-anchor="middle">30 days</text>
@@ -277,18 +288,23 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="583">SHARE#{itemId}</text>
 <text class="t-attr" x="816" y="602">ways, version (optimistic lock)</text>
 <text class="t-attr" x="816" y="620">activity[] { kind, byUserId, at }</text>
-<rect class="node" x="790" y="684" width="320" height="142" rx="10"/>
-<rect class="band band-sess" x="790" y="684" width="6" height="142" rx="3"/>
-<text class="t-title" x="808" y="711">Join code</text>
-<rect class="chip-ttl" x="1039.8" y="697" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="1067.9" y="711" text-anchor="middle">30 days</text>
-<text class="t-keylab" x="808" y="736">pk</text>
-<text class="t-key" x="864" y="736">JCODE#{code}</text>
-<text class="t-keylab" x="808" y="758">sk</text>
-<text class="t-key" x="864" y="758">same as pk</text>
-<line class="rule" x1="808" y1="772" x2="1092" y2="772"/>
-<text class="t-attr" x="808" y="790">sessionId</text>
-<text class="t-attr" x="808" y="808">create-if-absent (collision check)</text>
+<rect class="inner" x="804" y="644" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="663">sk</text>
+<text class="t-key" x="842" y="663">CLAIMS</text>
+<text class="t-attr" x="816" y="682">version: bumped by claims, splits, amends</text>
+<text class="t-attr" x="816" y="700">claim and split writes conditional on it</text>
+<rect class="node" x="790" y="764" width="320" height="142" rx="10"/>
+<rect class="band band-sess" x="790" y="764" width="6" height="142" rx="3"/>
+<text class="t-title" x="808" y="791">Join code</text>
+<rect class="chip-ttl" x="1039.8" y="777" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="791" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="816">pk</text>
+<text class="t-key" x="864" y="816">JCODE#{code}</text>
+<text class="t-keylab" x="808" y="838">sk</text>
+<text class="t-key" x="864" y="838">same as pk</text>
+<line class="rule" x1="808" y1="852" x2="1092" y2="852"/>
+<text class="t-attr" x="808" y="870">sessionId</text>
+<text class="t-attr" x="808" y="888">create-if-absent (collision check)</text>
 <rect class="node gsi" x="1170" y="80" width="320" height="250" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>
@@ -344,13 +360,14 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
             <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
             <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
-            <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE#)</td><td class="op">Query</td></tr>
+            <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
             <tr><td>Payment from webhook</td><td>GSI2 <code>GSI2PK = PROVPAY#{providerId}</code></td><td class="op">Query</td></tr>
             <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
+            <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
             <tr><td>Replay a request</td><td><code>IDMP#{user}#{endpoint}</code> / <code>KEY#{key}</code></td><td class="op">Get</td></tr>
           </tbody>
         </table>
@@ -362,19 +379,19 @@ ul.plain strong { color: var(--ink); }
       <ul class="plain">
         <li><strong>New bill version:</strong> put <code>V#nnn</code> and <code>LATEST</code>, and the <code>IMGHASH#</code> row on first parse.</li>
         <li><strong>Create session:</strong> META + every <code>PART#</code> row, plus <code>JCODE#</code> and <code>BILLLOCK#</code>, both create-if-absent.</li>
-        <li><strong>Amend mid-session:</strong> new bill version + <code>LATEST</code> + reconciled META and participant rows.</li>
+        <li><strong>Claim:</strong> the diner's <code>PART#</code> row, conditional on <code>CLAIMS</code>' <code>version</code>; on a clash the API re-reads and re-checks.</li>
+        <li><strong>Amend mid-session:</strong> new bill version + <code>LATEST</code> + reconciled META and participant rows, removed lines' <code>SHARE#</code> rows deleted, <code>CLAIMS</code> bumped.</li>
         <li><strong>Lock claims:</strong> META to <code>claiming</code> and the creator's <code>PART#</code> row together.</li>
-        <li><strong>Split change:</strong> <code>SHARE#</code> row (guarded by <code>version</code>) and the diner's <code>PART#</code> row.</li>
+        <li><strong>Split change:</strong> <code>SHARE#</code> row (guarded by <code>version</code>), the diner's <code>PART#</code> row, and <code>CLAIMS</code> (guarded when joining or leaving).</li>
         <li><strong>Payment update:</strong> <code>PAY#</code> row and the payer's <code>PART#</code> row; mark-paid is conditional on <code>pending</code>.</li>
-        <li><strong>Abandon:</strong> deletes <code>BILLLOCK#</code>. Close does not.</li>
+        <li><strong>Close and abandon:</strong> delete <code>BILLLOCK#</code>. Guests keep reading a closed bill through their GSI1 sessions.</li>
       </ul>
 
       <h2>Lifetimes</h2>
       <ul class="plain">
         <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees.</li>
-        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#), join codes, bill locks.</li>
-        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h.</li>
-        <li class="note"><strong>Check:</strong> <code>sessionStore.create</code> writes META's <code>ttlAt</code> as an ISO string. DynamoDB TTL ignores non-numbers, so a session that never gets a later META write keeps its META row while its other rows expire.</li>
+        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks.</li>
+        <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, venue cache 90 days.</li>
       </ul>
     </section>
   </div>

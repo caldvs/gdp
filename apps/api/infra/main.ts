@@ -103,18 +103,16 @@ class GdpBackendStack extends cdk.Stack {
       `/gdp-${envName}/ses-from-email`,
     );
 
-    // Secrets — Secrets Manager. Values resolved at deploy time via friendly-
-    // name dynamic CloudFormation references and land as Lambda env vars.
-    // Trade-off: the values are visible in the Lambda console UI to anyone
-    // with read access to this account. Acceptable for dev; revisit for prod
-    // (switch to a runtime fetch via aws-sdk client-secrets-manager).
-    //
-    // Using cdk.SecretValue.secretsManager() rather than Secret.fromSecretNameV2,
-    // because the latter generates an ARN-form dynamic reference that CFN
-    // sometimes refuses to resolve; the friendly-name form is what AWS docs
-    // describe as canonical.
-    const geminiKey = cdk.SecretValue.secretsManager(`gdp-${envName}/gemini-api-key`);
-    const sessionJwtSecret = cdk.SecretValue.secretsManager(`gdp-${envName}/session-jwt-secret`);
+    // Secrets — Secrets Manager, read by the Lambda at cold start
+    // (src/config/runtimeSecrets.ts). The function's configuration holds only
+    // their names (SECRET_SOURCES), so no value is visible in the Lambda
+    // console or the CloudFormation template, and a rotated secret is picked
+    // up by the next cold start without a redeploy. A missing secret shows up
+    // in the post-deploy smoke test and dependency check, not at deploy time.
+    const secretSources: Record<string, string> = {
+      SESSION_JWT_SECRET: `gdp-${envName}/session-jwt-secret`,
+      GEMINI_API_KEY: `gdp-${envName}/gemini-api-key`,
+    };
     // Google Places key lives in SSM Parameter Store as a plain String.
     // SecureString would be tighter at rest but CFN's
     // `{{resolve:ssm-secure}}` reference is NOT supported in Lambda env
@@ -128,7 +126,7 @@ class GdpBackendStack extends cdk.Stack {
       `/gdp-${envName}/google-places-api-key`,
     );
     // TrueLayer (pay-by-bank) is off: PAYMENT_PROVIDER is `manual`. Its
-    // secrets are only referenced with TRUELAYER_ENABLED=true (a GitHub
+    // settings are only used with TRUELAYER_ENABLED=true (a GitHub
     // environment variable, or `-c truelayer=true` locally), so a new
     // environment doesn't need placeholder TrueLayer secrets to deploy.
     const trueLayerEnabled =
@@ -143,21 +141,18 @@ class GdpBackendStack extends cdk.Stack {
             this,
             `/gdp-${envName}/truelayer-signing-kid`,
           ),
-          TRUELAYER_CLIENT_SECRET: cdk.SecretValue.secretsManager(
-            `gdp-${envName}/truelayer-client-secret`,
-          ).unsafeUnwrap(),
-          TRUELAYER_WEBHOOK_SECRET: cdk.SecretValue.secretsManager(
-            `gdp-${envName}/truelayer-webhook-secret`,
-          ).unsafeUnwrap(),
-          TRUELAYER_SIGNING_PRIVATE_KEY_PEM: cdk.SecretValue.secretsManager(
-            `gdp-${envName}/truelayer-signing-private-key`,
-          ).unsafeUnwrap(),
           TRUELAYER_ENVIRONMENT: 'sandbox',
         }
       : {};
+    if (trueLayerEnabled) {
+      Object.assign(secretSources, {
+        TRUELAYER_CLIENT_SECRET: `gdp-${envName}/truelayer-client-secret`,
+        TRUELAYER_WEBHOOK_SECRET: `gdp-${envName}/truelayer-webhook-secret`,
+        TRUELAYER_SIGNING_PRIVATE_KEY_PEM: `gdp-${envName}/truelayer-signing-private-key`,
+      });
+    }
 
-    // Stripe (the lead's table fee) is off until its secrets exist:
-    // referencing a missing secret fails the deploy. Turn it on with
+    // Stripe (the lead's table fee) is off until its secrets exist. Turn it on with
     // STRIPE_ENABLED=true (a GitHub environment variable the deploy
     // workflow passes through, or `-c stripe=true` locally) once
     // gdp-<env>/stripe-secret-key and gdp-<env>/stripe-webhook-secret
@@ -167,16 +162,12 @@ class GdpBackendStack extends cdk.Stack {
       process.env.STRIPE_ENABLED === 'true' || this.node.tryGetContext('stripe') === 'true';
     const appBaseUrl: string | undefined =
       process.env.APP_BASE_URL || (this.node.tryGetContext('appBaseUrl') as string | undefined);
-    const stripeEnv: Record<string, string> = stripeEnabled
-      ? {
-          STRIPE_SECRET_KEY: cdk.SecretValue.secretsManager(
-            `gdp-${envName}/stripe-secret-key`,
-          ).unsafeUnwrap(),
-          STRIPE_WEBHOOK_SECRET: cdk.SecretValue.secretsManager(
-            `gdp-${envName}/stripe-webhook-secret`,
-          ).unsafeUnwrap(),
-        }
-      : {};
+    if (stripeEnabled) {
+      Object.assign(secretSources, {
+        STRIPE_SECRET_KEY: `gdp-${envName}/stripe-secret-key`,
+        STRIPE_WEBHOOK_SECRET: `gdp-${envName}/stripe-webhook-secret`,
+      });
+    }
 
     // The bill reader: Claude Haiku on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Gemini stays as the
@@ -214,9 +205,8 @@ class GdpBackendStack extends cdk.Stack {
         S3_BUCKET_BILLS: billsBucket.bucketName,
         LOG_LEVEL: envName === 'prod' ? 'info' : 'debug',
 
-        SESSION_JWT_SECRET: sessionJwtSecret.unsafeUnwrap(),
+        SECRET_SOURCES: JSON.stringify(secretSources),
 
-        GEMINI_API_KEY: geminiKey.unsafeUnwrap(),
         BEDROCK_MODEL_ID: bedrockModelId,
         GOOGLE_PLACES_API_KEY: googlePlacesKey,
         SES_FROM_EMAIL: sesFromEmail,
@@ -227,11 +217,6 @@ class GdpBackendStack extends cdk.Stack {
         // lead confirms receipt manually. Free of TrueLayer fees. Switch
         // to `truelayer` once TL Live commercial onboarding is in place.
         PAYMENT_PROVIDER: 'manual',
-        ...stripeEnv,
-        // Changes on every deploy, so CloudFormation updates the function and
-        // re-reads the secrets above; otherwise a rotated secret is only
-        // picked up when something else about the function changes.
-        DEPLOY_ID: process.env.GITHUB_RUN_ID ?? new Date().toISOString(),
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
       },
       bundling: {
@@ -264,6 +249,17 @@ class GdpBackendStack extends cdk.Stack {
     });
 
     table.grantReadWriteData(fn);
+
+    // Only this environment's secrets (names under gdp-<env>/; Secrets
+    // Manager adds a random suffix to each ARN). Read at cold start.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:gdp-${envName}/*`,
+        ],
+      }),
+    );
 
     // Bedrock: the inference profile and the models it routes to, in any EU
     // region the profile picks.

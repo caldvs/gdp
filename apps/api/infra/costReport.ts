@@ -10,8 +10,8 @@ import type { Construct } from 'constructs';
 import * as path from 'node:path';
 
 export interface CostReportStackProps extends cdk.StackProps {
-  /** Who gets the email. In the SES sandbox it must be a verified identity. */
-  to: string;
+  /** SSM parameter holding who gets the email. In the SES sandbox it must be a verified identity. */
+  toParameter: string;
   /** SSM parameter holding the verified address to send from. */
   fromParameter: string;
   apiDir: string;
@@ -42,7 +42,7 @@ export class CostReportStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       logGroup,
       environment: {
-        COST_REPORT_TO: props.to,
+        COST_REPORT_TO: ssm.StringParameter.valueForStringParameter(this, props.toParameter),
         COST_REPORT_FROM: ssm.StringParameter.valueForStringParameter(this, props.fromParameter),
       },
       bundling: {

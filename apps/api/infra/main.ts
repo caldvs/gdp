@@ -699,9 +699,10 @@ new GithubDeployStack(app, 'GdpGithubDeployProd', {
 });
 
 // Daily AWS cost email to Callum (the whole account: dev and prod share it).
+// Addresses live in SSM so they stay out of this public repo.
 new CostReportStack(app, 'GdpCostReport', {
   env: { region },
-  to: 'callumdavies155@gmail.com',
+  toParameter: '/gdp/cost-report-to',
   fromParameter: '/gdp-dev/ses-from-email',
   apiDir: API_DIR,
   repoRoot: REPO_ROOT,

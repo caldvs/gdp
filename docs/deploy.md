@@ -11,6 +11,32 @@ HTTPS matters for more than looks: the camera (`getUserMedia`) and the Web
 Share/Clipboard APIs only work in a secure context, so the app can't be tried
 on a phone over plain HTTP.
 
+## Environments
+
+Each environment pairs one of each, and nothing in one row may reach another.
+`APP_ENV` (API) and `NEXT_PUBLIC_APP_ENV` (web) say which row a build is in;
+the checks below fail a deploy or build that crosses rows.
+
+| Env   | Web                         | API                               | Stripe  | GitHub environment |
+| ----- | --------------------------- | --------------------------------- | ------- | ------------------ |
+| local | `next dev` :8081            | Hono :3000, DynamoDB Local, MinIO | Sandbox | —                  |
+| CI    | `next start` + `FakeApi`    | Docker integration tests          | —       | —                  |
+| dev   | Vercel Preview (`web-nqib`) | `GdpBackendDev`                   | Sandbox | `dev`              |
+| prod  | Vercel Production           | `GdpBackendProd` (not yet set up) | Live    | `prod` (not yet)   |
+
+Until prod exists, Vercel Production also runs as `dev` against the dev API.
+
+What enforces it:
+
+- **Web build** (`packages/core/src/lib/buildEnv.ts`, run by `next.config.ts`):
+  `NEXT_PUBLIC_APP_ENV` must be set on Vercel; dev and prod need an https
+  `NEXT_PUBLIC_API_BASE_URL`; the Stripe publishable key is `pk_test_` outside
+  prod and `pk_live_` in prod.
+- **API deploy** (dependency check, `src/ops/selfCheck.ts`): the Stripe secret
+  key is test-mode outside prod and live-mode in prod.
+- **Deploy role** (`infra/githubDeploy.ts`): trusts only jobs in its own GitHub
+  environment.
+
 ## API
 
 ### Deploy now, from your Mac
@@ -37,9 +63,15 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
    - `AWS_REGION` = `eu-west-2`
 3. Actions → **API Deploy** → Run workflow (`dev`) to check it.
 
-The role can only assume the CDK bootstrap roles (`cdk-*`), and only from
-workflow runs in this repo (`repo:caldvs/gdp:*`, or the same with owner and repo IDs, which is what GitHub now sends).
+The role can only assume the CDK bootstrap roles (`cdk-*`), and only from jobs
+in this repo's `dev` GitHub environment (`repo:caldvs/gdp:environment:dev`, or
+the same with owner and repo IDs, which is what GitHub now sends). Limit the
+`dev` environment to the `main` branch so only `main` can deploy.
 The API stack also lets it invoke the API function, for the dependency check below.
+
+After step 1, CI keeps the role stack up to date: the dev deploy job redeploys
+`GdpGithubDeploy` as its last step. If a change to its trust locks CI out, rerun
+step 1 from your Mac.
 
 ### Checks after every deploy
 
@@ -71,7 +103,12 @@ One-off, in the Vercel dashboard:
    build and install commands as default (Vercel installs from the repo root
    because of the npm workspaces).
 3. **Environment variables** (Production and Preview):
+   - `NEXT_PUBLIC_APP_ENV` = `dev` (Production becomes `prod` at cutover)
    - `NEXT_PUBLIC_API_BASE_URL` = the API's `ApiUrlOutput` (no trailing slash)
+   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` = `pk_test_…` (`pk_live_…` for prod)
+
+   The build fails if these don't match (see Environments above).
+
 4. Deploy. Every push to `main` then deploys production; every PR gets a
    preview URL.
 

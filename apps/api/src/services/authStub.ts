@@ -95,7 +95,7 @@ async function seedIfMissing(userId: string): Promise<void> {
  * a session immediately without filling out the bank-details form.
  *
  * Guards in src/local.ts refuse to start with this enabled when
- * NODE_ENV === 'production' or when the local DDB endpoint isn't set.
+ * APP_ENV isn't local, NODE_ENV is production, or the local DDB endpoint isn't set.
  */
 export const localStubVerifier: IdTokenVerifier = (token) => {
   if (!token.startsWith('dev:')) {

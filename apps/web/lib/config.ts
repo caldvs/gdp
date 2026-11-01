@@ -1,9 +1,14 @@
 // NEXT_PUBLIC_* values are inlined at build time — restart `npm run dev`
 // after changing them.
 
-/** API origin. Falls back to the deployed dev API (eu-west-2). */
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'https://8yh705358k.execute-api.eu-west-2.amazonaws.com';
+/**
+ * API origin as configured. Deployed builds must set it: next.config.ts
+ * fails the build otherwise (packages/core/src/lib/buildEnv.ts).
+ */
+const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+/** API origin. Unset only in local and CI builds, where it's the local API. */
+export const API_BASE_URL = CONFIGURED_API_BASE_URL || 'http://localhost:3000';
 
 /**
  * Public-facing URL of this web app, used in QR codes and share links so
@@ -19,13 +24,14 @@ export function publicBaseUrl(): string {
 
 /**
  * Dev sign-in shortcuts (dev:<userId> tokens) — only useful against a
- * local backend running with AUTH_BYPASS_LOCAL=true.
+ * local backend running with AUTH_BYPASS_LOCAL=true. Judged on the URL as
+ * configured, so the localhost default (CI's e2e build) doesn't turn them on.
  */
 export const DEV_SIGNIN_ENABLED =
-  /^http:\/\/(localhost|127\.0\.0\.1)/.test(API_BASE_URL) ||
-  /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(API_BASE_URL) ||
-  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.test(API_BASE_URL) ||
-  /^https:\/\/[a-z0-9-]+\.ngrok(-free)?\.app/i.test(API_BASE_URL) ||
+  /^http:\/\/(localhost|127\.0\.0\.1)/.test(CONFIGURED_API_BASE_URL) ||
+  /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(CONFIGURED_API_BASE_URL) ||
+  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com/i.test(CONFIGURED_API_BASE_URL) ||
+  /^https:\/\/[a-z0-9-]+\.ngrok(-free)?\.app/i.test(CONFIGURED_API_BASE_URL) ||
   process.env.NEXT_PUBLIC_DEV_SIGNIN === '1';
 
 /** Set in sessionStorage on sign-out so local dev doesn't auto sign straight back in. */

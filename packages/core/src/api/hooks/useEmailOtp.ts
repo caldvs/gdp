@@ -12,12 +12,25 @@ type User = components['schemas']['User'];
 //
 // Only 400 INVALID_INPUT (malformed email) is a real failure the UI
 // surfaces. Anything else (5xx, network) bubbles up as ApiError too.
+//
+// An exempt address (TABLE_FEE_EXEMPT_EMAILS on the API) gets a session
+// back instead of a code: it's stored here, and `token` in the result
+// tells the caller to skip the code step.
 export function useStartEmailOtp() {
-  return useMutation<{ ok: true }, ApiError, { email: string }>({
+  const qc = useQueryClient();
+  return useMutation<StartResponse, ApiError, { email: string }>({
     mutationFn: (body) =>
-      api<{ ok: true }>('/v1/auth/email/start', { method: 'POST', body }),
+      api<StartResponse>('/v1/auth/email/start', { method: 'POST', body }),
+    onSuccess: async ({ token, user }) => {
+      if (!token || !user) return;
+      await storeToken(token);
+      qc.setQueryData<User>(['me'], user);
+      await qc.invalidateQueries({ queryKey: ['me'] });
+    },
   });
 }
+
+type StartResponse = { ok: true; token?: string; user?: VerifyResponse['user'] };
 
 type VerifyResponse = {
   token: string;

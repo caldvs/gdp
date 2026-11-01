@@ -490,6 +490,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: The bill already has an open session (`SESSION_INVALID_STATE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/sessions/by-code:
     post:
@@ -948,6 +953,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InitiatePaymentResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
           description: Caller is not a participant in this session
@@ -1269,6 +1275,8 @@ components:
                 - PAYMENT_NOT_FOUND
                 - SESSION_INVALID_STATE
                 - CLAIMS_INCOMPLETE
+                - CLAIMS_EXCEED_QUANTITY
+                - PARTICIPANTS_NOT_READY
                 - CLAIM_SHARE_CONFLICT
                 - ITEM_NOT_SHAREABLE
                 - SHARE_WAYS_TOO_LOW

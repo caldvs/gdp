@@ -8,10 +8,10 @@ _Last updated 1 Nov 2026._
 
 - **The app** is the Option D web UI. The whole flow is built: scan → check the bill → bank details → table fee (when Stripe is configured) → QR → guests claim and split → pay the lead → lead closes → everyone's emailed a report. See the [README](README.md) and [decisions](docs/decisions.md).
 - **Bill reading** is Claude Haiku 4.5 on Bedrock, with Gemini as the fallback.
-- **The dev API deploys** from `main` through GitHub Actions (OIDC). The deploy role only trusts jobs in the `dev` GitHub environment, and the dev job redeploys the role stack itself. There's no staging; prod (`GdpBackendProd`) is defined but not set up. TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
+- **The dev API deploys** from `main` through GitHub Actions (OIDC). Dev and prod share one AWS account. Each has its own deploy role, trusted only by jobs in its GitHub environment; the dev job redeploys both role stacks. There's no staging; prod (`GdpBackendProd`) is defined but not deployed (setup steps in [docs/deploy.md](docs/deploy.md)). TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests and CI:** one workflow, `.github/workflows/ci.yml`, runs on every PR and push to main and ends in a single `gate` check. Unit, integration and the Playwright e2e suite (against `FakeApi`) all run in it. Visual baselines are CI's.
   - **Coverage gate:** API (unit + integration together) is at ~86% lines / 70% branches, core at ~39% / 52%. Floors are in each `vitest.config.ts` (API 85/68, core 39/50, 100% on the money files). A PR fails if lines or branches drop more than 1 point below main; main's numbers live on the `coverage-baseline` branch and every PR gets a coverage comment. `coverage-drop-ok` label for a deliberate drop.
-  - **Merging:** only with `scripts/merge-pr.sh <pr>`, which refuses unless `gate` passed on an up-to-date branch. GitHub can't enforce it (private repo, free plan).
+  - **Merging:** never merge a PR unless `gate` passed on its latest commit and the branch is up to date with main. GitHub can't enforce it (private repo, free plan), so it's a rule in `CLAUDE.md`.
   - Property tests (fast-check) pin the money maths: client and server agree on every split, a complete bill is charged to the penny.
   - Known bugs are written as `it.fails` in `apps/api/tests/integration/rules-and-races.test.ts`: fix one and its test starts failing, so change it to `it` in the same PR.
 - **Testing as several people:** local and dev builds show a test bar above the header. It signs in as alice/bob/charlie/diana or a new guest (`@test.invalid`, no code) and keeps the switch to that tab by default, so the lead and a guest can share a window. API side is `POST /v1/auth/email/test-sign-in`, on locally and on dev (`AUTH_TEST_ACCOUNTS`), off in prod (the dependency check fails if not). The sign-in page's old local-only "Dev accounts" buttons are gone; the local no-code sign-in for any email is unchanged.
@@ -19,23 +19,22 @@ _Last updated 1 Nov 2026._
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 
+## On branch `design/tinted-storybook` (not merged)
+
+- **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run *Update visual baselines* on the branch) before `gate` goes green.
+- **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
+
 ## Next up
 
-**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done (deploy role, `APP_ENV`, key-mode and web build checks, secrets read at cold start). Nothing more in code until a domain exists. Waiting on Callum: buy a domain (phase 3), then the prod AWS account and Stripe live (phase 5). Limit the GitHub `dev` environment to `main` (the session proxy can't).
+**Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done (deploy role, `APP_ENV`, key-mode and web build checks, secrets read at cold start), and prod's deploy role exists in the same account. Waiting on Callum: the GitHub `prod` environment and prod's SSM parameters and secrets (docs/deploy.md, _Setting up prod_), Stripe live activation, and a domain (phase 3). Limit the GitHub `dev` environment to `main` (the session proxy can't change environment settings).
 
-**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
-
-- `FallbackBillParser` reports the primary's `model` and `version` even when Gemini answered. Fix that first, or bills and the cache will credit Bedrock with Gemini reads.
-- Callum to decide: a global cache or one per user.
+**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills now record the model that actually read them (`parsedFrom.parser` is Gemini's model when the fallback answered), so cache keys can use it.
 
 ## Known problems
 
-- `close` doesn't release `BILLLOCK#` (only `abandon` does), so a closed bill can't be shared again. (`it.fails` test.)
-- Two guests claiming the last unit at the same moment can both get it: `setClaims` is read-check-write with no condition on the write. (`it.fails` test.)
-- Removing a split line from the bill leaves its split behind. (`it.fails` test.)
-- Amending the bill while guests are claiming can remove or re-price a line a guest has already paid for. Proposed rule, waiting on Callum: a guest's lines freeze once they've paid (see `claude/test-and-coverage-plan.md` in the Claude project).
 - The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
-- `sessionStore.create` writes META's `ttlAt` as an ISO string; DynamoDB TTL ignores it until a later META write.
+- Five accessibility findings are allow-listed in `apps/web/e2e/a11y.spec.ts` (contrast on lines someone else took, aria-labels that don't contain the visible text, a colour-only link on the landing page). New ones fail CI.
+- No golden receipts yet: add photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - The API still accepts claim changes after a guest has paid. (`it.fails` test.)
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.
@@ -49,7 +48,7 @@ _Last updated 1 Nov 2026._
 - Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
-- Table fee: free bill a month, guests repay it, refund if nobody joins, server-side gate. See [docs/table-fee.md](docs/table-fee.md).
+- Table fee: one free bill per lead (a single credit), then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
 
 ## Housekeeping
 

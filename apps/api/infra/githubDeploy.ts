@@ -40,6 +40,13 @@ export interface GithubDeployStackProps extends cdk.StackProps {
  * step prints what GitHub sent; if AssumeRoleWithWebIdentity is refused
  * after a change here, compare it with the trust policy.
  */
+/**
+ * The deploy role's name for an environment. Dev keeps the original name,
+ * because its ARN is already in the GitHub `dev` environment.
+ */
+export const deployRoleName = (environment: 'dev' | 'prod'): string =>
+  environment === 'dev' ? 'gdp-github-deploy' : `gdp-github-deploy-${environment}`;
+
 export class GithubDeployStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GithubDeployStackProps) {
     super(scope, id, props);
@@ -56,7 +63,7 @@ export class GithubDeployStack extends cdk.Stack {
         });
 
     const role = new iam.Role(this, 'DeployRole', {
-      roleName: 'gdp-github-deploy',
+      roleName: deployRoleName(props.environment),
       description: `GitHub Actions deploys for ${props.repo} (${props.environment})`,
       maxSessionDuration: cdk.Duration.hours(1),
       assumedBy: new iam.OpenIdConnectPrincipal(provider, {

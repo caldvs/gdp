@@ -186,10 +186,10 @@ export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: {
 
 /* ---------- Feedback ---------- */
 
-export function Notice({ title, children, tone = 'info' }: { title?: ReactNode; children?: ReactNode; tone?: 'info' | 'ok' | 'error' }) {
+export function Notice({ title, children, tone = 'info' }: { title?: ReactNode; children?: ReactNode; tone?: 'info' | 'ok' | 'warn' | 'error' }) {
   return (
-    <div className={cx('notice', `notice--${tone}`)} role={tone === 'error' ? 'alert' : tone === 'ok' ? 'status' : undefined}>
-      {tone === 'ok' ? <TickIcon /> : null}
+    <div className={cx('notice', `notice--${tone}`)} role={tone === 'error' ? 'alert' : tone === 'ok' || tone === 'warn' ? 'status' : undefined}>
+      {tone === 'ok' ? <TickIcon /> : tone === 'warn' ? <WarnIcon /> : null}
       <div>
         {title ? <b>{title}</b> : null}
         {children}
@@ -262,6 +262,9 @@ export const MenuIcon = () => <I d="M4 7h16M4 12h16M4 17h16" size={28} />;
 export const CloseIcon = () => <I d="M6 6l12 12M18 6 6 18" size={28} />;
 export const PlusIcon = () => <I d="M12 5v14M5 12h14" size={18} w={2.2} />;
 export const TickIcon = ({ size = 22 }: { size?: number }) => <I d="m5 12 5 5 9-10" size={size} w={2.5} />;
+export const WarnIcon = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
+);
 export const CopyIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
 );

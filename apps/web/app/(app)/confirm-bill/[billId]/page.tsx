@@ -201,6 +201,10 @@ function CheckBill() {
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
     : [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+  // No printed total to check against (a cut-off photo, usually). Only
+  // before sharing: once guests are claiming, retaking the photo would
+  // throw their claims away.
+  const noTotal = !isMidSession && items.length > 0 && printed === undefined;
   const servicePct = subtotalPence > 0 && servicePence > 0 ? ` ${Math.round((servicePence / subtotalPence) * 1000) / 10}%` : '';
 
   return (
@@ -208,6 +212,15 @@ function CheckBill() {
       <Page sub>
         {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
         <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={sub} />
+
+        {noTotal ? (
+          <Notice tone="warn" title="No total on the photo">
+            Bottom cut off? We can&rsquo;t check the sum.{' '}
+            <button type="button" className="link-btn" onClick={() => router.push('/capture')}>
+              Retake photo
+            </button>
+          </Notice>
+        ) : null}
 
         <Box>
           {items.map((it) =>

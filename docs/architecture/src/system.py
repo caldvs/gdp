@@ -61,7 +61,7 @@ zones = S[nodes_start:]; del S[nodes_start:]
 
 # ---- Column 4: AWS services, sequential with gaps for external lines
 c4 = [
-    ('ddb', 395), ('ses', 70), ('sec', 90),
+    ('ddb', 395), ('ses', 88), ('sec', 90),
     ('gap', 'truelayer'), ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('location', 60), ('s3', 96),
 ]
 y = 70; pos = {}; gaps = {}; prev = None
@@ -179,7 +179,7 @@ for keys, desc in [('USER# AUTH# OTP#', 'Accounts, sign-in codes'), ('BILL# IMGH
                    ('JCODE#', 'Join codes'), ('PAY# PROVPAY#', 'Payments, provider index'),
                    ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
-c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports'])
+c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT, Stripe, TrueLayer secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
 c4card('sns', 'SNS', ['Alert topic'])

@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
 import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
+import { CostReportStack } from './costReport.js';
 import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
 // apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
@@ -695,4 +696,13 @@ new GithubDeployStack(app, 'GdpGithubDeployProd', {
   repo: 'caldvs/gdp',
   repoWithIds: 'caldvs@42970938/gdp@1440859247',
   existingProviderArn,
+});
+
+// Daily AWS cost email to Callum (the whole account: dev and prod share it).
+new CostReportStack(app, 'GdpCostReport', {
+  env: { region },
+  to: 'callumdavies155@gmail.com',
+  fromParameter: '/gdp-dev/ses-from-email',
+  apiDir: API_DIR,
+  repoRoot: REPO_ROOT,
 });

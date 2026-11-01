@@ -9,7 +9,8 @@ import { CODE, FakeApi, SID, fragmentFor, items, users, type User } from './fake
 test.beforeEach(({ browserName }, info) => {
   test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'one browser is enough for axe');
 });
-test.use({ viewport: { width: 390, height: 844 } });
+// Reduced motion: axe otherwise catches avatars mid fade-in and reports low contrast.
+test.use({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
 
 async function open(page: Page, api: FakeApi, user: User | null, to: string) {
   if (user) await api.attach(page.context(), user);

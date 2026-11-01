@@ -9,7 +9,7 @@ import { timed } from '../../logging/timed.js';
 import { PROMPT, GeminiBillParser, validateParsedBill } from './geminiParser.js';
 import { readByOf, type BillParser, type ParseResult, type ParsedBillFromImage } from './parser.js';
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Haiku by

@@ -1,5 +1,3 @@
-/* eslint-disable no-console -- CLI script, console is the whole point */
-
 /**
  * Golden receipts: read every photo in fixtures/receipts/ with the real
  * bill reader and check the result against what's printed on the bill.

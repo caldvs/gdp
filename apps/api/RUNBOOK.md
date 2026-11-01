@@ -18,6 +18,7 @@ Commands use the `gdp-dev` profile and the `GdpBackendDev` stack. Production doe
 - **One request:** every response carries `x-request-id`, and error bodies include `requestId`. Search the logs for it.
 - **Traces:** X-Ray tracing is on; the service map shows which downstream call was slow.
 - **Smoke test:** `npm run smoke -w apps/api -- <api-url>` shows which routes fail.
+- **Dependencies:** `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>` checks Stripe, Bedrock, Gemini, Places and SES from inside the deployed function (CI runs it after every deploy). The dashboard's *Calls out* panel shows each one's failures and timings (`event: dep.call`).
 
 ## Getting alerts
 

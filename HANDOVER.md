@@ -51,4 +51,4 @@ _Last updated 1 Nov 2026._
 
 ## Housekeeping
 
-- `pr-screenshots` (PR images) and `coverage-baseline` (main's coverage numbers, written by CI) are orphan branches; keep them. Delete other branches once their PR is merged.
+- `pr-screenshots` (PR images) and `coverage-baseline` (main's coverage numbers, written by CI) are orphan branches; keep them. Each carries `apps/web/vercel.json` switching Vercel deploys off (CI writes it into `coverage-baseline`); keep that file if you rewrite either branch, or Vercel fails a build on every push. Delete other branches once their PR is merged.

@@ -18,10 +18,7 @@ _Last updated 1 Nov 2026._
 
 ## Next up
 
-**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Before building it:
-
-- `FallbackBillParser` reports the primary's `model` and `version` even when Gemini answered. Fix that first, or bills and the cache will credit Bedrock with Gemini reads.
-- Callum to decide: a global cache or one per user.
+**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills now record the model that actually read them (`parsedFrom.parser` is Gemini's model when the fallback answered), so cache keys can use it.
 
 ## Known problems
 

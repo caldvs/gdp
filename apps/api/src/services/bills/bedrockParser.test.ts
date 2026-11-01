@@ -31,15 +31,32 @@ describe('FallbackBillParser', () => {
   it('uses the primary when it works', async () => {
     const a = parser('bedrock', bill);
     const b = parser('gemini', bill);
-    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual(bill);
+    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual({
+      ...bill,
+      readBy: { model: 'bedrock', version: 'v1' },
+    });
     expect(b.calls).toBe(0);
   });
 
   it('falls back when the primary fails', async () => {
     const a = parser('bedrock', new AppError('PARSE_FAILED', 'Bedrock: ThrottlingException'));
     const b = parser('gemini', bill);
-    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual(bill);
+    // The bill is credited to the fallback that read it, not the primary.
+    await expect(new FallbackBillParser(a, b).parse(new Uint8Array(), 'r')).resolves.toEqual({
+      ...bill,
+      readBy: { model: 'gemini', version: 'v1' },
+    });
     expect(b.calls).toBe(1);
+  });
+
+  it('keeps the innermost reader when fallbacks are nested', async () => {
+    const a = parser('bedrock', new AppError('PARSE_FAILED', 'down'));
+    const b = parser('gemini', new AppError('PARSE_FAILED', 'down'));
+    const c = parser('other', bill);
+    const chain = new FallbackBillParser(a, new FallbackBillParser(b, c));
+    await expect(chain.parse(new Uint8Array(), 'r')).resolves.toMatchObject({
+      readBy: { model: 'other' },
+    });
   });
 
   it("doesn't retry a photo nothing could be read from", async () => {

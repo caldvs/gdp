@@ -59,7 +59,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 
 ## Merging and coverage
 
-Never merge a PR with a failing build. Before merging, check that the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and that the branch is up to date with main. The repo is private on GitHub's free plan, so GitHub won't stop a red PR being merged: this rule is the only gate. Merge with a merge commit (GitHub's button, or `gh api -X PUT repos/caldvs/gdp/pulls/<n>/merge -f merge_method=merge`).
+Never merge a PR with a failing build. Before merging, check that the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and that the branch is up to date with main. The repo is public, and a ruleset on `main` enforces this: PRs only, `gate` must pass, and the branch must be up to date (Settings → Rules → Rulesets). Merge with a merge commit (GitHub's button, or `gh api -X PUT repos/caldvs/gdp/pulls/<n>/merge -f merge_method=merge`); squash instead when a branch carries commits that shouldn't reach main's history (AI-authored commits, personal details).
 
 Coverage: lines and branches may not drop more than 1 point below main (the `coverage` job, against the `coverage-baseline` branch), and each package's `vitest.config.ts` thresholds are hard floors. Raise floors as tests land; never lower them to get a PR through. A deliberate drop needs the `coverage-drop-ok` label.
 

@@ -46,7 +46,7 @@ if [[ "$force" != "--force" ]]; then
   fi
 fi
 
-git fetch origin main "$head_ref"
+git fetch origin "+refs/heads/main:refs/remotes/origin/main" "+refs/heads/$head_ref:refs/remotes/origin/$head_ref"
 fetched_head="$(git rev-parse "origin/$head_ref")"
 if [[ "$fetched_head" != "$head_sha" ]]; then
   echo "origin/$head_ref is ${fetched_head:0:7}, but the PR head is ${head_sha:0:7}. Try again." >&2

@@ -3,6 +3,7 @@
 import { useMySessions, type SessionSummary } from '@gdp/core/api/hooks/useMySessions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { useScanner } from '@/components/Scanner';
+import { PendingReadRow } from '@/components/PendingRead';
 import { ActionBar, Badge, Box, Button, Notice, Page, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
 
 const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'paying' || s.status === 'setup';
@@ -23,6 +24,7 @@ export default function BillsPage() {
       <Page>
         <Title title="Bills" />
         {scanner.error ? <Notice tone="error" title={scanner.error.title}>{scanner.error.body}</Notice> : null}
+        <PendingReadRow sessionBillIds={sessions.data?.sessions.map((s) => s.billId)} />
         {sessions.isPending ? <Spinner /> : null}
         {sessions.isError ? <Notice tone="error" title="Couldn’t load your bills.">{sessions.error.message}</Notice> : null}
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import { BedrockBillParser, createBillParser } from './bedrockParser.js';
-import { validateParsedBill } from './billPrompt.js';
+import { PROMPT, validateParsedBill } from './billPrompt.js';
 import type { ParsedBillFromImage } from './parser.js';
 
 const bill: ParsedBillFromImage = {
@@ -98,6 +98,76 @@ describe('validateParsedBill', () => {
     expect(validateParsedBill(text, 'Bedrock').items[0]?.unitPricePence).toBe(
       bill.items[0]!.unitPricePence,
     );
+  });
+
+  it('prices each unit from the printed line total', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [
+        { name: 'Espresso Martini', quantity: 5, lineTotalPence: 6500, category: 'drink' },
+        { name: 'Menabrea Pint', quantity: 3, lineTotalPence: 2025, category: 'drink' },
+        { name: 'Jug Water', quantity: 9, lineTotalPence: 0, category: 'drink' },
+      ],
+    });
+    expect(
+      validateParsedBill(text, 'Bedrock').items.map((i) => [i.name, i.quantity, i.unitPricePence]),
+    ).toEqual([
+      ['Espresso Martini', 5, 1300],
+      ['Menabrea Pint', 3, 675],
+      ['Jug Water', 9, 0],
+    ]);
+  });
+
+  it('splits a line total that does not divide evenly, keeping the total', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [{ name: 'Dough Pet Pork', quantity: 3, lineTotalPence: 2235, category: 'food' }],
+    });
+    const items = validateParsedBill(text, 'Bedrock').items;
+    expect(items.map((i) => [i.quantity, i.unitPricePence])).toEqual([[3, 745]]);
+    const odd = validateParsedBill(
+      JSON.stringify({
+        ...bill,
+        items: [{ name: 'Angi Secco Cider', quantity: 3, lineTotalPence: 1846, category: 'drink' }],
+      }),
+      'Bedrock',
+    ).items;
+    expect(odd.map((i) => [i.quantity, i.unitPricePence])).toEqual([
+      [1, 616],
+      [2, 615],
+    ]);
+  });
+
+  it('treats a minus line total as a discount', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [
+        { name: 'LGR Cannoli', quantity: 2, lineTotalPence: 700, category: 'food' },
+        { name: 'Coffee & Cannoli LRG', quantity: 1, lineTotalPence: -400, category: 'other' },
+      ],
+    });
+    expect(
+      validateParsedBill(text, 'Bedrock').items.map((i) => [i.name, i.quantity, i.unitPricePence]),
+    ).toEqual([['LGR Cannoli', 2, 150]]);
+  });
+
+  it('drops a discount the model also listed as an item', () => {
+    const text = JSON.stringify({
+      ...bill,
+      items: [
+        { name: 'LGR Cannoli', quantity: 2, lineTotalPence: 700, category: 'food' },
+        { name: 'Coffee & Cannoli LRG', quantity: 1, lineTotalPence: 400, category: 'other' },
+      ],
+      discounts: [{ name: 'Coffee & Cannoli LRG', amountPence: 400 }],
+    });
+    expect(
+      validateParsedBill(text, 'Bedrock').items.map((i) => [i.name, i.quantity, i.unitPricePence]),
+    ).toEqual([['LGR Cannoli', 2, 150]]);
+  });
+
+  it('asks for line totals, not unit prices', () => {
+    expect(PROMPT).toContain('"lineTotalPence": int');
+    expect(PROMPT).not.toContain('"unitPricePence"');
   });
 
   it('names the reader in its errors', () => {

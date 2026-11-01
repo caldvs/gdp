@@ -64,6 +64,14 @@ jobs:
       - run: npm test
       - run: npm run validate:bundle
 
+      # Prod only ever deploys main. The `prod` GitHub environment should also
+      # be limited to main; this holds even if it isn't.
+      - name: Refuse prod outside main
+        if: env.ENV_NAME == 'prod' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::prod deploys only from main (this run is on ${GITHUB_REF})"
+          exit 1
+
       - name: Resolve stack name
         id: stack
         run: |
@@ -127,19 +135,22 @@ jobs:
             '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
           npx tsx scripts/deps-check.ts "$fn"
 
-      # The deploy role's own stack (infra/githubDeploy.ts), dev only: prod's
-      # role lives in the prod account. Last, so a mistake in its trust policy
-      # can't stop an API deploy; the next run would fail to assume the role,
-      # and the fix is `npx cdk deploy GdpGithubDeploy --profile gdp-dev`.
-      # The OIDC provider predates the stack, so pass its ARN rather than
-      # letting CDK try to create a second one.
-      - name: Deploy role stack
+      # The deploy roles' own stacks (infra/githubDeploy.ts), dev and prod,
+      # from the dev job only: both live in this account. Last, so a mistake
+      # in a trust policy can't stop an API deploy; the next run would fail to
+      # assume the role, and the fix is `npx cdk deploy GdpGithubDeploy
+      # --profile gdp-dev` with the provider ARN below. The OIDC provider
+      # predates the stacks, so pass its ARN rather than letting CDK try to
+      # create a second one.
+      - name: Deploy role stacks
         if: env.ENV_NAME == 'dev'
         run: |
           acct=$(aws sts get-caller-identity --query Account --output text)
-          npx cdk deploy GdpGithubDeploy \
+          npx cdk deploy GdpGithubDeploy GdpGithubDeployProd \
             --require-approval never \
+            --outputs-file cdk-outputs.roles.json \
             -c "githubOidcProviderArn=arn:aws:iam::${acct}:oidc-provider/token.actions.githubusercontent.com"
+          echo "Prod deploy role: $(jq -r '.GdpGithubDeployProd.DeployRoleArnOutput' cdk-outputs.roles.json)" >>"$GITHUB_STEP_SUMMARY"
 
       - name: Upload CDK outputs
         if: always()

@@ -12,7 +12,7 @@ const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'p
 export default function BillsPage() {
   const sessions = useMySessions(50);
   const scanner = useScanner();
-  if (scanner.reading) return <>{scanner.inputs}{scanner.reading}</>;
+  if (scanner.screen) return <>{scanner.inputs}{scanner.screen}</>;
 
   const all = sessions.data?.sessions ?? [];
   const open = all.filter(isOpen);

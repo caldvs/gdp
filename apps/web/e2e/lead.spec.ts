@@ -22,6 +22,8 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   const lead = await diner(browser, api, users.lead, '/');
 
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByText('Gennaro · 5 items')).toBeVisible();
 
@@ -52,6 +54,7 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   api.status = 'setup';
   await lead.goto('/');
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
@@ -62,6 +65,7 @@ test('parse errors say what went wrong', async ({ browser }) => {
   const lead = await diner(browser, api, users.lead, '/');
   const snap = async () => {
     await lead.locator('input[capture]').setInputFiles(PHOTO);
+    await lead.getByRole('button', { name: 'Use photo' }).click();
   };
 
   api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: TimeoutError' });
@@ -87,6 +91,8 @@ test('leave while the bill is read: Bills shows it, then opens it when it’s re
   const lead = await diner(browser, api, users.lead, '/');
 
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'Reading your bill' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('link', { name: 'Back to bills' }).click();
 
@@ -105,6 +111,7 @@ test('a slow read keeps the photo, and Try again reads it', async ({ browser }) 
 
   api.faults.push({ kind: 'parse', code: 'PARSE_TIMEOUT', message: 'Bedrock took too long to read the bill' });
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'That took too long.' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByRole('img', { name: 'Your bill' })).toBeVisible();
 

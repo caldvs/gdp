@@ -119,6 +119,15 @@ jobs:
       - name: Smoke test
         run: npx tsx scripts/smoke.ts "${{ steps.api.outputs.url }}"
 
+      # Runs inside the deployed Lambda: Stripe keys and prices, Bedrock
+      # model access, Gemini and Places keys, SES sender. Fails the deploy if
+      # a required one is broken; optional ones show as warnings.
+      - name: Dependency check
+        run: |
+          fn=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \
+            '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
+          npx tsx scripts/deps-check.ts "$fn"
+
       - name: Upload CDK outputs
         if: always()
         uses: actions/upload-artifact@v7

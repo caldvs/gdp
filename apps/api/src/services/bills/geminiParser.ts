@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { timed } from '../../logging/timed.js';
 import { AppError } from '../../errors/AppError.js';
 import { ParsedBillFromImageSchema, type BillParser, type ParsedBillFromImage } from './parser.js';
 
@@ -40,24 +41,33 @@ export class GeminiBillParser implements BillParser {
 
     let response: Response;
     try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-request-id': requestId,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: PROMPT }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }],
+      response = await timed(
+        'gemini',
+        'generateContent',
+        () =>
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-request-id': requestId,
             },
-          ],
-          generationConfig: {
-            response_mime_type: 'application/json',
-            temperature: 0,
-          },
-        }),
-      });
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: PROMPT },
+                    { inline_data: { mime_type: 'image/jpeg', data: base64 } },
+                  ],
+                },
+              ],
+              generationConfig: {
+                response_mime_type: 'application/json',
+                temperature: 0,
+              },
+            }),
+          }),
+        { requestId },
+      );
     } catch {
       throw new AppError('PARSE_FAILED', 'Failed to reach Gemini API');
     }

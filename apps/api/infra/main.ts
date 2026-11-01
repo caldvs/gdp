@@ -287,6 +287,20 @@ class GdpBackendStack extends cdk.Stack {
         resources: ['*'],
       }),
     );
+    // Read-only, for the post-deploy dependency check (src/ops/selfCheck.ts):
+    // is the sender verified, and is the account out of the SES sandbox.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ses:GetAccount', 'ses:GetEmailIdentity'],
+        resources: ['*'],
+      }),
+    );
+    // Lets the GitHub deploy role (infra/githubDeploy.ts) invoke the function
+    // directly for that check. Granted here rather than in that stack so the
+    // normal CI deploy keeps it in step with the function.
+    fn.grantInvoke(
+      iam.Role.fromRoleName(this, 'GithubDeployRole', 'gdp-github-deploy', { mutable: true }),
+    );
 
     const httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: `gdp-${envName}`,
@@ -564,6 +578,14 @@ class GdpBackendStack extends cdk.Stack {
     );
 
     dashboard.addWidgets(
+      logsWidget('Calls out: Bedrock, Gemini, Places, Stripe, SES', 24, 6, [
+        "filter event = 'dep.call'",
+        'stats count(*) as calls, sum(ok = 0) as failed, avg(ms) as avgMs, pct(ms, 95) as p95Ms, max(ms) as maxMs by dep, op',
+        'sort p95Ms desc',
+      ]),
+    );
+
+    dashboard.addWidgets(
       logsWidget('Crashes and timeouts (outside the app logger)', 24, 6, [
         'fields @timestamp, @message',
         'filter not ispresent(level)',
@@ -574,6 +596,7 @@ class GdpBackendStack extends cdk.Stack {
     );
 
     new cdk.CfnOutput(this, 'ApiUrlOutput', { value: httpApi.apiEndpoint });
+    new cdk.CfnOutput(this, 'ApiFunctionNameOutput', { value: fn.functionName });
     new cdk.CfnOutput(this, 'TableNameOutput', { value: table.tableName });
     new cdk.CfnOutput(this, 'BillsBucketOutput', { value: billsBucket.bucketName });
     new cdk.CfnOutput(this, 'AlertTopicArnOutput', { value: alertTopic.topicArn });

@@ -12,6 +12,8 @@ The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it, *Cont
 4. Stripe calls `POST /webhooks/stripe`. After the signature check, `checkout.session.completed` with `payment_status: paid` writes `FEE#<billId>` (once; repeats write nothing). The row has no TTL: it's a tax record.
 5. The page polls `GET /v1/billing/table-fee/<billId>` until it's `paid`, then continues to the QR.
 
+**Exempt leads.** An email on `TABLE_FEE_EXEMPT_EMAILS` gets status `waived` (£0): *Continue* goes straight to the QR, and `POST /v1/billing/table-fee` refuses with `TABLE_FEE_WAIVED`. The same addresses sign in without a code (`/v1/auth/email/start` returns the session). A fee paid before the address was added still shows as `paid`.
+
 Code: `apps/api/src/services/billing/tableFee.ts`, `routes/billing.ts`, `routes/stripeWebhook.ts`, `storage/tableFeeStore.ts`, `packages/core/src/api/hooks/useTableFee.ts`, `apps/web/app/(app)/table-fee/[billId]/page.tsx`.
 
 ## Running it locally
@@ -26,7 +28,7 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 ## Deploying
 
 1. Secrets Manager (eu-west-2): `gdp-dev/stripe-secret-key` and `gdp-dev/stripe-webhook-secret`.
-2. GitHub → Environments → `dev`: variables `STRIPE_ENABLED=true` and `APP_BASE_URL` (the web app's URL).
+2. GitHub → Environments → `dev`: variables `STRIPE_ENABLED=true` and `APP_BASE_URL` (the web app's URL). Optional: `TABLE_FEE_EXEMPT_EMAILS`, a comma list of emails that never pay and sign in with no code (a secret keeps them out of logs; a variable works too). Takes effect on the next API deploy.
 3. Stripe webhook endpoint `<API URL>/webhooks/stripe` for `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 4. `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` in the Vercel build environment.
 5. Register the web domain under Payment method domains (sandbox and live), or the wallets won't show.

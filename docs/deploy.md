@@ -74,7 +74,8 @@ run summary. Then:
    reviewer (Callum), deployment branches `main` only, and variables
    `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
    `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
-   Stripe live is ready.
+   Stripe live is ready. Optional secret `TABLE_FEE_EXEMPT_EMAILS`: emails that
+   never pay the table fee and sign in with no code (docs/table-fee.md).
 2. In eu-west-2: the SSM parameter `/gdp-prod/ses-from-email` (the same
    verified sender as dev works; it's one account) and the secret
    `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM

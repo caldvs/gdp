@@ -21,6 +21,7 @@ export const ErrorCodes = {
   PARTICIPANTS_NOT_READY: { http: 409 },
   PAYOUT_ACCOUNT_REQUIRED: { http: 409 },
   TABLE_FEE_PAID: { http: 409 },
+  TABLE_FEE_WAIVED: { http: 409 },
   PARSE_FAILED: { http: 422 },
   PARSE_LOW_CONFIDENCE: { http: 422 },
   PARSE_TIMEOUT: { http: 504 },

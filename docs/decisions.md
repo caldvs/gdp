@@ -40,6 +40,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Deposits are left out of the split** (decided 1 Nov 2026). The lead usually paid the deposit, so the lead has paid the whole bill (deposit plus balance) and guests owe their full share. The bill's total is the total before the deposit comes off.
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
+- **Exempt accounts** (decided 1 Nov 2026). Email addresses on `TABLE_FEE_EXEMPT_EMAILS` (a GitHub environment secret or variable, comma separated) never pay the table fee, and sign in with just their email, no code. Callum accepted the risk: anyone who types one of those addresses gets that account (bills, guests, closing), though not bank details, which stay on the device.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:
   - one free bill a month per lead (confirmed 1 Nov 2026)
   - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR

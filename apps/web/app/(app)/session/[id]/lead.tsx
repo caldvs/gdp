@@ -264,6 +264,8 @@ function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number;
 /* ============================ closed ============================ */
 
 export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
+  // Guests can still pay after the bill is closed, so the lead can still confirm.
+  const confirm = useConfirmPayment(s.sessionId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const outstanding = guests.filter((p) => !isPaid(p));
   const collected = guests.reduce((acc, p) => (isPaid(p) ? acc + owedFor(s, b, p) : acc), 0);
@@ -279,7 +281,9 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
           : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}
         {guests.length > 0 ? (
           <Section title="People">
-            <Box>{guests.map((p) => <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={false} />)}</Box>
+            <Box>{guests.map((p) => (
+              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={p.payment.status === 'pending' ? () => confirm.mutate(p.payment.status === 'pending' ? p.payment.paymentId : '') : undefined} />
+            ))}</Box>
           </Section>
         ) : null}
         <Totals>

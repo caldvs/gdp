@@ -29,6 +29,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 
 - `npm run dev:local`: API on :3000 plus web on :8081. Needs Docker.
 - `npm run typecheck`: must pass before committing (the pre-commit hook runs it).
+- **Never skip the pre-commit hook** (`--no-verify`, `core.hooksPath`, `HUSKY=0`). It formats staged API files with prettier, and CI's format check fails any PR it would have fixed. If the hook can't run (a fresh clone, no `node_modules`), run `npx npm@11 ci` first; the hook stops the commit and says so.
 - `npm test`: unit tests.
 - `npm run test:cov -w apps/api` / `-w packages/core`: tests with coverage and the floors CI enforces (API needs the integration services).
 - `npm run test:int -w apps/api`: integration tests. Needs `npm run ddb:up -w apps/api`.

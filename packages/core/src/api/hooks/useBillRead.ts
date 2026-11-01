@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { api, ApiError, type components } from '../index';
 import { uuidv7 } from '../../lib/idempotency';
 import type { ProcessedImage } from '../../lib/image';
+import { skipCacheField } from '../../lib/skipReadCache';
 
 type UploadRequest = components['schemas']['UploadRequest'];
 type UploadSlot = components['schemas']['UploadSlot'];
@@ -18,7 +19,7 @@ export type StartReadResult =
 export const startRead = (uploadId: string) =>
   api<BillRead>('/v1/bills/reads', {
     method: 'POST',
-    body: { uploadId },
+    body: { uploadId, ...skipCacheField() },
     idempotencyKey: uuidv7(),
   });
 
@@ -32,6 +33,7 @@ export function useStartBillRead() {
           sha256: img.sha256,
           sizeBytes: img.sizeBytes,
           mimeType: img.mimeType,
+          ...skipCacheField(),
         } satisfies UploadRequest,
       });
 

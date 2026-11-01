@@ -85,11 +85,15 @@ export const UploadRequestSchema = z.object({
     .positive()
     .max(5 * 1024 * 1024),
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  /** Local only: ignore an earlier read of the same photo. */
+  skipCache: z.boolean().optional(),
 });
 export type UploadRequest = z.infer<typeof UploadRequestSchema>;
 
 export const ParseRequestSchema = z.object({
   uploadId: z.string().uuid(),
+  /** Local only: read the photo again even if it was read before. */
+  skipCache: z.boolean().optional(),
 });
 export type ParseRequest = z.infer<typeof ParseRequestSchema>;
 

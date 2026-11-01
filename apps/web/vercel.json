@@ -6,5 +6,5 @@
       "preview": true
     }
   },
-  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- . ../../packages/core ../../package.json ../../package-lock.json"
+  "ignoreCommand": "s=${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}; git cat-file -e \"$s^{commit}\" 2>/dev/null || exit 1; git diff --quiet \"$s\" HEAD -- . ../../packages/core ../../package.json ../../package-lock.json"
 }

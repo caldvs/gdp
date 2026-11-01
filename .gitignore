@@ -14,3 +14,5 @@ apps/web/next-env.d.ts
 test-results/
 playwright-report/
 coverage/
+# git bundles used to move work between machines
+*.bundle

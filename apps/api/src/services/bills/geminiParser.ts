@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { timed } from '../../logging/timed.js';
 import { AppError } from '../../errors/AppError.js';
-import { ParsedBillFromImageSchema, type BillParser, type ParsedBillFromImage } from './parser.js';
+import {
+  ParsedBillFromImageSchema,
+  parseTimeout,
+  type BillParser,
+  type ParseOptions,
+  type ParsedBillFromImage,
+} from './parser.js';
 
 const MODEL = 'gemini-2.5-flash';
 const VERSION = 'v2';
@@ -35,7 +41,11 @@ export class GeminiBillParser implements BillParser {
 
   constructor(private readonly apiKey: string) {}
 
-  async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
+  async parse(
+    image: Uint8Array,
+    requestId: string,
+    opts: ParseOptions = {},
+  ): Promise<ParsedBillFromImage> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${this.apiKey}`;
     const base64 = Buffer.from(image).toString('base64');
 
@@ -47,6 +57,7 @@ export class GeminiBillParser implements BillParser {
         () =>
           fetch(url, {
             method: 'POST',
+            signal: opts.signal,
             headers: {
               'content-type': 'application/json',
               'x-request-id': requestId,
@@ -69,6 +80,7 @@ export class GeminiBillParser implements BillParser {
         { requestId },
       );
     } catch {
+      if (opts.signal?.aborted) throw parseTimeout('Gemini');
       throw new AppError('PARSE_FAILED', 'Failed to reach Gemini API');
     }
 

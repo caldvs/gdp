@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AppError } from '../../errors/AppError.js';
 import { BillItemCategory, BillItemCourse } from '../../types/bills.js';
 
 export const ParsedBillFromImageSchema = z.object({
@@ -55,12 +56,47 @@ export type ReadBy = { model: string; version: string };
  */
 export type ParseResult = ParsedBillFromImage & { readBy?: ReadBy };
 
+export type ParseOptions = {
+  /** Aborted when the read has run out of time. Parsers pass it to their HTTP call. */
+  signal?: AbortSignal;
+};
+
 export interface BillParser {
   readonly model: string;
   readonly version: string;
-  parse(image: Uint8Array, requestId: string): Promise<ParseResult>;
+  parse(image: Uint8Array, requestId: string, opts?: ParseOptions): Promise<ParseResult>;
 }
+
+/**
+ * Time limits for reading a bill. API Gateway gives up on the Lambda at
+ * 30s and answers with a bare 503, so the whole read must finish well
+ * before that: S3, the model calls and the venue lookup all fit in it.
+ */
+export const PARSE_BUDGET_MS = 22_000;
+/** How long the first reader gets before the fallback takes over. */
+export const PRIMARY_BUDGET_MS = 12_000;
+/** Below this, there's no point starting the fallback. */
+export const MIN_FALLBACK_MS = 4_000;
+
+/** The error a parser throws when its signal aborted the call. */
+export const parseTimeout = (who: string) =>
+  new AppError('PARSE_TIMEOUT', `${who} took too long to read the bill`);
 
 /** The model and version to record on a bill for this parse. */
 export const readByOf = (parser: BillParser, result: ParseResult): ReadBy =>
   result.readBy ?? { model: parser.model, version: parser.version };
+
+const deadlines = new WeakMap<AbortSignal, number>();
+
+/** Time left on the caller's budget, if the caller gave one (see `withDeadline`). */
+export const remainingMs = (signal: AbortSignal | undefined, now: number): number | undefined => {
+  const deadline = signal ? deadlines.get(signal) : undefined;
+  return deadline === undefined ? undefined : deadline - now;
+};
+
+/** A signal that aborts after `ms`, remembering its deadline so a fallback can see the time left. */
+export const withDeadline = (ms: number, now: number = Date.now()): AbortSignal => {
+  const signal = AbortSignal.timeout(ms);
+  deadlines.set(signal, now + ms);
+  return signal;
+};

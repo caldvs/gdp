@@ -7,7 +7,17 @@ import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { timed } from '../../logging/timed.js';
 import { PROMPT, GeminiBillParser, validateParsedBill } from './geminiParser.js';
-import { readByOf, type BillParser, type ParseResult, type ParsedBillFromImage } from './parser.js';
+import {
+  MIN_FALLBACK_MS,
+  PRIMARY_BUDGET_MS,
+  parseTimeout,
+  readByOf,
+  remainingMs,
+  type BillParser,
+  type ParseOptions,
+  type ParseResult,
+  type ParsedBillFromImage,
+} from './parser.js';
 
 const VERSION = 'v2';
 
@@ -27,7 +37,11 @@ export class BedrockBillParser implements BillParser {
     this.client = new BedrockRuntimeClient({ region });
   }
 
-  async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
+  async parse(
+    image: Uint8Array,
+    requestId: string,
+    opts: ParseOptions = {},
+  ): Promise<ParsedBillFromImage> {
     let out: ConverseCommandOutput;
     try {
       out = await timed(
@@ -49,10 +63,12 @@ export class BedrockBillParser implements BillParser {
               inferenceConfig: { temperature: 0, maxTokens: 4096 },
               requestMetadata: { requestId },
             }),
+            { abortSignal: opts.signal },
           ),
         { requestId, model: this.model },
       );
     } catch (err) {
+      if (opts.signal?.aborted) throw parseTimeout('Bedrock');
       const e = err as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
       throw new AppError('PARSE_FAILED', `Bedrock: ${e.name ?? 'error'}`, {
         status: e.$metadata?.httpStatusCode,
@@ -71,6 +87,10 @@ export class BedrockBillParser implements BillParser {
  * any items", try the second. Low confidence isn't retried: a second model
  * reading the same blurry photo rarely does better, and it doubles the wait.
  *
+ * The first parser gets `primaryMs`; the second gets whatever is left of
+ * the caller's signal. If too little is left, the fallback is skipped and
+ * the read fails as a timeout.
+ *
  * `model`/`version` name the primary (what we expect to answer); each
  * result's `readBy` names the one that did, so bills credit the right model.
  */
@@ -81,26 +101,51 @@ export class FallbackBillParser implements BillParser {
   constructor(
     private readonly primary: BillParser,
     private readonly secondary: BillParser,
+    private readonly budget: { primaryMs: number; minFallbackMs: number; now: () => number } = {
+      primaryMs: PRIMARY_BUDGET_MS,
+      minFallbackMs: MIN_FALLBACK_MS,
+      now: Date.now,
+    },
   ) {
     this.model = primary.model;
     this.version = primary.version;
   }
 
-  async parse(image: Uint8Array, requestId: string): Promise<ParseResult> {
+  async parse(image: Uint8Array, requestId: string, opts: ParseOptions = {}): Promise<ParseResult> {
+    const outer = opts.signal;
+    const primarySignal = anySignal(outer, AbortSignal.timeout(this.budget.primaryMs));
     try {
-      const result = await this.primary.parse(image, requestId);
+      const result = await this.primary.parse(image, requestId, { signal: primarySignal });
       return { ...result, readBy: readByOf(this.primary, result) };
     } catch (err) {
       if (err instanceof AppError && err.code === 'PARSE_LOW_CONFIDENCE') throw err;
+      if (outer?.aborted) throw parseTimeout(this.primary.model);
+      const left = remainingMs(outer, this.budget.now());
+      if (left !== undefined && left < this.budget.minFallbackMs) {
+        baseLogger.warn(
+          {
+            event: 'bill.parse.fallback_skipped',
+            requestId,
+            from: this.primary.model,
+            leftMs: left,
+            err,
+          },
+          'Primary bill reader failed with too little time left for the fallback',
+        );
+        throw parseTimeout(this.primary.model);
+      }
       baseLogger.warn(
-        { event: 'bill.parse.fallback', requestId, from: this.primary.model, err },
+        { event: 'bill.parse.fallback', requestId, from: this.primary.model, leftMs: left, err },
         'Primary bill reader failed; trying the fallback',
       );
-      const result = await this.secondary.parse(image, requestId);
+      const result = await this.secondary.parse(image, requestId, { signal: outer });
       return { ...result, readBy: readByOf(this.secondary, result) };
     }
   }
 }
+
+const anySignal = (...signals: (AbortSignal | undefined)[]): AbortSignal =>
+  AbortSignal.any(signals.filter((s): s is AbortSignal => s !== undefined));
 
 /**
  * Bedrock when BEDROCK_MODEL_ID is set (with Gemini as the fallback if its

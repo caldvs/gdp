@@ -40,7 +40,7 @@ export const users = {
 export type Fault =
   | { kind: 'session-get-500'; times: number }
   | { kind: 'initiate-500'; times: number }
-  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE'; message: string; details?: Record<string, unknown> };
+  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT'; message: string; details?: Record<string, unknown> };
 
 export class FakeApi {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';
@@ -155,7 +155,7 @@ export class FakeApi {
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
     if (path === '/v1/bills/parse') {
       const f = this.takeFault('parse');
-      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : 422, f.details);
+      if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : f.code === 'PARSE_TIMEOUT' ? 504 : 422, f.details);
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);

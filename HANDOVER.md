@@ -11,12 +11,17 @@ _Last updated 1 Nov 2026._
 - **The dev API deploys** from `main` through GitHub Actions (OIDC). Dev and prod share one AWS account. Each has its own deploy role, trusted only by jobs in its GitHub environment; the dev job redeploys both role stacks. There's no staging; prod (`GdpBackendProd`) is defined but not deployed (setup steps in [docs/deploy.md](docs/deploy.md)). TrueLayer is off unless `TRUELAYER_ENABLED=true`. The web app is on Vercel (`web-nqib`), with Vercel Analytics.
 - **Tests and CI:** one workflow, `.github/workflows/ci.yml`, runs on every PR and push to main and ends in a single `gate` check. Unit, integration and the Playwright e2e suite (against `FakeApi`) all run in it. Visual baselines are CI's.
   - **Coverage gate:** API (unit + integration together) is at ~86% lines / 70% branches, core at ~39% / 52%. Floors are in each `vitest.config.ts` (API 85/68, core 39/50, 100% on the money files). A PR fails if lines or branches drop more than 1 point below main; main's numbers live on the `coverage-baseline` branch and every PR gets a coverage comment. `coverage-drop-ok` label for a deliberate drop.
-  - **Merging:** only with `scripts/merge-pr.sh <pr>`, which refuses unless `gate` passed on an up-to-date branch. GitHub can't enforce it (private repo, free plan).
+  - **Merging:** never merge a PR unless `gate` passed on its latest commit and the branch is up to date with main. GitHub can't enforce it (private repo, free plan), so it's a rule in `CLAUDE.md`.
   - Property tests (fast-check) pin the money maths: client and server agree on every split, a complete bill is charged to the penny.
   - Known bugs are written as `it.fails` in `apps/api/tests/integration/rules-and-races.test.ts`: fix one and its test starts failing, so change it to `it` in the same PR.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, Gemini, Places, SES from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
+
+## On branch `design/tinted-storybook` (not merged)
+
+- **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run *Update visual baselines* on the branch) before `gate` goes green.
+- **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
 
 ## Next up
 

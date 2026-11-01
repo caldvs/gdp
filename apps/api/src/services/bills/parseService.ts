@@ -26,9 +26,11 @@ export const parseService = {
     requestId: string;
     parser: BillParser;
     venueResolver: VenueResolver;
+    /** Time for the whole read. The synchronous route must stay under API Gateway's 30s. */
+    budgetMs?: number;
   }): Promise<Bill> {
     // One budget for the whole read, started now so the S3 fetch counts.
-    const signal = withDeadline(PARSE_BUDGET_MS);
+    const signal = withDeadline(input.budgetMs ?? PARSE_BUDGET_MS);
     const key = uploadKey(input.userId, input.uploadId);
 
     let bytes: Uint8Array;

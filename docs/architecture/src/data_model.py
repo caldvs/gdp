@@ -64,6 +64,7 @@ y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#00
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId }']) + GAP
 y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE')], ['Stripe checkout state, amount', 'kept as a tax record']) + GAP
 y = place(1, y, 'Venue cache', 'bill', '90 days', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['resolved Google Places venue']) + GAP
+y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
 col2_end = y
 
 # ---- Column 3: sessions

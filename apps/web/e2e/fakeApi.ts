@@ -51,6 +51,11 @@ export class FakeApi {
   /** Who asked to be emailed a report, in order. */
   reportsTo: string[] = [];
   faults: Fault[] = [];
+  /** How many polls a background read stays `reading` before it finishes. */
+  readPolls = 0;
+  /** Set to hold every read at `reading` until it's cleared. */
+  holdReads = false;
+  private reads = new Map<string, { polls: number; error?: { code: string; message: string; details?: Record<string, unknown> } }>();
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in through the OTP flow (and so pass /v1/me). */
@@ -153,6 +158,21 @@ export class FakeApi {
     // ---- bills
     if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://mockapi.test/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
+    if (path === '/v1/bills/reads' && method === 'POST') {
+      const f = this.takeFault('parse');
+      const readId = `00000000-0000-4000-8000-${String(700 + ++this.seq).padStart(12, '0')}`;
+      this.reads.set(readId, { polls: 0, ...(f ? { error: { code: f.code, message: f.message, ...(f.details ? { details: f.details } : {}) } } : {}) });
+      return json({ readId, status: 'reading' }, 202);
+    }
+    if (path.startsWith('/v1/bills/reads/') && method === 'GET') {
+      const readId = path.slice('/v1/bills/reads/'.length);
+      const r = this.reads.get(readId);
+      if (!r) return err('NOT_FOUND', 'Read not found', 404);
+      r.polls += 1;
+      if (this.holdReads || r.polls <= this.readPolls) return json({ readId, status: 'reading' });
+      if (r.error) return json({ readId, status: 'failed', error: r.error });
+      return json({ readId, status: 'done', billId: BID });
+    }
     if (path === '/v1/bills/parse') {
       const f = this.takeFault('parse');
       if (f) return err(f.code, f.message, f.code === 'IMAGE_TOO_LARGE' ? 413 : f.code === 'PARSE_TIMEOUT' ? 504 : 422, f.details);

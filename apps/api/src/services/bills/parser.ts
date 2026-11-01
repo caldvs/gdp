@@ -73,6 +73,11 @@ export interface BillParser {
  * before that: S3, the model calls and the venue lookup all fit in it.
  */
 export const PARSE_BUDGET_MS = 22_000;
+/**
+ * A background read (POST /v1/bills/reads) isn't behind API Gateway, so it
+ * gets longer: the Lambda's own timeout (60s) is the limit there.
+ */
+export const BACKGROUND_READ_BUDGET_MS = 45_000;
 /** How long the first reader gets before the fallback takes over. */
 export const PRIMARY_BUDGET_MS = 12_000;
 /** Below this, there's no point starting the fallback. */

@@ -53,7 +53,8 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   // Stop polling after WAIT_MS so a lost webhook can't spin forever.
   const [slow, setSlow] = useState(false);
   const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
-  const paid = status.data?.status === 'paid';
+  // Waived: this lead's email is exempt, so it's as good as paid.
+  const paid = status.data?.status === 'paid' || status.data?.status === 'waived';
 
   useEffect(() => {
     if (!confirmed || paid || slow) return;

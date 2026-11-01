@@ -106,6 +106,10 @@ paths:
         existing user — this prevents address enumeration. Email delivery
         failures (e.g. SES bounce) also return `200` and are logged
         server-side.
+
+        An address on `TABLE_FEE_EXEMPT_EMAILS` gets no code: the response
+        carries `token` and `user` (as from `/email/verify`) and the caller
+        is signed in.
       requestBody:
         required: true
         content:
@@ -125,6 +129,15 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean, const: true }
+                  token: { type: string, description: 'Exempt addresses only: the session JWT.' }
+                  user:
+                    type: object
+                    description: Exempt addresses only.
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string }
+                      email: { type: string }
+                      displayName: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
 
   /v1/auth/email/verify:
@@ -344,7 +357,7 @@ paths:
       summary: Parse a previously uploaded image into a structured bill
       description: |
         Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-        (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+        (Claude Sonnet on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
         the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
         Idempotent via `Idempotency-Key`.
       parameters:
@@ -1143,7 +1156,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: The fee for this bill is already paid (`TABLE_FEE_PAID`)
+          description: The fee for this bill is already paid (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1317,7 +1330,10 @@ components:
       required: [billId, status, amountPence]
       properties:
         billId: { type: string, format: uuid }
-        status: { type: string, enum: [paid, unpaid] }
+        status:
+          type: string
+          enum: [paid, unpaid, waived]
+          description: "`waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due."
         amountPence: { type: integer }
         paidAt: { type: string, format: date-time }
     ErrorResponse:
@@ -1357,6 +1373,7 @@ components:
                 - PAYMENT_PROVIDER_ERROR
                 - PAYOUT_ACCOUNT_REQUIRED
                 - TABLE_FEE_PAID
+                - TABLE_FEE_WAIVED
                 - INTERNAL_ERROR
             message: { type: string, description: Human-safe explanation }
             requestId: { type: string, description: Server request ID; cross-reference in support }
@@ -1489,7 +1506,7 @@ components:
           required: [imageHash, parser, parserVersion, parsedAt]
           properties:
             imageHash: { type: string, description: SHA-256 hex of resized image bytes }
-            parser: { type: string, example: eu.anthropic.claude-haiku-4-5-20251001-v1:0 }
+            parser: { type: string, example: eu.anthropic.claude-sonnet-4-6 }
             parserVersion: { type: string, example: v1 }
             parsedAt: { type: string, format: date-time }
             uploadId:

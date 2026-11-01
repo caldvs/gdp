@@ -1,6 +1,6 @@
 # Decisions
 
-What's been decided and still holds. Change a decision here in the same PR as the code that changes it. Don't undo one without asking Callum.
+What's been decided and still holds. Change a decision here in the same commit as the code that changes it. Don't undo one without asking Callum.
 
 Code comments cite the two numbered decisions as ADR-0002 and ADR-0006.
 
@@ -40,6 +40,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Deposits are left out of the split** (decided 1 Nov 2026). The lead usually paid the deposit, so the lead has paid the whole bill (deposit plus balance) and guests owe their full share. The bill's total is the total before the deposit comes off.
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
+- **Exempt accounts** (decided 1 Nov 2026). Email addresses on `TABLE_FEE_EXEMPT_EMAILS` (a GitHub environment secret or variable, comma separated) never pay the table fee, and sign in with just their email, no code. Callum accepted the risk: anyone who types one of those addresses gets that account (bills, guests, closing), though not bank details, which stay on the device.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:
   - one free bill a month per lead (confirmed 1 Nov 2026)
   - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
@@ -52,11 +53,13 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 
 ## Technical
 
+- **No pull requests** (decided 1 Nov 2026). Work is committed and pushed straight to `main` after running the checks locally (`CLAUDE.md`, *Pushing to main*). A red `gate` or failed deploy on main is fixed or reverted at once. The repo is public, so Actions minutes are free.
+
 - **Money is integer pence, GBP only.**
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).
 - **One Lambda** behind API Gateway serves every route. `apps/api/openapi.yaml` is the contract; client types are generated from it.
 - **Bills are versioned.** Every edit writes a new `V#nnn` row plus a `LATEST` mirror. A session pins the version it started with.
-- **Bill reading** is Claude Haiku 4.5 on Bedrock, and nothing else: no fallback reader and no Google services (decided 1 Nov 2026). Bedrock reads the venue's name and printed address off the bill and never guesses one.
+- **Bill reading** is Claude Sonnet 4.6 on Bedrock, and nothing else: no fallback reader and no Google services (decided 1 Nov 2026). One model for every call, for simplicity: on the Gusto receipt Sonnet read all 44 lines right where Haiku 4.5 got 39, at about 3× the cost (~4¢ a bill), which the table fee covers (switched 1 Nov 2026). Bedrock reads the venue's name and printed address off the bill and never guesses one.
 - **Venue lookup** is Amazon Location Service (Places), which fills in the full address and coordinates from what Bedrock read. Answers are cached in `VENUEQ#` rows with no expiry (decided 1 Nov 2026), so it's queried with `IntendedUse: Storage` as AWS's terms require. A failed or vague lookup leaves the venue as read off the bill.
 - **Bills are read in the background** (1 Nov). `POST /v1/bills/reads` returns at once and the Lambda invokes itself to do the read (45s budget, no retries); the app polls the read and the lead can go back to Bills meanwhile. The read is its own `READ#` row; the bill is only created when the read works. The synchronous `POST /v1/bills/parse` stays, with 22s to fit under API Gateway's 30s; running out is a 504 `PARSE_TIMEOUT`.
 - **Polling, not push.** Session screens poll; there are no websockets or notifications.

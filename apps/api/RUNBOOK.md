@@ -68,7 +68,7 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 `PARSE_FAILED` or slow parses:
 
-- `AccessDeniedException` from Bedrock: model access for Claude Haiku 4.5 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
+- `AccessDeniedException` from Bedrock: model access for Claude Sonnet 4.6 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
 - `ThrottlingException`: Bedrock quota. There's no fallback reader, so bills fail until it clears. Ask for a quota increase.
 
 `PARSE_LOW_CONFIDENCE` isn't an outage: the photo was unreadable.

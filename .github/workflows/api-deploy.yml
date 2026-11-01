@@ -106,6 +106,9 @@ jobs:
           STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
           TRUELAYER_ENABLED: ${{ vars.TRUELAYER_ENABLED }}
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          # Comma list of emails that never pay the table fee. A secret
+          # (keeps the addresses out of logs) or a variable; either works.
+          TABLE_FEE_EXEMPT_EMAILS: ${{ secrets.TABLE_FEE_EXEMPT_EMAILS || vars.TABLE_FEE_EXEMPT_EMAILS }}
           # Optional custom API domain: both or neither (infra/main.ts).
           API_DOMAIN: ${{ vars.API_DOMAIN }}
           API_CERT_ARN: ${{ vars.API_CERT_ARN }}
@@ -154,6 +157,12 @@ jobs:
             --outputs-file cdk-outputs.roles.json \
             -c "githubOidcProviderArn=arn:aws:iam::${acct}:oidc-provider/token.actions.githubusercontent.com"
           echo "Prod deploy role: $(jq -r '.GdpGithubDeployProd.DeployRoleArnOutput' cdk-outputs.roles.json)" >>"$GITHUB_STEP_SUMMARY"
+
+      # The daily cost email (infra/costReport.ts): one for the whole
+      # account, so from the dev job only, like the role stacks.
+      - name: Deploy cost report
+        if: env.ENV_NAME == 'dev'
+        run: npx cdk deploy GdpCostReport --require-approval never
 
       - name: Upload CDK outputs
         if: always()

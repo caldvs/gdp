@@ -57,6 +57,10 @@ export interface paths {
          *     existing user — this prevents address enumeration. Email delivery
          *     failures (e.g. SES bounce) also return `200` and are logged
          *     server-side.
+         *
+         *     An address on `TABLE_FEE_EXEMPT_EMAILS` gets no code: the response
+         *     carries `token` and `user` (as from `/email/verify`) and the caller
+         *     is signed in.
          */
         post: operations["startEmailOtp"];
         delete?: never;
@@ -215,7 +219,7 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     (Claude Sonnet on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
          *     the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
          *     Idempotent via `Idempotency-Key`.
          */
@@ -898,8 +902,11 @@ export interface components {
         TableFeeStatus: {
             /** Format: uuid */
             billId: string;
-            /** @enum {string} */
-            status: "paid" | "unpaid";
+            /**
+             * @description `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+             * @enum {string}
+             */
+            status: "paid" | "unpaid" | "waived";
             amountPence: number;
             /** Format: date-time */
             paidAt?: string;
@@ -910,7 +917,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1020,7 +1027,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
+                /** @example eu.anthropic.claude-sonnet-4-6 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;
@@ -1522,6 +1529,14 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         ok: true;
+                        /** @description Exempt addresses only: the session JWT. */
+                        token?: string;
+                        /** @description Exempt addresses only. */
+                        user?: {
+                            userId: string;
+                            email: string;
+                            displayName: string;
+                        };
                     };
                 };
             };
@@ -2703,7 +2718,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description The fee for this bill is already paid (`TABLE_FEE_PAID`) */
+            /** @description The fee for this bill is already paid (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`) */
             409: {
                 headers: {
                     [name: string]: unknown;

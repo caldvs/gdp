@@ -11,10 +11,13 @@
  * `totalPence` (required) is the printed total including service and tax.
  * `lines` (optional) is the number of item lines on the bill.
  * `servicePence`, `taxPence` (optional) are checked when present.
+ * `items` (optional) are the printed lines, after any discount is taken off
+ * its item: `{ "name", "quantity", "lineTotalPence" }`. Each is matched to a
+ * read line by name, and a wrong quantity or price is reported.
  *
  * Run with the parser settings you want to test:
  *
- *   BEDROCK_MODEL_ID=eu.anthropic.claude-haiku-4-5-20251001-v1:0 AWS_PROFILE=gdp-dev \
+ *   BEDROCK_MODEL_ID=eu.anthropic.claude-sonnet-4-6 AWS_PROFILE=gdp-dev \
  *     npm run golden -w apps/api
  *   npm run golden -w apps/api -- pizza-express-4          # one receipt
  *
@@ -30,14 +33,91 @@ import { readByOf } from '../src/services/bills/parser.js';
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/receipts');
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
-type Expected = { totalPence: number; lines?: number; servicePence?: number; taxPence?: number };
+type ExpectedLine = { name: string; quantity: number; lineTotalPence: number };
+type ReadLine = { name: string; unitPricePence: number; quantity: number };
+type Expected = {
+  totalPence: number;
+  lines?: number;
+  servicePence?: number;
+  taxPence?: number;
+  items?: ExpectedLine[];
+};
+
+const words = (s: string) =>
+  new Set(
+    s
+      .toLowerCase()
+      .replace(/(\d+)\s*ml\b/g, '$1ml')
+      .split(/[^a-z0-9.]+/)
+      .filter((w) => w.length >= 2),
+  );
+const likeness = (a: Set<string>, b: Set<string>) => {
+  const shared = [...a].filter((w) => b.has(w)).length;
+  return shared / Math.max(a.size, b.size, 1);
+};
+
+/**
+ * Matches each printed line to the read line most like it by name (read
+ * lines with the same name are added up first: an uneven split makes two)
+ * and lists what's wrong: a wrong quantity or price, a printed line nothing
+ * matched, or a read line that matched nothing.
+ */
+export function checkLines(
+  expected: ExpectedLine[],
+  read: ReadLine[],
+): { right: number; problems: string[] } {
+  const groups = new Map<string, { name: string; quantity: number; total: number }>();
+  for (const r of read) {
+    const key = r.name.trim().toLowerCase();
+    const g = groups.get(key) ?? { name: r.name, quantity: 0, total: 0 };
+    g.quantity += r.quantity;
+    g.total += r.unitPricePence * r.quantity;
+    groups.set(key, g);
+  }
+  const left = [...groups.values()].map((g) => ({ ...g, words: words(g.name) }));
+  const pairs = expected
+    .flatMap((e, i) => left.map((g, j) => ({ i, j, score: likeness(words(e.name), g.words) })))
+    .filter((p) => p.score >= 0.5)
+    .sort((a, b) => b.score - a.score);
+  const takenE = new Set<number>();
+  const takenR = new Set<number>();
+  const match = new Map<number, number>();
+  for (const p of pairs) {
+    if (takenE.has(p.i) || takenR.has(p.j)) continue;
+    takenE.add(p.i);
+    takenR.add(p.j);
+    match.set(p.i, p.j);
+  }
+
+  let right = 0;
+  const problems: string[] = [];
+  expected.forEach((e, i) => {
+    const j = match.get(i);
+    if (j === undefined) {
+      problems.push(`missing ${e.quantity} × ${e.name} (${fmt(e.lineTotalPence)})`);
+      return;
+    }
+    const g = left[j]!;
+    if (g.quantity === e.quantity && g.total === e.lineTotalPence) {
+      right += 1;
+      return;
+    }
+    problems.push(
+      `${e.name}: read ${g.quantity} for ${fmt(g.total)}, printed ${e.quantity} for ${fmt(e.lineTotalPence)}`,
+    );
+  });
+  left.forEach((g, j) => {
+    if (!takenR.has(j)) problems.push(`extra ${g.quantity} × ${g.name} (${fmt(g.total)})`);
+  });
+  return { right, problems };
+}
 
 const fmt = (p: number) => `£${(p / 100).toFixed(2)}`;
 
 export function checkReceipt(
   expected: Expected,
   read: {
-    items: { unitPricePence: number; quantity: number }[];
+    items: ReadLine[];
     serviceChargePence: number;
     taxPence: number;
   },
@@ -58,6 +138,12 @@ export function checkReceipt(
   }
   if (expected.taxPence !== undefined && read.taxPence !== expected.taxPence) {
     problems.push(`tax ${fmt(read.taxPence)}, printed ${fmt(expected.taxPence)}`);
+  }
+  if (expected.items) {
+    const lines = checkLines(expected.items, read.items);
+    if (lines.problems.length > 0) {
+      problems.push(`${lines.right}/${expected.items.length} lines right`, ...lines.problems);
+    }
   }
   return problems;
 }
@@ -105,7 +191,7 @@ async function main(): Promise<number> {
         );
       } else {
         failed += 1;
-        console.log(`✗  ${name}: ${problems.join('; ')} (${by}, ${ms} ms)`);
+        console.log(`✗  ${name} (${by}, ${ms} ms)\n     ${problems.join('\n     ')}`);
       }
     } catch (err) {
       failed += 1;

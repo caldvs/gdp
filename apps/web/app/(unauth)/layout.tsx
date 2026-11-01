@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { Header } from '@/components/AppShell';
+import { TestBar } from '@/components/TestBar';
 import { Centre, Spinner } from '@/components/ui';
 
 function UnauthGate({ children }: { children: React.ReactNode }) {
@@ -21,6 +22,7 @@ function UnauthGate({ children }: { children: React.ReactNode }) {
 export default function UnauthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
+      <TestBar open reload={false} />
       <Header />
       <Suspense fallback={<Centre><Spinner /></Centre>}>
         <UnauthGate>{children}</UnauthGate>

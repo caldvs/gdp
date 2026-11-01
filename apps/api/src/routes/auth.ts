@@ -22,6 +22,11 @@ export interface AuthRoutesDeps {
    * LOCAL DEVELOPMENT ONLY — set by src/local.ts, never by the Lambda.
    */
   devEmailSignIn?: boolean;
+  /**
+   * Register POST /email/test-sign-in (sign in to an @test.invalid account
+   * with no code). Local and dev only: app.ts never sets it in prod.
+   */
+  testAccountSignIn?: boolean;
 }
 
 export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
@@ -108,6 +113,30 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
       async (c) => {
         const { email } = c.req.valid('json');
         return c.json(await otpService.devSignIn({ email }));
+      },
+    );
+  }
+
+  if (deps.testAccountSignIn) {
+    r.post(
+      '/email/test-sign-in',
+      zValidator('json', StartSchema, (result, c) => {
+        if (!result.success) {
+          return c.json(
+            {
+              error: {
+                code: 'INVALID_INPUT' as const,
+                message: 'Invalid email',
+                requestId: c.var.requestId,
+              },
+            },
+            400,
+          );
+        }
+      }),
+      async (c) => {
+        const { email } = c.req.valid('json');
+        return c.json(await otpService.testSignIn({ email }));
       },
     );
   }

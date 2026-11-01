@@ -62,6 +62,8 @@ const app = createApp({
   ...(idTokenVerifier ? { idTokenVerifier } : {}),
   ...(sessionJwtSecret ? { sessionJwtSecret } : {}),
   devEmailSignIn,
+  // Test accounts (@test.invalid, no code), same as on dev.
+  testAccountSignIn: hasLocalDb && !isProduction,
 });
 
 serve({ fetch: app.fetch, port }, (info) => {

@@ -40,7 +40,7 @@ def group(x, y, w, title, base, eps):
     return y + h
 
 # ---------- geometry ----------
-W, H = 1640, 1230
+W, H = 1640, 1250
 LX, LW = 560, 520            # lambda
 C4X, C4W = 1150, 220         # aws services nodes
 C5X, C5W = 1435, 185         # external nodes
@@ -49,13 +49,13 @@ C5X, C5W = 1435, 185         # external nodes
 nodes_start = len(S)
 
 # Zones
-a(f'<rect class="zone" x="20" y="20" width="220" height="1160" rx="14"/>')
+a(f'<rect class="zone" x="20" y="20" width="220" height="1180" rx="14"/>')
 a('<text class="zone-label" x="38" y="48">Clients</text>')
-a(f'<rect class="zone" x="270" y="20" width="240" height="1160" rx="14"/>')
+a(f'<rect class="zone" x="270" y="20" width="240" height="1180" rx="14"/>')
 a('<text class="zone-label" x="288" y="48">Frontend · apps/web</text>')
-a(f'<rect class="zone aws" x="530" y="20" width="870" height="1160" rx="14"/>')
+a(f'<rect class="zone aws" x="530" y="20" width="870" height="1180" rx="14"/>')
 a('<text class="zone-label" x="548" y="48">AWS · eu-west-2 · CDK stack gdp-{env}</text>')
-a(f'<rect class="zone" x="1420" y="20" width="200" height="1160" rx="14"/>')
+a(f'<rect class="zone" x="1420" y="20" width="200" height="1180" rx="14"/>')
 a('<text class="zone-label" x="1435" y="48">Third parties</text>')
 zones = S[nodes_start:]; del S[nodes_start:]
 
@@ -73,7 +73,7 @@ for k, v in c4:
         pos[k] = (y, v); y += v
     prev = 'gap' if k == 'gap' else 'node'
 # adjust: sns follows cw with 20 gap (already)
-LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1150)
+LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1170)
 
 edges = []
 def E(*args, **kw):
@@ -123,7 +123,7 @@ AX, AW = LX + 16, 246
 BX, BW = LX + 16 + 246 + 12, LW - 32 - 246 - 12
 y = 308
 y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
-y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify')]) + 10
+y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify'), ('POST', '/test-sign-in')]) + 10
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid'), ('GET', '/return')]) + 10
@@ -214,10 +214,10 @@ for key, lab, both in [('truelayer', 'Create payment · webhooks', True), ('stri
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')
-E(f'M390,470 L390,1205 L1260,1205 L1260,{s3y+pos["s3"][1]+2}', [(760, 1199, 'Presigned PUT / GET · bill photo', 'middle')])
+E(f'M390,470 L390,1225 L1260,1225 L1260,{s3y+pos["s3"][1]+2}', [(760, 1219, 'Presigned PUT / GET · bill photo', 'middle')])
 
 svg = '\n'.join(zones + edges + nodes)
-VB_H = 1225
+VB_H = 1245
 
 page = (HERE / 'system.template.html').read_text()
 page = page.replace('%%SVG%%', svg).replace('%%VBH%%', str(VB_H))

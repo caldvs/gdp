@@ -191,6 +191,8 @@ class GdpBackendStack extends cdk.Stack {
         DDB_TABLE_NAME: table.tableName,
         S3_BUCKET_BILLS: billsBucket.bucketName,
         LOG_LEVEL: envName === 'prod' ? 'info' : 'debug',
+        // Test accounts (@test.invalid, no code) on dev only.
+        AUTH_TEST_ACCOUNTS: envName === 'dev' ? 'true' : 'false',
 
         SECRET_SOURCES: JSON.stringify(secretSources),
 

@@ -13,6 +13,7 @@ import { buildSessionRoutes } from './routes/sessions.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
+import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
 import { createReportService } from './services/sessions/reportService.js';
@@ -44,6 +45,11 @@ export interface AppDeps {
   sessionJwtSecret?: Uint8Array;
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
   devEmailSignIn?: boolean;
+  /**
+   * Enable POST /v1/auth/email/test-sign-in (@test.invalid accounts, no
+   * code). Defaults to AUTH_TEST_ACCOUNTS. Ignored when APP_ENV=prod.
+   */
+  testAccountSignIn?: boolean;
   /**
    * Pass a concrete provider for tests. Pass `null` to force manual mode.
    * Omit to fall back to env-driven default.
@@ -147,6 +153,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         emailSender,
         jwtSecret: sessionJwtSecret,
         devEmailSignIn: deps.devEmailSignIn === true,
+        testAccountSignIn: testAccountsAllowed(
+          env.APP_ENV,
+          deps.testAccountSignIn ?? env.AUTH_TEST_ACCOUNTS === 'true',
+        ),
       }),
     );
   }

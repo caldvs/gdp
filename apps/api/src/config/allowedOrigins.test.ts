@@ -23,6 +23,7 @@ describe('originMatcher', () => {
     expect(prod('https://test.paymeback.dev')).toBe(false);
     expect(prod('http://localhost:8081')).toBe(false);
     expect(prod('https://web-nqib-abc-caldvs-projects.vercel.app')).toBe(false);
+    expect(dev('https://paymeback.dev')).toBe(false);
   });
 
   it('prod lists no wildcard and no localhost', () => {

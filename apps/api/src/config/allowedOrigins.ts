@@ -15,15 +15,7 @@ export type EnvName = 'dev' | 'prod';
 const PREVIEWS = 'https://*-caldvs-projects.vercel.app';
 
 export const ALLOWED_ORIGINS: Record<EnvName, string[]> = {
-  dev: [
-    'https://test.paymeback.dev',
-    PREVIEWS,
-    'http://localhost:8081',
-    // Production web still talks to the dev API until the cut-over (#78).
-    // Remove these two when it moves to prod.
-    'https://paymeback.dev',
-    'https://web-nqib.vercel.app',
-  ],
+  dev: ['https://test.paymeback.dev', PREVIEWS, 'http://localhost:8081'],
   prod: ['https://paymeback.dev', 'https://web-nqib.vercel.app'],
 };
 

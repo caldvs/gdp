@@ -73,7 +73,8 @@ function setLambdaEnv(): void {
   // not the actual secret values, but plausible strings so the runtime
   // env-validation passes and the handler runs without contacting AWS.
   const envValues: Record<string, string> = {
-    NODE_ENV: 'development',
+    NODE_ENV: 'production',
+    APP_ENV: 'dev',
     AWS_REGION: 'eu-west-2',
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
     DDB_TABLE_NAME: 'gdp-validator',

@@ -112,5 +112,13 @@ export const AmendBillRequestSchema = z.object({
     .min(1),
   taxPence: z.number().int().nonnegative(),
   serviceChargePence: z.number().int().nonnegative(),
+  // Set to override the parsed venue. Absent keeps whatever the bill has.
+  venue: z
+    .object({
+      name: z.string().min(1).max(80),
+      placeId: z.string().optional(),
+      address: z.string().optional(),
+    })
+    .optional(),
 });
 export type AmendBillRequest = z.infer<typeof AmendBillRequestSchema>;

@@ -9,7 +9,7 @@ export const ParsedBillFromImageSchema = z.object({
         unitPricePence: z.number().int().nonnegative(),
         quantity: z.number().int().positive(),
         category: BillItemCategory,
-        // Gemini may send null or an unexpected label; treat those as unknown
+        // The model may send null or an unexpected label; treat those as unknown
         // rather than failing the whole parse over a display hint.
         course: z
           .unknown()
@@ -25,7 +25,7 @@ export const ParsedBillFromImageSchema = z.object({
   serviceChargePence: z.number().int().nonnegative(),
   totalPence: z.number().int().nonnegative().optional(),
   currency: z.literal('GBP'),
-  // Gemini sometimes returns `null` for an unknown venue rather than omitting
+  // The model sometimes returns `null` for an unknown venue rather than omitting
   // the field. Accept both, but normalize the output type to undefined so
   // downstream code (typed `string | undefined`) doesn't have to know.
   venue: z

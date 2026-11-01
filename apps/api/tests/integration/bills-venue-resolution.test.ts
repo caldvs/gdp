@@ -1,14 +1,9 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
 import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
-import {
-  GooglePlacesVenueResolver,
-  type GooglePlacesResolverConfig,
-} from '../../src/services/bills/googlePlacesResolver.js';
 import { NoopVenueResolver, type VenueResolver } from '../../src/services/bills/venueResolver.js';
-import { cacheKey, venueCacheStore } from '../../src/storage/venueCacheStore.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
 import { fakeVerifier, makeAuth, newIdempotencyKey, sampleParsedBill } from './helpers.js';
 import type { Bill, Venue } from '../../src/types/bills.js';
@@ -81,82 +76,5 @@ describe('venue resolution in /v1/bills/parse', () => {
     });
     const bill = await parseBill(app, `u-stub-${uuidv7()}`);
     expect(bill.venue).toEqual(enriched);
-  });
-
-  describe('GooglePlacesVenueResolver against a stubbed Places API', () => {
-    function buildResolverWithFetch(
-      fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
-      cfgOverrides: Partial<GooglePlacesResolverConfig> = {},
-    ): { resolver: GooglePlacesVenueResolver; fetchSpy: ReturnType<typeof vi.fn> } {
-      const fetchSpy = vi.fn(fetchImpl);
-      vi.stubGlobal('fetch', fetchSpy);
-      const resolver = new GooglePlacesVenueResolver({ apiKey: 'fake-key', ...cfgOverrides });
-      return { resolver, fetchSpy };
-    }
-
-    it('calls Places once, caches result, serves second lookup from cache', async () => {
-      const placesResponse = {
-        places: [
-          {
-            id: 'ChIJ-real-456',
-            displayName: { text: 'Honest Burgers Soho' },
-            formattedAddress: '4a Meard St, London W1F 0EF, UK',
-            location: { latitude: 51.5135, longitude: -0.1336 },
-          },
-        ],
-      };
-      const { resolver, fetchSpy } = buildResolverWithFetch(() =>
-        Promise.resolve(new Response(JSON.stringify(placesResponse), { status: 200 })),
-      );
-
-      const input = { name: `Honest Burgers ${uuidv7()}`, address: 'Soho' };
-      const first = await resolver.resolve(input);
-      const second = await resolver.resolve(input);
-
-      expect(first?.placeId).toBe('ChIJ-real-456');
-      expect(first?.lat).toBe(51.5135);
-      expect(second).toEqual(first);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      const cached = await venueCacheStore.get(cacheKey(input));
-      expect(cached?.venue?.placeId).toBe('ChIJ-real-456');
-
-      vi.unstubAllGlobals();
-    });
-
-    it('caches negative results so unmatched queries do not re-hit Places', async () => {
-      const { resolver, fetchSpy } = buildResolverWithFetch(() =>
-        Promise.resolve(new Response(JSON.stringify({}), { status: 200 })),
-      );
-
-      const input = { name: `Nowhere ${uuidv7()}`, address: 'Atlantis' };
-      const first = await resolver.resolve(input);
-      const second = await resolver.resolve(input);
-
-      // Google had no match → resolver falls back to the parsed text on
-      // both calls, but only hits Places once.
-      expect(first).toEqual({ name: input.name, address: input.address });
-      expect(second).toEqual(first);
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      const cached = await venueCacheStore.get(cacheKey(input));
-      expect(cached?.venue).toBeNull();
-
-      vi.unstubAllGlobals();
-    });
-
-    it('on Places failure: returns parsed text fallback (does not throw)', async () => {
-      const { resolver, fetchSpy } = buildResolverWithFetch(() =>
-        Promise.resolve(new Response('boom', { status: 500 })),
-      );
-
-      const input = { name: `Crashy ${uuidv7()}`, address: 'Somewhere' };
-      const result = await resolver.resolve(input);
-
-      expect(result).toEqual({ name: input.name, address: input.address });
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
-
-      vi.unstubAllGlobals();
-    });
   });
 });

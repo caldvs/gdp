@@ -13,10 +13,10 @@ docs/          Architecture diagrams, decisions, deploy guide, designs
 
 ## How it works
 
-1. The **lead** photographs the bill. The API reads it (Claude Haiku on Bedrock, Gemini as fallback) and the lead checks the items.
+1. The **lead** photographs the bill. The API reads it, venue name and address included (Claude Haiku on Amazon Bedrock), and the lead checks the items.
 2. The lead enters their bank details, pays the **table fee** (£2, or £3 over £100, via Stripe; skipped when Stripe isn't configured), and gets a QR code and join code. The bank details stay in their browser and travel to guests in the link's `#p=` fragment ([ADR-0002](docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
 3. **Guests** join, tick what they had or split shared items ([ADR-0006](docs/decisions.md#adr-0006-splits-by-ways)), and see their share including service.
-4. Guests pay the lead by bank transfer (tap-to-copy details, Monzo/Revolut links) and tap *I've paid*. The app never holds money.
+4. Guests pay the lead by bank transfer (tap-to-copy details, Monzo/Revolut links) and tap _I've paid_. The app never holds money.
 5. The **lead** confirms payments, takes any leftover items, and closes the bill. Only the lead can close it. Closing emails every diner their bill report.
 
 See [docs/architecture](docs/architecture/README.md) for the system and data model diagrams.
@@ -30,22 +30,22 @@ npm install
 npm run dev:local      # API on :3000 (with DynamoDB Local + MinIO) and web on :8081
 ```
 
-Put a `GEMINI_API_KEY` in `apps/api/.env.local` so bill reading works locally (see `apps/api/.env.example`). Locally you sign in with just an email: the same email is always the same account.
+Bill reading uses Bedrock even locally: set `BEDROCK_MODEL_ID` and `AWS_PROFILE=gdp-dev` in `apps/api/.env.local` (see `apps/api/.env.example`). Locally you sign in with just an email: the same email is always the same account.
 
 `npm run dev` runs only the web app, against the deployed dev API.
 
 ## Commands
 
-| Command | |
-| --- | --- |
-| `npm run dev:local` | API + web, web pointed at the local API |
-| `npm run dev` / `npm run dev:api` | Web only / API only |
-| `npm run typecheck` | All workspaces (the pre-commit hook runs it) |
-| `npm test` | Unit tests (`packages/core`, `apps/api`) |
-| `npm run test:int -w apps/api` | Integration tests (needs `npm run ddb:up -w apps/api`) |
-| `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API |
-| `npm run gen:api` | Regenerate client types from `apps/api/openapi.yaml` |
-| `npm run deploy:dev -w apps/api` | Deploy the dev API stack and smoke-test it |
+| Command                                    |                                                        |
+| ------------------------------------------ | ------------------------------------------------------ |
+| `npm run dev:local`                        | API + web, web pointed at the local API                |
+| `npm run dev` / `npm run dev:api`          | Web only / API only                                    |
+| `npm run typecheck`                        | All workspaces (the pre-commit hook runs it)           |
+| `npm test`                                 | Unit tests (`packages/core`, `apps/api`)               |
+| `npm run test:int -w apps/api`             | Integration tests (needs `npm run ddb:up -w apps/api`) |
+| `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API           |
+| `npm run gen:api`                          | Regenerate client types from `apps/api/openapi.yaml`   |
+| `npm run deploy:dev -w apps/api`           | Deploy the dev API stack and smoke-test it             |
 
 An API contract change and the matching client change go in the same commit, since the client types come from `openapi.yaml`.
 

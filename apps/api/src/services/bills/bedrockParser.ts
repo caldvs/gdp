@@ -4,16 +4,16 @@ import {
   type ConverseCommandOutput,
 } from '@aws-sdk/client-bedrock-runtime';
 import { AppError } from '../../errors/AppError.js';
-import { baseLogger } from '../../logging/logger.js';
 import { timed } from '../../logging/timed.js';
-import { PROMPT, GeminiBillParser, validateParsedBill } from './geminiParser.js';
+import { PROMPT, validateParsedBill } from './billPrompt.js';
 import type { BillParser, ParsedBillFromImage } from './parser.js';
 
-const VERSION = 'v2';
+// v3: the prompt asks for the full printed address and never a guessed one.
+const VERSION = 'v3';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Haiku by
- * default), using the same prompt and output schema as the Gemini parser.
+ * default).
  * Runs on the Lambda's own AWS credentials: no API key.
  */
 export class BedrockBillParser implements BillParser {
@@ -67,51 +67,11 @@ export class BedrockBillParser implements BillParser {
 }
 
 /**
- * Try the first parser; if it fails for a reason other than "couldn't read
- * any items", try the second. Low confidence isn't retried: a second model
- * reading the same blurry photo rarely does better, and it doubles the wait.
+ * Bedrock when BEDROCK_MODEL_ID is set, else a parser that always fails
+ * (local runs without AWS credentials; tests inject their own parser).
  */
-export class FallbackBillParser implements BillParser {
-  readonly model: string;
-  readonly version: string;
-
-  constructor(
-    private readonly primary: BillParser,
-    private readonly secondary: BillParser,
-  ) {
-    this.model = primary.model;
-    this.version = primary.version;
-  }
-
-  async parse(image: Uint8Array, requestId: string): Promise<ParsedBillFromImage> {
-    try {
-      return await this.primary.parse(image, requestId);
-    } catch (err) {
-      if (err instanceof AppError && err.code === 'PARSE_LOW_CONFIDENCE') throw err;
-      baseLogger.warn(
-        { event: 'bill.parse.fallback', requestId, from: this.primary.model, err },
-        'Primary bill reader failed; trying the fallback',
-      );
-      return this.secondary.parse(image, requestId);
-    }
-  }
-}
-
-/**
- * Bedrock when BEDROCK_MODEL_ID is set (with Gemini as the fallback if its
- * key is set too), else Gemini alone, else a parser that always fails.
- */
-export const createBillParser = (cfg: {
-  bedrockModelId?: string;
-  region: string;
-  geminiApiKey?: string;
-}): BillParser => {
-  const gemini = cfg.geminiApiKey ? new GeminiBillParser(cfg.geminiApiKey) : undefined;
-  if (cfg.bedrockModelId) {
-    const bedrock = new BedrockBillParser(cfg.bedrockModelId, cfg.region);
-    return gemini ? new FallbackBillParser(bedrock, gemini) : bedrock;
-  }
-  if (gemini) return gemini;
+export const createBillParser = (cfg: { bedrockModelId?: string; region: string }): BillParser => {
+  if (cfg.bedrockModelId) return new BedrockBillParser(cfg.bedrockModelId, cfg.region);
   return {
     model: 'none',
     version: 'v0',
@@ -119,7 +79,7 @@ export const createBillParser = (cfg: {
       Promise.reject(
         new AppError(
           'INTERNAL_ERROR',
-          'BillParser not configured (set BEDROCK_MODEL_ID or GEMINI_API_KEY)',
+          'BillParser not configured (set BEDROCK_MODEL_ID, with AWS credentials that can call Bedrock)',
         ),
       ),
   };

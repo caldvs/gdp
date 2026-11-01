@@ -252,7 +252,7 @@ describe('POST /v1/bills/parse', () => {
   });
 
   it('surfaces parsedTotalPence diverging from the computed totalPence', async () => {
-    // Pretend Gemini misread the receipt: the printed total it returned
+    // Pretend the reader misread the receipt: the printed total it returned
     // is £35.00 (3500) but the items + service + tax compute to £32.06
     // (3206). The bill's totalPence is the computed value; the printed
     // value lives alongside it so the client can flag the discrepancy.

@@ -20,8 +20,6 @@ import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
 import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
-import { GooglePlacesVenueResolver } from './services/bills/googlePlacesResolver.js';
-import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
 import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
@@ -65,14 +63,6 @@ const sessionJwtSecretFromEnv = (): Uint8Array => {
 const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
-const defaultVenueResolver = (): VenueResolver => {
-  if (!env.GOOGLE_PLACES_API_KEY) return new NoopVenueResolver();
-  return new GooglePlacesVenueResolver({
-    apiKey: env.GOOGLE_PLACES_API_KEY,
-    logger: baseLogger,
-  });
-};
-
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
   if (env.PAYMENT_PROVIDER === 'truelayer') {
@@ -107,9 +97,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     createBillParser({
       bedrockModelId: env.BEDROCK_MODEL_ID,
       region: env.AWS_REGION,
-      geminiApiKey: env.GEMINI_API_KEY,
     });
-  const venueResolver = deps.venueResolver ?? defaultVenueResolver();
+  // The venue is the name and address read off the bill; tests can inject a
+  // resolver to enrich it.
+  const venueResolver = deps.venueResolver ?? new NoopVenueResolver();
   const emailSender = deps.emailSender ?? createDefaultEmailSender();
   const sessionJwtSecret =
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);

@@ -3,7 +3,7 @@ import { baseLogger } from './logger.js';
 /**
  * Runs a call to an outside service and logs how long it took, as
  * `{ event: 'dep.call', dep, op, ms, ok }`. The dashboard's "Calls out"
- * panel charts these, so a slow or failing Bedrock, Gemini, Places, Stripe
+ * panel charts these, so a slow or failing Bedrock, Stripe
  * or SES call shows up without tracing. Pass `requestId` in `fields` when
  * there is one, to tie the call to its request line.
  */

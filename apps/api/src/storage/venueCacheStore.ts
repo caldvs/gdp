@@ -2,7 +2,17 @@ import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
 import type { Venue } from '../types/bills.js';
 
-const TTL_SECONDS = 90 * 24 * 60 * 60;
+/**
+ * Venue lookups, cached for good: `VENUEQ#<key>` rows have no TTL (Callum's
+ * call, 1 Nov 2026). Amazon Location Service is queried with
+ * IntendedUse=Storage, which its terms require for results we keep.
+ *
+ * Rows written before 1 Nov 2026 hold Google Places answers and carry a
+ * TTL. They're treated as misses (no `source`), so the next lookup
+ * replaces them with an Amazon Location answer and drops the TTL.
+ */
+
+export const VENUE_SOURCE = 'amazon-location';
 
 // Lowercase, trim, collapse internal whitespace. Joining name and
 // address with `|` rather than a space ensures "Soho Square" + "London"
@@ -14,10 +24,9 @@ export const cacheKey = (input: { name?: string; address?: string }): string =>
 
 const pk = (key: string) => `VENUEQ#${key}`;
 
-interface CachedVenueRecord {
-  // When Google had no match, we cache `null` so we don't re-query on
-  // every duplicate-named bill. The bill still records the parsed text
-  // separately — this only caches the *enrichment* result.
+export interface CachedVenueRecord {
+  // `null` when Amazon Location had no good match, so the same text isn't
+  // looked up again. The bill still records the text read off it.
   venue: Venue | null;
 }
 
@@ -29,20 +38,20 @@ export const venueCacheStore = {
         Key: { pk: pk(key), sk: pk(key) },
       }),
     );
-    if (!result.Item) return null;
+    if (!result.Item || result.Item.source !== VENUE_SOURCE) return null;
     return { venue: (result.Item.venue ?? null) as Venue | null };
   },
 
   async put(key: string, record: CachedVenueRecord): Promise<void> {
-    const ttlAt = Math.floor(Date.now() / 1000) + TTL_SECONDS;
     await ddb.send(
       new PutCommand({
         TableName: TABLE_NAME,
         Item: {
           pk: pk(key),
           sk: pk(key),
+          source: VENUE_SOURCE,
           venue: record.venue,
-          ttlAt,
+          cachedAt: new Date().toISOString(),
         },
       }),
     );

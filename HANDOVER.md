@@ -14,7 +14,7 @@ _Last updated 1 Nov 2026._
   - **Coverage gate:** API (unit + integration together) is at ~86% lines / 70% branches, core at ~39% / 52%. Floors are in each `vitest.config.ts` (API 85/68, core 39/50, 100% on the money files). A PR fails if lines or branches drop more than 1 point below main; main's numbers live on the `coverage-baseline` branch and every PR gets a coverage comment. `coverage-drop-ok` label for a deliberate drop.
   - **Merging:** never merge a PR unless `gate` passed on its latest commit and the branch is up to date with main. GitHub can't enforce it (private repo, free plan), so it's a rule in `CLAUDE.md`.
   - Property tests (fast-check) pin the money maths: client and server agree on every split, a complete bill is charged to the penny.
-  - Known bugs are written as `it.fails` in `apps/api/tests/integration/rules-and-races.test.ts`: fix one and its test starts failing, so change it to `it` in the same PR.
+  - Known bugs are written as `it.fails` (none open now): fix one and its test starts failing, so change it to `it` in the same PR.
 - **Testing as several people:** local and dev builds show a test bar above the header. It signs in as alice/bob/charlie/diana or a new guest (`@test.invalid`, no code) and keeps the switch to that tab by default, so the lead and a guest can share a window. API side is `POST /v1/auth/email/test-sign-in`, on locally and on dev (`AUTH_TEST_ACCOUNTS`), off in prod (the dependency check fails if not). The sign-in page's old local-only "Dev accounts" buttons are gone; the local no-code sign-in for any email is unchanged.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, SES and test accounts off in prod, from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
@@ -22,7 +22,7 @@ _Last updated 1 Nov 2026._
 
 ## On branch `design/tinted-storybook` (not merged)
 
-- **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run *Update visual baselines* on the branch) before `gate` goes green.
+- **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run _Update visual baselines_ on the branch) before `gate` goes green.
 - **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
 
 ## Next up
@@ -36,7 +36,6 @@ _Last updated 1 Nov 2026._
 - The _change_ buttons for service and tax on Review bill are 32px, under the 44px tap target; allow-listed in `apps/web/e2e/layout.spec.ts` until the next visual-baseline refresh.
 - Five accessibility findings are allow-listed in `apps/web/e2e/a11y.spec.ts` (contrast on lines someone else took, aria-labels that don't contain the visible text, a colour-only link on the landing page). New ones fail CI.
 - No golden receipts yet: add photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
-- The API still accepts claim changes after a guest has paid. (`it.fails` test.)
 - Only quantity-1 items can be split.
 - SES is in the sandbox: sign-in codes and reports only reach verified addresses. Emails should move to the site's own domain once there is one.
 - Nothing has been tried on a real phone with a real Bedrock read since the switch. Bedrock access (use-case form, Marketplace subscription) was completed on 1 Nov.
@@ -44,10 +43,10 @@ _Last updated 1 Nov 2026._
 ## Decided, not built
 
 - Accounts optional: guests join with just a name (needs API work).
-- Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
+- Top-ups: a guest who forgot something adds it after paying and pays again for the extra (confirmed 1 Nov). Adding claims after paying already works; a second payment per guest doesn't yet.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
-- Table fee: one free bill per lead (a single credit), then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
+- Table fee: one free bill a month per lead, then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
 
 ## Housekeeping
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSelfCheckEvent, runSelfCheck } from './selfCheck.js';
+import { isSelfCheckEvent, runSelfCheck, stripeKeyModeProblem } from './selfCheck.js';
 
 describe('isSelfCheckEvent', () => {
   it('only matches the direct-invoke payload', () => {
@@ -27,5 +27,25 @@ describe('runSelfCheck', () => {
     ]);
     expect(failed.ok).toBe(false);
     expect(failed.checks[0]).toMatchObject({ status: 'fail', detail: 'AccessDenied' });
+  });
+});
+
+describe('stripeKeyModeProblem', () => {
+  it('needs test-mode keys outside prod', () => {
+    expect(stripeKeyModeProblem('local', 'sk_test_abc')).toBeNull();
+    expect(stripeKeyModeProblem('dev', 'rk_test_abc')).toBeNull();
+    expect(stripeKeyModeProblem('dev', 'sk_live_abc')).toMatch(/dev must use a test-mode/);
+    expect(stripeKeyModeProblem('local', 'rk_live_abc')).toMatch(/local must use a test-mode/);
+  });
+
+  it('needs live-mode keys in prod', () => {
+    expect(stripeKeyModeProblem('prod', 'sk_live_abc')).toBeNull();
+    expect(stripeKeyModeProblem('prod', 'rk_live_abc')).toBeNull();
+    expect(stripeKeyModeProblem('prod', 'sk_test_abc')).toMatch(/prod must use a live-mode/);
+  });
+
+  it('rejects values that are not Stripe secret keys', () => {
+    expect(stripeKeyModeProblem('dev', 'pk_test_abc')).toMatch(/not an sk_\/rk_ key/);
+    expect(stripeKeyModeProblem('dev', '{"key":"sk_test_abc"}')).toMatch(/not an sk_\/rk_ key/);
   });
 });

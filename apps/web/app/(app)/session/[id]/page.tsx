@@ -13,7 +13,7 @@ export default function SessionPage() {
   const { id } = useParams<{ id: string }>();
   const session = useSession(id);
   const me = useMe();
-  const bill = useBill(session.data?.billId);
+  const bill = useBill(session.data?.billId, session.data?.pinnedBillVersion);
 
   if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Centre><Spinner /></Centre>;
   if (session.isError || bill.isError) {

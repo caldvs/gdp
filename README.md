@@ -1,81 +1,61 @@
 # Group Dine Pay
 
-Snap the bill, share a QR, claim what you had, pay the lead direct. Your friends don't install anything.
+Snap the bill, share a QR, claim what you had, pay the lead direct. Guests don't install anything.
 
-This is the monorepo for the web app and its API.
+A web app (mobile-first) and its API, in one npm workspaces repo.
 
 ```
-apps/
-  web/     Next.js web app (the client — replaces the Expo app)
-  api/     Backend: Hono on AWS Lambda + DynamoDB + S3, deployed with CDK (was caldvs/gdp-backend)
-packages/
-  core/    Shared client code: typed API client, React Query hooks, money / QR / payout helpers
+apps/web       Next.js 16 web app
+apps/api       API: Hono on AWS Lambda, DynamoDB, S3, deployed with CDK
+packages/core  Shared client code: typed API client, React Query hooks, money / QR / payout helpers
+docs/          Architecture diagrams, decisions, deploy guide, designs
 ```
 
-`apps/api` was imported from `gdp-backend` with its full git history. `packages/core` was extracted
-from `gdp-mobile` — the parts that weren't tied to React Native — along with their tests. The web
-app's styling is the Calm design system's own CSS (`tokens.css` + `components.css` from the design
-hand-off), so it matches the mobile app's look.
+## How it works
+
+1. The **lead** photographs the bill. The API reads it (Claude Haiku on Bedrock, Gemini as fallback) and the lead checks the items.
+2. The lead enters their bank details, pays the **table fee** (£2, or £3 over £100, via Stripe; skipped when Stripe isn't configured), and gets a QR code and join code. The bank details stay in their browser and travel to guests in the link's `#p=` fragment ([ADR-0002](docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
+3. **Guests** join, tick what they had or split shared items ([ADR-0006](docs/decisions.md#adr-0006-splits-by-ways)), and see their share including service.
+4. Guests pay the lead by bank transfer (tap-to-copy details, Monzo/Revolut links) and tap *I've paid*. The app never holds money.
+5. The **lead** confirms payments, takes any leftover items, and closes the bill. Only the lead can close it. Closing emails every diner their bill report.
+
+See [docs/architecture](docs/architecture/README.md) for the system and data model diagrams.
 
 ## Getting started
 
-Requires Node 22 (`nvm use`). Install once, from the repo root:
+Node 22 (`nvm use`) and Docker.
 
 ```bash
 npm install
-npm run dev            # web app on http://localhost:8081, talking to the deployed dev API
+npm run dev:local      # API on :3000 (with DynamoDB Local + MinIO) and web on :8081
 ```
 
-To run everything locally (needs Docker running):
+Put a `GEMINI_API_KEY` in `apps/api/.env.local` so bill reading works locally (see `apps/api/.env.example`). Locally you sign in with just an email: the same email is always the same account.
 
-```bash
-npm run dev:local      # API on :3000 + web on :8081, web pointed at the local API
-```
+`npm run dev` runs only the web app, against the deployed dev API.
 
-(Or separately: `npm run dev:api` in one terminal, and `npm run dev` with
-`NEXT_PUBLIC_API_BASE_URL=http://localhost:3000` in `apps/web/.env.local` in another.)
-
-Locally, sign-in skips the emailed code: type any email and you're in. The same email always gets
-the same account (with its bills and sessions); a new email is a new user. The web app remembers the
-last email and signs you straight back in; *Sign out* in the menu lets you switch accounts, and the
-alice / bob / charlie / diana buttons are one-tap test accounts. The local DynamoDB and S3 data are
-kept in Docker volumes between restarts (`docker compose down -v` in `apps/api` wipes them).
-
-`npm run dev:api` reads `apps/api/.env` and `apps/api/.env.local` (put `GEMINI_API_KEY` there so
-bill scanning works). Dev sign-in only exists on the local server — never in the Lambda — and can be
-turned off with `AUTH_DEV_EMAIL_SIGNIN=false`. Other web settings are listed in `apps/web/.env.example`.
-
-## Common commands
+## Commands
 
 | Command | |
 | --- | --- |
-| `npm run dev` | Web app (Next.js) on :8081 |
-| `npm run dev:api` | API locally on :3000 |
-| `npm run dev:local` | API + web together, web using the local API |
-| `npm run build` | Production build of the web app |
-| `npm run typecheck` | All workspaces |
-| `npm test` | Unit tests: `packages/core` + `apps/api` |
-| `npm run gen:api` | Regenerate `packages/core/src/api/schema.d.ts` from `apps/api/openapi.yaml` |
-| `npm run e2e -w apps/web` | Playwright smoke tests (needs `npm run build` first) |
-| `npm run deploy:dev -w apps/api` | Validate the Lambda bundle, deploy the dev stack, smoke-test it |
+| `npm run dev:local` | API + web, web pointed at the local API |
+| `npm run dev` / `npm run dev:api` | Web only / API only |
+| `npm run typecheck` | All workspaces (the pre-commit hook runs it) |
+| `npm test` | Unit tests (`packages/core`, `apps/api`) |
+| `npm run test:int -w apps/api` | Integration tests (needs `npm run ddb:up -w apps/api`) |
+| `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API |
+| `npm run gen:api` | Regenerate client types from `apps/api/openapi.yaml` |
+| `npm run deploy:dev -w apps/api` | Deploy the dev API stack and smoke-test it |
 
-Because the client types are generated from the API's own `openapi.yaml`, an API contract change
-and the matching web change land in the same commit.
+An API contract change and the matching client change go in the same commit, since the client types come from `openapi.yaml`.
 
-## How the app works
+## Docs
 
-1. **Lead** signs in (email code), photographs the bill, checks the parsed items, then opens a session.
-2. Their **bank details** stay in their browser tab (ADR-0002) and travel to diners inside the join
-   QR's `#p=` fragment, which is never sent to a server.
-3. **Diners** scan the QR (or type the 6-character code), sign in, tap the items they had, split
-   shareable things like a bottle of wine, and tap *I'm done*.
-4. Each diner sees exactly what to transfer and marks it sent; the lead taps *mark received* as the
-   money lands. When everyone's received, the session is settled.
-
-## Deploying
-
-- **API** — GitHub Actions (`.github/workflows/api-deploy.yml`) deploys the dev stack on push to `main`,
-  using an OIDC role. If this repo isn't `caldvs/gdp-backend`, update that role's trust policy to the
-  new repo name first.
-- **Web** — any host that runs Next.js (Vercel, Netlify, Amplify, a Node server). Set
-  `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_PUBLIC_BASE_URL` (the site's own URL, used in QR codes).
+- [docs/architecture](docs/architecture/README.md): system and data model diagrams
+- [docs/decisions.md](docs/decisions.md): product and technical decisions
+- [docs/deploy.md](docs/deploy.md): deploying the API (CDK) and web (Vercel)
+- [docs/table-fee.md](docs/table-fee.md): the Stripe table fee and what's left before it takes real money
+- [docs/design](docs/design): designs not yet built
+- [apps/api/README.md](apps/api/README.md) and [apps/api/RUNBOOK.md](apps/api/RUNBOOK.md): the API and what to do when an alarm fires
+- [apps/web/README.md](apps/web/README.md): the web app and its tests
+- [HANDOVER.md](HANDOVER.md): where the work is right now

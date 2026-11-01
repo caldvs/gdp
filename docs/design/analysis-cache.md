@@ -4,13 +4,13 @@ _Status: proposed (31 Oct 2026). Not built. Owner: Callum. Written for the next 
 
 ## Problem
 
-Reading a bill costs a Gemini call (latency 3–10 s, money per call). The same image can come in more than once:
+Reading a bill costs a model call (Bedrock, falling back to Gemini) (latency 3–10 s, money per call). The same image can come in more than once:
 
 1. **Same person, same photo again** — they backed out of the check screen, the tab died, they picked the photo from the library a second time, or they're re-splitting a receipt they already split.
 2. **Someone else, same bytes** — rare (messaging apps recompress images), but free to handle.
 3. **Same photo, newer parser** — we improve the prompt (e.g. parser `v2` added `course`) and old reads become stale.
 
-And the complication: **the analysis is not the bill**. After Gemini reads the image, the lead corrects lines on _Check the bill_, and later _Fix the bill_ mid-session. Each amendment writes a new bill version. The parser's output and the bill a person is working on drift apart, and they're different things with different owners:
+And the complication: **the analysis is not the bill**. After the parser reads the image, the lead corrects lines on _Check the bill_, and later _Fix the bill_ mid-session. Each amendment writes a new bill version. The parser's output and the bill a person is working on drift apart, and they're different things with different owners:
 
 |                             | Analysis                                    | Bill                                         |
 | --------------------------- | ------------------------------------------- | -------------------------------------------- |
@@ -37,7 +37,7 @@ Gaps:
 
 Split the two concerns.
 
-1. **Cache the analysis, immutably, at the moment the parser returns** — before it becomes a bill and before anyone can amend it. Key it by image hash **and parser fingerprint**. This is what we reuse to avoid calling Gemini again.
+1. **Cache the analysis, immutably, at the moment the parser returns** — before it becomes a bill and before anyone can amend it. Key it by image hash **and parser fingerprint**. This is what we reuse to avoid reading the image again.
 2. **Never cache "what to send back".** On a repeat from the same person, _resolve_ it at request time from their own bill and its session state. Their latest amended version is the right answer for them; it's not a cache entry, it's their data.
 
 So the answer to "at which point do we cache?" is: **right after `parser.parse()` + venue resolution, before `buildBillV1`**. What the uploader gets back is decided per request by the resolver below, and it is always their own latest bill version when they have one.
@@ -52,13 +52,17 @@ So the answer to "at which point do we cache?" is: **right after `parser.parse()
 
 It works for the same user, but it's tied to a bill's lifecycle (its owner, its future deletion), it's not keyed by parser version, and it can't serve other users without exposing a `billId`. A separate, ownerless row is simpler to reason about.
 
+### With a fallback parser
+
+`FallbackBillParser` tries Bedrock, then Gemini. The fingerprint must be the parser that actually answered, not the primary. Today `FallbackBillParser` reports the primary's `model` and `version` whatever happened, so fix that first: have `parse()` return which parser answered, and use it for both the cache key and `parsedFrom.parser`. A Gemini read cached under Bedrock's fingerprint would be served as a Bedrock read until the TTL.
+
 ## Data model
 
 New item in the single table:
 
 ```
 pk: ANALYSIS#<sha256>
-sk: P#<parserFingerprint>          e.g. P#gemini-2.5-flash:v2:3f9a1c2e
+sk: P#<parserFingerprint>          e.g. P#eu.anthropic.claude-haiku-4-5:v2:3f9a1c2e
 parsed:        ParsedBillFromImage  (the validated parser output, as-is)
 venue?:        Venue                (resolved Places result, if any)
 analysedAt:    ISO datetime
@@ -96,7 +100,7 @@ sha = sha256(bytes)
 2. analysis hit (ANALYSIS#<sha> / P#<current fingerprint>)
        → bill = buildBillV1(cached.parsed, cached.venue, fresh billId + itemIds,
                             parsedFrom.source = 'cache', parsedFrom.analysedAt = cached.analysedAt)
-       → putVersion(bill, indexImageHash)            # no Gemini call
+       → putVersion(bill, indexImageHash)            # no model call
 3. miss  → parsed = parser.parse(bytes); venue = resolve(parsed.venue)
        → put ANALYSIS row (conditional)               # ← the caching point
        → bill = buildBillV1(...); putVersion(bill, indexImageHash)
@@ -104,7 +108,7 @@ sha = sha256(bytes)
 
 Step 1 deliberately wins over a newer parser: if this user already has a bill for the image, their corrections matter more than a better read. Offer a re-read only via _Start again_ (below).
 
-The uploaded image is still needed on an analysis hit (the bill's backdrop comes from `parsedFrom.uploadId`), so a cross-user hit still uploads; it just skips Gemini. Never point one user's bill at another user's S3 object.
+The uploaded image is still needed on an analysis hit (the bill's backdrop comes from `parsedFrom.uploadId`), so a cross-user hit still uploads; it just skips the model call. Never point one user's bill at another user's S3 object.
 
 ## What the uploader sees on a repeat
 
@@ -169,7 +173,7 @@ e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on t
 
 - `apps/api/src/services/bills/uploadService.ts` — early per-user dedup
 - `apps/api/src/services/bills/parseService.ts` — `parse`, `buildBillV1`
-- `apps/api/src/services/bills/parser.ts`, `geminiParser.ts` (`MODEL`, `VERSION`, `PROMPT`), `fixtureParser.ts`
+- `apps/api/src/services/bills/parser.ts`, `bedrockParser.ts` (`FallbackBillParser`, `createBillParser`), `geminiParser.ts`, `fixtureParser.ts`
 - `apps/api/src/storage/billStore.ts` — `putVersion`, `findByImageHash`, key helpers
 - `apps/api/src/storage/sessionStore.ts` — `getBillLock`, `deleteBillLock`
 - `apps/api/src/services/sessions/sessionService.ts` — `close`, `abandon`

@@ -81,6 +81,19 @@ test('parse errors say what went wrong', async ({ browser }) => {
   await expect(lead.getByText('That photo is too big.')).toBeVisible({ timeout: 15_000 });
 });
 
+test('a slow read keeps the photo, and Try again reads it', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, '/');
+
+  api.faults.push({ kind: 'parse', code: 'PARSE_TIMEOUT', message: 'Bedrock took too long to read the bill' });
+  await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await expect(lead.getByRole('heading', { name: 'That took too long.' })).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByRole('img', { name: 'Your bill' })).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Try again' }).click();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+});
+
 test('fixing the bill mid-session: a picking guest and a sent guest both see the new price', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);

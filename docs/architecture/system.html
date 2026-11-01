@@ -147,8 +147,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <g class="edge "><path d="M1080,934 L1148,934" marker-end="url(#ah)"/>
 <text x="1115" y="926" text-anchor="middle">parse</text>
 </g>
-<g class="edge "><path d="M1080,1056 L1148,1056" marker-end="url(#ah)" marker-start="url(#ah)"/>
-<text x="1115" y="1048" text-anchor="middle">SDK</text>
+<g class="edge "><path d="M1080,1032 L1148,1032" marker-end="url(#ah)"/>
+<text x="1115" y="1024" text-anchor="middle">look up</text>
+</g>
+<g class="edge "><path d="M1080,1126 L1148,1126" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1115" y="1118" text-anchor="middle">SDK</text>
 </g>
 <g class="edge "><path d="M1080,671 L1433,671" marker-end="url(#ah)" marker-start="url(#ah)"/>
 <text x="1260" y="664" text-anchor="middle">Create payment · webhooks</text>
@@ -156,10 +159,10 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <g class="edge "><path d="M1080,881 L1433,881" marker-end="url(#ah)" marker-start="url(#ah)"/>
 <text x="1260" y="874" text-anchor="middle">Checkout · webhooks</text>
 </g>
-<g class="edge dashed"><path d="M1435,1046 L1402,1046" marker-end="url(#ah)"/>
-<text x="1418" y="1038" text-anchor="middle">OIDC</text>
+<g class="edge dashed"><path d="M1435,1116 L1402,1116" marker-end="url(#ah)"/>
+<text x="1418" y="1108" text-anchor="middle">OIDC</text>
 </g>
-<g class="edge "><path d="M390,470 L390,1205 L1260,1205 L1260,1103" marker-end="url(#ah)"/>
+<g class="edge "><path d="M390,470 L390,1205 L1260,1205 L1260,1169" marker-end="url(#ah)"/>
 <text x="760" y="1199" text-anchor="middle">Presigned PUT / GET · bill photo</text>
 </g>
 <rect class="node key" x="40" y="70" width="180" height="118" rx="10"/>
@@ -200,7 +203,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <rect class="node key" x="560" y="70" width="520" height="64" rx="10"/>
 <text class="t-title" x="576" y="98">API Gateway · HTTP API</text>
 <text class="t-sub" x="576" y="120">Every route → one Lambda integration · CORS · x-request-id</text>
-<rect class="node key" x="560" y="160" width="520" height="990" rx="10"/>
+<rect class="node key" x="560" y="160" width="520" height="1007" rx="10"/>
 <text class="t-title" x="576" y="188">Lambda · ApiHandler</text>
 <text class="t-sub" x="1064" y="188" text-anchor="end">Node 22 · Hono · apps/api</text>
 <rect class="inner" x="576" y="206" width="488" height="64" rx="7"/>
@@ -289,11 +292,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="846" y="927">sender (SES or console)</text>
 <text class="t-mono" x="846" y="950">storage</text>
 <text class="t-sub" x="846" y="967">one store per entity</text>
-<rect class="inner" x="576" y="1058" width="488" height="76" rx="7"/>
+<rect class="inner" x="576" y="1058" width="488" height="93" rx="7"/>
 <text class="t-inner" x="588" y="1080">Swappable providers (env)</text>
 <text class="t-mono" x="588" y="1102">Parser: Bedrock · fixture</text>
 <text class="t-mono" x="588" y="1120">Payments: TrueLayer · mock · manual</text>
-<text class="t-mono" x="588" y="1138">Email: SES · console</text>
+<text class="t-mono" x="588" y="1138">Email: SES · console     Venue: Location · none</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>
@@ -312,8 +315,8 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="1166" y="365">Payments, provider index</text>
 <text class="t-mono" x="1166" y="384">FEE#</text>
 <text class="t-sub" x="1166" y="401">Table fees</text>
-<text class="t-mono" x="1166" y="420">IDMP# KEY#</text>
-<text class="t-sub" x="1166" y="437">Idempotency</text>
+<text class="t-mono" x="1166" y="420">IDMP# KEY#  VENUEQ#</text>
+<text class="t-sub" x="1166" y="437">Idempotency, venue lookups</text>
 <rect class="node" x="1150" y="479" width="220" height="70" rx="10"/>
 <text class="t-title" x="1166" y="507">Amazon SES</text>
 <text class="t-sub" x="1166" y="529">Sign-in codes, bill reports</text>
@@ -329,15 +332,18 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <rect class="node" x="1150" y="803" width="220" height="60" rx="10"/>
 <text class="t-title" x="1166" y="831">SNS</text>
 <text class="t-sub" x="1166" y="853">Alert topic</text>
-<rect class="node" x="1150" y="899" width="220" height="88" rx="10"/>
+<rect class="node" x="1150" y="899" width="220" height="84" rx="10"/>
 <text class="t-title" x="1166" y="927">Bedrock</text>
 <text class="t-sub" x="1166" y="949">Claude Haiku 4.5 reads the bill,</text>
 <text class="t-sub" x="1166" y="968">venue name and address</text>
-<rect class="node" x="1150" y="1001" width="220" height="100" rx="10"/>
-<text class="t-title" x="1166" y="1029">S3</text>
-<text class="t-sub" x="1166" y="1051">gdp-bills-raw-{env}</text>
-<text class="t-sub" x="1166" y="1070">Private · Glacier IR at 30 d</text>
-<text class="t-sub" x="1166" y="1089">Deleted at 365 d</text>
+<rect class="node" x="1150" y="997" width="220" height="60" rx="10"/>
+<text class="t-title" x="1166" y="1025">Amazon Location</text>
+<text class="t-sub" x="1166" y="1047">Venue lookup, cached for good</text>
+<rect class="node" x="1150" y="1071" width="220" height="96" rx="10"/>
+<text class="t-title" x="1166" y="1099">S3</text>
+<text class="t-sub" x="1166" y="1121">gdp-bills-raw-{env}</text>
+<text class="t-sub" x="1166" y="1140">Private · Glacier IR at 30 d</text>
+<text class="t-sub" x="1166" y="1159">Deleted at 365 d</text>
 <rect class="node ext" x="1435" y="630" width="185" height="82" rx="10"/>
 <text class="t-title" x="1451" y="658">TrueLayer</text>
 <text class="t-sub" x="1451" y="680">Open-banking pay-ins</text>
@@ -346,10 +352,10 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-title" x="1451" y="868">Stripe</text>
 <text class="t-sub" x="1451" y="890">Table-fee Checkout</text>
 <text class="t-sub" x="1451" y="909">Webhooks back</text>
-<rect class="node ext" x="1435" y="991" width="185" height="92" rx="10"/>
-<text class="t-title" x="1451" y="1019">GitHub Actions</text>
-<text class="t-sub" x="1451" y="1041">CI, e2e, typecheck</text>
-<text class="t-sub" x="1451" y="1060">Deploys dev from main</text>
+<rect class="node ext" x="1435" y="1061" width="185" height="92" rx="10"/>
+<text class="t-title" x="1451" y="1089">GitHub Actions</text>
+<text class="t-sub" x="1451" y="1111">CI, e2e, typecheck</text>
+<text class="t-sub" x="1451" y="1130">Deploys dev from main</text>
     </svg>
   </div>
 

@@ -23,6 +23,11 @@ const EnvSchema = z.object({
   // Bedrock model (or inference profile) that reads bills, on the AWS
   // credentials in use. Unset, bill reading fails with a clear error.
   BEDROCK_MODEL_ID: z.string().optional(),
+  // How the venue read off the bill is looked up. `amazon-location` fills in
+  // the full address and coordinates (Amazon Location Service, cached for
+  // good in VENUEQ# rows); `none` keeps the text on the bill. Deployed
+  // stacks use amazon-location.
+  VENUE_LOOKUP: z.enum(['none', 'amazon-location']).default('none'),
 
   // Verified SES sender address. When unset, transactional email is
   // logged to stdout via ConsoleEmailSender instead of being sent.

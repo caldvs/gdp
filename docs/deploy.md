@@ -106,14 +106,16 @@ The workflow runs two checks once `cdk deploy` finishes:
 - **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
   and IAM role, that the Stripe key works and both fee prices exist, Bedrock
-  answers, and the SES sender is verified (and whether SES is still in the
-  sandbox). Any of them failing fails the run. The results table is in the
-  run's summary.
+  answers, Amazon Location can look up a UK place, and the SES sender is
+  verified (and whether SES is still in the sandbox). Stripe, Bedrock and SES
+  failing fail the run; Amazon Location only warns, because a failed lookup
+  leaves the venue as read off the bill. The results table is in the run's
+  summary.
 
 Run it yourself with `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>`
 (the name is the stack's `ApiFunctionNameOutput`).
 
-Every call out to Bedrock, Stripe and SES is logged as
+Every call out to Bedrock, Amazon Location, Stripe and SES is logged as
 `event: dep.call` with its duration; the dashboard's **Calls out** panel
 shows count, failures, average, p95 and max for each.
 

@@ -32,6 +32,7 @@ Locally:
 
 - `POST /v1/auth/email/dev-sign-in` lets you sign in with just an email. It only exists against a local DynamoDB; turn it off with `AUTH_DEV_EMAIL_SIGNIN=false`.
 - Bill reading uses Bedrock with your AWS profile (`AWS_PROFILE`, `BEDROCK_MODEL_ID`). Without them, scans fail with a clear error.
+- Venue lookup is off (`VENUE_LOOKUP=none`): the venue is what Bedrock read off the bill. Set `amazon-location` to try the real lookup.
 - Emails go to the console instead of SES.
 - Payments use the `mock` provider by default.
 
@@ -60,11 +61,12 @@ When an alarm fires: [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Deployed config
 
-| Setting     | Dev value                                                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Region      | eu-west-2                                                                                                                                  |
-| Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, which also reads the venue's name and address (override with `-c bedrockModelId=…`) |
-| Payments    | `manual`: guests transfer, the lead confirms                                                                                               |
-| Email       | SES, from the address in SSM                                                                                                               |
-| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                                                                           |
-| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                                                                 |
+| Setting     | Dev value                                                                                   |
+| ----------- | ------------------------------------------------------------------------------------------- |
+| Region      | eu-west-2                                                                                   |
+| Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0` (override with `-c bedrockModelId=…`) |
+| Venue       | Amazon Location Service lookup, cached in `VENUEQ#` rows with no TTL                        |
+| Payments    | `manual`: guests transfer, the lead confirms                                                |
+| Email       | SES, from the address in SSM                                                                |
+| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                            |
+| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                  |

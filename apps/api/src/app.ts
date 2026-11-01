@@ -20,6 +20,11 @@ import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
 import { NoopVenueResolver, type VenueResolver } from './services/bills/venueResolver.js';
+import {
+  AmazonLocationVenueResolver,
+  amazonLocationSearch,
+} from './services/bills/locationVenueResolver.js';
+import { baseLogger } from './logging/logger.js';
 import type { PaymentProvider } from './services/payments/provider.js';
 import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
 import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
@@ -63,6 +68,13 @@ const sessionJwtSecretFromEnv = (): Uint8Array => {
 const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
+// The venue Bedrock read off the bill, looked up with Amazon Location
+// Service when VENUE_LOOKUP=amazon-location (deployed), else used as read.
+const defaultVenueResolver = (): VenueResolver =>
+  env.VENUE_LOOKUP === 'amazon-location'
+    ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
+    : new NoopVenueResolver();
+
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
   if (env.PAYMENT_PROVIDER === 'truelayer') {
@@ -98,9 +110,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       bedrockModelId: env.BEDROCK_MODEL_ID,
       region: env.AWS_REGION,
     });
-  // The venue is the name and address read off the bill; tests can inject a
-  // resolver to enrich it.
-  const venueResolver = deps.venueResolver ?? new NoopVenueResolver();
+  const venueResolver = deps.venueResolver ?? defaultVenueResolver();
   const emailSender = deps.emailSender ?? createDefaultEmailSender();
   const sessionJwtSecret =
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);

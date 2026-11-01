@@ -48,3 +48,25 @@ describe('sharePence', () => {
     expect(sharePence(1200, ['a'], 3, 'z')).toBe(400);
   });
 });
+
+describe('owed projection edge cases', () => {
+  const p = (claimedItemIds: string[]) => ({ userId: 'u1', claimedItemIds, sharedItemIds: [] });
+
+  it('ignores claims and shares on items no longer on the bill', () => {
+    const s = { participants: [p(['pizza', 'gone'])], shares: [{ itemId: 'gone', userIds: ['u1'], ways: 2, activity: [] }] } as never;
+    expect(projectSubtotalPence(s, bill, 'u1')).toBe(1400);
+  });
+
+  it('copes with a session that has no shares field', () => {
+    expect(projectSubtotalPence({ participants: [p(['beer'])] } as never, bill, 'u1')).toBe(550);
+  });
+
+  it('splits between whoever has joined when ways is missing (legacy)', () => {
+    const s = { participants: [p([])], shares: [{ itemId: 'wine', userIds: ['u1', 'u2'], activity: [] }] } as never;
+    expect(projectSubtotalPence(s, bill, 'u1')).toBe(sharePence(2201, ['u1', 'u2'], 2, 'u1'));
+  });
+
+  it('is zero for someone not at the table', () => {
+    expect(projectSubtotalPence({ participants: [], shares: [] } as never, bill, 'nobody')).toBe(0);
+  });
+});

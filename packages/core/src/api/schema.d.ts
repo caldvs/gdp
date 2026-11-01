@@ -91,6 +91,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/email/test-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to a test account without a code (local and dev only)
+         * @description For trying the app as several people at once. Only `@test.invalid`
+         *     addresses (reserved, so never a real person's), and only where the
+         *     server enables it: local and dev, never prod (404 there). A known
+         *     address gets its existing account; a new one gets a new account.
+         */
+        post: operations["testAccountSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -1540,6 +1563,52 @@ export interface operations {
              *     so callers can't distinguish them.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testAccountSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. Same shape as `verifyEmailOtp`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Test accounts are off on this server. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

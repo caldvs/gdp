@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isSelfCheckEvent, runSelfCheck, stripeKeyModeProblem } from './selfCheck.js';
+import {
+  isSelfCheckEvent,
+  runSelfCheck,
+  stripeKeyModeProblem,
+  testAccountsProblem,
+} from './selfCheck.js';
 
 describe('isSelfCheckEvent', () => {
   it('only matches the direct-invoke payload', () => {
@@ -47,5 +52,14 @@ describe('stripeKeyModeProblem', () => {
   it('rejects values that are not Stripe secret keys', () => {
     expect(stripeKeyModeProblem('dev', 'pk_test_abc')).toMatch(/not an sk_\/rk_ key/);
     expect(stripeKeyModeProblem('dev', '{"key":"sk_test_abc"}')).toMatch(/not an sk_\/rk_ key/);
+  });
+});
+
+describe('testAccountsProblem', () => {
+  it('fails only when test accounts are on in prod', () => {
+    expect(testAccountsProblem('prod', 'true')).toMatch(/turn it off/);
+    expect(testAccountsProblem('prod', 'false')).toBeNull();
+    expect(testAccountsProblem('dev', 'true')).toBeNull();
+    expect(testAccountsProblem('local', 'true')).toBeNull();
   });
 });

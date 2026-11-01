@@ -64,3 +64,21 @@ export function useDevEmailSignIn() {
     },
   });
 }
+
+// LOCAL AND DEV ONLY: sign in to a test account (@test.invalid) with no
+// code. With `tabOnly`, only this tab signs in, so other tabs keep their
+// user. 404 means the server has test accounts off.
+export function useTestAccountSignIn() {
+  const qc = useQueryClient();
+  return useMutation<VerifyResponse, ApiError, { email: string; tabOnly?: boolean }>({
+    mutationFn: ({ email }) =>
+      api<VerifyResponse>('/v1/auth/email/test-sign-in', { method: 'POST', body: { email } }),
+    onSuccess: async ({ token, user }, { tabOnly }) => {
+      await storeToken(token, { tabOnly });
+      // Everything else cached belongs to whoever was signed in before.
+      // Keep the ['me'] query itself so screens watching it see the switch.
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+      qc.setQueryData<User>(['me'], user);
+    },
+  });
+}

@@ -17,6 +17,9 @@ const EnvSchema = z.object({
   SESSION_JWT_SECRET: z.string().min(16).optional(),
 
   GEMINI_API_KEY: z.string().optional(),
+  // Bedrock model (or inference profile) that reads bills. When set it is
+  // the main reader and Gemini, if its key is set, is the fallback.
+  BEDROCK_MODEL_ID: z.string().optional(),
 
   // Google Places (New) — used by GooglePlacesVenueResolver to enrich
   // the venue Gemini extracts from a bill image with a stable placeId

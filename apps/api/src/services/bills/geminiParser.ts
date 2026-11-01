@@ -5,7 +5,7 @@ import { ParsedBillFromImageSchema, type BillParser, type ParsedBillFromImage } 
 const MODEL = 'gemini-2.5-flash';
 const VERSION = 'v2';
 
-const PROMPT = `You are parsing a UK restaurant bill image into structured JSON for a bill-splitting app.
+export const PROMPT = `You are parsing a UK restaurant bill image into structured JSON for a bill-splitting app.
 
 RULES:
 - All monetary amounts are integer PENCE (e.g. "£12.50" → 1250).
@@ -78,27 +78,37 @@ export class GeminiBillParser implements BillParser {
       throw new AppError('PARSE_FAILED', 'Gemini response missing content');
     }
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new AppError('PARSE_FAILED', 'Gemini returned non-JSON output', {
-        snippet: text.slice(0, 200),
-      });
-    }
-
-    const result = ParsedBillFromImageSchema.safeParse(parsed);
-    if (!result.success) {
-      throw new AppError('PARSE_FAILED', 'Gemini output failed schema validation', {
-        issues: z.flattenError(result.error),
-      });
-    }
-    if (result.data.items.length === 0) {
-      throw new AppError('PARSE_LOW_CONFIDENCE', 'No items could be parsed from the image');
-    }
-
-    return result.data;
+    return validateParsedBill(text, 'Gemini');
   }
+}
+
+/**
+ * Turn a model's JSON answer into a bill, or a PARSE_* error. Shared by
+ * every parser so they fail the same way. Tolerates a ```json fence.
+ */
+export function validateParsedBill(text: string, source: string): ParsedBillFromImage {
+  const body = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    throw new AppError('PARSE_FAILED', `${source} returned non-JSON output`, {
+      snippet: text.slice(0, 200),
+    });
+  }
+  const result = ParsedBillFromImageSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new AppError('PARSE_FAILED', `${source} output failed schema validation`, {
+      issues: z.flattenError(result.error),
+    });
+  }
+  if (result.data.items.length === 0) {
+    throw new AppError('PARSE_LOW_CONFIDENCE', 'No items could be parsed from the image');
+  }
+  return result.data;
 }
 
 export const createDefaultBillParser = (apiKey: string | undefined): BillParser => {

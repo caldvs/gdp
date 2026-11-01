@@ -2,24 +2,44 @@ import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { BillItemCategory, BillItemCourse } from '../../types/bills.js';
 
+/**
+ * The model sometimes puts a food item's course in `category` ("main",
+ * "starter"). That item is food: move the label to `course` rather than fail
+ * the whole read. Also accepts a category in the wrong case.
+ */
+function courseAsCategory(v: unknown): unknown {
+  if (typeof v !== 'object' || v === null) return v;
+  const item = v as { category?: unknown; course?: unknown };
+  if (typeof item.category !== 'string') return v;
+  const label = item.category.trim().toLowerCase();
+  if (BillItemCategory.safeParse(label).success) return { ...item, category: label };
+  if (BillItemCourse.safeParse(label).success) {
+    return { ...item, category: 'food', course: item.course ?? label };
+  }
+  return v;
+}
+
 export const ParsedBillFromImageSchema = z.object({
   items: z
     .array(
-      z.object({
-        name: z.string().min(1),
-        unitPricePence: z.number().int().nonnegative(),
-        quantity: z.number().int().positive(),
-        category: BillItemCategory,
-        // The model may send null or an unexpected label; treat those as unknown
-        // rather than failing the whole parse over a display hint.
-        course: z
-          .unknown()
-          .transform((v) => {
-            const r = BillItemCourse.safeParse(v);
-            return r.success ? r.data : undefined;
-          })
-          .optional(),
-      }),
+      z.preprocess(
+        courseAsCategory,
+        z.object({
+          name: z.string().min(1),
+          unitPricePence: z.number().int().nonnegative(),
+          quantity: z.number().int().positive(),
+          category: BillItemCategory,
+          // The model may send null or an unexpected label; treat those as unknown
+          // rather than failing the whole parse over a display hint.
+          course: z
+            .unknown()
+            .transform((v) => {
+              const r = BillItemCourse.safeParse(v);
+              return r.success ? r.data : undefined;
+            })
+            .optional(),
+        }),
+      ),
     )
     .min(1),
   taxPence: z.number().int().nonnegative(),

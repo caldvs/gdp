@@ -15,7 +15,7 @@ import {
 
 // v3: the prompt asks for the full printed address and never a guessed one.
 // v4: venue.name holds only the printed trading name, with hints where to find it.
-const VERSION = 'v4';
+const VERSION = 'v5';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Haiku by

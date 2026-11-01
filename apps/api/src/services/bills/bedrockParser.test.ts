@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
-import { BedrockBillParser, createBillParser } from './bedrockParser.js';
+import { BedrockBillParser, createBillParser, parseBox } from './bedrockParser.js';
+import { encodeJpeg } from './receiptImages.js';
 import { PROMPT, validateParsedBill } from './billPrompt.js';
 import type { ParsedBillFromImage } from './parser.js';
 
@@ -172,5 +173,60 @@ describe('validateParsedBill', () => {
 
   it('names the reader in its errors', () => {
     expect(() => validateParsedBill('not json', 'Bedrock')).toThrow(/Bedrock returned non-JSON/);
+  });
+});
+
+describe('BedrockBillParser receipt parts', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const reply = (text: string) => ({ output: { message: { content: [{ text }] } } });
+  const photo = encodeJpeg({
+    width: 600,
+    height: 2400,
+    data: new Uint8Array(600 * 2400 * 4).fill(255),
+  });
+  type Sent = { input: { messages: { content: { image?: unknown; text?: string }[] }[] } };
+  const contentOf = (call: unknown[]) => (call[0] as Sent).input.messages[0]!.content;
+
+  it('finds the receipt, then reads a long one as overlapping parts in one call', async () => {
+    const send = vi
+      .spyOn(BedrockRuntimeClient.prototype, 'send')
+      .mockResolvedValueOnce(reply('{"left":0.3,"top":0,"right":0.6,"bottom":1}') as never)
+      .mockResolvedValueOnce(reply(JSON.stringify(bill)) as never);
+    const out = await new BedrockBillParser('eu.model', 'eu-west-2').parse(photo, 'r');
+    expect(out.items[0]?.name).toBe('Pizza');
+    expect(send).toHaveBeenCalledTimes(2);
+    const content = contentOf(send.mock.calls[1]!);
+    expect(content.filter((c) => c.image)).toHaveLength(4);
+    expect(content.at(-1)?.text).toMatch(/^These 4 images are parts of ONE receipt/);
+  });
+
+  it('reads the whole photo when finding the receipt fails', async () => {
+    const send = vi
+      .spyOn(BedrockRuntimeClient.prototype, 'send')
+      .mockRejectedValueOnce(new Error('nope'))
+      .mockResolvedValueOnce(reply(JSON.stringify(bill)) as never);
+    await new BedrockBillParser('eu.model', 'eu-west-2').parse(photo, 'r');
+    const content = contentOf(send.mock.calls[1]!);
+    expect(content.filter((c) => c.image)).toHaveLength(3); // 600x2400 uncropped is still tall
+    expect(content.at(-1)?.text).toMatch(/^These 3 images/);
+  });
+});
+
+describe('parseBox', () => {
+  it('takes the box from the answer', () => {
+    expect(parseBox('Here: {"left":0.1,"top":0,"right":0.5,"bottom":1}')).toEqual({
+      left: 0.1,
+      top: 0,
+      right: 0.5,
+      bottom: 1,
+    });
+  });
+
+  it('gives null for anything else', () => {
+    expect(parseBox(undefined)).toBeNull();
+    expect(parseBox('no idea')).toBeNull();
+    expect(parseBox('{"left":"a"}')).toBeNull();
+    expect(parseBox('{oops}')).toBeNull();
   });
 });

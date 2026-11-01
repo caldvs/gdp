@@ -9,6 +9,8 @@
   --faint: #8c959f;
   --line: #e5e7eb;
   --line-strong: #d0d7de;
+  --skel: #eceff2;
+  --skel-hi: #f7f8fa;
   --hover: #f6f8fa;
   --accent: #0b57d0;
   --accent-hover: #0a4bb4;
@@ -165,6 +167,30 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .spin--light { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2s; } }
+.spin--sm { width: 20px; height: 20px; }
+
+/* ---------- Loading ---------- */
+.skel { display: block; flex: none; height: 14px; border-radius: 4px; background: linear-gradient(90deg, var(--skel) 0%, var(--skel-hi) 40%, var(--skel) 80%) var(--skel); background-size: 480px 100%; animation: shimmer 1.4s linear infinite; }
+.skel--lg { height: 16px; }
+.skel--end { margin-left: auto; }
+@keyframes shimmer { from { background-position: -240px 0; } to { background-position: 240px 0; } }
+/* Reading a bill: the photo as a small thumbnail beside the title, grey rows below. */
+.reading-head { display: flex; align-items: center; gap: 14px; }
+.reading-thumb { flex: none; width: 56px; height: 72px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--hover); }
+/* Stages of a wait (paying the fee, then making the QR code). */
+.box > .steps { border-top: 1px solid var(--line); }
+.step__icon { flex: none; width: 24px; display: flex; align-items: center; justify-content: center; }
+.step__dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-strong); }
+.step--todo { color: var(--faint); }
+.step--busy { font-weight: 600; }
+.step__tick { color: var(--ok-ink); }
+.step__tick path { stroke-dasharray: 24; animation: draw .35s ease-out both; }
+@keyframes draw { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+.fee-sum { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 16px 24px; }
+.fee-sum b { font-size: 40px; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) {
+  .skel, .step__tick path { animation: none; }
+}
 .centre { min-height: 60dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: var(--gutter); text-align: center; }
 
 /* ---------- Pieces ---------- */

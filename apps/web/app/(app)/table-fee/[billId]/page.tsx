@@ -8,7 +8,7 @@ import { api, ApiError } from '@gdp/core/api';
 import { useCreateSession } from '@gdp/core/api/hooks/useSession';
 import { useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { BackLink, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
+import { BackLink, Button, Centre, Notice, Page, Spinner, Steps, Title } from '@/components/ui';
 
 // loadStripe fetches Stripe.js from js.stripe.com (never bundled), as PCI requires.
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
@@ -93,7 +93,23 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
     );
   }
   if (confirmed || paid) {
-    return <Centre><Spinner label={paid ? 'Getting your QR code' : 'Confirming payment'} /></Centre>;
+    return (
+      <Page>
+        <div className="box">
+          <div className="fee-sum">
+            <span className="muted">Table fee</span>
+            <b>{pounds(status.data.amountPence)}</b>
+          </div>
+          <Steps
+            steps={[
+              { label: paid ? 'Paid' : 'Confirming payment', state: paid ? 'done' : 'busy' },
+              { label: 'Making your QR code', state: paid ? 'busy' : 'todo' },
+            ]}
+          />
+        </div>
+        <p className="muted small" style={{ textAlign: 'center' }}>Don’t close this page.</p>
+      </Page>
+    );
   }
 
   return (

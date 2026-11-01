@@ -105,6 +105,18 @@ export const billStore = {
   }): Promise<void> {
     const ttlAt = ttlEpochSeconds();
     const billItem = { pk: billPk(input.bill.billId), ...input.bill };
+    // Shares and split settings have their own rows and are merged in on
+    // read; they must never land in the META row (a stale copy there would
+    // shadow the real rows). The session passed in comes from a read, so
+    // strip them here.
+    const {
+      shares: _shares,
+      shareSettings: _shareSettings,
+      ...meta
+    } = input.sessionMeta as Omit<Session, 'participants'> & {
+      shares?: unknown;
+      shareSettings?: unknown;
+    };
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
       {
         Put: {
@@ -120,7 +132,7 @@ export const billStore = {
             pk: sessionPk(input.sessionMeta.sessionId),
             sk: META_SK,
             ttlAt,
-            ...input.sessionMeta,
+            ...meta,
           },
         },
       },

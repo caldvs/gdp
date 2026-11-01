@@ -44,11 +44,10 @@ run summary. Then:
    `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
    `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
    Stripe live is ready.
-2. In eu-west-2: SSM parameters `/gdp-prod/ses-from-email` (the same verified
-   sender as dev works; it's one account) and `/gdp-prod/google-places-api-key`;
-   secrets `gdp-prod/session-jwt-secret` (new, random, 32+ characters) and
-   `gdp-prod/gemini-api-key`. Missing SSM parameters fail the deploy; missing
-   secrets fail the smoke test.
+2. In eu-west-2: the SSM parameter `/gdp-prod/ses-from-email` (the same
+   verified sender as dev works; it's one account) and the secret
+   `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM
+   parameter fails the deploy; a missing secret fails the smoke test.
 3. Actions → **API Deploy** → Run workflow on `main` with `prod`, and approve.
 
 What enforces it:
@@ -107,15 +106,16 @@ The workflow runs two checks once `cdk deploy` finishes:
 - **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
   and IAM role, that the Stripe key works and both fee prices exist, Bedrock
-  answers, the Gemini and Places keys are accepted, and the SES sender is
-  verified (and whether SES is still in the sandbox). Stripe, Bedrock and
-  SES failing fail the run; Gemini and Places are fallbacks or extras, so
-  they show as warnings. The results table is in the run's summary.
+  answers, Amazon Location can look up a UK place, and the SES sender is
+  verified (and whether SES is still in the sandbox). Stripe, Bedrock and SES
+  failing fail the run; Amazon Location only warns, because a failed lookup
+  leaves the venue as read off the bill. The results table is in the run's
+  summary.
 
 Run it yourself with `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>`
 (the name is the stack's `ApiFunctionNameOutput`).
 
-Every call out to Bedrock, Gemini, Places, Stripe and SES is logged as
+Every call out to Bedrock, Amazon Location, Stripe and SES is logged as
 `event: dep.call` with its duration; the dashboard's **Calls out** panel
 shows count, failures, average, p95 and max for each.
 
@@ -147,7 +147,7 @@ to the page's own origin, which is right on Vercel.
   → Account dashboard), or verify each tester's address meanwhile.
 - **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
 - **Bedrock model access.** Enable Claude Haiku 4.5 in the Bedrock console
-  (eu-west-2), or every bill falls back to Gemini.
+  (eu-west-2), or no bill can be read.
 - **Table fee.** Stripe setup is in [table-fee.md](table-fee.md).
 - **Real-device check.** Scan a real bill on a phone against the deployed
   API.

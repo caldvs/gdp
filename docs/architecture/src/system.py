@@ -89,7 +89,7 @@ card(40, 520, 180, 100, 'Guest’s bank app', ['Approves TrueLayer', 'pay-in, or
 rect(290, 70, 200, 400, 'node key')
 text(306, 98, 'Web app', 't-title')
 text(306, 118, 'Next.js 16 · React 19')
-text(306, 137, 'Hosted on Vercel')
+text(306, 137, 'Vercel · paymeback.dev')
 for i, (t, l1, l2) in enumerate([
     ('Pages + UI', 'App Router, Option D', 'components/ui.tsx'),
     ('Server state', 'TanStack Query', 'cache + refetch'),
@@ -108,7 +108,7 @@ text(318, 435, 'QR + quick-pay links')
 # ---- API Gateway
 rect(LX, 70, LW, 64, 'node key')
 text(LX + 16, 98, 'API Gateway · HTTP API', 't-title')
-text(LX + 16, 120, 'Every route → one Lambda integration · CORS · x-request-id')
+text(LX + 16, 120, 'api.paymeback.dev · api.test.paymeback.dev · every route → one Lambda')
 
 # ---- Lambda
 rect(LX, LAMBDA_TOP, LW, LAMBDA_BOTTOM - LAMBDA_TOP, 'node key')
@@ -116,7 +116,7 @@ text(LX + 16, LAMBDA_TOP + 28, 'Lambda · ApiHandler', 't-title')
 text(LX + LW - 16, LAMBDA_TOP + 28, 'Node 22 · Hono · apps/api', 't-sub', 'end')
 rect(LX + 16, 206, LW - 32, 64, 'inner', 7)
 text(LX + 28, 228, 'Middleware', 't-inner')
-text(LX + 28, 248, 'requestId → requestLogger → CORS → errorHandler', 't-mono')
+text(LX + 28, 248, 'requestId → requestLogger → CORS (allow-list) → errorHandler', 't-mono')
 text(LX + 28, 264, 'per route: session JWT auth · Idempotency-Key', 't-mono')
 text(LX + 16, 296, 'ROUTES · openapi.yaml', 'zone-label')
 

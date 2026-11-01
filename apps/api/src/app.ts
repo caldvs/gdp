@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import './context/types.js';
 import { env } from './config/env.js';
+import { originMatcher, parseOrigins } from './config/allowedOrigins.js';
 import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -45,6 +46,8 @@ import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
 
 export interface AppDeps {
+  /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
+  allowedOrigins?: string;
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
   venueResolver?: VenueResolver;
@@ -154,11 +157,14 @@ export const createApp = (deps: AppDeps = {}): Hono => {
   app.use('*', requestId());
   app.use('*', requestLogger());
 
-  // CORS for browser clients (Expo web dev). Permissive in dev — tighten before prod.
+  // CORS: only the web app's own origins (ALLOWED_ORIGINS, set per stage by
+  // CDK). Unset (local) allows any origin.
+  const allowed = parseOrigins(deps.allowedOrigins ?? env.ALLOWED_ORIGINS);
+  const originAllowed = originMatcher(allowed);
   app.use(
     '*',
     cors({
-      origin: '*',
+      origin: allowed.length === 0 ? '*' : (origin) => (originAllowed(origin) ? origin : null),
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
       exposeHeaders: ['x-request-id'],

@@ -50,7 +50,7 @@ GAP = 44
 y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
-          ['displayName, email, avatarUrl', 'payoutAccount { sortCode, accountNumber,', '  accountHolderName, monzoHandle, revolutTag }', 'createdAt, updatedAt']) + GAP
+          ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
 y = place(0, y, 'Sign-in code', 'id', '10 min', [('pk', 'OTP#email:{email}'), ('sk', 'same as pk')], ['codeHash', 'attempts (conditional increment)', 'ttlAt, also checked on read']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y

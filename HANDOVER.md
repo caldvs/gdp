@@ -21,21 +21,19 @@ _Last updated 1 Nov 2026._
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, SES and test accounts off in prod, from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
+- **Scanning:** *Scan a bill* opens our own camera (`Camera.tsx`: back camera, bill-shaped guide, gallery, torch where supported), falling back to the phone's camera app when there's no camera API or access is refused. Every photo is shown as *All in?* (*Retake* / *Use photo*) before anything uploads. Not yet tried on a real iPhone and Android phone with a long receipt: if small print reads worse than with the phone's own camera, raise the resolution.
+- **Exempt accounts:** emails in the GitHub environment's `TABLE_FEE_EXEMPT_EMAILS` (secret or variable, comma separated) skip the table fee (status `waived`) and sign in with no code (`/email/start` returns the session). Set it on `dev` and `prod`; it applies from the next API deploy. Link sign-in instead of codes is backlog #119.
 
 ## On branch `design/tinted-storybook` (not merged)
 
 - **Tinted page:** the page is a pale grey-blue (`--page`), header, action bar and menu stay white, and boxes, stats, card rows and the QR box are white cards with a soft border and shadow. Tokens are in `apps/web/app/globals.css`. Every screen changes, so the visual baselines need regenerating (run _Update visual baselines_ on the branch) before `gate` goes green.
 - **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006), `npm run build-storybook -w apps/web` for a static build. Stories are in `apps/web/stories/`: every piece in `ui.tsx`, the form classes, the header, the join QR and three whole screens. `BillTools`, `Scanner` and `DemoBanner` need the API or the camera and have no stories yet. Not run in CI.
 
-## Exempt accounts (PR open)
-
-On `feat/fee-exempt`: emails in the GitHub environment's `TABLE_FEE_EXEMPT_EMAILS` (secret or variable, comma separated) skip the table fee (`waived`) and sign in with no code. Set it on `dev` and `prod`, then redeploy the API. Link sign-in instead of codes is backlog #119.
-
 ## Next up
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and prod's API is deployed. **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). Then: cut Production over to the prod API (#78; remove the two cut-over origins from the dev list), Stripe live (#79), SES on the domain (#76).
 
-**Scanning a bill (#66)**: #59 (in-app camera with a bill guide) and #60 (*All in?* photo check) are on `feat/scan-camera`. Still to try on a real iPhone and Android phone with a long receipt: if small print reads worse than with the phone's own camera, raise the resolution before merging. Next in #66: #65 (review flags), then #62/#63 (venue), #61 (questions while reading), #64 (party size).
+**Scanning a bill (#66)**: next are #65 (review flags), then #62/#63 (venue), #61 (questions while reading), #64 (party size).
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 

@@ -23,20 +23,25 @@ type Read = {
   error?: { code: string; message: string };
 };
 
-async function upload(userId: string): Promise<string> {
+async function upload(userId: string, bytes = uniqueImageBytes()): Promise<string> {
   const uploadId = uuidv7();
   await s3.send(
     new PutObjectCommand({
       Bucket: BILLS_BUCKET,
       Key: `${userId}/${uploadId}`,
-      Body: uniqueImageBytes(),
+      Body: bytes,
       ContentType: 'image/jpeg',
     }),
   );
   return uploadId;
 }
 
-async function start(app: Hono, userId: string, uploadId: string): Promise<Response> {
+async function start(
+  app: Hono,
+  userId: string,
+  uploadId: string,
+  extra: { skipCache?: boolean } = {},
+): Promise<Response> {
   return app.request('/v1/bills/reads', {
     method: 'POST',
     headers: {
@@ -44,7 +49,7 @@ async function start(app: Hono, userId: string, uploadId: string): Promise<Respo
       'idempotency-key': newIdempotencyKey(),
       ...makeAuth(userId),
     },
-    body: JSON.stringify({ uploadId }),
+    body: JSON.stringify({ uploadId, ...extra }),
   });
 }
 
@@ -85,6 +90,41 @@ describe('background bill reads', () => {
     const bill = await app.request(`/v1/bills/${read.billId}`, { headers: makeAuth(userId) });
     expect(bill.status).toBe(200);
     expect(((await bill.json()) as { items: unknown[] }).items).toHaveLength(3);
+  });
+
+  it('reads a photo it has seen before again when skipCache is set', async () => {
+    let calls = 0;
+    const fixture = new FixtureBillParser(sampleParsedBill);
+    const counting: BillParser = {
+      model: fixture.model,
+      version: fixture.version,
+      parse: () => {
+        calls++;
+        return fixture.parse();
+      },
+    };
+    const app = createApp({ idTokenVerifier: fakeVerifier, billParser: counting });
+    const userId = `u-${uuidv7()}`;
+    const bytes = uniqueImageBytes();
+    const readOnce = async (extra: { skipCache?: boolean }) => {
+      const started = (await (await start(app, userId, await upload(userId, bytes), extra)).json()) as Read;
+      return settle(app, userId, started.readId);
+    };
+
+    const first = await readOnce({});
+    const cached = await readOnce({});
+    expect(cached.billId).toBe(first.billId);
+    expect(calls).toBe(1);
+
+    const fresh = await readOnce({ skipCache: true });
+    expect(fresh.status).toBe('done');
+    expect(fresh.billId).not.toBe(first.billId);
+    expect(calls).toBe(2);
+
+    // The fresh bill is now the photo's bill; the old one still opens.
+    expect((await readOnce({})).billId).toBe(fresh.billId);
+    const old = await app.request(`/v1/bills/${first.billId}`, { headers: makeAuth(userId) });
+    expect(old.status).toBe(200);
   });
 
   it('records a failed read with the same error the parse would give', async () => {

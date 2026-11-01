@@ -27,6 +27,11 @@ export const parseService = {
     venueResolver: VenueResolver;
     /** Time for the whole read. The synchronous route must stay under API Gateway's 30s. */
     budgetMs?: number;
+    /**
+     * Read the photo again even if it was read before (local testing). The
+     * new bill takes over the photo's hash index; the old bill is untouched.
+     */
+    skipCache?: boolean;
   }): Promise<Bill> {
     // One budget for the whole read, started now so the S3 fetch counts.
     const signal = AbortSignal.timeout(input.budgetMs ?? PARSE_BUDGET_MS);
@@ -57,7 +62,7 @@ export const parseService = {
 
     const sha256 = createHash('sha256').update(bytes).digest('hex');
 
-    const existing = await billStore.findByImageHash(input.userId, sha256);
+    const existing = input.skipCache ? null : await billStore.findByImageHash(input.userId, sha256);
     if (existing) {
       const bill = await billStore.getLatest(existing.billId);
       if (bill) {

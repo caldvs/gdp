@@ -9,6 +9,7 @@ import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { stashJoinFragment } from '@/lib/joinFragment';
 import { Button, Centre, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
+import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
 export function Header({ onMenu, menuOpen }: { onMenu?: () => void; menuOpen?: boolean }) {
@@ -115,6 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app">
+      <TestBar />
       <Header onMenu={me.data ? () => setMenu(true) : undefined} />
       {body}
       {menu ? <Menu email={me.data?.email} onClose={close} /> : null}

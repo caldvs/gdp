@@ -42,7 +42,7 @@ _Last updated 1 Nov 2026._
 - Top-ups: more than one payment per guest, so _I had something else_ can reopen picking after paying.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
-- Table fee: one free bill per lead (a single credit), then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
+- Table fee: one free bill a month per lead, then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).
 
 ## Housekeeping
 

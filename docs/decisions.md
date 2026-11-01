@@ -39,7 +39,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Table fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Decided but not built:
-    - one free bill: each lead gets a single free credit, used by their first shared bill (decided 1 Nov 2026; replaces "one free bill a month")
+    - one free bill a month per lead (confirmed 1 Nov 2026)
     - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
     - guests repay the fee in what they owe
     - a refund if nobody joins

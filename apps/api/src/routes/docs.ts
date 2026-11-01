@@ -46,7 +46,45 @@ const DOCS_HTML = `<!doctype html>
   </body>
 </html>`;
 
+// Swagger UI: interactive, with "Try it out" against this API. Pinned so a
+// new release can't change the page under us. The spec's first server is a
+// placeholder, so the page puts the origin it was served from first.
+const SWAGGER_UI_VERSION = '5.34.1';
+const SWAGGER_CDN = `https://cdn.jsdelivr.net/npm/swagger-ui-dist@${SWAGGER_UI_VERSION}`;
+const SWAGGER_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Group Dine Pay API · Swagger</title>
+    <link rel="stylesheet" href="${SWAGGER_CDN}/swagger-ui.css" />
+    <style>body { margin: 0 }</style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="${SWAGGER_CDN}/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.yaml',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        persistAuthorization: true,
+        tryItOutEnabled: true,
+        displayRequestDuration: true,
+        onComplete: function () {
+          var spec = window.ui.specSelectors.specJson().toJS();
+          var here = { url: window.location.origin, description: 'this server' };
+          spec.servers = [here].concat((spec.servers || []).filter(function (s) { return s.url !== here.url; }));
+          window.ui.specActions.updateJsonSpec(spec);
+        },
+      });
+    </script>
+  </body>
+</html>`;
+
 export const docsRoutes = new Hono();
+
+docsRoutes.get('/swagger', (c) => c.html(SWAGGER_HTML));
 
 docsRoutes.get('/docs', (c) => c.html(DOCS_HTML));
 

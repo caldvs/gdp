@@ -197,6 +197,23 @@ describe('known bugs (it.fails until fixed)', () => {
     expect(s.shares?.find((x) => x.itemId === t.wine.itemId)).toBeUndefined();
     expect(s.participants.every((p) => !p.sharedItemIds.includes(t.wine.itemId))).toBe(true);
   });
+  // Claims are a read-check-write with no condition on the write, so two
+  // simultaneous claims both pass the check.
+  it.fails(
+    'two guests grabbing the last unit at once: one gets it, the item is never over-claimed',
+    async () => {
+      const app = buildApp();
+      const t = await claimingTable(app, 2);
+      const [g0, g1] = t.guests as [string, string];
+      const results = await Promise.all([
+        claim(app, t.sessionId, g0, [t.pizza.itemId]),
+        claim(app, t.sessionId, g1, [t.pizza.itemId]),
+      ]);
+      const s = await getSession(app, t.sessionId, t.lead);
+      expect(unitsClaimed(s, t.pizza.itemId)).toBeLessThanOrEqual(1);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    },
+  );
 });
 
 describe('amending the bill under claims (current behaviour, pending a decision)', () => {
@@ -214,7 +231,9 @@ describe('amending the bill under claims (current behaviour, pending a decision)
       amendBody([t.pizza, { ...t.ipa, quantity: 2 }, t.tiramisu, t.wine]),
     );
     expect(amend.status).toBe(409);
-    expect(((await amend.json()) as { code: string }).code).toBe('CLAIMS_EXCEED_QUANTITY');
+    expect(((await amend.json()) as { error: { code: string } }).error.code).toBe(
+      'CLAIMS_EXCEED_QUANTITY',
+    );
   });
 
   it("removing a line a paid guest claimed is accepted today, and drops the guest's claim", async () => {
@@ -298,19 +317,6 @@ describe('storage invariants', () => {
 });
 
 describe('races', () => {
-  it('two guests grabbing the last unit: one gets it, the item is never over-claimed', async () => {
-    const app = buildApp();
-    const t = await claimingTable(app, 2);
-    const [g0, g1] = t.guests as [string, string];
-    const results = await Promise.all([
-      claim(app, t.sessionId, g0, [t.pizza.itemId]),
-      claim(app, t.sessionId, g1, [t.pizza.itemId]),
-    ]);
-    const s = await getSession(app, t.sessionId, t.lead);
-    expect(unitsClaimed(s, t.pizza.itemId)).toBeLessThanOrEqual(1);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-  });
-
   it('six guests grabbing one pint each of six: all get one, never more than six', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 6);

@@ -70,7 +70,7 @@ test('parse errors say what went wrong', async ({ browser }) => {
 
   api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini returned 403', details: { status: 403 } });
   await snap();
-  await expect(lead.getByText('The Gemini API key was rejected. Not the photo’s fault.')).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByText('The bill reader turned us away. Not the photo’s fault.')).toBeVisible({ timeout: 15_000 });
 
   api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Gemini output failed schema validation' });
   await snap();

@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Group Dine Pay Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one wide whiteboard, left-to-right tiers: clients → frontend → AWS (gateway, Lambda, data, ops) → third parties. */
+:root {
+  --bg: #F3F6FA;
+  --grid: #DDE4EE;
+  --card: #FFFFFF;
+  --inner: #F1F5FB;
+  --ink: #142033;
+  --muted: #5B6A82;
+  --line: #C9D3E1;
+  --zone: #E9EEF5;
+  --aws: #EEF1F7;
+  --accent: #0B57D0;
+  --edge: #46566F;
+  --get: #0F7B4A;
+  --post: #0B57D0;
+  --put: #8A5A00;
+  --del: #B42318;
+  --warn: #B45309;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+    --line: #2C3750; --zone: #121A2B; --aws: #111829; --accent: #82A9FF; --edge: #9AA8C2;
+    --get: #5CD39A; --post: #82A9FF; --put: #F2C25B; --del: #FF8A80; --warn: #F0A85A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1220; --grid: #1A2235; --card: #151C2C; --inner: #1B2336; --ink: #E5EAF4; --muted: #95A2BA;
+  --line: #2C3750; --zone: #121A2B; --aws: #111829; --accent: #82A9FF; --edge: #9AA8C2;
+  --get: #5CD39A; --post: #82A9FF; --put: #F2C25B; --del: #FF8A80; --warn: #F0A85A; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1680px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 40px;
+  display: grid; gap: 14px;
+}
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; justify-content: space-between; }
+h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-height: 1.1; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.stats b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.board {
+  overflow-x: auto; border: 1px solid var(--line); border-radius: 14px;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+.board svg { display: block; width: 100%; min-width: 1240px; height: auto; }
+.zone { fill: var(--zone); stroke: var(--line); stroke-dasharray: 5 5; }
+.zone.aws { fill: var(--aws); }
+.zone-label { font: 600 11px var(--body); fill: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.node { fill: var(--card); stroke: var(--line); stroke-width: 1.2; }
+.node.key { stroke: var(--accent); stroke-width: 1.6; }
+.node.ext { stroke-dasharray: 4 4; }
+.node.warn { stroke: var(--warn); }
+.inner { fill: var(--inner); stroke: var(--line); }
+.t-title { font: 700 16px var(--display); fill: var(--ink); }
+.t-inner { font: 700 13.5px var(--body); fill: var(--ink); }
+.t-sub { font: 400 12.5px var(--body); fill: var(--muted); }
+.t-mono { font: 400 11.5px var(--mono); fill: var(--ink); }
+.t-base { font: 400 11px var(--mono); fill: var(--muted); }
+.t-ep { font: 400 11.5px var(--mono); fill: var(--ink); }
+.t-warn { font: 700 12.5px var(--body); fill: var(--warn); }
+.m { font-weight: 600; font-size: 10.5px; }
+.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put { fill: var(--put); } .m-delete { fill: var(--del); }
+.edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.edge.dashed path { stroke-dasharray: 6 5; }
+.edge.fail path { stroke: var(--warn); }
+.edge text { font: 600 11.5px var(--body); fill: var(--ink); paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
+.arrow { fill: var(--edge); }
+.arrow-warn { fill: var(--warn); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend i { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge); vertical-align: middle; margin-right: 6px; }
+.legend i.d { border-top-style: dashed; }
+.legend i.w { border-top: 2px dashed var(--warn); }
+.legend i.x { border: 1.5px dashed var(--line); height: 12px; width: 18px; border-radius: 3px; }
+.legend code { font: 600 11.5px var(--mono); }
+.legend .g { color: var(--get); } .legend .p { color: var(--post); } .legend .u { color: var(--put); } .legend .r { color: var(--del); }
+.foot { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 90ch; }
+.foot code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Group Dine Pay architecture</h1>
+    <div class="stats"><span><b>34</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>5</b> third parties</span></div>
+  </header>
+
+  <div class="board">
+    <svg viewBox="0 0 1640 1225" role="img" aria-label="Group Dine Pay system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 34 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill parser), Secrets Manager and CloudWatch, and calls Gemini as a fallback parser, Google Places, TrueLayer and Stripe, which send webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+<rect class="zone" x="20" y="20" width="220" height="1160" rx="14"/>
+<text class="zone-label" x="38" y="48">Clients</text>
+<rect class="zone" x="270" y="20" width="240" height="1160" rx="14"/>
+<text class="zone-label" x="288" y="48">Frontend · apps/web</text>
+<rect class="zone aws" x="530" y="20" width="870" height="1160" rx="14"/>
+<text class="zone-label" x="548" y="48">AWS · eu-west-2 · CDK stack gdp-{env}</text>
+<rect class="zone" x="1420" y="20" width="200" height="1160" rx="14"/>
+<text class="zone-label" x="1435" y="48">Third parties</text>
+<g class="edge "><path d="M220,120 L288,120" marker-end="url(#ah)"/>
+<text x="254" y="112" text-anchor="middle">HTTPS</text>
+</g>
+<g class="edge "><path d="M220,350 C256,350 252,260 288,260" marker-end="url(#ah)"/>
+<text x="254" y="312" text-anchor="middle">HTTPS</text>
+</g>
+<g class="edge "><path d="M130,400 L130,518" marker-end="url(#ah)"/>
+<text x="140" y="466" text-anchor="start">Pay the lead</text>
+</g>
+<g class="edge "><path d="M490,102 L558,102" marker-end="url(#ah)"/>
+<text x="525" y="94" text-anchor="middle">REST /v1</text>
+</g>
+<g class="edge "><path d="M820,134 L820,158" marker-end="url(#ah)"/>
+</g>
+<g class="edge "><path d="M1080,210 L1148,210" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1115" y="202" text-anchor="middle">SDK</text>
+</g>
+<g class="edge "><path d="M1080,536 L1148,536" marker-end="url(#ah)"/>
+<text x="1115" y="528" text-anchor="middle">send</text>
+</g>
+<g class="edge dashed"><path d="M1148,652 L1082,652" marker-end="url(#ah)"/>
+<text x="1115" y="644" text-anchor="middle">deploy</text>
+</g>
+<g class="edge "><path d="M1080,773 L1148,773" marker-end="url(#ah)"/>
+<text x="1115" y="765" text-anchor="middle">logs</text>
+</g>
+<g class="edge "><path d="M1260,833 L1260,845" marker-end="url(#ah)"/>
+</g>
+<g class="edge "><path d="M1080,978 L1148,978" marker-end="url(#ah)"/>
+<text x="1115" y="970" text-anchor="middle">parse</text>
+</g>
+<g class="edge "><path d="M1080,1082 L1148,1082" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1115" y="1074" text-anchor="middle">SDK</text>
+</g>
+<g class="edge "><path d="M1080,483 L1433,483" marker-end="url(#ah)"/>
+<text x="1260" y="476" text-anchor="middle">Fallback parse</text>
+</g>
+<g class="edge "><path d="M1080,589 L1433,589" marker-end="url(#ah)"/>
+<text x="1260" y="582" text-anchor="middle">Resolve venue</text>
+</g>
+<g class="edge "><path d="M1080,715 L1433,715" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1260" y="708" text-anchor="middle">Create payment · webhooks</text>
+</g>
+<g class="edge "><path d="M1080,925 L1433,925" marker-end="url(#ah)" marker-start="url(#ah)"/>
+<text x="1260" y="918" text-anchor="middle">Checkout · webhooks</text>
+</g>
+<g class="edge dashed"><path d="M1435,1072 L1402,1072" marker-end="url(#ah)"/>
+<text x="1418" y="1064" text-anchor="middle">OIDC</text>
+</g>
+<g class="edge "><path d="M390,470 L390,1205 L1260,1205 L1260,1129" marker-end="url(#ah)"/>
+<text x="760" y="1199" text-anchor="middle">Presigned PUT / GET · bill photo</text>
+</g>
+<rect class="node key" x="40" y="70" width="180" height="118" rx="10"/>
+<text class="t-title" x="56" y="98">Lead diner</text>
+<text class="t-sub" x="56" y="120">Mobile browser</text>
+<text class="t-sub" x="56" y="139">Photographs the bill</text>
+<text class="t-sub" x="56" y="158">Bank details kept on</text>
+<text class="t-sub" x="56" y="177">device (ADR-0002)</text>
+<rect class="node" x="40" y="300" width="180" height="100" rx="10"/>
+<text class="t-title" x="56" y="328">Guests</text>
+<text class="t-sub" x="56" y="350">Mobile browser</text>
+<text class="t-sub" x="56" y="369">Join by QR or code</text>
+<text class="t-sub" x="56" y="388">Up to ~10 people</text>
+<rect class="node ext" x="40" y="520" width="180" height="100" rx="10"/>
+<text class="t-title" x="56" y="548">Guest’s bank app</text>
+<text class="t-sub" x="56" y="570">Approves TrueLayer</text>
+<text class="t-sub" x="56" y="589">pay-in, or manual</text>
+<text class="t-sub" x="56" y="608">transfer to the lead</text>
+<rect class="node key" x="290" y="70" width="200" height="400" rx="10"/>
+<text class="t-title" x="306" y="98">Web app</text>
+<text class="t-sub" x="306" y="118">Next.js 16 · React 19</text>
+<text class="t-sub" x="306" y="137">Hosted on Vercel</text>
+<rect class="inner" x="306" y="156" width="168" height="68" rx="7"/>
+<text class="t-inner" x="318" y="178">Pages + UI</text>
+<text class="t-sub" x="318" y="198">App Router, Option D</text>
+<text class="t-sub" x="318" y="215">components/ui.tsx</text>
+<rect class="inner" x="306" y="236" width="168" height="68" rx="7"/>
+<text class="t-inner" x="318" y="258">Server state</text>
+<text class="t-sub" x="318" y="278">TanStack Query</text>
+<text class="t-sub" x="318" y="295">cache + refetch</text>
+<rect class="inner" x="306" y="316" width="168" height="138" rx="7"/>
+<text class="t-inner" x="318" y="338">API client</text>
+<text class="t-mono" x="318" y="358">packages/core</text>
+<text class="t-sub" x="318" y="378">Types from openapi.yaml</text>
+<text class="t-sub" x="318" y="397">Hooks, owed.ts maths</text>
+<text class="t-sub" x="318" y="416">Image re-encode, sha256</text>
+<text class="t-sub" x="318" y="435">QR + quick-pay links</text>
+<rect class="node key" x="560" y="70" width="520" height="64" rx="10"/>
+<text class="t-title" x="576" y="98">API Gateway · HTTP API</text>
+<text class="t-sub" x="576" y="120">Every route → one Lambda integration · CORS · x-request-id</text>
+<rect class="node key" x="560" y="160" width="520" height="990" rx="10"/>
+<text class="t-title" x="576" y="188">Lambda · ApiHandler</text>
+<text class="t-sub" x="1064" y="188" text-anchor="end">Node 22 · Hono · apps/api</text>
+<rect class="inner" x="576" y="206" width="488" height="64" rx="7"/>
+<text class="t-inner" x="588" y="228">Middleware</text>
+<text class="t-mono" x="588" y="248">requestId → requestLogger → CORS → errorHandler</text>
+<text class="t-mono" x="588" y="264">per route: session JWT auth · Idempotency-Key</text>
+<text class="zone-label" x="576" y="296">ROUTES · openapi.yaml</text>
+<rect class="inner" x="576" y="308" width="246" height="110" rx="7"/>
+<text class="t-inner" x="588" y="329">Ops</text>
+<text class="t-base" x="810" y="329" text-anchor="end">/</text>
+<text class="t-ep" x="588" y="349"><tspan class="m m-get">GET</tspan><tspan x="644">/healthz</tspan></text>
+<text class="t-ep" x="588" y="367"><tspan class="m m-get">GET</tspan><tspan x="644">/readyz</tspan></text>
+<text class="t-ep" x="588" y="385"><tspan class="m m-get">GET</tspan><tspan x="644">/docs</tspan></text>
+<text class="t-ep" x="588" y="403"><tspan class="m m-get">GET</tspan><tspan x="644">/openapi.yaml</tspan></text>
+<rect class="inner" x="576" y="428" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="449">Auth</text>
+<text class="t-base" x="810" y="449" text-anchor="end">/v1/auth/email</text>
+<text class="t-ep" x="588" y="469"><tspan class="m m-post">POST</tspan><tspan x="644">/start</tspan></text>
+<text class="t-ep" x="588" y="487"><tspan class="m m-post">POST</tspan><tspan x="644">/verify</tspan></text>
+<rect class="inner" x="576" y="512" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="533">Me</text>
+<text class="t-base" x="810" y="533" text-anchor="end">/v1/me</text>
+<text class="t-ep" x="588" y="553"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="571"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
+<text class="t-ep" x="588" y="589"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
+<rect class="inner" x="576" y="614" width="246" height="128" rx="7"/>
+<text class="t-inner" x="588" y="635">Bills</text>
+<text class="t-base" x="810" y="635" text-anchor="end">/v1/bills</text>
+<text class="t-ep" x="588" y="655"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
+<text class="t-ep" x="588" y="673"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
+<text class="t-ep" x="588" y="691"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<text class="t-ep" x="588" y="709"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
+<text class="t-ep" x="588" y="727"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
+<rect class="inner" x="576" y="752" width="246" height="110" rx="7"/>
+<text class="t-inner" x="588" y="773">Payments</text>
+<text class="t-base" x="810" y="773" text-anchor="end">/v1/payments</text>
+<text class="t-ep" x="588" y="793"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
+<text class="t-ep" x="588" y="811"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
+<text class="t-ep" x="588" y="829"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
+<text class="t-ep" x="588" y="847"><tspan class="m m-get">GET</tspan><tspan x="644">/return</tspan></text>
+<rect class="inner" x="576" y="872" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="893">Billing</text>
+<text class="t-base" x="810" y="893" text-anchor="end">/v1/billing/table-fee</text>
+<text class="t-ep" x="588" y="913"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="931"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<rect class="inner" x="576" y="956" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="977">Webhooks</text>
+<text class="t-base" x="810" y="977" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="997"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
+<text class="t-ep" x="588" y="1015"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<rect class="inner" x="834" y="308" width="230" height="308" rx="7"/>
+<text class="t-inner" x="846" y="329">Sessions</text>
+<text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
+<text class="t-ep" x="846" y="349"><tspan class="m m-post">POST</tspan><tspan x="902">/</tspan></text>
+<text class="t-ep" x="846" y="367"><tspan class="m m-post">POST</tspan><tspan x="902">/by-code</tspan></text>
+<text class="t-ep" x="846" y="385"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}</tspan></text>
+<text class="t-ep" x="846" y="403"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/share</tspan></text>
+<text class="t-ep" x="846" y="421"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/join</tspan></text>
+<text class="t-ep" x="846" y="439"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/claims</tspan></text>
+<text class="t-ep" x="846" y="457"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/shares</tspan></text>
+<text class="t-ep" x="846" y="475"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="493"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="511"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/ready</tspan></text>
+<text class="t-ep" x="846" y="529"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
+<text class="t-ep" x="846" y="547"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
+<text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
+<text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
+<text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
+<rect class="inner" x="834" y="626" width="230" height="404" rx="7"/>
+<text class="t-inner" x="846" y="647">Services</text>
+<text class="t-base" x="1052" y="647" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="670">auth</text>
+<text class="t-sub" x="846" y="687">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="710">bills</text>
+<text class="t-sub" x="846" y="727">upload, parse, amend, image</text>
+<text class="t-mono" x="846" y="750">bills</text>
+<text class="t-sub" x="846" y="767">parser, venueResolver</text>
+<text class="t-mono" x="846" y="790">sessions</text>
+<text class="t-sub" x="846" y="807">allocation, joinCode, report</text>
+<text class="t-mono" x="846" y="830">payments</text>
+<text class="t-sub" x="846" y="847">stateMachine, provider</text>
+<text class="t-mono" x="846" y="870">billing</text>
+<text class="t-sub" x="846" y="887">tableFee</text>
+<text class="t-mono" x="846" y="910">email</text>
+<text class="t-sub" x="846" y="927">sender (SES or console)</text>
+<text class="t-mono" x="846" y="950">storage</text>
+<text class="t-sub" x="846" y="967">one store per entity</text>
+<rect class="inner" x="576" y="1040" width="488" height="94" rx="7"/>
+<text class="t-inner" x="588" y="1062">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1084">Parser: Bedrock → Gemini fallback · fixture</text>
+<text class="t-mono" x="588" y="1102">Payments: TrueLayer · mock · manual</text>
+<text class="t-mono" x="588" y="1120">Email: SES · console     Venue: Google Places</text>
+<rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
+<text class="t-title" x="1166" y="98">DynamoDB</text>
+<text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>
+<text class="t-sub" x="1166" y="139">pk/sk · GSI1 · GSI2 · TTL</text>
+<text class="t-mono" x="1166" y="168">USER# AUTH# OTP#</text>
+<text class="t-sub" x="1166" y="185">Accounts, sign-in codes</text>
+<text class="t-mono" x="1166" y="204">BILL# IMGHASH#</text>
+<text class="t-sub" x="1166" y="221">Bill versions, photo dedupe</text>
+<text class="t-mono" x="1166" y="240">BILLLOCK#</text>
+<text class="t-sub" x="1166" y="257">Bill held by a session</text>
+<text class="t-mono" x="1166" y="276">SESS# PART# SHARE#</text>
+<text class="t-sub" x="1166" y="293">Sessions, diners, splits</text>
+<text class="t-mono" x="1166" y="312">JCODE#</text>
+<text class="t-sub" x="1166" y="329">Join codes</text>
+<text class="t-mono" x="1166" y="348">PAY# PROVPAY#</text>
+<text class="t-sub" x="1166" y="365">Payments, provider index</text>
+<text class="t-mono" x="1166" y="384">FEE#</text>
+<text class="t-sub" x="1166" y="401">Table fees</text>
+<text class="t-mono" x="1166" y="420">IDMP# KEY#  VENUEQ#</text>
+<text class="t-sub" x="1166" y="437">Idempotency, venue cache</text>
+<rect class="node" x="1150" y="501" width="220" height="70" rx="10"/>
+<text class="t-title" x="1166" y="529">Amazon SES</text>
+<text class="t-sub" x="1166" y="551">Sign-in codes, bill reports</text>
+<rect class="node" x="1150" y="607" width="220" height="90" rx="10"/>
+<text class="t-title" x="1166" y="635">Secrets Manager + SSM</text>
+<text class="t-sub" x="1166" y="657">Gemini, JWT, TrueLayer,</text>
+<text class="t-sub" x="1166" y="676">Stripe, Places keys</text>
+<rect class="node" x="1150" y="733" width="220" height="100" rx="10"/>
+<text class="t-title" x="1166" y="761">CloudWatch</text>
+<text class="t-sub" x="1166" y="783">Logs, dashboard</text>
+<text class="t-sub" x="1166" y="802">Alarms: errors, p99,</text>
+<text class="t-sub" x="1166" y="821">5xx, DDB throttles</text>
+<rect class="node" x="1150" y="847" width="220" height="60" rx="10"/>
+<text class="t-title" x="1166" y="875">SNS</text>
+<text class="t-sub" x="1166" y="897">Alert topic</text>
+<rect class="node" x="1150" y="943" width="220" height="70" rx="10"/>
+<text class="t-title" x="1166" y="971">Bedrock</text>
+<text class="t-sub" x="1166" y="993">Claude Haiku 4.5 reads the bill</text>
+<rect class="node" x="1150" y="1027" width="220" height="100" rx="10"/>
+<text class="t-title" x="1166" y="1055">S3</text>
+<text class="t-sub" x="1166" y="1077">gdp-bills-raw-{env}</text>
+<text class="t-sub" x="1166" y="1096">Private · Glacier IR at 30 d</text>
+<text class="t-sub" x="1166" y="1115">Deleted at 365 d</text>
+<rect class="node ext" x="1435" y="451" width="185" height="64" rx="10"/>
+<text class="t-title" x="1451" y="479">Gemini</text>
+<text class="t-sub" x="1451" y="501">Fallback bill parser</text>
+<rect class="node ext" x="1435" y="557" width="185" height="64" rx="10"/>
+<text class="t-title" x="1451" y="585">Google Places</text>
+<text class="t-sub" x="1451" y="607">Venue name + address</text>
+<rect class="node ext" x="1435" y="674" width="185" height="82" rx="10"/>
+<text class="t-title" x="1451" y="702">TrueLayer</text>
+<text class="t-sub" x="1451" y="724">Open-banking pay-ins</text>
+<text class="t-sub" x="1451" y="743">Webhooks back</text>
+<rect class="node ext" x="1435" y="884" width="185" height="82" rx="10"/>
+<text class="t-title" x="1451" y="912">Stripe</text>
+<text class="t-sub" x="1451" y="934">Table-fee Checkout</text>
+<text class="t-sub" x="1451" y="953">Webhooks back</text>
+<rect class="node ext" x="1435" y="1017" width="185" height="92" rx="10"/>
+<text class="t-title" x="1451" y="1045">GitHub Actions</text>
+<text class="t-sub" x="1451" y="1067">CI, e2e, typecheck</text>
+<text class="t-sub" x="1451" y="1086">Deploys dev from main</text>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i></i>Runtime call</span>
+    <span><i class="d"></i>Deploy-time</span>
+    <span><i class="x"></i>Outside AWS or the app</span>
+    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="r">DELETE</code></span>
+  </div>
+
+  <p class="foot">Built from <code>apps/api/openapi.yaml</code>, <code>apps/api/infra/main.ts</code> and <code>apps/api/src</code> on main. Locally, <code>npm run dev:local</code> runs the same Hono app on Node with DynamoDB Local and MinIO in Docker, a console email sender and the mock payment provider.</p>
+</div>
+</body>
+</html>

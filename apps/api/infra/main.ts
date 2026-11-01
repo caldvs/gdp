@@ -275,6 +275,16 @@ class GdpBackendStack extends cdk.Stack {
         ],
       }),
     );
+    // Anthropic models on Bedrock are sold through AWS Marketplace. The first
+    // call in each region the EU profile routes to completes the account's
+    // subscription, and fails with AccessDeniedException unless the caller
+    // may view and accept it.
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
+        resources: ['*'],
+      }),
+    );
     billsBucket.grantReadWrite(fn);
 
     // SES send permission for the EmailSender. Scoped to the verified-

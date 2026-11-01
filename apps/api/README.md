@@ -1,70 +1,69 @@
-# Group Dine Pay API (`apps/api`)
+# API (`apps/api`)
 
-> Part of the Group Dine Pay monorepo — run `npm install` from the repo root, not here.
+Hono on Node 22, run as one AWS Lambda behind API Gateway, with a single DynamoDB table and an S3 bucket for bill photos. Infrastructure is CDK (`infra/main.ts`). Run `npm install` from the repo root, not here.
 
-Group Dine Pay backend API. TypeScript on Node 22, AWS Lambda + DynamoDB + S3, deployed via CDK.
+- `openapi.yaml` is the contract. After changing it, run `npm run gen:api` from the root to regenerate the client types.
+- The diagrams in [`docs/architecture`](../../docs/architecture/README.md) show every route, AWS resource and DynamoDB item.
 
-## Requirements
+## Layout
 
-- Node 22 (`nvm use`)
-- Docker (for DynamoDB Local + LocalStack S3)
-- An AWS account (only required at deploy time)
+```
+src/routes/     one file per route group (auth, me, bills, sessions, payments, billing, webhooks, ops)
+src/services/   the logic: auth, bills (upload, parse, amend), sessions, payments, billing, email
+src/storage/    one store per DynamoDB item type, plus S3
+src/middleware/ request id, logging, auth, idempotency, errors
+src/local.ts    the local server; src/lambda.ts is the Lambda entry
+infra/          CDK stacks: GdpBackendDev (the app) and GdpGithubDeploy (CI's deploy role)
+scripts/        dev bootstrap, smoke tests, bundle check
+tests/          integration tests (real DynamoDB Local and MinIO)
+```
 
-## Local development
+## Running locally
+
+From the repo root, `npm run dev:local` starts this and the web app. On its own:
 
 ```bash
-nvm use
-npm install
-docker compose up -d              # DDB Local on :8000, LocalStack S3 on :4566
-cp .env.example .env              # fill in secrets
-npm run dev                       # http://localhost:3000
+cp .env.example .env.local     # then fill in GEMINI_API_KEY at least
+npm run dev                    # docker compose up (DynamoDB Local :8000, MinIO :9000), create table + bucket, watch src/local.ts on :3000
 ```
+
+Locally:
+
+- `POST /v1/auth/email/dev-sign-in` lets you sign in with just an email. It only exists against a local DynamoDB; turn it off with `AUTH_DEV_EMAIL_SIGNIN=false`.
+- Bill reading uses Gemini unless `BEDROCK_MODEL_ID` is set (and you have AWS credentials).
+- Emails go to the console instead of SES.
+- Payments use the `mock` provider by default.
+
+`npm run ddb:down` stops the containers; `docker compose down -v` also wipes the data.
 
 ## Tests
 
 ```bash
-npm test                          # unit tests
+npm test             # unit
+npm run test:int     # integration, needs `npm run ddb:up`
 npm run typecheck
 npm run lint
 npm run openapi:lint
 ```
 
-## Deploy
+## Deploying
 
 ```bash
-npm run deploy:dev                # validate locally → cdk deploy → smoke
+npm run deploy:dev   # bundle check → cdk deploy GdpBackendDev → smoke test
+npm run smoke -- https://<api-url>   # smoke-test any deployed API
 ```
 
-`deploy:dev` chains three steps and aborts on the first failure:
+`deploy:dev` uses the `gdp-dev` AWS profile and needs the secrets and parameters listed in `infra/main.ts`. CI deploys on every push to `main` once its role exists: see [`docs/deploy.md`](../../docs/deploy.md).
 
-1. `npm run validate:bundle` — runs `cdk synth`, locates the bundled
-   Lambda asset, loads it in this Node process with realistic env vars,
-   and invokes the handler against fake API Gateway events for
-   `/healthz`, `/v1/me`, and `/docs`. Catches module-load failures and
-   missing-bundle-asset bugs before any AWS call.
-2. `cdk deploy GdpBackendDev` against the `gdp-dev` profile, with
-   `--outputs-file cdk-outputs.dev.json`.
-3. `scripts/smoke.ts` against the deployed `ApiUrlOutput` to verify
-   end-to-end: `/healthz`, `/readyz`, auth-gating, auth verifier wiring,
-   request-id propagation, `/docs`, `/openapi.yaml`.
+When an alarm fires: [`RUNBOOK.md`](RUNBOOK.md).
 
-To smoke an arbitrary deployed env without re-deploying:
+## Deployed config
 
-```bash
-npm run smoke -- https://your-api-url
-```
-
-Lower-level commands if you need them:
-
-```bash
-npm run build                     # esbuild bundle to dist/
-npx cdk synth GdpBackendDev       # CloudFormation template, no AWS account needed
-npx cdk deploy GdpBackendDev --profile gdp-dev
-```
-
-## Source of truth
-
-- `openapi.yaml` — HTTP contract; mobile clients are generated from it
-- `SHAPE.md` — domain model, lifecycles, DDB single-table access patterns
-- `RUNBOOK.md` — what to do when an alarm fires
-- `COST.md` — what each AWS line item costs and projected month-end
+| Setting     | Dev value                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------ |
+| Region      | eu-west-2                                                                                                    |
+| Bill reader | Bedrock `eu.anthropic.claude-haiku-4-5-20251001-v1:0`, Gemini fallback (override with `-c bedrockModelId=…`) |
+| Payments    | `manual`: guests transfer, the lead confirms                                                                 |
+| Email       | SES, from the address in SSM                                                                                 |
+| Secrets     | Secrets Manager `gdp-dev/*`; plain config in SSM                                                             |
+| Logs        | CloudWatch, one month; dashboard `gdp-dev`                                                                   |

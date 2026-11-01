@@ -27,3 +27,18 @@ it's opened or edited. Leave them out in the first place.
 
 See `README.md` for setup. Before committing, `npm run typecheck` must pass
 (the `pre-commit` hook runs it).
+
+## Merging: only through `scripts/merge-pr.sh`
+
+The repo is private on GitHub's free plan, so GitHub can't stop a red PR
+being merged. `scripts/merge-pr.sh <pr>` is the gate: it refuses unless the
+`gate` check from `.github/workflows/ci.yml` passed on the PR's latest
+commit and the branch is up to date with main, then merges locally with
+`--no-ff` and pushes main. Don't use GitHub's merge button, and never pass
+`--force` unless Callum says so.
+
+Coverage: lines and branches may not drop more than 1 point below main
+(the `coverage` job, against the `coverage-baseline` branch), and each
+package's `vitest.config.ts` thresholds are hard floors. Raise floors as
+tests land; never lower them to get a PR through. A deliberate drop needs
+the `coverage-drop-ok` label.

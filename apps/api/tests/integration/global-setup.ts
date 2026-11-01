@@ -95,6 +95,14 @@ export default async function setup(): Promise<void> {
   process.env.NODE_ENV = 'test';
   process.env.LOG_LEVEL = 'silent';
 
-  await ensureTable();
-  await ensureBucket();
+  try {
+    await ensureTable();
+    await ensureBucket();
+  } catch (err) {
+    throw new Error(
+      `Integration tests need DynamoDB Local on ${DDB_ENDPOINT} and S3 on ${S3_ENDPOINT} ` +
+        `(run \`docker compose up -d\` in apps/api). Underlying error: ${String(err)}`,
+      { cause: err },
+    );
+  }
 }

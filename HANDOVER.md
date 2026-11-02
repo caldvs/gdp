@@ -39,8 +39,6 @@ _Last updated 2 Nov 2026._
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 
-**Unused config (#82)**: the TrueLayer code, its CDK wiring and the payments `GSI2` index are gone (guests pay the lead by bank transfer, nothing else). Left, in AWS and Google Cloud by hand: delete the `gdp-dev/truelayer-*` and `gdp-dev/gemini-api-key` secrets and the `/gdp-dev/truelayer-*`, `/gdp-dev/google-places-api-key` and `/gdp-dev/google-client-id` parameters, revoke the Gemini and Places keys, and remove the `TRUELAYER_ENABLED` GitHub variable if it's set.
-
 ## Known problems
 
 - Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out hourly from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret. **Production web waits for the prod API** (#80, `api-prod` tag; docs/deploy.md): prod's API was deployed at 17b9eec on 2 Nov (22:26), so the next hourly run puts today's web live. Until it does, paymeback.dev still asks for a 6-digit code while the prod API emails a link (#119): sign-in on prod is broken for that hour.

@@ -71,6 +71,7 @@ h1, h2, p { margin: 0; }
 .page { flex: 1; width: 100%; max-width: var(--col); margin: 0 auto; padding: 24px var(--gutter) calc(120px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 24px; }
 .page--sub { padding-top: 8px; gap: 16px; }
 .back { display: inline-flex; align-items: center; gap: 2px; height: 44px; margin-left: -6px; padding-right: 8px; align-self: flex-start; font-size: 16px; }
+.back--btn { border: 0; background: none; padding-left: 0; font: inherit; font-size: 16px; color: var(--accent); cursor: pointer; }
 .title { display: flex; flex-direction: column; gap: 6px; }
 .title h1 { font-size: 26px; font-weight: 600; line-height: 1.2; }
 .title p { font-size: 15px; color: var(--mute); }

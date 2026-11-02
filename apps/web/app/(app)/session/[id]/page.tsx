@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSession } from '@gdp/core/api/hooks/useSession';
 import { Button, Centre, Notice, Spinner } from '@/components/ui';
-import { GuestPick, GuestTable } from './guest';
+import { ledger } from '@gdp/core/lib/ledger';
+import { GuestPick, GuestTable, owedFor } from './guest';
 import { Ended, LeadSetup, LeadSettled, LeadTable } from './lead';
 
 /** Routes to the lead's or the guest's view of the bill. */
@@ -14,6 +16,8 @@ export default function SessionPage() {
   const session = useSession(id);
   const me = useMe();
   const bill = useBill(session.data?.billId, session.data?.pinnedBillVersion);
+  // #121: a guest who has paid is back to picking after "I had something else".
+  const [more, setMore] = useState(false);
 
   if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Centre><Spinner /></Centre>;
   if (session.isError || bill.isError) {
@@ -37,9 +41,11 @@ export default function SessionPage() {
     return <LeadTable s={s} b={b} meUserId={meId} />;
   }
   const mine = s.participants.find((p) => p.userId === meId);
-  // Picks stay open until the guest says they've sent the money; after
-  // that they watch the table.
-  const sent = mine?.payment.status === 'succeeded' || (mine?.payment.status === 'pending' && !!mine.payment.payerClaimedPaidAt);
-  const picking = s.status === 'claiming' && !sent;
-  return picking ? <GuestPick s={s} b={b} meUserId={meId} /> : <GuestTable s={s} b={b} meUserId={meId} />;
+  // Picks stay open until the guest has sent money; after that they watch
+  // the table, and can go back to pick more (#121) and top up.
+  const sent = !!mine && ledger(mine, owedFor(s, b, mine)).sentPence > 0;
+  const picking = s.status === 'claiming' && (!sent || more);
+  return picking
+    ? <GuestPick s={s} b={b} meUserId={meId} {...(sent ? { onBack: () => setMore(false) } : {})} />
+    : <GuestTable s={s} b={b} meUserId={meId} onMore={() => setMore(true)} />;
 }

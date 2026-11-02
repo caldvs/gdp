@@ -27,6 +27,18 @@ export const ParticipantPaymentSchema = z.discriminatedUnion('status', [
 ]);
 export type ParticipantPayment = z.infer<typeof ParticipantPaymentSchema>;
 
+// One payment a guest has made to the lead (#121): a guest can pay more
+// than once, topping up after claiming more. Mirrors the Payment row.
+export const ParticipantPaymentEntrySchema = z.object({
+  paymentId: z.string().uuid(),
+  amountPence: z.number().int().nonnegative(),
+  status: z.enum(['pending', 'succeeded', 'failed']),
+  payerClaimedPaidAt: z.string().datetime().optional(),
+  paidAt: z.string().datetime().optional(),
+  reason: z.string().optional(),
+});
+export type ParticipantPaymentEntry = z.infer<typeof ParticipantPaymentEntrySchema>;
+
 export const ParticipantSchema = z.object({
   userId: z.string(),
   displayName: z.string(),
@@ -38,7 +50,12 @@ export const ParticipantSchema = z.object({
   // two lists session-wide (v1 simplification). Default [].
   sharedItemIds: z.array(z.string().uuid()).default([]),
   owedPence: z.number().int().nonnegative().optional(),
+  // The latest state across `payments` (in flight if any is), kept for
+  // everything that only needs "has this guest paid".
   payment: ParticipantPaymentSchema,
+  // Every payment this guest has made, oldest first (#121). Absent on
+  // sessions from before top-ups (then `payment` is the only one).
+  payments: z.array(ParticipantPaymentEntrySchema).optional(),
   // True once the diner has signalled they're done claiming. Lock-claims
   // requires all non-creator participants to be ready (unless force=true).
   // Default false; flipped via POST /v1/sessions/:id/ready.

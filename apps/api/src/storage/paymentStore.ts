@@ -123,40 +123,4 @@ export const paymentStore = {
     );
     return stripKeys(res.Attributes ?? {}) as Payment;
   },
-
-  /**
-   * Mirror the canonical claim timestamp onto the participant's payment
-   * subdocument. Conditioned on the participant still being in `pending`
-   * status — if they've moved to succeeded/failed since, the mirror is a
-   * no-op (the row is the truth, not the mirror).
-   */
-  async setParticipantPayerClaimedPaidAt(input: {
-    sessionId: string;
-    userId: string;
-    ts: string;
-  }): Promise<void> {
-    try {
-      await ddb.send(
-        new UpdateCommand({
-          TableName: TABLE_NAME,
-          Key: { pk: sessionPk(input.sessionId), sk: partSk(input.userId) },
-          UpdateExpression:
-            'SET payment.payerClaimedPaidAt = if_not_exists(payment.payerClaimedPaidAt, :ts)',
-          ConditionExpression: 'payment.#st = :pending',
-          ExpressionAttributeNames: { '#st': 'status' },
-          ExpressionAttributeValues: { ':ts': input.ts, ':pending': 'pending' },
-        }),
-      );
-    } catch (err) {
-      // ConditionalCheckFailedException = participant moved past pending; that's fine.
-      if (
-        err instanceof Error &&
-        (err.name === 'ConditionalCheckFailedException' ||
-          (err as { name?: string }).name === 'ConditionalCheckFailedException')
-      ) {
-        return;
-      }
-      throw err;
-    }
-  },
 };

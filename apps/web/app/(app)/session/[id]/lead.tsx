@@ -11,6 +11,7 @@ import { ApiError, type components } from '@gdp/core/api';
 import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
+import { ledger } from '@gdp/core/lib/ledger';
 import { coverLeftovers } from '@gdp/core/lib/leftovers';
 import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
@@ -29,7 +30,11 @@ type Share = NonNullable<Session['shares']>[number];
 function owedFor(s: Session, b: Bill, p: Participant): number {
   return p.owedPence ?? projectOwedPence(s, b, p.userId);
 }
-const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment.status === 'self_paid';
+// #121: a guest can pay more than once; the lead has collected what's been
+// confirmed, and a guest is done when nothing is due or waiting.
+const confirmedFor = (s: Session, b: Bill, p: Participant) => ledger(p, owedFor(s, b, p)).confirmedPence;
+const isPaid = (s: Session, b: Bill, p: Participant) => ledger(p, owedFor(s, b, p)).settled;
+const stillToCollect = (s: Session, b: Bill, p: Participant) => Math.max(0, owedFor(s, b, p) - confirmedFor(s, b, p));
 
 /* ============================ setup ============================ */
 
@@ -81,8 +86,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 
   const me = s.participants.find((p) => p.userId === meUserId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
-  const toCome = guests.reduce((acc, p) => (isPaid(p) ? acc : acc + owedFor(s, b, p)), 0);
-  const collected = guests.reduce((acc, p) => (isPaid(p) ? acc + owedFor(s, b, p) : acc), 0);
+  const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
+  const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
   const { changes, liveText } = useChangeFeed(statuses);
   const unclaimed = statuses.filter((x) => x.left > 0);
@@ -228,7 +233,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
             {guests.length === 0 ? (
               <Row title="Nobody’s joined yet" sub="Show them the QR code. People appear here as they join." muted />
             ) : guests.map((p) => (
-              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={p.payment.status === 'pending' ? () => confirm.mutate(p.payment.status === 'pending' ? p.payment.paymentId : '') : undefined} />
+              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
             ))}
           </Box>
           {confirm.isError ? <Notice tone="error">{confirm.error.message}</Notice> : null}
@@ -324,22 +329,31 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   );
 }
 
-function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number; onConfirm?: () => void; busy: boolean }) {
-  const saysPaid = p.payment.status === 'pending' && !!p.payment.payerClaimedPaidAt;
+function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number; onConfirm: (paymentId: string) => void; busy: boolean }) {
   const name = firstName(p.displayName, 'Guest');
   const av = <Avatar name={p.displayName || name} />;
-  if (isPaid(p)) return <Row lead={av} title={name} sub={formatGBP(owed)} end={<Badge tone="ok">Paid</Badge>} />;
-  if (saysPaid && onConfirm) {
+  const l = ledger(p, owed);
+  // Payments they say they've sent, oldest first: the lead confirms each.
+  const next = l.waiting[0];
+  if (l.settled) return <Row lead={av} title={name} sub={formatGBP(owed)} end={<Badge tone="ok">Paid</Badge>} />;
+  if (next) {
+    const sub = l.confirmedPence > 0
+      ? `Says they’ve paid ${formatGBP(next.amountPence)} more`
+      : `Says they’ve paid ${formatGBP(next.amountPence)}`;
     return (
       <Row
         lead={av}
         title={name}
-        sub={`Says they’ve paid ${formatGBP(owed)}`}
-        end={<Button small onClick={onConfirm} disabled={busy} aria-label={`Confirm ${name} paid ${formatGBP(owed)}`}>Confirm</Button>}
+        sub={l.waiting.length > 1 ? `${sub} (${l.waiting.length} to confirm)` : sub}
+        end={<Button small onClick={() => onConfirm(next.paymentId)} disabled={busy} aria-label={`Confirm ${name} paid ${formatGBP(next.amountPence)}`}>Confirm</Button>}
       />
     );
   }
-  return <Row lead={av} title={name} sub={p.payment.status === 'pending' ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
+  if (l.confirmedPence > 0) {
+    // Paid once, then took more: the rest is still to come.
+    return <Row lead={av} title={name} sub={`Paid ${formatGBP(l.confirmedPence)} · owes ${formatGBP(l.duePence)} more`} end={formatGBP(owed)} />;
+  }
+  return <Row lead={av} title={name} sub={l.draft ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
 }
 
 /* ============================ closed ============================ */
@@ -348,8 +362,8 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   // Guests can still pay after the bill is closed, so the lead can still confirm.
   const confirm = useConfirmPayment(s.sessionId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
-  const outstanding = guests.filter((p) => !isPaid(p));
-  const collected = guests.reduce((acc, p) => (isPaid(p) ? acc + owedFor(s, b, p) : acc), 0);
+  const outstanding = guests.filter((p) => !isPaid(s, b, p));
+  const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
   const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p), 0));
   return (
     <>
@@ -363,7 +377,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         {guests.length > 0 ? (
           <Section title="People">
             <Box>{guests.map((p) => (
-              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={p.payment.status === 'pending' ? () => confirm.mutate(p.payment.status === 'pending' ? p.payment.paymentId : '') : undefined} />
+              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
             ))}</Box>
           </Section>
         ) : null}

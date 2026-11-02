@@ -53,6 +53,7 @@ type Session = {
     claimedItemIds: string[];
     sharedItemIds: string[];
     payment: { status: string; paymentId?: string };
+    payments?: { paymentId: string; amountPence: number; status: string }[];
   }[];
   shares?: { itemId: string; userIds: string[]; ways: number }[];
 };
@@ -118,6 +119,15 @@ async function payAndConfirm(app: App, sessionId: string, guest: string, lead: s
   return payment.paymentId;
 }
 
+/** Open (or re-open) a payment for whatever the guest owes now. */
+async function initiate(app: App, sessionId: string, guest: string) {
+  const res = await post(app, `/v1/sessions/${sessionId}/payments`, guest);
+  expect(res.status).toBe(201);
+  return ((await res.json()) as { payment: { paymentId: string; amountPence: number } }).payment;
+}
+
+const guestOf = (s: Session, userId: string) => s.participants.find((p) => p.userId === userId)!;
+
 const unitsClaimed = (s: Session, itemId: string) =>
   s.participants.reduce((n, p) => n + p.claimedItemIds.filter((id) => id === itemId).length, 0);
 
@@ -136,15 +146,41 @@ const amendBody = (items: (Item & { category?: 'food' | 'drink' })[]) => ({
 beforeAll(ensureBillsBucket);
 
 describe('payments', () => {
-  it('a guest has one payment: a second initiate is refused', async () => {
+  it('opening the pay page again reuses the payment not sent yet', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     const g = t.guests[0]!;
     await claim(app, t.sessionId, g, [t.pizza.itemId]);
-    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, g)).status).toBe(201);
-    // A fresh idempotency key: a genuinely second payment, not a replay.
-    const second = await post(app, `/v1/sessions/${t.sessionId}/payments`, g);
-    expect(second.status).toBe(409);
+    const first = await initiate(app, t.sessionId, g);
+    // A fresh idempotency key: a genuinely second request, not a replay.
+    const again = await initiate(app, t.sessionId, g);
+    expect(again.paymentId).toBe(first.paymentId);
+    expect(again.amountPence).toBe(1450);
+  });
+
+  it('a payment not sent yet is replaced when the guest changes their picks first', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const first = await initiate(app, t.sessionId, g);
+    // Back to their items: dropping one is fine, nothing has been sent.
+    expect((await claim(app, t.sessionId, g, [t.tiramisu.itemId])).status).toBe(200);
+    const second = await initiate(app, t.sessionId, g);
+    expect(second.paymentId).not.toBe(first.paymentId);
+    expect(second.amountPence).toBe(750);
+    const me = guestOf(await getSession(app, t.sessionId, g), g);
+    expect(me.payments?.map((e) => [e.amountPence, e.status])).toEqual([[750, 'pending']]);
+  });
+
+  it('once the guest has sent everything, there is nothing more to pay', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const p = await initiate(app, t.sessionId, g);
+    expect((await post(app, `/v1/payments/${p.paymentId}/mark-paid`, g)).status).toBe(200);
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, g)).status).toBe(409);
   });
 
   it('the lead does not pay themselves', async () => {
@@ -155,19 +191,85 @@ describe('payments', () => {
   });
 });
 
-describe('after paying', () => {
-  // Decided 1 Nov 2026: a guest who forgot something can add it after
-  // paying and pay again for the extra (top-ups; the second payment isn't
-  // built yet, see "one payment per guest" above).
-  it('a guest who has paid can still add something they forgot', async () => {
+describe('after paying (#121: top-ups)', () => {
+  it('a guest who has paid can add something they forgot and pay just the difference', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const firstId = await payAndConfirm(app, t.sessionId, g, t.lead);
+
+    expect((await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId])).status).toBe(
+      200,
+    );
+    const top = await initiate(app, t.sessionId, g);
+    expect(top.amountPence).toBe(750);
+    expect((await post(app, `/v1/payments/${top.paymentId}/mark-paid`, g)).status).toBe(200);
+
+    // Both payments are on the guest's list; the first stays as it was.
+    let me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+    expect(me.payments?.map((e) => [e.paymentId, e.amountPence, e.status])).toEqual([
+      [firstId, 1450, 'succeeded'],
+      [top.paymentId, 750, 'pending'],
+    ]);
+    expect(me.payment.status).toBe('pending');
+
+    // The lead confirms the top-up like any other payment.
+    expect((await post(app, `/v1/payments/${top.paymentId}/confirm`, t.lead)).status).toBe(200);
+    me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+    expect(me.payments?.every((e) => e.status === 'succeeded')).toBe(true);
+    expect(me.payment.status).toBe('succeeded');
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, g)).status).toBe(409);
+  });
+
+  it('a top-up can go before the lead has confirmed the first payment', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const first = await initiate(app, t.sessionId, g);
+    expect((await post(app, `/v1/payments/${first.paymentId}/mark-paid`, g)).status).toBe(200);
+
+    expect((await claim(app, t.sessionId, g, [t.pizza.itemId, t.ipa.itemId])).status).toBe(200);
+    const top = await initiate(app, t.sessionId, g);
+    expect(top.amountPence).toBe(650);
+    expect((await post(app, `/v1/payments/${top.paymentId}/mark-paid`, g)).status).toBe(200);
+    for (const id of [first.paymentId, top.paymentId]) {
+      expect((await post(app, `/v1/payments/${id}/confirm`, t.lead)).status).toBe(200);
+    }
+    const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+    expect(me.payments?.map((e) => e.status)).toEqual(['succeeded', 'succeeded']);
+  });
+
+  it('nobody gets money back: a guest can’t drop what they’ve paid for', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 1);
     const g = t.guests[0]!;
     await claim(app, t.sessionId, g, [t.pizza.itemId]);
     await payAndConfirm(app, t.sessionId, g, t.lead);
+    const res = await claim(app, t.sessionId, g, []);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('ALREADY_PAID_FOR');
+    // Swapping for something dearer is fine: they top up the difference.
+    expect((await claim(app, t.sessionId, g, [t.wine.itemId])).status).toBe(200);
+  });
 
-    const more = await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]);
-    expect(more.status).toBe(200);
+  it('others’ payments don’t change when someone takes the last unit', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 3);
+    const [a, b, bob] = t.guests as [string, string, string];
+    await claim(app, t.sessionId, a, [t.ipa.itemId]);
+    await claim(app, t.sessionId, b, [t.ipa.itemId]);
+    await payAndConfirm(app, t.sessionId, a, t.lead);
+    await payAndConfirm(app, t.sessionId, b, t.lead);
+    await claim(app, t.sessionId, bob, [t.ipa.itemId]);
+    expect((await initiate(app, t.sessionId, bob)).amountPence).toBe(650);
+    const s = await getSession(app, t.sessionId, t.lead);
+    for (const u of [a, b]) {
+      expect(guestOf(s, u).payments?.map((e) => [e.amountPence, e.status])).toEqual([
+        [650, 'succeeded'],
+      ]);
+    }
   });
 });
 

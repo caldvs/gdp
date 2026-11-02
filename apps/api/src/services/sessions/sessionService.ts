@@ -4,6 +4,7 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
+import { computeOwedForParticipant, paymentsOf, sentPence } from '../payments/ledger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import {
   SHARE_ACTIVITY_KEEP,
@@ -378,6 +379,8 @@ export const sessionService = {
         sharedItemIds: target.sharedItemIds.filter((id) => id !== input.itemId),
         readyToLock: isCreator ? target.readyToLock : false,
       };
+      const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+      if (bill) assertNotBelowSent(bill, session, target, updated);
       const sharers = sharersOf(session, input.itemId);
       const existing = settingsOf(session, input.itemId);
       // Leaving keeps the number of ways (the spot reopens). The last one
@@ -734,6 +737,32 @@ function withSettings(
   return { ...session, shareSettings: 'deleted' in next ? others : [...others, next] };
 }
 
+/**
+ * #121: once a guest has sent money, their claims can't drop below it, so
+ * nobody is ever owed money back. Adding more is fine (they top up).
+ */
+function assertNotBelowSent(
+  bill: Parameters<typeof computeOwedForParticipant>[0],
+  session: Session,
+  before: Participant,
+  after: Participant,
+): void {
+  if (before.userId === session.creatorUserId) return;
+  const sent = sentPence(paymentsOf(before, computeOwedForParticipant(bill, session, before)));
+  if (sent === 0) return;
+  const afterSession = {
+    ...session,
+    participants: session.participants.map((p) => (p.userId === after.userId ? after : p)),
+  };
+  const owed = computeOwedForParticipant(bill, afterSession, after);
+  if (owed < sent) {
+    throw new AppError('ALREADY_PAID_FOR', 'You’ve already paid for that', {
+      sentPence: sent,
+      owedPence: owed,
+    });
+  }
+}
+
 function anySharerPaid(session: Session, sharers: readonly string[]): boolean {
   return session.participants.some(
     (p) =>
@@ -834,6 +863,7 @@ async function setClaimsOnce(input: {
     claimedItemIds: claims,
     readyToLock: isCreator ? target.readyToLock : false,
   };
+  assertNotBelowSent(bill, session, target, updated);
   await sessionStore.putClaimsGuarded(session.sessionId, updated, claimsVersion);
 
   return projectForCaller(

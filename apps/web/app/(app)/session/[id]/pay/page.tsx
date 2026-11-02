@@ -14,6 +14,7 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useMarkPaymentPaid } from '@gdp/core/api/hooks/usePaymentActions';
 import { useSession } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
+import { ledger } from '@gdp/core/lib/ledger';
 import { monzoPayUrl, revolutPayUrl } from '@gdp/core/lib/quickPay';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
@@ -39,14 +40,18 @@ export default function PayPage() {
   const s = session.data;
   const mine = s?.participants.find((p) => p.userId === me.data?.userId);
   const isCreator = !!s && !!me.data && s.creatorUserId === me.data.userId;
-  const status = mine?.payment.status;
+  // #121: a guest may pay more than once; this page pays what's due now
+  // (all of it, or the top-up after claiming more).
+  const l = s && mine && bill.data ? ledger(mine, owedFor(s, bill.data, mine)) : null;
+  const due = l?.duePence ?? 0;
 
   // Open the payment as soon as the guest lands here, so the reference
-  // is ready by the time they've opened their banking app.
+  // is ready by the time they've opened their banking app. The API hands
+  // back the one already open if it's still for this amount.
   const started = useRef(false);
   useEffect(() => {
-    if (started.current || !mine || isCreator) return;
-    if (status !== 'unpaid' && status !== 'failed') return;
+    if (started.current || !mine || isCreator || !l) return;
+    if (due <= 0) return;
     started.current = true;
     initiate.mutate(undefined, {
       onSuccess: (res) => {
@@ -54,12 +59,13 @@ export default function PayPage() {
         else if (res.instructions.type === 'redirect') window.open(res.instructions.url, '_blank', 'noopener');
       },
     });
-  }, [mine, isCreator, status, initiate]);
+  }, [mine, isCreator, l, due, initiate]);
 
   // The lead's table replaces their old collecting screen.
   useEffect(() => { if (isCreator) router.replace(`/session/${id}`); }, [isCreator, router, id]);
-  // Once the host has the money, this device no longer needs their bank details.
-  useEffect(() => { if (status === 'succeeded') clearSessionPayout(id); }, [status, id]);
+  // Once the host has all the money, this device no longer needs their bank details.
+  const settled = !!l?.settled;
+  useEffect(() => { if (settled) clearSessionPayout(id); }, [settled, id]);
 
   if (session.isPending || me.isPending || (session.isSuccess && bill.isPending)) return <Centre><Spinner /></Centre>;
   if (session.isError) return <Centre><Notice tone="error" title="Couldn’t load the bill.">{session.error.message}</Notice></Centre>;
@@ -67,11 +73,14 @@ export default function PayPage() {
 
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
-  const amount = owedFor(s, bill.data, mine);
+  const lg = l!;
+  // The payment open on this page (not sent yet), else what's due.
+  const open = lg.draft && lg.draft.amountPence === due ? lg.draft : undefined;
+  const amount = open?.amountPence ?? due;
+  const waitingPence = lg.waiting.reduce((a, e) => a + e.amountPence, 0);
   // ADR-0002: the details the lead shared in the QR are the source of truth.
   const bd = payout.data ?? instructions?.bankDetails;
-  const reference = instructions?.reference ?? (status === 'pending' ? `gdp-${id.slice(0, 8)}` : undefined);
-  const sentAt = mine.payment.status === 'pending' ? mine.payment.payerClaimedPaidAt : undefined;
+  const reference = instructions?.reference ?? (open ? `gdp-${id.slice(0, 8)}` : undefined);
   const monzo = payout.data?.monzoHandle ? monzoPayUrl(payout.data.monzoHandle, amount, reference) : null;
   const revolut = payout.data?.revolutTag ? revolutPayUrl(payout.data.revolutTag) : null;
   const startError = initiate.error instanceof ApiError && initiate.error.code === 'PAYOUT_ACCOUNT_REQUIRED' && bd ? null : initiate.error?.message;
@@ -81,23 +90,22 @@ export default function PayPage() {
   };
   const fmtSort = (sc: string) => sc.replace(/(\d{2})(?=\d)/g, '$1-');
 
-  const canSend = mine.payment.status === 'pending' && !sentAt;
-  const done = status === 'succeeded' || !!sentAt;
-  const action = status === 'succeeded'
+  const done = due <= 0;
+  const action = settled
     ? <Button grow href={`/session/${id}`} replace>Done</Button>
-    : sentAt
+    : done
       ? <Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button>
-      : status === 'failed' || (status === 'unpaid' && startError)
+      : startError
         ? <Button grow busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Button>
-        : <Button grow busy={markPaid.isPending} disabled={!canSend} onClick={() => mine.payment.status === 'pending' && markPaid.mutate(mine.payment.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve paid</Button>;
+        : <Button grow busy={markPaid.isPending} disabled={!open} onClick={() => open && markPaid.mutate(open.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve paid</Button>;
 
   return (
     <>
       <Page sub>
         {done ? <BackLink href="/">Bills</BackLink> : <BackLink href={`/session/${id}`}>Your items</BackLink>}
         <Title
-          title={status === 'succeeded' ? `${hostFirst} has your ${formatGBP(amount)}` : sentAt ? `You’ve paid ${hostFirst} ${formatGBP(amount)}` : `Pay ${hostFirst} ${formatGBP(amount)}`}
-          sub={status === 'succeeded' ? bill.data.venue?.name : sentAt ? `Waiting for ${hostFirst} to confirm.` : 'By bank transfer. Tap a detail to copy it.'}
+          title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst} ${formatGBP(amount)}`}
+          sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to confirm.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid. By bank transfer.` : 'By bank transfer. Tap a detail to copy it.'}
         />
         {done ? null : (
           <>

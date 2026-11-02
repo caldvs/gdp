@@ -1,5 +1,12 @@
 import { v7 as uuidv7 } from 'uuid';
-import { splitShare } from '../sessions/allocation.js';
+import {
+  aggregatePayment,
+  computeOwedForParticipant,
+  draftOf,
+  paymentsOf,
+  sentPence,
+  withPayment,
+} from './ledger.js';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
@@ -41,29 +48,62 @@ export const paymentService = {
     ) {
       throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't pay`);
     }
-    if (participant.payment.status !== 'unpaid' && participant.payment.status !== 'failed') {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        'Participant payment is already in flight or settled',
-      );
-    }
     if (participant.userId === session.collectorUserId) {
       throw new AppError('SESSION_INVALID_STATE', 'Collector does not pay themselves');
     }
-    // If the lead hasn't locked claims yet, `owedPence` won't be set on
-    // the participant. Compute on the fly from their current claims +
-    // their share of extras (service + tax, apportioned by subtotal).
-    // Mirrors the indicative running total the frontend already shows.
-    let computedOwed: number | undefined;
-    if (typeof participant.owedPence !== 'number' || participant.owedPence <= 0) {
-      const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
-      if (!bill) {
-        throw new AppError('SESSION_INVALID_STATE', 'Bill not found for owed-amount calc');
+    // #121: a guest can pay more than once. Each payment is for what they
+    // owe now less what they've already sent (in flight or confirmed), so
+    // a guest who claimed more after paying tops up just the difference.
+    // Payments can overlap: the lead confirms each one on its own.
+    const owed = await owedNow(session, participant);
+    let entries = paymentsOf(participant, owed);
+    const duePence = owed - sentPence(entries);
+    if (duePence <= 0) {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        sentPence(entries) > 0 ? 'Nothing more to pay' : 'Nothing claimed yet',
+      );
+    }
+    // A payment opened earlier and not sent yet: reuse it if it's still
+    // for the right amount (manual: same reference and details), else
+    // close it and open one for the new amount.
+    const draft = draftOf(entries);
+    if (draft) {
+      const old = await paymentStore.get(draft.paymentId);
+      if (
+        old &&
+        old.status === 'pending' &&
+        old.amountPence === duePence &&
+        old.provider === 'manual' &&
+        !input.provider
+      ) {
+        const collectorNow = await userStore.get(session.collectorUserId);
+        return {
+          payment: old,
+          instructions: buildManualInstructions({
+            payoutAccount: collectorNow?.payoutAccount,
+            reference: `gdp-${session.sessionId.slice(0, 8)}`,
+            amountPence: old.amountPence,
+          }),
+        };
       }
-      computedOwed = computeOwedForParticipant(bill, session, participant);
-      if (computedOwed <= 0) {
-        throw new AppError('SESSION_INVALID_STATE', 'Nothing claimed yet');
+      if (old && old.status === 'pending') {
+        await paymentStore.put({
+          ...old,
+          status: 'failed',
+          events: [
+            ...old.events,
+            {
+              at: new Date().toISOString(),
+              from: 'pending',
+              to: 'failed',
+              source: 'system',
+              note: 'superseded: amount changed before it was sent',
+            },
+          ],
+        });
       }
+      entries = entries.filter((e) => e.paymentId !== draft.paymentId);
     }
 
     // Beneficiary = the collector's saved bank details. Per ADR-0002 the
@@ -79,7 +119,7 @@ export const paymentService = {
 
     const paymentId = uuidv7();
     const reference = `gdp-${session.sessionId.slice(0, 8)}`;
-    const amountPence = computedOwed ?? participant.owedPence!;
+    const amountPence = duePence;
 
     let providerPaymentId: string;
     let providerName: 'truelayer' | 'manual';
@@ -127,10 +167,11 @@ export const paymentService = {
       createdAt: now,
     };
 
-    const updatedParticipant: Participant = {
-      ...participant,
-      payment: { status: 'pending', paymentId },
-    };
+    const updatedParticipant = withPayment(participant, entries, {
+      paymentId,
+      amountPence,
+      status: 'pending',
+    });
 
     await paymentStore.applyUpdate({ payment, participant: updatedParticipant });
 
@@ -173,11 +214,21 @@ export const paymentService = {
     // being `pending` — if they've already moved on, the mirror is a
     // no-op. The payment row is the truth; the mirror is best-effort UX.
     if (updated.payerClaimedPaidAt) {
-      await paymentStore.setParticipantPayerClaimedPaidAt({
-        sessionId: payment.sessionId,
-        userId: payment.payerUserId,
-        ts: updated.payerClaimedPaidAt,
-      });
+      const session = await sessionStore.get(payment.sessionId);
+      const participant = session?.participants.find((p) => p.userId === payment.payerUserId);
+      if (participant) {
+        const entries = paymentsOf(participant, payment.amountPence);
+        const entry = entries.find((e) => e.paymentId === payment.paymentId);
+        if (entry?.status === 'pending' && !entry.payerClaimedPaidAt) {
+          await sessionStore.putParticipant(
+            payment.sessionId,
+            withPayment(participant, entries, {
+              ...entry,
+              payerClaimedPaidAt: updated.payerClaimedPaidAt,
+            }),
+          );
+        }
+      }
     }
     return updated;
   },
@@ -232,10 +283,13 @@ export const paymentService = {
       status: 'succeeded',
       events: [...payment.events, event],
     };
-    const updatedParticipant: Participant = {
-      ...participant,
-      payment: { status: 'succeeded', paymentId: payment.paymentId, paidAt: now },
-    };
+    const entries = paymentsOf(participant, payment.amountPence);
+    const prev = entries.find((e) => e.paymentId === payment.paymentId);
+    const updatedParticipant = withPayment(participant, entries, {
+      ...(prev ?? { paymentId: payment.paymentId, amountPence: payment.amountPence }),
+      status: 'succeeded',
+      paidAt: now,
+    });
     await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
 
     maybeSettleSession(
@@ -315,10 +369,22 @@ export const paymentService = {
       events: [...payment.events, event],
     };
 
-    const updatedParticipant: Participant = {
-      ...participant,
-      payment: paymentStateForParticipant(payment.paymentId, next, now, input.event.reason),
+    const entries = paymentsOf(participant, payment.amountPence);
+    const prev = entries.find((e) => e.paymentId === payment.paymentId) ?? {
+      paymentId: payment.paymentId,
+      amountPence: payment.amountPence,
     };
+    // A refund takes the payment off the guest's list, so it's owed again.
+    const remaining = entries.filter((e) => e.paymentId !== payment.paymentId);
+    const updatedParticipant: Participant =
+      next === 'refunded'
+        ? { ...participant, payments: remaining, payment: aggregatePayment(remaining) }
+        : withPayment(participant, entries, {
+            ...prev,
+            status: next === 'succeeded' ? 'succeeded' : next === 'failed' ? 'failed' : 'pending',
+            ...(next === 'succeeded' ? { paidAt: now } : {}),
+            ...(next === 'failed' ? { reason: input.event.reason ?? 'failed' } : {}),
+          });
 
     await paymentStore.applyUpdate({
       payment: updatedPayment,
@@ -348,72 +414,26 @@ async function initiateOrTranslate(
   }
 }
 
-function paymentStateForParticipant(
-  paymentId: string,
-  status: 'authorized' | 'succeeded' | 'failed' | 'refunded' | 'pending',
-  now: string,
-  reason: string | undefined,
-): Participant['payment'] {
-  switch (status) {
-    case 'pending':
-    case 'authorized':
-      return { status: 'pending', paymentId };
-    case 'succeeded':
-      return { status: 'succeeded', paymentId, paidAt: now };
-    case 'failed':
-      return { status: 'failed', paymentId, reason: reason ?? 'failed' };
-    case 'refunded':
-      return { status: 'unpaid' };
-  }
-}
-
 function replaceParticipant(participants: Participant[], updated: Participant): Participant[] {
   return participants.map((p) => (p.userId === updated.userId ? updated : p));
 }
 
-// Per-participant owed-amount calc tolerant of partial / unclaimed
-// bills. Used when the lead hasn't locked claims yet — each diner pays
-// for their CURRENT claims + a proportional share of service / tax.
-// Mirrors the indicative math the frontend shows as the running total.
-//
-// Differs from `computeOwed` in allocation.ts: that one enforces the
-// CLAIMS_INCOMPLETE invariant (every item must be claimed or shared)
-// and apportions extras via largest-remainder rounding for exact
-// reconciliation. The trust-based path can't enforce completeness —
-// some items may legitimately be unclaimed at pay time — so we use
-// the simpler ratio approach and accept slight rounding drift across
-// participants (a few pennies, well within manual-mode tolerance).
-function computeOwedForParticipant(
-  bill: {
-    items: ReadonlyArray<{ itemId: string; unitPricePence: number }>;
-    subtotalPence: number;
-    serviceChargePence: number;
-    taxPence: number;
-  },
-  session: Session,
-  participant: Participant,
-): number {
-  let claimSub = 0;
-  for (const id of participant.claimedItemIds) {
-    const item = bill.items.find((it) => it.itemId === id);
-    if (item) claimSub += item.unitPricePence;
+/**
+ * What the guest owes for their claims right now. After lock-claims
+ * (`paying`) it's the locked `owedPence`; otherwise their current claims
+ * and splits plus their share of service and tax.
+ */
+async function owedNow(session: Session, participant: Participant): Promise<number> {
+  if (
+    session.status === 'paying' &&
+    typeof participant.owedPence === 'number' &&
+    participant.owedPence > 0
+  ) {
+    return participant.owedPence;
   }
-  // Share subtotal (ADR-0006): equal split, remainder pennies go to
-  // the lowest-userId sharer.
-  let shareSub = 0;
-  for (const itemId of participant.sharedItemIds ?? []) {
-    const item = bill.items.find((it) => it.itemId === itemId);
-    if (!item) continue;
-    const sharers = session.participants
-      .filter((p) => (p.sharedItemIds ?? []).includes(itemId))
-      .map((p) => p.userId);
-    if (sharers.length === 0) continue;
-    const ways = session.shareSettings?.find((s) => s.itemId === itemId)?.ways ?? sharers.length;
-    shareSub += splitShare(item.unitPricePence, sharers, ways).get(participant.userId) ?? 0;
-  }
-  const extras = bill.serviceChargePence + bill.taxPence;
-  const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
-  return Math.round((claimSub + shareSub) * (1 + extrasRate));
+  const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+  if (!bill) throw new AppError('SESSION_INVALID_STATE', 'Bill not found for owed-amount calc');
+  return computeOwedForParticipant(bill, session, participant);
 }
 
 /**

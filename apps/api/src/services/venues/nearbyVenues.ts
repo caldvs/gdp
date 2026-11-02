@@ -77,7 +77,7 @@ export const amazonLocationNearby = (region: string): NearbySearch => {
   };
 };
 
-/** Locally (VENUE_LOOKUP=none) there are no nearby places; the app asks for a name. */
+/** With VENUE_LOOKUP=none (tests, CI) there are no nearby places; the app asks for a name. */
 export const noNearby: NearbySearch = () => Promise.resolve([]);
 
 /** Metres between two points (haversine). */

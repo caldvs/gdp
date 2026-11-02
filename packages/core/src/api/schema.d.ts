@@ -48,29 +48,33 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Request a one-time sign-in code for an email
-         * @description Generates a 6-digit code, stores its hash, and emails the plaintext
-         *     code to the supplied address. The code expires in 10 minutes and
-         *     allows up to 5 verification attempts. At most one code every 30
-         *     seconds and 5 every 15 minutes per address (429 otherwise).
+         * Email a one-time sign-in link
+         * @description Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
+         *     token is in the fragment, so it never reaches a server log. It works
+         *     once and expires in 15 minutes. The link points at the calling
+         *     origin when it's on the allow-list (test.paymeback.dev, previews),
+         *     otherwise at `APP_BASE_URL`. At most one link every 30 seconds and
+         *     5 every 15 minutes per address (429 otherwise).
          *
-         *     Response is uniform regardless of whether the email belongs to an
-         *     existing user — this prevents address enumeration. Email delivery
-         *     failures (e.g. SES bounce) also return `200` and are logged
-         *     server-side.
+         *     Returns `requestId`, a secret the asking tab keeps and passes to
+         *     `POST /v1/auth/email/requests` until the link has been opened.
          *
-         *     An address on `TABLE_FEE_EXEMPT_EMAILS` gets no code: the response
-         *     carries `token` and `user` (as from `/email/verify`) and the caller
-         *     is signed in.
+         *     The response is the same whether or not the address has an
+         *     account, so addresses can't be enumerated. Email delivery failures
+         *     (e.g. SES bounce) also return `200` and are logged server-side.
+         *
+         *     An address on `TABLE_FEE_EXEMPT_EMAILS` gets no link: the response
+         *     carries `token` and `user` instead of `requestId`, and the caller is
+         *     signed in.
          */
-        post: operations["startEmailOtp"];
+        post: operations["startEmailSignIn"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/email/verify": {
+    "/v1/auth/email/link": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,16 +84,40 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Exchange a valid OTP for a session JWT
-         * @description Verifies a 6-digit code against the most recent OTP issued for the
-         *     email. On success: looks up (or creates) an opaque userId, persists
-         *     the user profile if new, and mints a session JWT. The JWT is
-         *     carried in `Authorization: Bearer ...` on every subsequent request.
+         * Sign in with the token from an emailed link
+         * @description Called by the tab the link opened. Looks up (or creates) the
+         *     account for the link's email and mints a session JWT. Also marks
+         *     the request approved, so the tab that asked signs in too.
          *
-         *     On failure (wrong code, expired, used, no OTP, too many attempts)
-         *     returns `401 AUTH_INVALID` uniformly so failure modes don't leak.
+         *     Works once, within 15 minutes. Any failure (used, expired, wrong
+         *     or unknown token) is `401 AUTH_INVALID`, so they can't be told apart.
          */
-        post: operations["verifyEmailOtp"];
+        post: operations["openEmailSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/email/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check whether the emailed link has been opened yet
+         * @description The tab that asked polls this (every 2 seconds) with the
+         *     `requestId` from `/email/start`. `pending` until the link is
+         *     opened; then `signedIn` once, with this tab's own session JWT;
+         *     `expired` for a used, timed-out, wrong or unknown request. Only
+         *     the `requestId` can collect the session, so the link alone can't
+         *     sign in someone else's tab. POST so the secret stays out of logs.
+         */
+        post: operations["getEmailSignInRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1533,7 +1561,7 @@ export interface operations {
             };
         };
     };
-    startEmailOtp: {
+    startEmailSignIn: {
         parameters: {
             query?: never;
             header?: never;
@@ -1549,7 +1577,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Code dispatched (or treated as dispatched). */
+            /** @description Link sent (or treated as sent). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1558,6 +1586,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         ok: true;
+                        /** @description Everyone but exempt addresses. Secret; keep it in the tab that asked. */
+                        requestId?: string;
                         /** @description Exempt addresses only: the session JWT. */
                         token?: string;
                         /** @description Exempt addresses only. */
@@ -1571,7 +1601,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             /**
-             * @description `RATE_LIMITED`: a code was sent to this address less than 30
+             * @description `RATE_LIMITED`: a link was sent to this address less than 30
              *     seconds ago, or 5 have been sent in the last 15 minutes.
              *     `details.retryAfterSeconds` says when to try again.
              */
@@ -1585,7 +1615,7 @@ export interface operations {
             };
         };
     };
-    verifyEmailOtp: {
+    openEmailSignInLink: {
         parameters: {
             query?: never;
             header?: never;
@@ -1595,14 +1625,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: email */
-                    email: string;
-                    code: string;
+                    token: string;
                 };
             };
         };
         responses: {
-            /** @description Verified. Token is good for 30 days. */
+            /** @description Signed in. Token is good for 30 days. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1622,11 +1650,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            /**
-             * @description Code didn't match, expired, was already used, or the attempt
-             *     cap was hit. Response is `AUTH_INVALID` in every failure mode
-             *     so callers can't distinguish them.
-             */
+            /** @description The link was used already, expired, or isn't one we sent (`AUTH_INVALID`). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1635,6 +1659,46 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    getEmailSignInRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    requestId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Where the request is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "pending" | "signedIn" | "expired";
+                        /** @description `signedIn` only: the session JWT. */
+                        token?: string;
+                        /** @description `signedIn` only. */
+                        user?: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     testAccountSignIn: {
@@ -1653,7 +1717,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Signed in. Same shape as `verifyEmailOtp`. */
+            /** @description Signed in. Same shape as `openEmailSignInLink`. */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -593,7 +593,7 @@ class GdpBackendStack extends cdk.Stack {
       ]),
       logsWidget('Emails, sign-in and payments', 12, 8, [
         'fields @timestamp, level, event, msg, path, status, requestId',
-        'filter event like /^(email|report|otp|auth)\\./ or path like /webhooks|billing|payments/',
+        'filter event like /^(email|report|signin|auth)\\./ or path like /webhooks|billing|payments/',
         'sort @timestamp desc',
         'limit 100',
       ]),

@@ -111,7 +111,7 @@ ul.plain strong { color: var(--ink); }
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 1336" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 1336" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in link, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -171,41 +171,43 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="390">createdAt, updatedAt</text>
 <text class="t-attr" x="48" y="408">payoutAccount: legacy, no longer written</text>
 <text class="t-attr" x="48" y="426">  (bank details stay on device, ADR-0002)</text>
-<rect class="node" x="30" y="488" width="320" height="160" rx="10"/>
-<rect class="band band-id" x="30" y="488" width="6" height="160" rx="3"/>
-<text class="t-title" x="48" y="515">Sign-in code</text>
+<rect class="node" x="30" y="488" width="320" height="178" rx="10"/>
+<rect class="band band-id" x="30" y="488" width="6" height="178" rx="3"/>
+<text class="t-title" x="48" y="515">Sign-in link</text>
 <rect class="chip-ttl" x="286.4" y="501" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="515" text-anchor="middle">10 min</text>
+<text class="t-chip" x="311.2" y="515" text-anchor="middle">25 min</text>
 <text class="t-keylab" x="48" y="540">pk</text>
-<text class="t-key" x="104" y="540">OTP#email:{email}</text>
+<text class="t-key" x="104" y="540">SIGNIN#{linkId}</text>
 <text class="t-keylab" x="48" y="562">sk</text>
 <text class="t-key" x="104" y="562">same as pk</text>
 <line class="rule" x1="48" y1="576" x2="332" y2="576"/>
-<text class="t-attr" x="48" y="594">codeHash</text>
-<text class="t-attr" x="48" y="612">attempts (conditional increment)</text>
-<text class="t-attr" x="48" y="630">sentAt: one code per 30 s</text>
-<rect class="node" x="30" y="692" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="692" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="719">Code sending limit</text>
-<rect class="chip-ttl" x="286.4" y="705" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="719" text-anchor="middle">15 min</text>
-<text class="t-keylab" x="48" y="744">pk</text>
-<text class="t-key" x="104" y="744">OTPRATE#email:{email}</text>
-<text class="t-keylab" x="48" y="766">sk</text>
-<text class="t-key" x="104" y="766">W#{15-min window}</text>
-<line class="rule" x1="48" y1="780" x2="332" y2="780"/>
-<text class="t-attr" x="48" y="798">sends (at most 5, conditional add)</text>
-<rect class="node" x="30" y="860" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="860" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="887">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="873" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="887" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="912">pk</text>
-<text class="t-key" x="104" y="912">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="934">sk</text>
-<text class="t-key" x="104" y="934">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="948" x2="332" y2="948"/>
-<text class="t-attr" x="48" y="966">stored status + response body</text>
+<text class="t-attr" x="48" y="594">email, linkHash, requestHash</text>
+<text class="t-attr" x="48" y="612">status pending → approved → claimed</text>
+<text class="t-attr" x="48" y="630">  (conditional updates: each once)</text>
+<text class="t-attr" x="48" y="648">expiresAt (15 min), claimBy</text>
+<rect class="node" x="30" y="710" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="710" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="737">Link sending limit</text>
+<rect class="chip-ttl" x="286.4" y="723" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="737" text-anchor="middle">15 min</text>
+<text class="t-keylab" x="48" y="762">pk</text>
+<text class="t-key" x="104" y="762">SIGNINRATE#email:{email}</text>
+<text class="t-keylab" x="48" y="784">sk</text>
+<text class="t-key" x="104" y="784">W#{15-min window} | LAST</text>
+<line class="rule" x1="48" y1="798" x2="332" y2="798"/>
+<text class="t-attr" x="48" y="816">sends (at most 5, conditional add)</text>
+<text class="t-attr" x="48" y="834">sentAt: one link per 30 s</text>
+<rect class="node" x="30" y="896" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="896" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="923">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="909" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="923" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="948">pk</text>
+<text class="t-key" x="104" y="948">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="970">sk</text>
+<text class="t-key" x="104" y="970">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="984" x2="332" y2="984"/>
+<text class="t-attr" x="48" y="1002">stored status + response body</text>
 <rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -383,7 +385,7 @@ ul.plain strong { color: var(--ink); }
         <table>
           <thead><tr><th>Need</th><th>Key condition</th><th>Op</th></tr></thead>
           <tbody>
-            <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>OTP#email:{e}</code></td><td class="op">Get</td></tr>
+            <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>SIGNIN#{id}</code></td><td class="op">Get, conditional Update</td></tr>
             <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
             <tr><td>Background read</td><td><code>READ#{id}</code></td><td class="op">Get</td></tr>

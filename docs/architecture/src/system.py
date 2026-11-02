@@ -126,7 +126,7 @@ AX, AW = LX + 16, 246
 BX, BW = LX + 16 + 246 + 12, LW - 32 - 246 - 12
 y = 308
 y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
-y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify'), ('POST', '/test-sign-in')]) + 10
+y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/link'), ('POST', '/requests'), ('POST', '/test-sign-in')]) + 10
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
@@ -179,7 +179,7 @@ text(C4X + 16, ddb_y + 28, 'DynamoDB', 't-title')
 text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
-for keys, desc in [('USER# AUTH# OTP#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
+for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in links'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
                    ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:

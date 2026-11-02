@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { ApiError } from '@gdp/core/api';
 import { clearToken, isTabSignedIn } from '@gdp/core/api/auth';
 import { useMe } from '@gdp/core/api/hooks/useMe';
-import { useTestAccountSignIn } from '@gdp/core/api/hooks/useEmailOtp';
+import { useTestAccountSignIn } from '@gdp/core/api/hooks/useEmailSignIn';
 import { getSkipReadCache, setSkipReadCache } from '@gdp/core/lib/skipReadCache';
 import { newGuestName, TEST_ACCOUNT_NAMES, testAccountEmail } from '@gdp/core/lib/testAccounts';
 import { TEST_TOOLS_ENABLED, WEB_APP_ENV } from '@/lib/config';

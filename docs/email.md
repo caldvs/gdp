@@ -6,7 +6,7 @@ How the app sends email, what's set up in AWS and DNS, and what's left. Dev and 
 
 Only two kinds of email, both because a user asked for them:
 
-- **Sign-in codes** (`POST /v1/auth/email/start`). Limited per address: one every 30 seconds, at most 5 in 15 minutes (`RATE_LIMITED`, 429; `src/storage/otpStore.ts`).
+- **Sign-in links** (`POST /v1/auth/email/start`). Limited per address: one every 30 seconds, at most 5 in 15 minutes (`RATE_LIMITED`, 429; `src/storage/signInLinkStore.ts`).
 - **Bill reports**: when someone taps *Email me*, and to everyone when the lead closes the bill (`src/services/sessions/reportService.ts`).
 
 No marketing or bulk email. The sender is `src/services/email/` (SES v2 when deployed, printed to the console locally).
@@ -38,7 +38,7 @@ Set up 2 Nov 2026:
 
 ## Leaving the sandbox
 
-A new SES account is in the **sandbox**: it only sends to verified addresses, at most 200 a day. Real guests can't get sign-in codes until it's out.
+A new SES account is in the **sandbox**: it only sends to verified addresses, at most 200 a day. Real guests can't get sign-in links until it's out.
 
 - **Requested 2 Nov 2026**, from the SES console (Get set up → *Request production access*): mail type *Transactional*, website `https://paymeback.dev`. Status **under review**; AWS says up to 96 hours.
 - The console only offers the request once a sending domain is verified, which is why the domain above came first.

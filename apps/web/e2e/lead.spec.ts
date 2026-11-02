@@ -99,6 +99,8 @@ test('a venue the lead sets beats the parsed one, shown with a change link', asy
 
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await expect(lead.getByText('Gennaro')).toBeVisible();
+  // Where it is, so the lead can catch a wrong match (the lookup's full address, or what was printed).
+  await expect(lead.getByText('12 King Street, Manchester')).toBeVisible();
 
   await lead.getByRole('button', { name: 'Change venue' }).click();
   await lead.getByLabel('Venue').fill('The Dog & Partridge');
@@ -106,6 +108,8 @@ test('a venue the lead sets beats the parsed one, shown with a change link', asy
 
   await expect(lead.getByText('The Dog & Partridge')).toBeVisible();
   await expect(lead.getByText('Gennaro')).toHaveCount(0);
+  // The old place's address doesn't stay under the new name.
+  await expect(lead.getByText('12 King Street, Manchester')).toHaveCount(0);
 });
 
 test('parse errors say what went wrong', async ({ browser }) => {

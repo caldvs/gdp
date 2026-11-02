@@ -51,7 +51,8 @@ export interface paths {
          * Request a one-time sign-in code for an email
          * @description Generates a 6-digit code, stores its hash, and emails the plaintext
          *     code to the supplied address. The code expires in 10 minutes and
-         *     allows up to 5 verification attempts.
+         *     allows up to 5 verification attempts. At most one code every 30
+         *     seconds and 5 every 15 minutes per address (429 otherwise).
          *
          *     Response is uniform regardless of whether the email belongs to an
          *     existing user — this prevents address enumeration. Email delivery
@@ -1619,6 +1620,19 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            /**
+             * @description `RATE_LIMITED`: a code was sent to this address less than 30
+             *     seconds ago, or 5 have been sent in the last 15 minutes.
+             *     `details.retryAfterSeconds` says when to try again.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     verifyEmailOtp: {

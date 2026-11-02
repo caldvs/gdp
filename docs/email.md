@@ -59,7 +59,7 @@ A new SES account is in the **sandbox**: it only sends to verified addresses, at
 2. Redeploy dev (any push to `apps/api`, or API Deploy → dev) and prod (API Deploy → prod). CDK reads the parameter at deploy time.
 3. The dependency check's SES line should read verified and out of the sandbox.
 4. Sign in on the deployed site with an address that was never verified in SES: the code should arrive.
-5. Close #76, then build sign-in by link (#119), which waits on this.
+5. Close #126, then build sign-in by link (#119), which waits on this.
 
 ## Until then
 

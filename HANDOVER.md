@@ -43,7 +43,7 @@ _Last updated 2 Nov 2026._
 - Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out hourly from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret. **Production web waits for the prod API** (#80, `api-prod` tag; docs/deploy.md): prod's API is at fd50ec0 (1 Nov), so today's web (party size, nearby places, top-ups) stays off paymeback.dev until Callum runs API Deploy → prod.
 - One golden receipt so far (Gusto, a long receipt photographed as a narrow strip). With prompt v7 it reads to the penny; a size label sometimes lands on the neighbouring line and two quantities swap. Add more photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - Only quantity-1 items can be split.
-- SES is in the sandbox: sign-in codes and reports only reach verified addresses. `paymeback.dev` is a verified SES domain (DKIM in Vercel DNS) and production access is under review since 2 Nov (up to 96 h). Once approved, send from `noreply@paymeback.dev`: steps in [docs/email.md](docs/email.md).
+- SES is in the sandbox: sign-in codes and reports only reach verified addresses. `paymeback.dev` is a verified SES domain (DKIM in Vercel DNS) and production access is under review since 2 Nov (up to 96 h). Once approved, send from `noreply@paymeback.dev` (#126, check by 6 Nov): steps in [docs/email.md](docs/email.md).
 - Nothing has been tried on a real phone with a real Bedrock read since the switch. Bedrock access (use-case form, Marketplace subscription) was completed on 1 Nov.
 
 ## Decided, not built

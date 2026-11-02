@@ -54,6 +54,7 @@ An API contract change and the matching client change go in the same commit, sin
 - [docs/architecture](docs/architecture/README.md): system and data model diagrams
 - [docs/decisions.md](docs/decisions.md): product and technical decisions
 - [docs/deploy.md](docs/deploy.md): deploying the API (CDK) and web (Vercel)
+- [docs/email.md](docs/email.md): email through Amazon SES: the paymeback.dev sending domain, leaving the sandbox
 - [docs/table-fee.md](docs/table-fee.md): the Stripe table fee and what's left before it takes real money
 - [docs/design](docs/design): designs not yet built
 - [apps/api/README.md](apps/api/README.md) and [apps/api/RUNBOOK.md](apps/api/RUNBOOK.md): the API and what to do when an alarm fires

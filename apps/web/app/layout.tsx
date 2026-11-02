@@ -5,7 +5,7 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'paymeback.dev', template: '%s · paymeback.dev' },
+  title: { default: 'Pay Me Back', template: '%s · Pay Me Back' },
   description: 'Snap the bill, share a QR, get paid direct. Your friends don’t install anything.',
   robots: DEMO_MODE ? { index: false, follow: false } : undefined,
 };

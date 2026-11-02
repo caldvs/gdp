@@ -34,7 +34,7 @@ describe('Docs routes', () => {
     expect(res.headers.get('content-type')).toContain('application/yaml');
     const body = await res.text();
     expect(body).toMatch(/^openapi:\s*3\.1\.0/);
-    expect(body).toContain('Group Dine Pay API');
+    expect(body).toContain('Pay Me Back API');
   });
 
   it('does not require auth (unauthed callers see /docs)', async () => {

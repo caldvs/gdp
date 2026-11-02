@@ -18,7 +18,7 @@ export function Header({ onMenu, menuOpen, wide }: { onMenu?: () => void; menuOp
       <div className={wide ? 'hdr__in hdr__in--wide' : 'hdr__in'}>
         <Link href="/" className="brand">
           <span className="brand__mark" aria-hidden>P</span>
-          paymeback.dev
+          Pay Me Back
         </Link>
         {onMenu ? (
           <button type="button" className="icon-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={!!menuOpen} aria-controls="main-menu" onClick={onMenu}>
@@ -108,7 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   else if (me.isError) {
     body = (
       <Centre>
-        <Notice tone="error" title="Can’t reach paymeback.dev.">{me.error.message}</Notice>
+        <Notice tone="error" title="Can’t reach Pay Me Back.">{me.error.message}</Notice>
         <Button tone="secondary" small onClick={() => me.refetch()}>Try again</Button>
       </Centre>
     );

@@ -1,4 +1,4 @@
-# paymeback.dev
+# Pay Me Back
 
 Snap the bill, share a QR, claim what you had, pay the lead direct. Guests don't install anything.
 

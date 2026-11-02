@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Group Dine Pay API
+  title: Pay Me Back API
   version: 0.1.0
   summary: Group restaurant bill splitting and Open Banking settlement.
   description: |
-    Backend for the Group Dine Pay mobile app.
+    Backend for the Pay Me Back web app.
 
     ## Conventions
 
@@ -17,7 +17,7 @@ info:
     - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
 
   contact:
-    name: Group Dine Pay
+    name: Pay Me Back
   license:
     name: Proprietary
 
@@ -42,7 +42,7 @@ tags:
   - name: payments
     description: Guests paying the lead by bank transfer, confirmed by the lead
   - name: billing
-    description: The lead's table fee, paid to Group Dine Pay through Stripe
+    description: The lead's table fee, paid to Pay Me Back through Stripe
   - name: webhooks
     description: Server-to-server callbacks (Stripe)
   - name: ops

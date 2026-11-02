@@ -2,7 +2,7 @@
   "name": "@gdp/api",
   "version": "0.1.0",
   "private": true,
-  "description": "paymeback.dev backend API",
+  "description": "Pay Me Back backend API",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"

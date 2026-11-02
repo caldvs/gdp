@@ -13,7 +13,7 @@ export default function PrivacyPage() {
 
       <section>
         <p>
-          {LEGAL.operator} runs paymeback.dev and is responsible for your data under UK data protection law. Contact{' '}
+          {LEGAL.operator} runs Pay Me Back and is responsible for your data under UK data protection law. Contact{' '}
           <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a> with any question or request.
         </p>
       </section>

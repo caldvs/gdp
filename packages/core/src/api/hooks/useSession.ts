@@ -34,9 +34,12 @@ export function useSession(sessionId: string | undefined) {
 
 export function useCreateSession() {
   const qc = useQueryClient();
-  return useMutation<Session, ApiError, { billId: string }>({
-    mutationFn: ({ billId }) =>
-      api<Session>('/v1/sessions', { method: 'POST', body: { billId } }),
+  return useMutation<Session, ApiError, { billId: string; expectedDiners?: number }>({
+    mutationFn: ({ billId, expectedDiners }) =>
+      api<Session>('/v1/sessions', {
+        method: 'POST',
+        body: { billId, ...(expectedDiners !== undefined ? { expectedDiners } : {}) },
+      }),
     onSuccess: (session) => {
       qc.setQueryData(['session', session.sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.

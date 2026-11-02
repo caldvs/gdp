@@ -65,6 +65,8 @@ test('Scan a bill opens our camera; the shutter goes to the photo check, then th
   expect(uploads(api)).toBe(0);
 
   await page.getByRole('button', { name: 'Use photo' }).click();
+
+  await page.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   expect(uploads(api)).toBe(1);
 });
@@ -106,6 +108,7 @@ test('All in? Retake discards the photo without uploading; Use photo uploads onc
 
   await page.locator('input[capture]').setInputFiles(PHOTO);
   await page.getByRole('button', { name: 'Use photo' }).click();
+  await page.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   expect(uploads(api)).toBe(1);
 });

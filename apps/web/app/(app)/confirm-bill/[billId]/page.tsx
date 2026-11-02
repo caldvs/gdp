@@ -10,6 +10,7 @@ import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
+import { answersForBill, spendAnswer, type ScanVenue } from '@gdp/core/lib/scanAnswers';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
   ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalLine, Totals,
@@ -75,6 +76,9 @@ function CheckBill() {
   const [servicePounds, setServicePounds] = useState('0.00');
   const [taxPounds, setTaxPounds] = useState('0.00');
   const [venueName, setVenueName] = useState('');
+  // A place the lead picked while the bill was read (#61): its ID and
+  // address go with the name, as long as the name isn't changed.
+  const [venuePick, setVenuePick] = useState<ScanVenue | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
@@ -82,6 +86,16 @@ function CheckBill() {
   useEffect(() => {
     if (bill.data && !hydrated) {
       hydrateFrom(bill.data);
+      // #61: where the lead said they were beats what was printed. Used
+      // once: the autosave below sends it as the bill's venue.
+      const said = !isMidSession && billId ? answersForBill(billId)?.venue : undefined;
+      if (said && billId) {
+        if (said.name !== bill.data.venue?.name || (said.placeId && said.placeId !== bill.data.venue?.placeId)) {
+          setVenueName(said.name);
+          setVenuePick(said);
+        }
+        spendAnswer(billId, 'venue');
+      }
       setHydrated(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,12 +121,13 @@ function CheckBill() {
     if (!b) return false;
     if (b.items.length !== items.length || b.serviceChargePence !== servicePence || b.taxPence !== taxPence) return true;
     if (venueName.trim() && venueName.trim() !== (b.venue?.name ?? '')) return true;
+    if (venuePick?.placeId && venuePick.name === venueName.trim() && venuePick.placeId !== b.venue?.placeId) return true;
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
         parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
-  }, [bill.data, items, servicePence, taxPence, venueName]);
+  }, [bill.data, items, servicePence, taxPence, venueName, venuePick]);
 
   // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
@@ -151,7 +166,13 @@ function CheckBill() {
     })),
     taxPence,
     serviceChargePence: servicePence,
-    ...(venueName.trim() ? { venue: { name: venueName.trim() } } : {}),
+    ...(venueName.trim()
+      ? {
+          venue: venuePick && venuePick.name === venueName.trim()
+            ? { name: venuePick.name, ...(venuePick.placeId ? { placeId: venuePick.placeId } : {}), ...(venuePick.address ? { address: venuePick.address } : {}) }
+            : { name: venueName.trim() },
+        }
+      : {}),
   });
 
   const saveDraft = async (): Promise<boolean> => {
@@ -175,7 +196,10 @@ function CheckBill() {
       }
     }
     try {
-      const created = await createSession.mutateAsync({ billId });
+      // #61: how many are eating, if the lead said while the bill was read.
+      const expectedDiners = answersForBill(billId)?.expectedDiners;
+      const created = await createSession.mutateAsync({ billId, ...(expectedDiners !== undefined ? { expectedDiners } : {}) });
+      spendAnswer(billId, 'expectedDiners');
       await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
       router.replace(`/session/${created.sessionId}/share`);
     } catch (err) {

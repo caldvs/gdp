@@ -2,16 +2,25 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useBillRead, useRetryBillRead } from '@gdp/core/api/hooks/useBillRead';
+import { formatGBP } from '@gdp/core/lib/money';
 import { clearPendingRead, getPendingRead, setPendingRead, type PendingRead } from '@gdp/core/lib/pendingRead';
+import { answersForUpload, attachAnswersToBill, saveAnswers, type ScanVenue } from '@gdp/core/lib/scanAnswers';
 import { humanizeReadError, humanizeScanError, useScanner } from '@/components/Scanner';
-import { ReadingFailed, ReadingWait, photoFor, stashPhoto, useSlow } from '@/components/Reading';
-import { Button } from '@/components/ui';
+import { ReadingFailed, ReadingWait, Thumb, photoFor, stashPhoto, useSlow } from '@/components/Reading';
+import { HowManyOfYou, WhereAreYou } from '@/components/ScanQuestions';
+import { ActionBar, Button, Page, Title } from '@/components/ui';
+
+type Answers = { venue?: ScanVenue; expectedDiners?: number };
 
 /**
- * Waits for a background read (POST /v1/bills/reads), then opens Review
- * bill. The lead can go back to Bills meanwhile; the read carries on and
- * Bills shows it. If it fails, the photo stays with Try again.
+ * Waits for a background read (POST /v1/bills/reads). Meanwhile the lead
+ * can say where they are and how many are eating (#61); both optional,
+ * kept in this browser and used once the bill is ready (scanAnswers.ts).
+ * *Review bill* opens when the read is done. The lead can go back to Bills
+ * meanwhile; the read carries on and Bills shows it. If it fails, the
+ * photo stays with Try again, and so do the answers.
  */
 export default function ReadingPage() {
   const { readId } = useParams<{ readId: string }>();
@@ -27,10 +36,37 @@ export default function ReadingPage() {
   const photo = photoFor(readId);
 
   const billId = read.data?.status === 'done' ? read.data.billId : undefined;
+  // The answers are kept by upload, so only the browser that started the
+  // read asks; anywhere else (no pending read) it opens the bill when ready.
+  const [answers, setAnswers] = useState<Answers | null>(null);
+  const uploadId = mine?.uploadId;
+  useEffect(() => {
+    if (!uploadId) return;
+    const a = answersForUpload(uploadId);
+    setAnswers({ ...(a?.venue ? { venue: a.venue } : {}), ...(a?.expectedDiners !== undefined ? { expectedDiners: a.expectedDiners } : {}) });
+  }, [uploadId]);
+  const answer = (patch: { venue?: ScanVenue | null; expectedDiners?: number | null }) => {
+    if (!uploadId) return;
+    saveAnswers(uploadId, patch);
+    // Answered after the read finished: these belong to its bill already.
+    if (billId) attachAnswersToBill(uploadId, billId);
+    setAnswers((prev) => {
+      const next = { ...prev };
+      if (patch.venue !== undefined) { if (patch.venue) next.venue = patch.venue; else delete next.venue; }
+      if (patch.expectedDiners !== undefined) { if (patch.expectedDiners === null) delete next.expectedDiners; else next.expectedDiners = patch.expectedDiners; }
+      return next;
+    });
+  };
+
+  const bill = useBill(billId);
   useEffect(() => {
     if (!billId) return;
-    if (mine) setPendingRead({ ...mine, billId });
-    router.replace(`/confirm-bill/${billId}`);
+    if (mine) {
+      setPendingRead({ ...mine, billId });
+      attachAnswersToBill(mine.uploadId, billId);
+    } else {
+      router.replace(`/confirm-bill/${billId}`);
+    }
   }, [billId, mine, router]);
 
   // A new photo taken from here: the scanner's own screens take over.
@@ -64,15 +100,48 @@ export default function ReadingPage() {
     );
   }
 
+  if (!mine || !answers) {
+    return (
+      <>
+        {scanner.inputs}
+        <ReadingWait
+          photo={photo}
+          title="Reading your bill"
+          slow={slow}
+          actions={<Button tone="secondary" href="/">Back to bills</Button>}
+        />
+      </>
+    );
+  }
+
+  const b = bill.data;
+  const n = b?.items.length ?? 0;
   return (
     <>
       {scanner.inputs}
-      <ReadingWait
-        photo={photo}
-        title="Reading your bill"
-        slow={slow}
-        actions={<Button tone="secondary" href="/">Back to bills</Button>}
-      />
+      <Page>
+        <div className="reading-head">
+          <Thumb uri={photo} />
+          <div role="status" aria-live="polite">
+            {billId ? (
+              <Title
+                title={<><span className="reading-done" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg></span>Bill read</>}
+                sub={b ? `${n} ${n === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)}` : '\u00a0'}
+              />
+            ) : (
+              <Title title="Reading your bill" sub={slow ? 'Long bill? Nearly there.' : 'Usually a few seconds.'} />
+            )}
+          </div>
+        </div>
+        <WhereAreYou venue={answers.venue} onChange={(venue) => answer({ venue })} />
+        <HowManyOfYou n={answers.expectedDiners} onChange={(expectedDiners) => answer({ expectedDiners })} />
+      </Page>
+      <ActionBar>
+        <Button tone="secondary" href="/">Back to bills</Button>
+        <Button grow disabled={!billId} onClick={() => billId && router.replace(`/confirm-bill/${billId}`)}>
+          {billId ? 'Review bill' : 'Reading…'}
+        </Button>
+      </ActionBar>
     </>
   );
 }

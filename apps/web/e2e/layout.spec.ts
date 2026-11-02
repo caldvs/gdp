@@ -95,6 +95,7 @@ test("the lead's bank details never reach a server", async ({ page }) => {
   await open(page, api, users.lead, '/');
   await page.locator('input[capture]').setInputFiles(PHOTO);
   await page.getByRole('button', { name: 'Use photo' }).click();
+  await page.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);

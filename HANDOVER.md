@@ -41,7 +41,9 @@ _Last updated 2 Nov 2026._
 
 ## Known problems
 
-- Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out hourly from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret. **Production web waits for the prod API** (#80, `api-prod` tag; docs/deploy.md): prod's API was deployed at 17b9eec on 2 Nov (22:26), so the next hourly run puts today's web live. Until it does, paymeback.dev still asks for a 6-digit code while the prod API emails a link (#119): sign-in on prod is broken for that hour.
+- Vercel Hobby allows 100 deployments a day (hit on 1 Nov). Pushes no longer deploy: production goes out hourly from `web-deploy.yml`, PR previews only with the `preview` label. Needs the `VERCEL_TOKEN` secret. **Production web waits for the prod API** (#80, `api-prod` tag; docs/deploy.md): prod's API is at 17b9eec and paymeback.dev at 6aaf84f (2 Nov, 22:48), both on link sign-in. The hourly schedule is unreliable (no run between 18:26 and 22:47 on 2 Nov): after a prod API deploy that changes what the web app needs, run Web Deploy by hand.
+- **`APP_BASE_URL`** (GitHub environment variable) is `https://web-nqib.vercel.app` on both dev and prod. It's where sign-in links go when the request has no allowed `Origin`, and where Stripe returns the lead. Set it to `https://test.paymeback.dev` on dev and `https://paymeback.dev` on prod, then redeploy each API.
+- The sign-in email still says "Group Dine Pay". d7205fd changed it to "paymeback.dev" and was reverted (cad6458) so it wouldn't hold the web deploy; re-land it with the next prod API deploy.
 - One golden receipt so far (Gusto, a long receipt photographed as a narrow strip). With prompt v7 it reads to the penny; a size label sometimes lands on the neighbouring line and two quantities swap. Add more photos and their printed totals to `apps/api/fixtures/receipts/`, then `npm run golden -w apps/api`.
 - Only quantity-1 items can be split.
 - Nothing has been tried on a real phone with a real Bedrock read since the switch. Bedrock access (use-case form, Marketplace subscription) was completed on 1 Nov.

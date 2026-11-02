@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { validJson } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
 import { callerOf } from '../context/caller.js';
@@ -13,6 +13,7 @@ import {
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
   SetReadyRequestSchema,
+  UpdateSessionRequestSchema,
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { PaymentProvider } from '../services/payments/provider.js';
@@ -32,7 +33,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', CreateSessionRequestSchema),
+    validJson(CreateSessionRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const body = c.req.valid('json');
@@ -40,6 +41,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         caller,
         billId: body.billId,
         billVersion: body.billVersion,
+        expectedDiners: body.expectedDiners,
       });
       return c.json(session, 201);
     },
@@ -48,7 +50,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/by-code',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', JoinByCodeRequestSchema),
+    validJson(JoinByCodeRequestSchema),
     async (c) => {
       const { code } = c.req.valid('json');
       const result = await sessionService.resolveByCode({ code });
@@ -62,6 +64,19 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const session = await sessionService.get({ caller, sessionId });
     return c.json(session);
   });
+
+  r.patch(
+    '/:sessionId',
+    requireAuth(deps.idTokenVerifier),
+    validJson(UpdateSessionRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const { expectedDiners } = c.req.valid('json');
+      const session = await sessionService.setExpectedDiners({ caller, sessionId, expectedDiners });
+      return c.json(session);
+    },
+  );
 
   r.post('/:sessionId/share', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
@@ -80,7 +95,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/claims',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', ClaimsRequestSchema),
+    validJson(ClaimsRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -93,7 +108,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/shares',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', AddShareRequestSchema),
+    validJson(AddShareRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -106,7 +121,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.put(
     '/:sessionId/shares/:itemId',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', SetShareWaysRequestSchema),
+    validJson(SetShareWaysRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -128,7 +143,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/ready',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', SetReadyRequestSchema),
+    validJson(SetReadyRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');

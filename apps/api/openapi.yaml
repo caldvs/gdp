@@ -614,6 +614,33 @@ paths:
               schema: { $ref: '#/components/schemas/Session' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [sessions]
+      operationId: updateSession
+      summary: Change how many people the lead expects at the table
+      description: |
+        Lead only. Sets `expectedDiners` (lead included), or clears it with
+        `null`. Allowed until the bill is closed or deleted. Display only:
+        it never changes what anyone owes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSessionRequest' }
+      responses:
+        '200':
+          description: Session with the new value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The bill is closed or deleted (`SESSION_INVALID_STATE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/sessions/{sessionId}/share:
     parameters:
@@ -1617,6 +1644,13 @@ components:
             frontend can render a venue strapline without a second round-trip.
             Optional — predates this field on old sessions, and not every bill
             has a venue the reader could extract.
+        expectedDiners:
+          type: integer
+          minimum: 2
+          maximum: 10
+          description: |
+            How many people the lead said are eating, lead included. Shown as
+            "3 of 4 joined"; never used in the money maths. Absent until set.
         shares:
           type: array
           description: |
@@ -1869,6 +1903,22 @@ components:
           type: integer
           minimum: 1
           description: Defaults to the latest version of the bill at session-create time
+        expectedDiners:
+          type: integer
+          minimum: 2
+          maximum: 10
+          description: How many people are eating, lead included. Optional.
+
+    UpdateSessionRequest:
+      type: object
+      required: [expectedDiners]
+      additionalProperties: false
+      properties:
+        expectedDiners:
+          type: [integer, 'null']
+          minimum: 2
+          maximum: 10
+          description: How many people are eating, lead included; `null` clears it.
 
     JoinByCodeRequest:
       type: object

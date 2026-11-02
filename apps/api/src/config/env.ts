@@ -25,8 +25,9 @@ const EnvSchema = z.object({
   BEDROCK_MODEL_ID: z.string().optional(),
   // How the venue read off the bill is looked up. `amazon-location` fills in
   // the full address and coordinates (Amazon Location Service, cached for
-  // good in VENUEQ# rows); `none` keeps the text on the bill. Deployed
-  // stacks use amazon-location.
+  // good in VENUEQ# rows) and lists nearby places; `none` keeps the text on
+  // the bill. Deployed stacks and .env.example (local) use amazon-location;
+  // unset (tests, CI) is none, as they have no AWS credentials.
   VENUE_LOOKUP: z.enum(['none', 'amazon-location']).default('none'),
 
   // Verified SES sender address. When unset, transactional email is

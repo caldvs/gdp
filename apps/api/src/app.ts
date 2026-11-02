@@ -102,13 +102,14 @@ const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
 // The venue Bedrock read off the bill, looked up with Amazon Location
-// Service when VENUE_LOOKUP=amazon-location (deployed), else used as read.
+// Service when VENUE_LOOKUP=amazon-location (deployed, and locally from
+// .env.example), else used as read.
 const defaultVenueResolver = (): VenueResolver =>
   env.VENUE_LOOKUP === 'amazon-location'
     ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
     : new NoopVenueResolver();
 
-// Nearby food and drink places: Amazon Location when deployed, none locally.
+// Nearby food and drink places: Amazon Location when VENUE_LOOKUP says so.
 const defaultNearbySearch = (): NearbySearch =>
   env.VENUE_LOOKUP === 'amazon-location' ? amazonLocationNearby(env.AWS_REGION) : noNearby;
 

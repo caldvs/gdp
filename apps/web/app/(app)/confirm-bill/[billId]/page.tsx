@@ -226,16 +226,20 @@ function CheckBill() {
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
+  // #65: nothing on the photo names the place: ask at the top instead of a link.
+  const noVenue = !b.venue?.name && items.length > 0;
   const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
     : (
       <>
         {restOfSub}
-        {' · '}
-        <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={b.venue?.name ? 'Change venue' : undefined}>
-          {b.venue?.name ? 'change' : 'Add venue'}
-        </button>
+        {noVenue ? null : (
+          <>
+            {' · '}
+            <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
+          </>
+        )}
         {/* Where the venue is: the full address when the lookup matched it,
             else what the bill printed. Lets the lead catch a wrong branch. */}
         {b.venue?.address && (venueName.trim() || b.venue.name) === b.venue.name ? <span className="title__addr small">{b.venue.address}</span> : null}
@@ -255,6 +259,25 @@ function CheckBill() {
 
         {editing === 'venue' ? (
           <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />
+        ) : null}
+        {noVenue ? (
+          <div className="field">
+            <label htmlFor="venue-where">Where was this?</label>
+            <input
+              id="venue-where"
+              className="input"
+              value={venueName}
+              maxLength={80}
+              placeholder="Name of the place"
+              aria-describedby="venue-where-hint"
+              // Saves when they leave the field (the autosave waits while editing).
+              onFocus={() => setEditing('venue-field')}
+              onBlur={() => setEditing(null)}
+              onChange={(e) => setVenueName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            />
+            <span id="venue-where-hint" className="field__hint">Not on the photo. Shown to everyone.</span>
+          </div>
         ) : null}
 
         {noTotal ? (

@@ -84,16 +84,21 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   await expect(lead.getByText('matches the receipt')).toBeVisible();
 });
 
-test('no venue on the photo: Add venue, then it shows on the Bills list', async ({ browser }) => {
+test('#65 no venue on the photo: "Where was this?" at the top, saved when they leave it', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Add venue' }).click();
-  await lead.getByLabel('Venue').fill('The Dog & Partridge');
-  await lead.getByRole('button', { name: 'Done' }).click();
+  await expect(lead.getByText('Not on the photo. Shown to everyone.')).toBeVisible();
+  await lead.getByLabel('Where was this?').fill('The Dog & Partridge');
+  await lead.getByLabel('Where was this?').press('Enter');
 
-  await expect(lead.getByText('The Dog & Partridge')).toBeVisible();
+  // Saved once, then shown like any venue, with a change link.
+  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toBeVisible();
+  const amends = api.requests.filter((r) => r.path.endsWith('/amend') && (r.body ?? '').includes('Dog & Partridge'));
+  expect(amends).toHaveLength(1);
 });
 
 test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {

@@ -69,7 +69,9 @@ export class FakeApi {
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
-  private venue: { name: string; address?: string } | undefined;
+  private venue: { name: string; address?: string; placeId?: string } | undefined;
+  /** #62: places GET /v1/venues/nearby returns (nearest first). */
+  nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
   constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null } = {}) {
     this.items = opts.items ?? items;
@@ -193,7 +195,7 @@ export class FakeApi {
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);
     if (path === `/v1/bills/${BID}/amend`) {
-      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; venue?: { name: string } };
+      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; venue?: { name: string; placeId?: string; address?: string } };
       this.items = b.items.map((it) => ({ itemId: it.itemId ?? `00000000-0000-4000-8000-${String(900 + ++this.seq).padStart(12, '0')}`, name: it.name, unitPricePence: it.unitPricePence, quantity: it.quantity, category: it.category }));
       this.serviceChargePence = b.serviceChargePence;
       if (b.venue) this.venue = b.venue;
@@ -203,7 +205,13 @@ export class FakeApi {
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
 
     // ---- sessions
-    if (path === '/v1/sessions' && method === 'POST') { this.status = 'setup'; return json(this.session(), 201); }
+    if (path === '/v1/venues/nearby' && method === 'GET') return json({ venues: this.nearby });
+    if (path === '/v1/sessions' && method === 'POST') {
+      this.status = 'setup';
+      const n = body().expectedDiners as number | undefined;
+      this.expectedDiners = n;
+      return json(this.session(), 201);
+    }
     if (path === '/v1/sessions/by-code') return (body().code as string) === CODE ? json({ sessionId: SID }) : err('NOT_FOUND', 'No session with that code', 404);
     if (path === `/v1/sessions/${SID}/share`) { this.status = 'claiming'; return json(this.session()); }
     if (path === `/v1/sessions/${SID}/join`) {

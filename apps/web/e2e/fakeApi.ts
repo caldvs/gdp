@@ -50,7 +50,7 @@ export const users = {
 export type Fault =
   | { kind: 'session-get-500'; times: number }
   | { kind: 'initiate-500'; times: number }
-  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT'; message: string; details?: Record<string, unknown> };
+  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT' | 'INTERNAL_ERROR'; message: string; details?: Record<string, unknown> };
 
 export class FakeApi {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';

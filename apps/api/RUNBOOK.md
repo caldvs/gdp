@@ -77,6 +77,8 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 Venue lookup (Amazon Location) only fills in what the bill didn't print, and never fails a bill. Search the logs for `venue lookup failed`: `AccessDeniedException` means the function's `geo-places:SearchText` permission is missing. A wrong match is cached for good in its `VENUEQ#` row; delete that row to look it up again.
 
+Nearby places (`GET /v1/venues/nearby`, #62) return an empty list rather than an error when Amazon Location fails; search the logs for `nearby search failed` (`AccessDeniedException` means `geo-places:SearchNearby` is missing). Results are cached 30 days per `NEARQ#<lat>|<lng>` cell (3 decimal places); delete a row to search that spot again.
+
 ### Sign-in codes don't arrive
 
 Look for `otp.start.failed` or `email.sent` in _Emails, sign-in and payments_. A new SES account is in the sandbox and only sends to verified addresses: request production access or verify the tester.

@@ -35,6 +35,8 @@ tags:
     description: The authenticated caller
   - name: bills
     description: Photographing, parsing, retrieving, and amending bills
+  - name: venues
+    description: Places near the lead, for naming where a bill is from
   - name: sessions
     description: Group dining sessions, the join flow, and claim management
   - name: payments
@@ -535,6 +537,42 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/venues/nearby:
+    get:
+      tags: [venues]
+      operationId: nearbyVenues
+      summary: Food and drink places near a position
+      description: |
+        Up to 5 food and drink places within about 300 m, nearest first, from
+        Amazon Location. Results are cached by the position rounded to 3
+        decimal places; the caller's own position is never stored and is
+        logged rounded at most. An empty list when nothing is near, when the
+        search fails, or locally (no venue lookup).
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Nearby places, nearest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venues]
+                properties:
+                  venues:
+                    type: array
+                    maxItems: 5
+                    items: { $ref: '#/components/schemas/NearbyVenue' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/sessions:
     post:
@@ -1893,6 +1931,22 @@ components:
             name: { type: string, minLength: 1, maxLength: 80 }
             placeId: { type: string }
             address: { type: string }
+
+    NearbyVenue:
+      type: object
+      required: [placeId, name, distanceM]
+      properties:
+        placeId: { type: string, description: Amazon Location place ID }
+        name: { type: string }
+        address:
+          {
+            type: string,
+            description: 'Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom"',
+          }
+        distanceM:
+          type: integer
+          minimum: 0
+          description: Metres from the position asked about
 
     CreateSessionRequest:
       type: object

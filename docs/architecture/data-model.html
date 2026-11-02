@@ -111,7 +111,7 @@ ul.plain strong { color: var(--ink); }
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 1150" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 1336" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -253,16 +253,28 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="428" y="892">source = amazon-location</text>
 <rect class="node" x="410" y="954" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="954" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="981">Bill read</text>
-<rect class="chip-ttl" x="673.0" y="967" width="43.0" height="20" rx="10"/>
-<text class="t-chip" x="694.5" y="981" text-anchor="middle">1 day</text>
+<text class="t-title" x="428" y="981">Nearby places</text>
+<rect class="chip-ttl" x="659.8" y="967" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="687.9" y="981" text-anchor="middle">30 days</text>
 <text class="t-keylab" x="428" y="1006">pk</text>
-<text class="t-key" x="484" y="1006">READ#{readId}</text>
+<text class="t-key" x="484" y="1006">NEARQ#{lat|lng to 3 dp}</text>
 <text class="t-keylab" x="428" y="1028">sk</text>
-<text class="t-key" x="484" y="1028">READ</text>
+<text class="t-key" x="484" y="1028">same as pk</text>
 <line class="rule" x1="428" y1="1042" x2="712" y2="1042"/>
-<text class="t-attr" x="428" y="1060">userId, uploadId, status reading|done|failed</text>
-<text class="t-attr" x="428" y="1078">billId when done, error when failed</text>
+<text class="t-attr" x="428" y="1060">places [{ placeId, name, address, lat, lng }]</text>
+<text class="t-attr" x="428" y="1078">rounded cell only; never who asked</text>
+<rect class="node" x="410" y="1140" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="1140" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="1167">Bill read</text>
+<rect class="chip-ttl" x="673.0" y="1153" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="694.5" y="1167" text-anchor="middle">1 day</text>
+<text class="t-keylab" x="428" y="1192">pk</text>
+<text class="t-key" x="484" y="1192">READ#{readId}</text>
+<text class="t-keylab" x="428" y="1214">sk</text>
+<text class="t-key" x="484" y="1214">READ</text>
+<line class="rule" x1="428" y1="1228" x2="712" y2="1228"/>
+<text class="t-attr" x="428" y="1246">userId, uploadId, status reading|done|failed</text>
+<text class="t-attr" x="428" y="1264">billId when done, error when failed</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>

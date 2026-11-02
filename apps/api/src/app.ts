@@ -11,6 +11,13 @@ import { docsRoutes } from './routes/docs.js';
 import { buildMeRoutes, meRoutes } from './routes/me.js';
 import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
+import { buildVenueRoutes } from './routes/venues.js';
+import {
+  amazonLocationNearby,
+  createNearbyVenueService,
+  noNearby,
+  type NearbySearch,
+} from './services/venues/nearbyVenues.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
@@ -54,6 +61,8 @@ export interface AppDeps {
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
   venueResolver?: VenueResolver;
+  /** Finds places near the lead for the scan screen (#62). */
+  nearbySearch?: NearbySearch;
   emailSender?: EmailSender;
   /** Override the JWT secret for tests (use a deterministic value). */
   sessionJwtSecret?: Uint8Array;
@@ -98,6 +107,10 @@ const defaultVenueResolver = (): VenueResolver =>
   env.VENUE_LOOKUP === 'amazon-location'
     ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
     : new NoopVenueResolver();
+
+// Nearby food and drink places: Amazon Location when deployed, none locally.
+const defaultNearbySearch = (): NearbySearch =>
+  env.VENUE_LOOKUP === 'amazon-location' ? amazonLocationNearby(env.AWS_REGION) : noNearby;
 
 const defaultPaymentProvider = (): PaymentProvider | null => {
   if (env.PAYMENT_PROVIDER === 'manual') return null;
@@ -205,6 +218,16 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       venueResolver,
       reads,
       allowSkipCache: deps.allowSkipCache ?? env.APP_ENV === 'local',
+    }),
+  );
+  app.route(
+    '/v1/venues',
+    buildVenueRoutes({
+      idTokenVerifier,
+      nearby: createNearbyVenueService({
+        search: deps.nearbySearch ?? defaultNearbySearch(),
+        logger: baseLogger,
+      }),
     }),
   );
   app.route(

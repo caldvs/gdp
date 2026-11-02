@@ -28,7 +28,9 @@ def edge(d, labels=(), both=False, cls='', marker='ah'):
         a(f'<text x="{x}" y="{y}" text-anchor="{anc}">{e(s)}</text>')
     a('</g>')
 
+COUNTS = {'eps': 0, 'groups': 0}
 def group(x, y, w, title, base, eps):
+    COUNTS['eps'] += len(eps); COUNTS['groups'] += 1
     h = 30 + len(eps) * 18 + 8
     rect(x, y, w, h, 'inner', 7)
     text(x + 12, y + 21, title, 't-inner')
@@ -138,6 +140,7 @@ y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/payments')]) + 10
+y = group(BX, y, BW, 'Venues', '/v1/venues', [('GET', '/nearby')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
@@ -146,6 +149,7 @@ svc = [
     ('sessions', 'allocation, joinCode, report'),
     ('payments', 'stateMachine, provider'),
     ('billing', 'tableFee'),
+    ('venues', 'nearbyVenues'),
     ('email', 'sender (SES or console)'),
     ('storage', 'one store per entity'),
 ]
@@ -177,14 +181,14 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# OTP#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY# PROVPAY#', 'Payments, provider index'),
-                   ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
+                   ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT, Stripe, TrueLayer secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
-c4card('location', 'Amazon Location', ['Venue lookup, cached for good'])
+c4card('location', 'Amazon Location', ['Venue lookup, nearby places'])
 c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
 
 # ---- Column 5 externals at gap y's
@@ -221,7 +225,7 @@ svg = '\n'.join(zones + edges + nodes)
 VB_H = 1293
 
 page = (HERE / 'system.template.html').read_text()
-page = page.replace('%%SVG%%', svg).replace('%%VBH%%', str(VB_H))
+page = page.replace('%%SVG%%', svg).replace('%%VBH%%', str(VB_H)).replace('%%EPS%%', str(COUNTS['eps'])).replace('%%GROUPS%%', str(COUNTS['groups']))
 HEAD = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n')
 page = HEAD + page.replace('<div class="wrap">', '</head>\n<body>\n<div class="wrap">', 1) + '</body>\n</html>\n'

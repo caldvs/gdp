@@ -79,6 +79,7 @@ h1, h2, p { margin: 0; }
 .section__h { font-size: 15px; font-weight: 600; color: var(--mute); }
 .muted { color: var(--mute); }
 .small { font-size: 14px; }
+.title__addr { display: block; margin-top: 2px; }
 
 /* ---------- Lists ---------- */
 .box { border: 1px solid var(--card-line); border-radius: var(--radius-card); overflow: hidden; background: var(--bg); box-shadow: var(--card-shadow); }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createSessionTokenVerifier } from '../../src/services/auth.js';
 import type { EmailSender, SendEmailInput } from '../../src/services/email/sender.js';
@@ -186,5 +186,57 @@ describe('POST /v1/auth/email/verify', () => {
       body: JSON.stringify({ email, code }),
     });
     expect(sixth.status).toBe(401);
+  });
+});
+
+describe('POST /v1/auth/email/start: sending limits (#76)', () => {
+  const start = (app: ReturnType<typeof buildApp>['app'], email: string) =>
+    app.request('/v1/auth/email/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+  const verify = (app: ReturnType<typeof buildApp>['app'], email: string, code: string) =>
+    app.request('/v1/auth/email/verify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('one code every 30 seconds: a second ask is refused and the first code still works', async () => {
+    const { app, sender } = buildApp();
+    const email = uniqueEmail();
+    expect((await start(app, email)).status).toBe(200);
+    const again = await start(app, email);
+    expect(again.status).toBe(429);
+    const body = (await again.json()) as {
+      error: { code: string; details: { retryAfterSeconds: number } };
+    };
+    expect(body.error.code).toBe('RATE_LIMITED');
+    expect(body.error.details.retryAfterSeconds).toBe(30);
+    expect(sender.sent).toHaveLength(1);
+    expect((await verify(app, email, extractCode(sender.sent[0]!.body.text))).status).toBe(200);
+  });
+
+  it('at most 5 codes in 15 minutes per address; other addresses are unaffected', async () => {
+    const { app, sender } = buildApp();
+    const email = uniqueEmail();
+    // Start of a 15-minute window, then 31 seconds between asks.
+    const t0 = Math.ceil(Date.now() / 900_000) * 900_000 + 1_000;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    for (let i = 0; i < 5; i += 1) {
+      vi.setSystemTime(t0 + i * 31_000);
+      expect((await start(app, email)).status).toBe(200);
+    }
+    vi.setSystemTime(t0 + 5 * 31_000);
+    const sixth = await start(app, email);
+    expect(sixth.status).toBe(429);
+    expect(((await sixth.json()) as { error: { message: string } }).error.message).toMatch(
+      /Too many codes/,
+    );
+    expect(sender.sent).toHaveLength(5);
+    expect((await start(app, uniqueEmail())).status).toBe(200);
   });
 });

@@ -4,6 +4,25 @@ import { ddb, TABLE_NAME } from './ddb.js';
 
 const OTP_TTL_SECONDS = 10 * 60;
 const MAX_ATTEMPTS = 5;
+// Sending limits per address (#76): one code every 30 seconds, and at
+// most 5 in any 15-minute window. Stops the app being used to flood
+// someone's inbox, which would also count against us with SES.
+const MIN_GAP_SECONDS = 30;
+const SENDS_PER_WINDOW = 5;
+const WINDOW_SECONDS = 15 * 60;
+
+/** Why a code wasn't sent: too soon after the last, or too many lately. */
+export class OtpRateLimited extends Error {
+  constructor(
+    readonly reason: 'too-soon' | 'too-many',
+    readonly retryAfterSeconds: number,
+  ) {
+    super(reason);
+    this.name = 'OtpRateLimited';
+  }
+}
+
+const ratePk = (email: string) => `OTPRATE#email:${email.toLowerCase()}`;
 
 const pk = (email: string) => `OTP#email:${email.toLowerCase()}`;
 
@@ -24,20 +43,57 @@ export const otpStore = {
    */
   async put(email: string, codeHash: string): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    await ddb.send(
-      new PutCommand({
-        TableName: TABLE_NAME,
-        Item: {
-          pk: pk(email),
-          sk: pk(email),
-          email,
-          codeHash,
-          attempts: 0,
-          createdAt: new Date().toISOString(),
-          ttlAt: now + OTP_TTL_SECONDS,
-        },
-      }),
-    );
+    // Count this send in the address's 15-minute window first, so a
+    // refused request never replaces the code they already have.
+    const window = Math.floor(now / WINDOW_SECONDS);
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: ratePk(email), sk: `W#${window}` },
+          UpdateExpression: 'SET #n = if_not_exists(#n, :zero) + :one, ttlAt = :ttl',
+          ConditionExpression: 'attribute_not_exists(#n) OR #n < :max',
+          ExpressionAttributeNames: { '#n': 'sends' },
+          ExpressionAttributeValues: {
+            ':zero': 0,
+            ':one': 1,
+            ':max': SENDS_PER_WINDOW,
+            ':ttl': (window + 1) * WINDOW_SECONDS + 60,
+          },
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) {
+        throw new OtpRateLimited('too-many', (window + 1) * WINDOW_SECONDS - now);
+      }
+      throw err;
+    }
+    try {
+      await ddb.send(
+        new PutCommand({
+          TableName: TABLE_NAME,
+          Item: {
+            pk: pk(email),
+            sk: pk(email),
+            email,
+            codeHash,
+            attempts: 0,
+            createdAt: new Date().toISOString(),
+            sentAt: now,
+            ttlAt: now + OTP_TTL_SECONDS,
+          },
+          // One code every 30 seconds per address.
+          ConditionExpression:
+            'attribute_not_exists(pk) OR attribute_not_exists(sentAt) OR sentAt <= :cutoff',
+          ExpressionAttributeValues: { ':cutoff': now - MIN_GAP_SECONDS },
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) {
+        throw new OtpRateLimited('too-soon', MIN_GAP_SECONDS);
+      }
+      throw err;
+    }
   },
 
   async get(email: string): Promise<OtpRecord | null> {

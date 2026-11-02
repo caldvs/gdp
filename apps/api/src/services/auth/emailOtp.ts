@@ -1,7 +1,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
-import { otpStore } from '../../storage/otpStore.js';
+import { OtpRateLimited, otpStore } from '../../storage/otpStore.js';
 import { authIdentityStore } from '../../storage/authIdentityStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { mintSessionToken } from './sessionToken.js';
@@ -64,7 +64,21 @@ export const createEmailOtpService = (deps: EmailOtpServiceDeps) => ({
     const code = (deps.generateCode ?? defaultCode)();
     const codeHash = sha256(code);
 
-    await otpStore.put(email, codeHash);
+    try {
+      await otpStore.put(email, codeHash);
+    } catch (err) {
+      if (err instanceof OtpRateLimited) {
+        deps.logger?.warn({ event: 'otp.rate_limited', reason: err.reason }, 'OTP send refused');
+        throw new AppError(
+          'RATE_LIMITED',
+          err.reason === 'too-soon'
+            ? 'We’ve just sent a code. Check your email, or try again in a moment.'
+            : 'Too many codes for this address. Wait a few minutes and try again.',
+          { retryAfterSeconds: err.retryAfterSeconds },
+        );
+      }
+      throw err;
+    }
 
     await deps.emailSender.send({
       to: email,

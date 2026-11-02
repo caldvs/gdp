@@ -39,7 +39,12 @@ def chip(xr, y, ttl):
     text(xr - w / 2, y + 14, ttl, 't-chip', 'middle')
 
 P = {}  # name -> (x, y, w, h)
+# Item types drawn, for the header. The session collection adds its own
+# rows below (META, PART#, SHARE#, CLAIMS: four types, one counted here).
+COUNTS = {'types': 3, 'expiring': 3}
 def place(col, y, name, *args, **kw):
+    COUNTS['types'] += 1
+    if args and args[1] != 'No TTL': COUNTS['expiring'] += 1
     x = COLS[col]
     h = entity(x, y, name, *args, **kw)
     P[name] = (x, y, CW, h)
@@ -51,7 +56,8 @@ y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
-y = place(0, y, 'Sign-in code', 'id', '10 min', [('pk', 'OTP#email:{email}'), ('sk', 'same as pk')], ['codeHash', 'attempts (conditional increment)', 'ttlAt, also checked on read']) + GAP
+y = place(0, y, 'Sign-in code', 'id', '10 min', [('pk', 'OTP#email:{email}'), ('sk', 'same as pk')], ['codeHash', 'attempts (conditional increment)', 'sentAt: one code per 30 s']) + GAP
+y = place(0, y, 'Code sending limit', 'id', '15 min', [('pk', 'OTPRATE#email:{email}'), ('sk', 'W#{15-min window}')], ['sends (at most 5, conditional add)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 
@@ -181,7 +187,7 @@ for i, lab in enumerate(['Identity & request safety', 'Bills', 'Sessions', 'Tabl
     zones.append(f'<text class="zone-label" x="{COLS[i]}" y="52">{e(lab)}</text>')
 
 svg = '\n'.join(zones + edges + nodes)
-page = (HERE / 'data_model.template.html').read_text().replace('%%SVG%%', svg).replace('%%VBH%%', str(int(H)))
+page = (HERE / 'data_model.template.html').read_text().replace('%%SVG%%', svg).replace('%%VBH%%', str(int(H))).replace('%%TYPES%%', str(COUNTS['types'])).replace('%%EXPIRING%%', str(COUNTS['expiring']))
 HEAD = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n')
 page = HEAD + page.replace('<div class="wrap">', '</head>\n<body>\n<div class="wrap">', 1) + '</body>\n</html>\n'

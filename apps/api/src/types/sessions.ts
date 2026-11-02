@@ -98,6 +98,12 @@ export const ShareSettingsSchema = z.object({
 export type ShareSettings = z.infer<typeof ShareSettingsSchema>;
 export const SHARE_ACTIVITY_KEEP = 10;
 
+// How many people the lead said are eating, the lead included (#64).
+// Only shown as progress ("3 of 4 joined"); never used in the money maths.
+export const EXPECTED_DINERS_MIN = 2;
+export const EXPECTED_DINERS_MAX = 10;
+const ExpectedDinersSchema = z.number().int().min(EXPECTED_DINERS_MIN).max(EXPECTED_DINERS_MAX);
+
 export const SessionSchema = z.object({
   sessionId: z.string().uuid(),
   status: SessionStatusSchema,
@@ -115,6 +121,9 @@ export const SessionSchema = z.object({
   // Optional both because old sessions predate this field and because
   // not every bill has a venue the reader could extract.
   venue: VenueSchema.optional(),
+  // How many people the lead expects at the table, lead included. Unset
+  // until the lead says.
+  expectedDiners: ExpectedDinersSchema.optional(),
   // Computed at read time from participants' sharedItemIds (ADR-0006).
   // One entry per shared item; userIds is the splitter set. Empty when
   // no items are shared. Server-only — clients never set this.
@@ -145,8 +154,16 @@ export type Session = z.infer<typeof SessionSchema>;
 export const CreateSessionRequestSchema = z.object({
   billId: z.string().uuid(),
   billVersion: z.number().int().min(1).optional(),
+  expectedDiners: ExpectedDinersSchema.optional(),
 });
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
+
+// PATCH /v1/sessions/:id body — the lead changes how many are eating;
+// null clears it.
+export const UpdateSessionRequestSchema = z
+  .object({ expectedDiners: ExpectedDinersSchema.nullable() })
+  .strict();
+export type UpdateSessionRequest = z.infer<typeof UpdateSessionRequestSchema>;
 
 export const JoinByCodeRequestSchema = z.object({
   code: z.string().regex(/^[A-HJ-NP-Z2-9]{6}$/),

@@ -31,6 +31,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **As few words as possible** on every screen.
 - **Accounts are optional** (decided 31 Oct). Not built yet: everyone still signs in with an email code. Name-only guest join needs API work.
 - **Up to about 10 people** per bill.
+- **Party size is for show** (#64, decided 2 Nov 2026). The lead can say how many are eating, themselves included (2–10, `expectedDiners`), when the session is created or any time before it closes; unset by default. It only shows as "3 of 4 joined" and, once everyone's in, flags what's still unclaimed. It never changes the money maths: service is still split by what each person claims.
 - **The lead collects.** Guests pay the lead by their own bank transfer. The app never holds money. The deployed API runs `PAYMENT_PROVIDER=manual`; the TrueLayer code stays but needs a live contract.
 - **Trust-based payments.** Guests pay while the bill is still open for claiming. There's no lock-claims step in the UI.
 - **The lead can edit the bill at any time before close, including lines a guest has paid for** (decided 1 Nov 2026). No freeze on paid lines; the only edit refused is lowering a quantity below what's been claimed. Removing a line drops claims and splits on it.

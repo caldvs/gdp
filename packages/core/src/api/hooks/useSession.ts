@@ -279,6 +279,18 @@ export function useAbandonSession(sessionId: string) {
   });
 }
 
+/** #64: the lead says how many are eating (lead included); null clears it. */
+export function useSetExpectedDiners(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<Session, ApiError, { expectedDiners: number | null }>({
+    mutationFn: (body) =>
+      api<Session>(`/v1/sessions/${sessionId}`, { method: 'PATCH', body }),
+    onSuccess: (session) => {
+      qc.setQueryData(['session', sessionId], session);
+    },
+  });
+}
+
 export function useSetReady(sessionId: string) {
   const qc = useQueryClient();
   return useMutation<Session, ApiError, { ready: boolean }, { previous?: Session }>({

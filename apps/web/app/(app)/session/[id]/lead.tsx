@@ -8,7 +8,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, type components } from '@gdp/core/api';
-import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { coverLeftovers } from '@gdp/core/lib/leftovers';
@@ -73,6 +73,11 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   // #123: an item a tap just lost the race for, and whether taken-by-others rows are folded away.
   const [raceLostItemId, setRaceLostItemId] = useState<string | null>(null);
   const [hideTaken, setHideTaken] = useState(false);
+  // #64: how many the lead said are eating, lead included. Display only.
+  const setExpected = useSetExpectedDiners(s.sessionId);
+  const [sizing, setSizing] = useState<number | null>(null);
+  const joined = s.participants.length;
+  const everyoneHere = s.expectedDiners !== undefined && joined >= s.expectedDiners;
 
   const me = s.participants.find((p) => p.userId === meUserId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
@@ -213,7 +218,12 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           { k: 'To collect', v: formatGBP(toCome), warn: toCome > 0 },
         ]} />
 
-        <Section title="People">
+        <Section title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}>
+          <p className="small muted" style={{ textAlign: 'right' }}>
+            <button type="button" className="link-btn" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
+              {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
+            </button>
+          </p>
           <Box>
             {guests.length === 0 ? (
               <Row title="Nobody’s joined yet" sub="Show them the QR code. People appear here as they join." muted />
@@ -226,6 +236,9 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 
         <Section title={unclaimed.length > 0 ? `Items · ${formatGBP(unclaimedPence)} not claimed yet` : 'Items · all claimed'}>
           <div className="vh" aria-live="polite">{liveText}</div>
+          {everyoneHere && unclaimed.length > 0 ? (
+            <Notice tone="warn" title="Everyone’s here">{formatGBP(unclaimedPence)} still not claimed.</Notice>
+          ) : null}
           {!hideTaken && leadRows.taken.length > 0 ? (
             <p className="small muted" style={{ textAlign: 'right' }}>
               <button type="button" className="link-btn" onClick={() => setHideTaken(true)}>Hide taken</button>
@@ -267,6 +280,18 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
             if (splitting.share) setWays.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
             else addShare.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
           }}
+        />
+      ) : null}
+      {sizing !== null ? (
+        <PartySizeSheet
+          n={sizing}
+          min={2}
+          busy={setExpected.isPending}
+          error={setExpected.error?.message}
+          canClear={s.expectedDiners !== undefined}
+          onChange={setSizing}
+          onCancel={() => setSizing(null)}
+          onOk={(expectedDiners) => setExpected.mutate({ expectedDiners }, { onSuccess: () => setSizing(null) })}
         />
       ) : null}
       {closing ? (
@@ -368,6 +393,39 @@ export function Ended({ s, isCreator }: { s: Session; isCreator: boolean }) {
 }
 
 /* ============================ bits ============================ */
+
+const PARTY_MAX = 10;
+
+function PartySizeSheet({ n, min, busy, error, canClear, onChange, onCancel, onOk }: {
+  n: number; min: number; busy: boolean; error?: string; canClear: boolean; onChange: (n: number) => void; onCancel: () => void; onOk: (n: number | null) => void;
+}) {
+  return (
+    <Dialog
+      id="party-t"
+      title="How many eating?"
+      onClose={onCancel}
+      actions={
+        <>
+          <Button busy={busy} onClick={() => onOk(n)}>Save</Button>
+          {canClear ? <Button tone="secondary" disabled={busy} onClick={() => onOk(null)}>Not sure</Button> : null}
+          <Button tone="secondary" onClick={onCancel}>Cancel</Button>
+        </>
+      }
+    >
+      <p className="muted">Including you.</p>
+      <div className="ways">
+        <span className="stepper">
+          <button type="button" aria-label="Fewer people" disabled={n <= min} onClick={() => onChange(n - 1)}>−</button>
+        </span>
+        <b aria-live="polite">{n}</b>
+        <span className="stepper">
+          <button type="button" aria-label="More people" disabled={n >= PARTY_MAX} onClick={() => onChange(n + 1)}>+</button>
+        </span>
+      </div>
+      {error ? <Notice tone="error">{error}</Notice> : null}
+    </Dialog>
+  );
+}
 
 function Confirm({ title, body, ok, danger, busy, error, onOk, onCancel }: {
   title: string; body: string; ok: string; danger?: boolean; busy: boolean; error?: string; onOk: () => void; onCancel: () => void;

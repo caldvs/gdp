@@ -24,6 +24,7 @@ export const sessionService = {
     caller: VerifiedCaller;
     billId: string;
     billVersion?: number;
+    expectedDiners?: number;
   }): Promise<Session> {
     const bill =
       input.billVersion !== undefined
@@ -56,6 +57,7 @@ export const sessionService = {
       joinCode: generateJoinCode(),
       participants: [creatorParticipant],
       ...(bill.venue ? { venue: bill.venue } : {}),
+      ...(input.expectedDiners !== undefined ? { expectedDiners: input.expectedDiners } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -106,6 +108,31 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
     return projectForCaller(session, input.caller.userId);
+  },
+
+  /**
+   * The lead changes how many people are eating (#64), or clears it with
+   * null. Lead only, and only while the bill is live.
+   */
+  async setExpectedDiners(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    expectedDiners: number | null;
+  }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    if (session.creatorUserId !== input.caller.userId) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
+    if (session.status === 'settled' || session.status === 'abandoned') {
+      throw new AppError('SESSION_INVALID_STATE', 'This bill is closed');
+    }
+    await sessionStore.setExpectedDiners(session.sessionId, input.expectedDiners);
+    const { expectedDiners: _old, ...rest } = session;
+    return projectForCaller(
+      input.expectedDiners === null ? rest : { ...rest, expectedDiners: input.expectedDiners },
+      input.caller.userId,
+    );
   },
 
   async resolveByCode(input: { code: string }): Promise<{ sessionId: string }> {

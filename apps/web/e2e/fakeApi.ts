@@ -64,6 +64,8 @@ export class FakeApi {
   mySessions: Record<string, unknown>[] = [];
   private seq = 0;
   pinnedBillVersion = 1;
+  /** #64: how many the lead said are eating. */
+  expectedDiners: number | undefined;
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
@@ -98,6 +100,7 @@ export class FakeApi {
     return {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
+      ...(this.expectedDiners !== undefined ? { expectedDiners: this.expectedDiners } : {}),
     };
   }
 
@@ -214,6 +217,13 @@ export class FakeApi {
     }
     if (path === `/v1/sessions/${SID}` && method === 'GET') {
       if (this.takeFault('session-get-500')) return err('INTERNAL_ERROR', 'boom', 500);
+      return json(this.session());
+    }
+    if (path === `/v1/sessions/${SID}` && method === 'PATCH') {
+      if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      const n = body().expectedDiners as number | null;
+      if (n !== null && (!Number.isInteger(n) || n < 2 || n > 10)) return err('INVALID_INPUT', 'Validation failed', 400);
+      this.expectedDiners = n ?? undefined;
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/abandon`) { this.status = 'abandoned'; return json(this.session()); }

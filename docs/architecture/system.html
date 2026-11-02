@@ -76,7 +76,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 .t-ep { font: 400 11.5px var(--mono); fill: var(--ink); }
 .t-warn { font: 700 12.5px var(--body); fill: var(--warn); }
 .m { font-weight: 600; font-size: 10.5px; }
-.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put { fill: var(--put); } .m-delete { fill: var(--del); }
+.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put, .m-patch { fill: var(--put); } .m-delete { fill: var(--del); }
 .edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
 .edge.dashed path { stroke-dasharray: 6 5; }
 .edge.fail path { stroke: var(--warn); }
@@ -258,43 +258,44 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-base" x="810" y="1049" text-anchor="end">/webhooks</text>
 <text class="t-ep" x="588" y="1069"><tspan class="m m-post">POST</tspan><tspan x="644">/truelayer</tspan></text>
 <text class="t-ep" x="588" y="1087"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
-<rect class="inner" x="834" y="308" width="230" height="308" rx="7"/>
+<rect class="inner" x="834" y="308" width="230" height="326" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
 <text class="t-ep" x="846" y="349"><tspan class="m m-post">POST</tspan><tspan x="902">/</tspan></text>
 <text class="t-ep" x="846" y="367"><tspan class="m m-post">POST</tspan><tspan x="902">/by-code</tspan></text>
 <text class="t-ep" x="846" y="385"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}</tspan></text>
-<text class="t-ep" x="846" y="403"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/share</tspan></text>
-<text class="t-ep" x="846" y="421"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/join</tspan></text>
-<text class="t-ep" x="846" y="439"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/claims</tspan></text>
-<text class="t-ep" x="846" y="457"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/shares</tspan></text>
-<text class="t-ep" x="846" y="475"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
-<text class="t-ep" x="846" y="493"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
-<text class="t-ep" x="846" y="511"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/ready</tspan></text>
-<text class="t-ep" x="846" y="529"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
-<text class="t-ep" x="846" y="547"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
-<text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
-<text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
-<text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="626" width="230" height="476" rx="7"/>
-<text class="t-inner" x="846" y="647">Services</text>
-<text class="t-base" x="1052" y="647" text-anchor="end">src/services</text>
-<text class="t-mono" x="846" y="670">auth</text>
-<text class="t-sub" x="846" y="687">emailOtp, sessionToken (JWT)</text>
-<text class="t-mono" x="846" y="710">bills</text>
-<text class="t-sub" x="846" y="727">upload, parse, amend, image</text>
-<text class="t-mono" x="846" y="750">bills</text>
-<text class="t-sub" x="846" y="767">parser, venueResolver</text>
-<text class="t-mono" x="846" y="790">sessions</text>
-<text class="t-sub" x="846" y="807">allocation, joinCode, report</text>
-<text class="t-mono" x="846" y="830">payments</text>
-<text class="t-sub" x="846" y="847">stateMachine, provider</text>
-<text class="t-mono" x="846" y="870">billing</text>
-<text class="t-sub" x="846" y="887">tableFee</text>
-<text class="t-mono" x="846" y="910">email</text>
-<text class="t-sub" x="846" y="927">sender (SES or console)</text>
-<text class="t-mono" x="846" y="950">storage</text>
-<text class="t-sub" x="846" y="967">one store per entity</text>
+<text class="t-ep" x="846" y="403"><tspan class="m m-patch">PATCH</tspan><tspan x="902">/{id}</tspan></text>
+<text class="t-ep" x="846" y="421"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/share</tspan></text>
+<text class="t-ep" x="846" y="439"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/join</tspan></text>
+<text class="t-ep" x="846" y="457"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/claims</tspan></text>
+<text class="t-ep" x="846" y="475"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/shares</tspan></text>
+<text class="t-ep" x="846" y="493"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="511"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="529"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/ready</tspan></text>
+<text class="t-ep" x="846" y="547"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
+<text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
+<text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
+<text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
+<text class="t-ep" x="846" y="619"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
+<rect class="inner" x="834" y="644" width="230" height="458" rx="7"/>
+<text class="t-inner" x="846" y="665">Services</text>
+<text class="t-base" x="1052" y="665" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="688">auth</text>
+<text class="t-sub" x="846" y="705">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="728">bills</text>
+<text class="t-sub" x="846" y="745">upload, parse, amend, image</text>
+<text class="t-mono" x="846" y="768">bills</text>
+<text class="t-sub" x="846" y="785">parser, venueResolver</text>
+<text class="t-mono" x="846" y="808">sessions</text>
+<text class="t-sub" x="846" y="825">allocation, joinCode, report</text>
+<text class="t-mono" x="846" y="848">payments</text>
+<text class="t-sub" x="846" y="865">stateMachine, provider</text>
+<text class="t-mono" x="846" y="888">billing</text>
+<text class="t-sub" x="846" y="905">tableFee</text>
+<text class="t-mono" x="846" y="928">email</text>
+<text class="t-sub" x="846" y="945">sender (SES or console)</text>
+<text class="t-mono" x="846" y="968">storage</text>
+<text class="t-sub" x="846" y="985">one store per entity</text>
 <rect class="inner" x="576" y="1112" width="488" height="101" rx="7"/>
 <text class="t-inner" x="588" y="1134">Swappable providers (env)</text>
 <text class="t-mono" x="588" y="1156">Parser: Bedrock · fixture</text>
@@ -367,7 +368,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
     <span><i></i>Runtime call</span>
     <span><i class="d"></i>Deploy-time</span>
     <span><i class="x"></i>Outside AWS or the app</span>
-    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="r">DELETE</code></span>
+    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="u">PATCH</code> <code class="r">DELETE</code></span>
   </div>
 
   <p class="foot">Built from <code>apps/api/openapi.yaml</code>, <code>apps/api/infra/main.ts</code> and <code>apps/api/src</code> on main. Locally, <code>npm run dev:local</code> runs the same Hono app on Node with DynamoDB Local and MinIO in Docker, a console email sender and the mock payment provider.</p>

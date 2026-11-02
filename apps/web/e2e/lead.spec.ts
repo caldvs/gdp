@@ -253,3 +253,39 @@ test('anyone at the table can email themselves a report of the bill', async ({ b
   await expect(sam.getByRole('button', { name: 'Report emailed to you' })).toBeVisible();
   expect(api.reportsTo).toEqual(['u-lead', 'u-sam']);
 });
+
+test('#64: the lead says how many are eating and sees "n of m joined"; once everyone is in, unclaimed items are flagged', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead);
+
+  // Unset by default: no count, no flag.
+  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+
+  await lead.getByRole('button', { name: 'How many eating?' }).click();
+  const sheet = lead.getByRole('dialog', { name: 'How many eating?' });
+  await sheet.getByRole('button', { name: 'More people' }).click(); // 2 → 3
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(lead.getByRole('heading', { name: 'People · 1 of 3 joined' })).toBeVisible();
+  expect(api.requests.find((r) => r.method === 'PATCH')?.body).toBe('{"expectedDiners":3}');
+
+  // Guests join; the count follows on the poll.
+  await diner(browser, api, users.sam);
+  await expect(lead.getByRole('heading', { name: 'People · 2 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+  await diner(browser, api, users.tom);
+  await expect(lead.getByRole('heading', { name: 'People · 3 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByText('Everyone’s here')).toBeVisible();
+
+  // Change it, then clear it.
+  await lead.getByRole('button', { name: 'Change number' }).click();
+  await lead.getByRole('button', { name: 'More people' }).click();
+  await lead.getByRole('button', { name: 'Save' }).click();
+  await expect(lead.getByRole('heading', { name: 'People · 3 of 4 joined' })).toBeVisible();
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+  await lead.getByRole('button', { name: 'Change number' }).click();
+  await lead.getByRole('button', { name: 'Not sure' }).click();
+  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  expect(api.expectedDiners).toBeUndefined();
+});

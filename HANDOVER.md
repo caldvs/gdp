@@ -2,7 +2,7 @@
 
 _Where the work is right now. Rewrite this when you finish something; don't append history._
 
-_Last updated 1 Nov 2026._
+_Last updated 2 Nov 2026._
 
 ## State of main
 
@@ -19,6 +19,7 @@ _Last updated 1 Nov 2026._
 - **Testing as several people:** local and dev builds show a test bar above the header. It signs in as alice/bob/charlie/diana or a new guest (`@test.invalid`, no code) and keeps the switch to that tab by default, so the lead and a guest can share a window. API side is `POST /v1/auth/email/test-sign-in`, on locally and on dev (`AUTH_TEST_ACCOUNTS`), off in prod (the dependency check fails if not). The sign-in page's old local-only "Dev accounts" buttons are gone; the local no-code sign-in for any email is unchanged. Locally the bar also has *Skip bill cache*: uploads and reads send `skipCache`, so a photo this account has read before goes to Bedrock again and becomes a new bill (only the local API honours it). The bar never shows on Vercel Production (`NEXT_PUBLIC_VERCEL_ENV`, set in `next.config.ts`).
 - **Daily cost email:** stack `GdpCostReport` (one per account, deployed by the dev job) emails Callum (address in SSM `/gdp/cost-report-to`) at 10:00 UTC with yesterday's and the month's AWS costs by service, plus a forecast (`src/ops/costReport.ts`). Two Cost Explorer calls a day at $0.01 each. In the SES sandbox the address must stay verified.
 - **After each deploy** CI runs the smoke test and the dependency check (Stripe, Bedrock, SES and test accounts off in prod, from inside the Lambda; see [docs/deploy.md](docs/deploy.md)). The `gdp-dev` dashboard has a Calls out panel timing every outside call.
+- **Bad request bodies** on session routes get the contract's 400 (`INVALID_INPUT`, `requestId`, `fieldErrors`) through `validJson` (`src/middleware/validate.ts`). Bills and auth have their own hooks; other routes still use `zValidator`'s default body.
 - **Secrets** aren't in the Lambda's configuration: it gets their names (`SECRET_SOURCES`) and reads them at cold start (`src/config/runtimeSecrets.ts`), so a rotated secret needs no redeploy. A missing secret fails the smoke test and dependency check.
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 - **Scanning:** *Scan a bill* opens our own camera (`Camera.tsx`: back camera, bill-shaped guide, gallery, torch where supported), falling back to the phone's camera app when there's no camera API or access is refused. Every photo is shown as *All in?* (*Retake* / *Use photo*) before anything uploads. Not yet tried on a real iPhone and Android phone with a long receipt: if small print reads worse than with the phone's own camera, raise the resolution.
@@ -29,7 +30,7 @@ _Last updated 1 Nov 2026._
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and Production is on the prod API (#78). **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). Then: Stripe live (#79), SES out of the sandbox and on the domain (#76). Prod alerts have no subscriber yet (#81).
 
-**Scanning a bill (#66)**: #65 (review flags) and #63 (the lead sets the venue; it beats the parsed one, mid-session too) are built. Next: #62 (venue search), #61 (questions while reading), #64 (party size).
+**Scanning a bill (#66)**: #65 (review flags), #63 (the lead sets the venue; it beats the parsed one, mid-session too) and #64 (party size) are built. #64: the lead's table has *How many eating?* (`PATCH /v1/sessions/{id}`, `expectedDiners` 2–10, lead included), shows "People · 3 of 4 joined", and once everyone's in says what's still unclaimed. `POST /v1/sessions` takes `expectedDiners` too, ready for #61 to ask it while the bill is read. Next: #62 (venue search), #61 (questions while reading).
 
 **Claiming (#123)** is built bar one part: who has an item shows as initial avatars, a row someone else just took flashes "Sam took it" for 2s (and is announced), losing a race says who won, Pick shows "n open · £x left", and *Hide taken* folds fully-claimed rows, on guest and lead tables. Not built: *Split with Sam* after losing a race, because the API refuses to share an item one person has claimed (`CLAIM_SHARE_CONFLICT` in `addShare`); it needs an API change first.
 

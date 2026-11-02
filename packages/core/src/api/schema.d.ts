@@ -407,7 +407,13 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change how many people the lead expects at the table
+         * @description Lead only. Sets `expectedDiners` (lead included), or clears it with
+         *     `null`. Allowed until the bill is closed or deleted. Display only:
+         *     it never changes what anyone owes.
+         */
+        patch: operations["updateSession"];
         trace?: never;
     };
     "/v1/sessions/{sessionId}/share": {
@@ -1129,6 +1135,11 @@ export interface components {
              */
             venue?: components["schemas"]["Venue"];
             /**
+             * @description How many people the lead said are eating, lead included. Shown as
+             *     "3 of 4 joined"; never used in the money maths. Absent until set.
+             */
+            expectedDiners?: number;
+            /**
              * @description Computed view of share state per ADR-0006. One entry per item
              *     with at least one sharer; `userIds` is the splitter set. Server
              *     derives this from participants' `sharedItemIds` on every read.
@@ -1330,6 +1341,12 @@ export interface components {
             billId: string;
             /** @description Defaults to the latest version of the bill at session-create time */
             billVersion?: number;
+            /** @description How many people are eating, lead included. Optional. */
+            expectedDiners?: number;
+        };
+        UpdateSessionRequest: {
+            /** @description How many people are eating, lead included; `null` clears it. */
+            expectedDiners: number | null;
         };
         JoinByCodeRequest: {
             code: string;
@@ -2082,6 +2099,44 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session with the new value */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill is closed or deleted (`SESSION_INVALID_STATE`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     shareSession: {

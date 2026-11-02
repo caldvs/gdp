@@ -20,7 +20,7 @@ import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
 import { CostReportStack } from './costReport.js';
 import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
-// apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
+// apps/api lives inside the paymeback.dev monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
 const API_DIR = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = path.resolve(API_DIR, '../..');

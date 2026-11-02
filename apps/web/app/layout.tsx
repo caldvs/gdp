@@ -5,7 +5,7 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'Group Dine Pay', template: '%s · Group Dine Pay' },
+  title: { default: 'paymeback.dev', template: '%s · paymeback.dev' },
   description: 'Snap the bill, share a QR, get paid direct. Your friends don’t install anything.',
   robots: DEMO_MODE ? { index: false, follow: false } : undefined,
 };

@@ -15,7 +15,7 @@ export default function TermsPage() {
       <section>
         <h2>Who we are</h2>
         <p>
-          Group Dine Pay is run by {LEGAL.operator}, {LEGAL.address}. Contact us at{' '}
+          paymeback.dev is run by {LEGAL.operator}, {LEGAL.address}. Contact us at{' '}
           <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>.
         </p>
       </section>

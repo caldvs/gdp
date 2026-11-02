@@ -49,7 +49,14 @@ export const createReadRunner =
               message: err.message,
               ...(err.details ? { details: err.details } : {}),
             }
-          : { code: 'INTERNAL_ERROR', message: 'Reading the bill failed' };
+          : {
+              code: 'INTERNAL_ERROR',
+              message: 'Reading the bill failed',
+              // #94: the error's name (never its message or stack), so the
+              // app can say which kind of thing broke (e.g. a missing AWS
+              // credential locally) instead of blaming the photo.
+              details: { errorName: (err as { name?: string } | null)?.name ?? 'Error' },
+            };
       if (!(err instanceof AppError)) {
         baseLogger.error(
           { event: 'bill.read.crashed', readId: job.readId, err },

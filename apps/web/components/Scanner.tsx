@@ -18,6 +18,7 @@ import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
 import { ActionBar, Button, Page, Title } from './ui';
 import { Camera, hasLiveCamera } from './Camera';
 import { ReadingFailed, ReadingWait, stashPhoto, useSlow } from './Reading';
+import { WEB_APP_ENV } from '@/lib/config';
 
 export type ScanError = { title: string; body?: string };
 
@@ -57,6 +58,14 @@ export function humanizeScanError(err: unknown): ScanError {
 /** The error a failed background read recorded, in the scanner's words. */
 export function humanizeReadError(error: { code: string; message: string; details?: unknown } | undefined): ScanError {
   if (!error) return { title: 'Couldn’t read that one.', body: 'Try again, or take a new photo.' };
+  // #94: the API crashed while reading. Not the photo's fault; locally,
+  // name what broke and point at the API terminal for the rest.
+  if (error.code === 'INTERNAL_ERROR') {
+    const name = (error.details as { errorName?: string } | undefined)?.errorName;
+    return WEB_APP_ENV === 'local'
+      ? { title: 'Something went wrong on our side.', body: `${name ? `${name}. ` : ''}Check the API terminal, then try again.` }
+      : { title: 'Something went wrong on our side.', body: 'Not the photo’s fault. Give it another go.' };
+  }
   return humanizeScanError(new ApiError(error.code === 'PARSE_TIMEOUT' ? 504 : 422, error.code, error.message, undefined, error.details));
 }
 

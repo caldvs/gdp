@@ -143,6 +143,13 @@ test('parse errors say what went wrong', async ({ browser }) => {
   api.faults.push({ kind: 'parse', code: 'IMAGE_TOO_LARGE', message: 'too big' });
   await snap();
   await expect(lead.getByText('That photo is too big.')).toBeVisible({ timeout: 15_000 });
+
+  // #94: the API crashed mid-read. Not the photo's fault; e2e builds are
+  // local, so it names what broke and points at the API terminal.
+  api.faults.push({ kind: 'parse', code: 'INTERNAL_ERROR', message: 'Reading the bill failed', details: { errorName: 'CredentialsProviderError' } });
+  await snap();
+  await expect(lead.getByText('Something went wrong on our side.')).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByText('CredentialsProviderError. Check the API terminal, then try again.')).toBeVisible();
 });
 
 test('leave while the bill is read: Bills shows it, then opens it when it’s ready', async ({ browser }) => {

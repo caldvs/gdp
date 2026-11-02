@@ -34,6 +34,8 @@ _Last updated 2 Nov 2026._
 
 **Claiming (#123)** is built bar one part: who has an item shows as initial avatars, a row someone else just took flashes "Sam took it" for 2s (and is announced), losing a race says who won, Pick shows "n open · £x left", and *Hide taken* folds fully-claimed rows, on guest and lead tables. Not built: *Split with Sam* after losing a race, because the API refuses to share an item one person has claimed (`CLAIM_SHARE_CONFLICT` in `addShare`); it needs an API change first.
 
+**Top-ups (#121)** are built: a paid guest taps *I had something else*, claims more and pays the difference; the lead confirms each payment (*Says they've paid £x more*). Rules in [decisions](docs/decisions.md). Payments live as `payments[]` on the participant row (`src/services/payments/ledger.ts`, `packages/core/src/lib/ledger.ts`); old sessions with one `payment` read as one payment for what was owed.
+
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 
 ## Known problems
@@ -47,7 +49,6 @@ _Last updated 2 Nov 2026._
 ## Decided, not built
 
 - Accounts optional: guests join with just a name (needs API work).
-- Top-ups: a guest who forgot something adds it after paying and pays again for the extra (confirmed 1 Nov). Adding claims after paying already works; a second payment per guest doesn't yet.
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
 - Table fee: one free bill a month per lead, then the fee is due at the QR (everything before it stays free); guests repay it, refund if nobody joins, server-side gate on `/share`. See [docs/table-fee.md](docs/table-fee.md).

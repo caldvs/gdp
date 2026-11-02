@@ -24,6 +24,16 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
   );
 }
 
+/** BackLink for going back within a page (no URL change). */
+export function BackButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="back back--btn" onClick={onClick}>
+      <ChevronLeft />
+      {children}
+    </button>
+  );
+}
+
 export function Title({ title, sub, aside }: { title: ReactNode; sub?: ReactNode; aside?: ReactNode }) {
   const body = (
     <div className="title">

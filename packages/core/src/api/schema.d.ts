@@ -947,7 +947,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1077,6 +1077,18 @@ export interface components {
         };
         /** @enum {string} */
         SessionStatus: "setup" | "claiming" | "paying" | "settled" | "abandoned";
+        ParticipantPaymentEntry: {
+            /** Format: uuid */
+            paymentId: string;
+            amountPence: number;
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed";
+            /** Format: date-time */
+            payerClaimedPaidAt?: string;
+            /** Format: date-time */
+            paidAt?: string;
+            reason?: string;
+        };
         ParticipantPayment: {
             /** @constant */
             status: "unpaid";
@@ -1129,6 +1141,16 @@ export interface components {
              */
             owedPence?: number;
             payment: components["schemas"]["ParticipantPayment"];
+            /**
+             * @description `payment` above is the latest state across these: in flight if
+             *     any payment is, else paid if any was. "Paid" doesn't mean nothing
+             *     more is owed; compare the sent payments with what's owed now.
+             *     Every payment this guest has made to the lead, oldest first (#121:
+             *     a guest who claims more after paying tops up the difference). A
+             *     `pending` payment without `payerClaimedPaidAt` was opened but not
+             *     sent yet. Absent on sessions from before top-ups.
+             */
+            payments?: components["schemas"]["ParticipantPaymentEntry"][];
             /**
              * @description True once the diner has signalled they're done claiming via
              *     `POST /v1/sessions/:id/ready`. Lead's `lock-claims` rejects

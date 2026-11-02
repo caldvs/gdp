@@ -16,7 +16,17 @@ type Payment =
   | { status: 'pending'; paymentId: string; payerClaimedPaidAt?: string }
   | { status: 'succeeded'; paymentId: string; paidAt: string }
   | { status: 'failed'; paymentId: string; reason: string };
-type Participant = { userId: string; displayName: string; claimedItemIds: string[]; sharedItemIds: string[]; payment: Payment; readyToLock: boolean };
+type Entry = { paymentId: string; amountPence: number; status: 'pending' | 'succeeded' | 'failed'; payerClaimedPaidAt?: string; paidAt?: string };
+type Participant = { userId: string; displayName: string; claimedItemIds: string[]; sharedItemIds: string[]; payment: Payment; payments?: Entry[]; readyToLock: boolean };
+
+/** #121: the participant's `payment` is the latest state across their payments. */
+function aggregate(entries: Entry[]): Payment {
+  const pending = [...entries].reverse().find((e) => e.status === 'pending');
+  if (pending) return { status: 'pending', paymentId: pending.paymentId, ...(pending.payerClaimedPaidAt ? { payerClaimedPaidAt: pending.payerClaimedPaidAt } : {}) };
+  const paid = [...entries].reverse().find((e) => e.status === 'succeeded');
+  if (paid) return { status: 'succeeded', paymentId: paid.paymentId, paidAt: paid.paidAt! };
+  return { status: 'unpaid' };
+}
 type Share = { itemId: string; userIds: string[]; ways: number; activity: unknown[] };
 type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string };
 
@@ -114,6 +124,38 @@ export class FakeApi {
     for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil(unit(sh.itemId) / sh.ways);
     const b = this.bill;
     return Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0)));
+  }
+
+  /**
+   * A guest's payments. Tests that set the old single `payment` directly
+   * read like sessions from before #121: that one payment, for what they owe.
+   */
+  entries(p: Participant): Entry[] {
+    if (p.payments && p.payments.length > 0) return p.payments;
+    const pay = p.payment;
+    if (pay.status === 'pending' || pay.status === 'succeeded') {
+      p.payments = [{
+        paymentId: pay.paymentId, amountPence: this.owed(p.userId), status: pay.status,
+        ...(pay.status === 'pending' && pay.payerClaimedPaidAt ? { payerClaimedPaidAt: pay.payerClaimedPaidAt } : {}),
+        ...(pay.status === 'succeeded' ? { paidAt: pay.paidAt } : {}),
+      }];
+      return p.payments;
+    }
+    return [];
+  }
+
+  /** What a guest has sent: confirmed, or said they've sent (#121). */
+  sent(userId: string): number {
+    const p = this.participants.find((x) => x.userId === userId);
+    return (p ? this.entries(p) : []).reduce((a, e) => (e.status === 'succeeded' || (e.status === 'pending' && e.payerClaimedPaidAt) ? a + e.amountPence : a), 0);
+  }
+
+  /** Like the API: a change that would drop a guest below what they've sent is refused. */
+  private belowSent(userId: string, change: () => void, undo: () => void): boolean {
+    const sent = this.sent(userId);
+    change();
+    if (userId !== 'u-lead' && sent > 0 && this.owed(userId) < sent) { undo(); return true; }
+    return false;
   }
 
   private me(userId: string) {
@@ -249,25 +291,28 @@ export class FakeApi {
 
     const me = this.me(user.userId);
     if (!me) return err('SESSION_NOT_FOUND', 'Session not found', 404);
-    const frozen = me.payment.status === 'succeeded' || (me.payment.status === 'pending' && !!me.payment.payerClaimedPaidAt);
+    const paidFor = () => err('ALREADY_PAID_FOR', 'You’ve already paid for that', 409);
 
     if (path === `/v1/sessions/${SID}/claims` && method === 'POST') {
       if (this.status !== 'claiming') return err('SESSION_INVALID_STATE', 'Claims cannot be modified in this state', 409);
-      if (frozen) return err('SESSION_INVALID_STATE', 'You’ve already paid; ask the host to change this', 409);
       const next = body().claimedItemIds as string[];
       for (const it of this.items) {
         const mine = next.filter((id) => id === it.itemId).length;
         const others = this.participants.filter((p) => p.userId !== user.userId).reduce((a, p) => a + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
         if (mine + others > it.quantity) return err('SESSION_INVALID_STATE', `Only ${it.quantity - others} of "${it.name}" left to claim`, 409);
       }
-      me.claimedItemIds = next;
+      const before = me.claimedItemIds;
+      if (this.belowSent(user.userId, () => { me.claimedItemIds = next; }, () => { me.claimedItemIds = before; })) return paidFor();
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/shares` && method === 'POST') {
-      if (frozen) return err('SESSION_INVALID_STATE', 'You’ve already paid', 409);
       const { itemId, ways } = body() as { itemId: string; ways?: number };
       const existing = this.shares.find((s) => s.itemId === itemId);
       if (existing) {
+        const full = existing.userIds.length >= existing.ways;
+        if (!existing.userIds.includes(user.userId) && full && existing.userIds.some((u) => this.sent(u) > 0)) {
+          return err('SHARE_PAID', 'Someone in this split has paid, so it can’t be split more ways', 409, { itemId });
+        }
         if (!existing.userIds.includes(user.userId)) {
           existing.userIds.push(user.userId);
           existing.ways = Math.max(existing.ways, existing.userIds.length);
@@ -283,8 +328,11 @@ export class FakeApi {
     if (shareMatch && method === 'DELETE') {
       const itemId = shareMatch[1]!;
       const sh = this.shares.find((s) => s.itemId === itemId);
-      if (sh) sh.userIds = sh.userIds.filter((id) => id !== user.userId);
-      me.sharedItemIds = me.sharedItemIds.filter((id) => id !== itemId);
+      const beforeIds = sh ? [...sh.userIds] : [];
+      const beforeShared = [...me.sharedItemIds];
+      const leave = () => { if (sh) sh.userIds = sh.userIds.filter((id) => id !== user.userId); me.sharedItemIds = me.sharedItemIds.filter((id) => id !== itemId); };
+      const undo = () => { if (sh) sh.userIds = beforeIds; me.sharedItemIds = beforeShared; };
+      if (this.belowSent(user.userId, leave, undo)) return paidFor();
       return json(this.session());
     }
     if (shareMatch && method === 'PUT') {
@@ -298,24 +346,36 @@ export class FakeApi {
     // ---- payments
     if (path === `/v1/sessions/${SID}/payments` && method === 'POST') {
       if (this.takeFault('initiate-500')) return err('INTERNAL_ERROR', 'boom', 500);
-      if (me.payment.status === 'pending') return err('SESSION_INVALID_STATE', 'Payment already in flight', 409);
-      const paymentId = `pay-${user.userId}`;
-      me.payment = { status: 'pending', paymentId };
-      const amountPence = this.owed(user.userId);
+      // #121: pay what's owed now less what's been sent; reuse an unsent
+      // payment for the same amount, else replace it.
+      const entries = this.entries(me);
+      const sent = this.sent(user.userId);
+      const amountPence = this.owed(user.userId) - sent;
+      if (amountPence <= 0) return err('SESSION_INVALID_STATE', sent > 0 ? 'Nothing more to pay' : 'Nothing claimed yet', 409);
+      const draft = [...entries].reverse().find((e) => e.status === 'pending' && !e.payerClaimedPaidAt);
+      let entry = draft && draft.amountPence === amountPence ? draft : undefined;
+      if (!entry) {
+        if (draft) draft.status = 'failed';
+        entry = { paymentId: `00000000-0000-4000-9000-${String(++this.seq).padStart(12, '0')}`, amountPence, status: 'pending' };
+        me.payments = [...entries.filter((e) => e !== draft), entry];
+      }
+      me.payment = aggregate(me.payments ?? []);
       return json({
-        payment: { paymentId, sessionId: SID, payerUserId: user.userId, amountPence, status: 'pending' },
+        payment: { paymentId: entry.paymentId, sessionId: SID, payerUserId: user.userId, amountPence, status: 'pending' },
         instructions: { type: 'manual_transfer', reference: 'gdp-0193ab12', amountPence, links: {}, bankDetails: LEAD_BANK },
       }, 201);
     }
     const payMatch = path.match(/^\/v1\/payments\/([^/]+)\/(mark-paid|confirm)$/);
     if (payMatch) {
       const [, paymentId, action] = payMatch;
-      const payer = this.participants.find((p) => (p.payment.status === 'pending' || p.payment.status === 'succeeded') && p.payment.paymentId === paymentId);
-      if (!payer) return err('PAYMENT_NOT_FOUND', 'no', 404);
-      if (action === 'mark-paid' && payer.payment.status === 'pending') payer.payment = { ...payer.payment, payerClaimedPaidAt: new Date().toISOString() };
-      if (action === 'confirm') payer.payment = { status: 'succeeded', paymentId: paymentId!, paidAt: new Date().toISOString() };
+      const payer = this.participants.find((p) => this.entries(p).some((e) => e.paymentId === paymentId));
+      const entry = payer?.payments?.find((e) => e.paymentId === paymentId);
+      if (!payer || !entry) return err('PAYMENT_NOT_FOUND', 'no', 404);
+      if (action === 'mark-paid' && entry.status === 'pending') entry.payerClaimedPaidAt ??= new Date().toISOString();
+      if (action === 'confirm') { entry.status = 'succeeded'; entry.paidAt = new Date().toISOString(); }
+      payer.payment = aggregate(payer.payments!);
       // Deliberately no auto-settle: only the lead's close ends the bill.
-      return json({ paymentId, sessionId: SID, payerUserId: payer.userId, amountPence: this.owed(payer.userId), status: payer.payment.status });
+      return json({ paymentId, sessionId: SID, payerUserId: payer.userId, amountPence: entry.amountPence, status: entry.status });
     }
     return err('NOT_FOUND', `unhandled ${method} ${path}`, 404);
   }

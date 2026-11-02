@@ -1428,6 +1428,7 @@ components:
                 - PARTICIPANTS_NOT_READY
                 - CLAIM_SHARE_CONFLICT
                 - ITEM_NOT_SHAREABLE
+                - ALREADY_PAID_FOR
                 - SHARE_WAYS_TOO_LOW
                 - SHARE_PAID
                 - SHARE_CONFLICT
@@ -1586,6 +1587,17 @@ components:
       type: string
       enum: [setup, claiming, paying, settled, abandoned]
 
+    ParticipantPaymentEntry:
+      type: object
+      required: [paymentId, amountPence, status]
+      properties:
+        paymentId: { type: string, format: uuid }
+        amountPence: { type: integer, minimum: 0 }
+        status: { type: string, enum: [pending, succeeded, failed] }
+        payerClaimedPaidAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time }
+        reason: { type: string }
+
     ParticipantPayment:
       oneOf:
         - type: object
@@ -1647,6 +1659,17 @@ components:
           format: int64
           description: Computed at lock-claims; absent before then
         payment: { $ref: '#/components/schemas/ParticipantPayment' }
+        payments:
+          type: array
+          description: |
+            `payment` above is the latest state across these: in flight if
+            any payment is, else paid if any was. "Paid" doesn't mean nothing
+            more is owed; compare the sent payments with what's owed now.
+            Every payment this guest has made to the lead, oldest first (#121:
+            a guest who claims more after paying tops up the difference). A
+            `pending` payment without `payerClaimedPaidAt` was opened but not
+            sent yet. Absent on sessions from before top-ups.
+          items: { $ref: '#/components/schemas/ParticipantPaymentEntry' }
         readyToLock:
           type: boolean
           description: |

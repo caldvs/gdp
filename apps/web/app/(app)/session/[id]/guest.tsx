@@ -8,10 +8,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
+import { ledger } from '@gdp/core/lib/ledger';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
 import {
-  ActionBar, AvatarStack, BackLink, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
+  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 
@@ -21,7 +22,6 @@ type Participant = components['schemas']['Participant'];
 type BillItem = components['schemas']['BillItem'];
 type Share = NonNullable<Session['shares']>[number];
 
-const isPaid = (p: Participant) => p.payment.status === 'succeeded' || p.payment.status === 'self_paid';
 
 export type { ItemStatus } from '@gdp/core/lib/leftovers';
 /** Every bill line in bill order with who has it (see core's itemStatuses). */
@@ -116,7 +116,7 @@ function shareError(err: ApiError): string {
 
 /* ============================ pick ============================ */
 
-export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
+export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meUserId: string; /** Set once they've paid (#121): back to their bill. */ onBack?: () => void }) {
   const setClaims = useSetClaims(s.sessionId);
   const addShare = useAddShare(s.sessionId);
   const removeShare = useRemoveShare(s.sessionId);
@@ -137,6 +137,10 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const subtotal = projectSubtotalPence(s, b, meUserId);
   const rate = billExtrasRate(b);
   const owed = Math.round(subtotal * (1 + rate));
+  // #121: after paying, what's left to send is the difference.
+  const l = me ? ledger(me, owed) : null;
+  const paidSome = !!l && l.sentPence > 0;
+  const due = l ? l.duePence : owed;
   const busy = setClaims.isPending || addShare.isPending || removeShare.isPending;
 
   const claimOne = (item: BillItem) => {
@@ -259,8 +263,12 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   return (
     <>
       <Page sub>
-        <BackLink href="/">Bills</BackLink>
-        <Title title="What did you have?" sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} />
+        {onBack ? (
+          <BackButton onClick={onBack}>Your bill</BackButton>
+        ) : (
+          <BackLink href="/">Bills</BackLink>
+        )}
+        <Title title={paidSome ? 'What else did you have?' : 'What did you have?'} sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />
         <div className="vh" aria-live="polite">{liveText}</div>
         {b.items.length > 0 ? (
@@ -280,13 +288,19 @@ export function GuestPick({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       <ActionBar stack>
         {owed > 0 ? (
           <div className="actionbar__total">
-            <span className="muted">Your share{rate > 0 ? ' incl. service' : ''}</span>
-            <b data-testid="your-share">{formatGBP(owed)}</b>
+            <span className="muted">{paidSome ? `Paid ${formatGBP(l!.sentPence)} · still to pay` : `Your share${rate > 0 ? ' incl. service' : ''}`}</span>
+            <b data-testid="your-share">{formatGBP(paidSome ? due : owed)}</b>
           </div>
         ) : null}
-        <Button href={`/session/${s.sessionId}/pay`} disabled={owed <= 0 || busy}>
-          {owed > 0 ? 'Continue to payment' : 'Tick what you had'}
-        </Button>
+        {paidSome ? (
+          <Button href={`/session/${s.sessionId}/pay`} disabled={due <= 0 || busy}>
+            {due > 0 ? `Pay ${hostFirst} ${formatGBP(due)}` : 'Tick what else you had'}
+          </Button>
+        ) : (
+          <Button href={`/session/${s.sessionId}/pay`} disabled={owed <= 0 || busy}>
+            {owed > 0 ? 'Continue to payment' : 'Tick what you had'}
+          </Button>
+        )}
       </ActionBar>
 
       {splitting ? (
@@ -385,8 +399,7 @@ export function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, o
 
 /* ============================ after paying (guest) ============================ */
 
-export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
-  const [more, setMore] = useState(false);
+export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; meUserId: string; /** #121: back to picking, to add something and top up. */ onMore?: () => void }) {
   const me = s.participants.find((p) => p.userId === meUserId);
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
@@ -395,9 +408,11 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
   const open = statuses.filter((x) => x.left > 0);
 
   const myOwed = me ? owedFor(s, b, me) : 0;
-  const status = me?.payment.status;
-  const sent = me?.payment.status === 'pending' && !!me.payment.payerClaimedPaidAt;
-  const mustPay = closed && status !== 'succeeded' && status !== 'self_paid' && !sent && myOwed > 0;
+  const l = me ? ledger(me, myOwed) : null;
+  const due = l?.duePence ?? 0;
+  const waitingPence = l?.waiting.reduce((a, e) => a + e.amountPence, 0) ?? 0;
+  const mustPay = due > 0;
+  const sentPayments = l?.entries.filter((e) => e.status === 'succeeded' || (e.status === 'pending' && !!e.payerClaimedPaidAt)) ?? [];
 
   return (
     <>
@@ -405,12 +420,12 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
         <BackLink href="/">Bills</BackLink>
         <Title title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />
-        {status === 'succeeded' ? (
-          <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(myOwed)}`}>You’re all settled.</Notice>
-        ) : sent ? (
-          <Notice tone="ok" title={`You’ve marked ${formatGBP(myOwed)} as paid`}>{hostFirst} will confirm when it arrives.</Notice>
+        {l?.settled ? (
+          <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(l.confirmedPence)}`}>You’re all settled.</Notice>
         ) : mustPay ? (
-          <Notice title={`You owe ${hostFirst} ${formatGBP(myOwed)}`} />
+          <Notice title={`You owe ${hostFirst} ${formatGBP(due)}${l && l.sentPence > 0 ? ' more' : ''}`} />
+        ) : waitingPence > 0 ? (
+          <Notice tone="ok" title={`You’ve marked ${formatGBP(waitingPence)} as paid`}>{hostFirst} will confirm when it arrives.</Notice>
         ) : null}
 
         {me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? (
@@ -433,10 +448,19 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
           </Section>
         ) : null}
 
+        {sentPayments.length > 1 || (sentPayments.length === 1 && mustPay) ? (
+          <Section title="Your payments">
+            <Box>
+              {sentPayments.map((e) => (
+                <Row key={e.paymentId} title={formatGBP(e.amountPence)} end={e.status === 'succeeded' ? <Badge tone="ok">Confirmed</Badge> : <Badge>Waiting for {hostFirst}</Badge>} />
+              ))}
+            </Box>
+          </Section>
+        ) : null}
+
         {!closed && open.length > 0 ? (
           <Section title="Still to claim">
             <Box>{open.map((st) => <ItemLine key={st.item.itemId} st={st} />)}</Box>
-            {more ? <Notice>Let {hostFirst} know. They can take it on their bill and you can settle up between you.</Notice> : null}
           </Section>
         ) : null}
 
@@ -444,10 +468,11 @@ export function GuestTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: 
       </Page>
       <ActionBar stack>
         {mustPay ? (
-          <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(myOwed)}</Button>
-        ) : !closed && open.length > 0 && !more ? (
-          <Button tone="secondary" onClick={() => setMore(true)}>I had something else</Button>
-        ) : (
+          <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(due)}</Button>
+        ) : null}
+        {!closed && open.length > 0 && onMore ? (
+          <Button tone="secondary" onClick={onMore}>I had something else</Button>
+        ) : mustPay ? null : (
           <Button tone={closed ? 'primary' : 'secondary'} href="/" replace>{closed ? 'Done' : 'Back to bills'}</Button>
         )}
       </ActionBar>

@@ -309,60 +309,89 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .demo-banner__tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 1px; }
 .demo-banner__close { margin-left: auto; background: none; border: 0; color: inherit; font-size: 18px; line-height: 1; opacity: .7; }
 
+.hdr__in--wide { max-width: calc(1120px + 2 * var(--gutter)); }
 /* ============ Landing (signed out) ============
-   Wider than the app column: intro and sign-in on the left, a made-up bill
-   mid-split on the right; one column on phones with the form first. */
-.hdr__in--wide { max-width: calc(1040px + 2 * var(--gutter)); }
-.land { --land: 1040px; flex: 1; width: 100%; max-width: calc(var(--land) + 2 * var(--gutter)); margin: 0 auto; padding: 32px var(--gutter) calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 48px; }
-.land__hero { display: grid; gap: 40px; align-items: center; }
-.land__intro { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-.land__h { font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
-.land__em { color: var(--accent); }
-.land__sub { font-size: 18px; line-height: 1.45; color: var(--mute); max-width: 30em; }
-.land__card { display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: 0 1px 2px rgba(31,35,40,.06), 0 8px 24px rgba(31,35,40,.06); }
-.land__card-h { font-size: 17px; font-weight: 600; }
+   Airbnb-ish: a white page, a big plain headline, the sign-in as a
+   "Log in or sign up" card, and how it works as picture cards. */
+.app:has(.bnb) { background: #fff; }
+.bnb { --b-ink: #222222; --b-grey: #6a6a6a; --b-line: #dddddd; --b-coral: linear-gradient(90deg, #d42a4c 0%, #c8174f 100%);
+  flex: 1; width: 100%; max-width: calc(1120px + 2 * var(--gutter)); margin: 0 auto; padding: 32px var(--gutter) 0; display: flex; flex-direction: column; gap: 48px; color: var(--b-ink); }
+.bnb__hero { display: grid; gap: 28px; }
+.bnb__intro { display: flex; flex-direction: column; gap: 14px; }
+.bnb__h { font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; text-wrap: balance; }
+.bnb__sub { font-size: 18px; line-height: 1.45; color: var(--b-grey); max-width: 28em; }
 
-/* The bill picture. */
-.land__art { position: relative; padding: 28px 20px 44px; border-radius: 20px; background: linear-gradient(160deg, #e1eafb 0%, #edf2fb 100%); }
-.land__bill { max-width: 360px; margin: 0 auto; background: var(--bg); border-radius: var(--radius-card) var(--radius-card) 0 0; padding: 18px 18px 26px; display: flex; flex-direction: column; filter: drop-shadow(0 10px 24px rgba(31,35,40,.10)) drop-shadow(0 1px 2px rgba(31,35,40,.08));
-  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 9px repeat-x;
-          mask: linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 9px repeat-x; }
-.land__bill-head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px dashed var(--line-strong); font-variant-numeric: tabular-nums; }
-.land__bill-head b { font-size: 17px; }
-.land__bill-head span { color: var(--mute); font-size: 15px; }
-.land__bill-row { display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 15px; }
-.land__bill-row + .land__bill-row { border-top: 1px solid var(--line); }
-.land__who { flex: none; width: 40px; display: inline-flex; }
-.land__who .avatar { animation: none; }
-.land__who .avatar + .avatar { margin-left: -6px; }
-.land__who .avatar:first-child { background: var(--accent); border-color: var(--accent); color: #fff; }
-.land__who .avatar + .avatar { background: #e6f4ea; border-color: var(--ok-line); color: var(--ok-ink); }
-.land__nobody { width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed var(--line-strong); }
-.land__item { flex: 1; min-width: 0; }
-.land__price { font-variant-numeric: tabular-nums; }
-.land__bill-row:last-child { color: var(--mute); }
-.land__paid { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 10px 14px; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: 0 8px 24px rgba(31,35,40,.12); font-size: 15px; }
-.land__paid b { font-variant-numeric: tabular-nums; margin-left: 4px; }
-.land__paid-tick { width: 26px; height: 26px; border-radius: 50%; background: var(--ok-ink); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+/* The sign-in card. */
+.bnb__login { border: 1px solid var(--b-line); border-radius: 12px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.08); overflow: hidden; }
+.bnb__login-top { font-size: 16px; font-weight: 700; text-align: center; padding: 18px 24px; border-bottom: 1px solid #ebebeb; }
+.bnb__login-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.bnb__welcome { font-size: 22px; font-weight: 600; }
+.bnb .field { position: relative; gap: 6px; }
+.bnb .field > label { position: absolute; top: 9px; left: 13px; font-size: 12px; font-weight: 400; color: var(--b-grey); pointer-events: none; }
+.bnb .input { height: 58px; padding: 22px 12px 6px; border: 1px solid #b0b0b0; border-radius: 8px; font-size: 16px; color: var(--b-ink); }
+.bnb .input::placeholder { color: transparent; }
+.bnb .input:focus { outline: 2px solid var(--b-ink); outline-offset: -1px; border-color: var(--b-ink); }
+.bnb .input--code { padding: 22px 12px 6px; text-align: left; font-size: 18px; }
+.bnb .field__hint { font-size: 13px; color: var(--b-grey); }
+.bnb .btn { height: 48px; border-radius: 8px; font-size: 16px; }
+.bnb .btn--primary { background: var(--b-coral); color: #fff; }
+.bnb .btn--primary:hover { background: linear-gradient(90deg, #bf2443 0%, #b01246 100%); }
+.bnb .btn--secondary { border-color: var(--b-ink); color: var(--b-ink); }
+.bnb .btn--secondary:hover { background: #f7f7f7; }
+.bnb .btn--text { color: var(--b-ink); text-decoration: underline; font-weight: 600; font-size: 14px; }
+.bnb .notice--info { border-color: var(--b-line); border-radius: 8px; }
+.bnb__or { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--b-grey); }
+.bnb__or::before, .bnb__or::after { content: ''; flex: 1; border-top: 1px solid var(--b-line); }
 
-/* How it works: three icons, three words each. */
-.land__steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.land__steps li { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px; text-align: center; font-size: 15px; font-weight: 600; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
-.land__icon { width: 44px; height: 44px; border-radius: 12px; background: #e8f0fe; color: var(--accent); display: flex; align-items: center; justify-content: center; }
-.land__icon svg { width: 22px; height: 22px; }
-.land__foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+/* How it works: listing-style cards with drawn pictures. */
+.bnb__how { display: flex; flex-direction: column; gap: 18px; }
+.bnb__how-h { font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+.bnb__cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 28px; }
+.bnb__card { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+.bnb__card b { margin-top: 10px; font-weight: 600; }
+.bnb__card > span { color: var(--b-grey); }
+.bnb__pic { position: relative; aspect-ratio: 3 / 2; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.bnb__pic--scan { background: #f2e9df; }
+.bnb__pic--share { background: #fde7ea; }
+.bnb__pic--paid { background: #e3f1e8; flex-direction: column; gap: 10px; }
 
-@media (min-width: 880px) {
-  .land { padding-top: 64px; gap: 64px; }
-  .land__hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; }
-  .land__intro { max-width: 460px; }
-  .land__h { font-size: 48px; }
-  .land__sub { font-size: 19px; }
-  .land__card { padding: 24px; }
-  .land__art { padding: 48px 32px 64px; }
-  .land__paid { left: auto; right: 8px; bottom: 28px; transform: none; }
-  .land__steps { gap: 20px; }
-  .land__steps li { flex-direction: row; justify-content: center; gap: 14px; padding: 20px; font-size: 16px; }
+.bnb__slip { width: 26%; aspect-ratio: 3 / 4.4; background: #fff; border-radius: 4px; padding: 10% 9%; display: flex; flex-direction: column; gap: 9%; box-shadow: 0 8px 18px rgba(80,50,20,.16); transform: rotate(-4deg); }
+.bnb__slip i { display: block; height: 5px; border-radius: 3px; background: #e2dbd2; }
+.bnb__slip i:nth-child(2) { width: 70%; }
+.bnb__slip i:nth-child(4) { width: 82%; }
+.bnb__slip .bnb__slip-total { margin-top: auto; height: 7px; background: #b9ad9f; width: 55%; align-self: flex-end; }
+.bnb__corners { position: absolute; inset: 12% 33%; border-radius: 6px;
+  background: linear-gradient(#fff 0 0) top left / 22px 3px, linear-gradient(#fff 0 0) top left / 3px 22px, linear-gradient(#fff 0 0) top right / 22px 3px, linear-gradient(#fff 0 0) top right / 3px 22px,
+              linear-gradient(#fff 0 0) bottom left / 22px 3px, linear-gradient(#fff 0 0) bottom left / 3px 22px, linear-gradient(#fff 0 0) bottom right / 22px 3px, linear-gradient(#fff 0 0) bottom right / 3px 22px;
+  background-repeat: no-repeat; filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
+
+.bnb__qr { width: 32%; aspect-ratio: 1; background: #fff; border-radius: 14px; padding: 7%; color: var(--b-ink); box-shadow: 0 8px 18px rgba(120,20,40,.12); transform: rotate(3deg); }
+.bnb__qr svg { display: block; width: 100%; height: 100%; }
+
+.bnb__note { width: 78%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #fff; border-radius: 12px; box-shadow: 0 6px 16px rgba(20,70,40,.12); font-size: 14px; }
+.bnb__note--2 { width: 72%; transform: translateX(6%); }
+.bnb__note-face { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #222; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+.bnb__note-face--2 { background: #c8174f; }
+.bnb__note-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.bnb__note-txt small { color: var(--b-grey); font-size: 12px; }
+.bnb__note-amt { font-weight: 600; font-variant-numeric: tabular-nums; color: #11692f; }
+
+.bnb__foot { margin-top: 8px; padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); background: #f7f7f7; box-shadow: 0 0 0 100vmax #f7f7f7; clip-path: inset(0 -100vmax); border-top: 1px solid var(--b-line); }
+.bnb__foot nav { display: flex; gap: 20px; font-size: 14px; }
+.bnb__foot a { color: var(--b-ink); display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (min-width: 640px) {
+  .bnb__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+  .bnb__pic { aspect-ratio: 20 / 19; }
+  .bnb__slip { width: 34%; }
+  .bnb__corners { inset: 14% 27%; }
+  .bnb__qr { width: 40%; }
+}
+@media (min-width: 900px) {
+  .bnb { padding-top: 72px; gap: 80px; }
+  .bnb__hero { grid-template-columns: minmax(0, 1fr) 420px; gap: 80px; align-items: center; }
+  .bnb__h { font-size: 52px; }
+  .bnb__sub { font-size: 20px; }
 }
 
 /* ============ Legal pages (terms, privacy, refunds) ============ */

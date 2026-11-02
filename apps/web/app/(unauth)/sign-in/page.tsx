@@ -10,7 +10,7 @@ import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
 import { rememberReturnTo } from '@/lib/signInReturn';
 import Link from 'next/link';
-import { Avatar, BankIcon, Button, CameraIcon, Notice, Page, QrIcon, TickIcon, Title } from '@/components/ui';
+import { Button, Notice, Page, Title } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'WAITING';
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
@@ -81,26 +81,68 @@ function Landing() {
   }
 
   return (
-    <main className="land">
-      <section className="land__hero">
-        <div className="land__intro">
-          <h1 className="land__h">Split the bill, <span className="land__em">get paid back</span></h1>
-          <p className="land__sub">Snap the bill. Friends tap what they had and pay you back.</p>
-          <div className="land__card">
-            <h2 className="land__card-h">Sign in or create an account</h2>
-            <EmailLinkFlow cta="Email me a link" />
-          </div>
-          <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
+    <main className="bnb">
+      <section className="bnb__hero">
+        <div className="bnb__intro">
+          <h1 className="bnb__h">Split the bill, get paid back</h1>
+          <p className="bnb__sub">Snap the bill. Everyone taps what they had and pays you back.</p>
         </div>
-        <BillPreview />
+        <div className="bnb__login">
+          <h2 className="bnb__login-top">Log in or sign up</h2>
+          <div className="bnb__login-body">
+            <p className="bnb__welcome">Welcome</p>
+            <EmailLinkFlow cta="Email me a link" />
+            <div className="bnb__or"><span>or</span></div>
+            <Button tone="secondary" href="/join">Join a bill with a code</Button>
+          </div>
+        </div>
       </section>
-      <ol className="land__steps" aria-label="How it works">
-        <li><span className="land__icon"><CameraIcon /></span>Scan the bill</li>
-        <li><span className="land__icon"><QrIcon /></span>Share the code</li>
-        <li><span className="land__icon"><BankIcon /></span>Get paid back</li>
-      </ol>
-      <footer className="land__foot">
-        <nav className="legal-links" aria-label="Legal">
+
+      <section className="bnb__how" aria-labelledby="how-h">
+        <h2 id="how-h" className="bnb__how-h">How it works</h2>
+        <ol className="bnb__cards">
+          <li className="bnb__card">
+            <div className="bnb__pic bnb__pic--scan" aria-hidden="true">
+              <div className="bnb__slip">
+                <i /><i /><i /><i /><i className="bnb__slip-total" />
+              </div>
+              <span className="bnb__corners" />
+            </div>
+            <b>Scan the bill</b>
+            <span>We read every item and price</span>
+          </li>
+          <li className="bnb__card">
+            <div className="bnb__pic bnb__pic--share" aria-hidden="true">
+              <div className="bnb__qr">
+                <svg viewBox="0 0 21 21" shapeRendering="crispEdges">
+                  <path d={QR} fill="currentColor" />
+                </svg>
+              </div>
+            </div>
+            <b>Share the code</b>
+            <span>Friends join from their phones</span>
+          </li>
+          <li className="bnb__card">
+            <div className="bnb__pic bnb__pic--paid" aria-hidden="true">
+              <div className="bnb__note">
+                <span className="bnb__note-face">S</span>
+                <span className="bnb__note-txt"><b>Sam paid you</b><small>Margherita</small></span>
+                <span className="bnb__note-amt">£12.50</span>
+              </div>
+              <div className="bnb__note bnb__note--2">
+                <span className="bnb__note-face bnb__note-face--2">P</span>
+                <span className="bnb__note-txt"><b>Priya paid you</b><small>Garlic bread</small></span>
+                <span className="bnb__note-amt">£2.75</span>
+              </div>
+            </div>
+            <b>Get paid back</b>
+            <span>Straight to your bank</span>
+          </li>
+        </ol>
+      </section>
+
+      <footer className="bnb__foot">
+        <nav aria-label="Legal">
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/refunds">Refunds</Link>
@@ -110,40 +152,17 @@ function Landing() {
   );
 }
 
-const PREVIEW: { item: string; price: string; who: string[] }[] = [
-  { item: 'Margherita', price: '£12.50', who: ['Sam'] },
-  { item: 'Garlic bread', price: '£5.50', who: ['Priya', 'Tom'] },
-  { item: 'Peroni ×2', price: '£11.00', who: ['Tom'] },
-  { item: 'Tiramisu', price: '£6.50', who: [] },
-];
-
-/** A made-up bill mid-split: who had what, and a payment landing. Decoration only. */
-function BillPreview() {
-  return (
-    <div className="land__art" aria-hidden="true">
-      <div className="land__bill">
-        <div className="land__bill-head">
-          <b>Table 12</b>
-          <span>£35.50</span>
-        </div>
-        {PREVIEW.map((r) => (
-          <div key={r.item} className="land__bill-row">
-            <span className="land__who">
-              {r.who.length ? r.who.map((n) => <Avatar key={n} name={n} sm />) : <span className="land__nobody" />}
-            </span>
-            <span className="land__item">{r.item}</span>
-            <span className="land__price">{r.price}</span>
-          </div>
-        ))}
-      </div>
-      <div className="land__paid">
-        <span className="land__paid-tick"><TickIcon size={16} /></span>
-        <span>Sam paid you</span>
-        <b>£12.50</b>
-      </div>
-    </div>
-  );
-}
+/* A made-up 21x21 QR-style pattern: three finder squares and some modules. */
+const QR = [
+  'M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2z',
+  'M14 0h7v7h-7zM15 1v5h5V1zM16 2h3v3h-3z',
+  'M0 14h7v7H0zM1 15v5h5v-5zM2 16h3v3H2z',
+  'M8 0h1v2H8zM10 1h2v1h-2zM9 3h2v2H9zM12 4h1v3h-1zM8 6h2v2H8z',
+  'M0 8h2v1H0zM3 8h3v1H3zM2 10h2v2H2zM5 10h1v3H5zM0 12h1v1H0z',
+  'M8 9h3v1H8zM12 8h2v2h-2zM9 11h1v3H9zM11 11h3v1h-3zM13 13h2v2h-2zM10 15h2v1h-2z',
+  'M15 8h2v1h-2zM18 8h3v2h-3zM16 10h2v3h-2zM19 11h2v1h-2zM15 13h1v1h-1z',
+  'M8 16h1v3H8zM10 17h3v1h-3zM9 20h4v1H9zM14 16h2v2h-2zM17 15h1v3h-1zM19 14h2v1h-2zM15 19h3v2h-3zM19 17h2v4h-2z',
+].join('');
 
 function rememberDevEmail(email: string) {
   try {

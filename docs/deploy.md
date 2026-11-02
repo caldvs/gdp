@@ -178,6 +178,12 @@ deploys instead:
   `packages/core`, or the lockfile) changed since the last production deploy,
   which the `web-prod` tag marks. To ship now: Actions → Web Deploy → Run
   workflow.
+- **Web waits for the prod API** (#80). Production talks to `GdpBackendProd`,
+  which only deploys by hand (Actions → API Deploy → prod) and then marks its
+  commit with the `api-prod` tag. If `apps/api/src` or `openapi.yaml` changed
+  between `api-prod` and main, the hourly run leaves the live site as it is
+  and says why in its summary. Deploy the API to prod; the web app follows on
+  the next hour (or run Web Deploy by hand).
 - **PR previews:** add the `preview` label. Each push to the PR then deploys a
   preview and comments its URL.
 

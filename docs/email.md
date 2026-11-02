@@ -36,32 +36,11 @@ Set up 2 Nov 2026:
   Don't delete them: SES checks them regularly and the domain stops verifying (and signing) without them.
 - **Not set up yet:** a custom MAIL FROM domain and a DMARC record. Both improve deliverability; neither is needed for production access.
 
-## Leaving the sandbox
+## Out of the sandbox
 
-A new SES account is in the **sandbox**: it only sends to verified addresses, at most 200 a day. Real guests can't get sign-in links until it's out.
+Production access was granted on 2 Nov 2026 (support case 179364906300659) for eu-west-2: any address, up to 50,000 a day at 14 a second. Mail type *Transactional*, website `https://paymeback.dev`.
 
-- **Requested 2 Nov 2026**, from the SES console (Get set up → *Request production access*): mail type *Transactional*, website `https://paymeback.dev`. Status **under review**; AWS says up to 96 hours.
-- The console only offers the request once a sending domain is verified, which is why the domain above came first.
-- The form asked for no use-case text. If AWS writes back asking for one, the text drafted on #76 describes what we send and how bounces and complaints are handled.
-- The form's acknowledgement confirms we only email people who asked for it and handle bounces and complaints. We rely on SES's **account-level suppression list** for that: check it's on (SES console → Suppression list, *bounces and complaints*).
-
-## When production access is approved
-
-1. Switch the sender to the domain (both environments):
-
-   ```sh
-   aws ssm put-parameter --profile gdp-dev --overwrite --type String \
-     --name /gdp-dev/ses-from-email --value noreply@paymeback.dev
-   aws ssm put-parameter --profile gdp-dev --overwrite --type String \
-     --name /gdp-prod/ses-from-email --value noreply@paymeback.dev
-   ```
-
-2. Redeploy dev (any push to `apps/api`, or API Deploy → dev) and prod (API Deploy → prod). CDK reads the parameter at deploy time.
-3. The dependency check's SES line should read verified and out of the sandbox.
-4. Sign in on the deployed site with an address that was never verified in SES: the code should arrive.
-5. Close #126, then build sign-in by link (#119), which waits on this.
-
-## Until then
-
-- Testers' addresses must be verified one by one in SES (Identities → Create identity → Email address), or use the test accounts on dev (`@test.invalid`, no email sent).
-- The daily cost email's recipient must stay verified.
+- Both environments send from `noreply@paymeback.dev` (the SSM parameters above), DKIM-signed by the domain.
+- Bounces and complaints go on SES's **account-level suppression list**, which is on. The app doesn't see them yet.
+- The other regions (eu-west-1, us-east-1) are still in the sandbox; we don't send from them.
+- Need more? Request a higher quota before it's reached (SES console → Account dashboard).

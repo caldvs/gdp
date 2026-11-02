@@ -191,7 +191,9 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     } catch (err) {
       setEmailError(err instanceof ApiError && err.code === 'INVALID_INPUT'
         ? "The server didn't accept that email."
-        : "Couldn't reach the server. Check your connection.");
+        : err instanceof ApiError && err.code === 'RATE_LIMITED'
+          ? err.message
+          : "Couldn't reach the server. Check your connection.");
     }
   };
 
@@ -275,6 +277,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
         <Button tone="text" onClick={handleResend} disabled={!canResend}>
           {startOtp.isPending ? 'Sending…' : canResend ? 'Resend code' : `Resend in ${resendCountdown}s`}
         </Button>
+        {startOtp.error instanceof ApiError && startOtp.error.code === 'RATE_LIMITED' ? <p className="field__err" role="alert">{startOtp.error.message}</p> : null}
         <Button tone="text" onClick={() => { writePendingCode(null); setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
       </div>
     </form>

@@ -107,7 +107,7 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>8</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>17</b> item types</span><span><b>2</b> GSIs</span><span><b>10</b> expiring types</span></div>
   </header>
 
   <div class="board">
@@ -183,18 +183,29 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="48" y1="576" x2="332" y2="576"/>
 <text class="t-attr" x="48" y="594">codeHash</text>
 <text class="t-attr" x="48" y="612">attempts (conditional increment)</text>
-<text class="t-attr" x="48" y="630">ttlAt, also checked on read</text>
+<text class="t-attr" x="48" y="630">sentAt: one code per 30 s</text>
 <rect class="node" x="30" y="692" width="320" height="124" rx="10"/>
 <rect class="band band-id" x="30" y="692" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="719">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="705" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="719" text-anchor="middle">24 h</text>
+<text class="t-title" x="48" y="719">Code sending limit</text>
+<rect class="chip-ttl" x="286.4" y="705" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="719" text-anchor="middle">15 min</text>
 <text class="t-keylab" x="48" y="744">pk</text>
-<text class="t-key" x="104" y="744">IDMP#{userId}#{endpoint}</text>
+<text class="t-key" x="104" y="744">OTPRATE#email:{email}</text>
 <text class="t-keylab" x="48" y="766">sk</text>
-<text class="t-key" x="104" y="766">KEY#{Idempotency-Key}</text>
+<text class="t-key" x="104" y="766">W#{15-min window}</text>
 <line class="rule" x1="48" y1="780" x2="332" y2="780"/>
-<text class="t-attr" x="48" y="798">stored status + response body</text>
+<text class="t-attr" x="48" y="798">sends (at most 5, conditional add)</text>
+<rect class="node" x="30" y="860" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="860" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="887">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="873" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="887" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="912">pk</text>
+<text class="t-key" x="104" y="912">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="934">sk</text>
+<text class="t-key" x="104" y="934">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="948" x2="332" y2="948"/>
+<text class="t-attr" x="48" y="966">stored status + response body</text>
 <rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>

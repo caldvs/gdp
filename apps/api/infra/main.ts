@@ -20,7 +20,7 @@ import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
 import { CostReportStack } from './costReport.js';
 import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
-// apps/api lives inside the paymeback.dev monorepo; the npm lockfile is
+// apps/api lives inside the Pay Me Back monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
 const API_DIR = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = path.resolve(API_DIR, '../..');
@@ -343,7 +343,7 @@ class GdpBackendStack extends cdk.Stack {
     // control. See RUNBOOK.md for the one-click subscription steps.
     const alertTopic = new sns.Topic(this, 'AlertTopic', {
       topicName: `gdp-${envName}-alerts`,
-      displayName: `Group Dine Pay (${envName}) alerts`,
+      displayName: `Pay Me Back (${envName}) alerts`,
     });
 
     const snsAction = new cwActions.SnsAction(alertTopic);

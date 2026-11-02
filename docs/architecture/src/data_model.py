@@ -56,8 +56,8 @@ y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
-y = place(0, y, 'Sign-in code', 'id', '10 min', [('pk', 'OTP#email:{email}'), ('sk', 'same as pk')], ['codeHash', 'attempts (conditional increment)', 'sentAt: one code per 30 s']) + GAP
-y = place(0, y, 'Code sending limit', 'id', '15 min', [('pk', 'OTPRATE#email:{email}'), ('sk', 'W#{15-min window}')], ['sends (at most 5, conditional add)']) + GAP
+y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash', 'status pending → approved → claimed', '  (conditional updates: each once)', 'expiresAt (15 min), claimBy']) + GAP
+y = place(0, y, 'Link sending limit', 'id', '15 min', [('pk', 'SIGNINRATE#email:{email}'), ('sk', 'W#{15-min window} | LAST')], ['sends (at most 5, conditional add)', 'sentAt: one link per 30 s']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 

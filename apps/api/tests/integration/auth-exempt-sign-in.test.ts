@@ -26,7 +26,7 @@ const setup = (exempt: string) => {
 type Started = { ok: true; token?: string; user?: { userId: string; email: string } };
 
 describe('POST /v1/auth/email/start for TABLE_FEE_EXEMPT_EMAILS', () => {
-  it('an exempt address is signed in straight away, with no code emailed', async () => {
+  it('an exempt address is signed in straight away, with no link emailed', async () => {
     const email = `owner-${uuidv7()}@example.com`;
     const { app, send, start } = setup(`someone@else.com, ${email.toUpperCase()}`);
     const res = await start(email);
@@ -49,10 +49,12 @@ describe('POST /v1/auth/email/start for TABLE_FEE_EXEMPT_EMAILS', () => {
     expect(b.user?.userId).toBe(a.user?.userId);
   });
 
-  it('everyone else gets a code, and no token', async () => {
+  it('everyone else gets a link, and no token', async () => {
     const { send, start } = setup('owner@example.com');
     const res = await start(`guest-${uuidv7()}@example.com`);
-    expect(await res.json()).toEqual({ ok: true });
+    const body = (await res.json()) as Started & { requestId?: string };
+    expect(body.token).toBeUndefined();
+    expect(body.requestId).toBeTruthy();
     expect(send).toHaveBeenCalledTimes(1);
   });
 });

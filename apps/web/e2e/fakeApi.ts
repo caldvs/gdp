@@ -33,6 +33,9 @@ type Item = { itemId: string; name: string; unitPricePence: number; quantity: nu
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
+/** What the fake /email/start hands the asking tab, and the token in the emailed link. */
+export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
+export const SIGN_IN_LINK_TOKEN = 'link.emailed-secret';
 export const LEAD_BANK = { accountHolderName: 'Callum Davies', sortCode: '040668', accountNumber: '00079660' };
 
 export const item = (n: number, name: string, unitPricePence: number, quantity = 1): Item => ({
@@ -70,6 +73,8 @@ export class FakeApi {
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in through the OTP flow (and so pass /v1/me). */
   private signedIn = new Set<string>();
+  /** The emailed sign-in link: sent, opened, then collected by the tab that asked. */
+  signIn: 'none' | 'pending' | 'approved' | 'claimed' = 'none';
   /** Sessions listed on /v1/me/sessions (the home tray and History). */
   mySessions: Record<string, unknown>[] = [];
   private seq = 0;
@@ -202,11 +207,18 @@ export class FakeApi {
 
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
-    if (path === '/v1/auth/email/start') return json({ ok: true });
-    if (path === '/v1/auth/email/verify') {
-      if ((body().code as string) !== '123456') return err('AUTH_INVALID', 'That code didn’t work', 401);
-      this.signedIn.add(user.userId); this.join(user);
+    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; return json({ ok: true, requestId: SIGN_IN_REQUEST }); }
+    if (path === '/v1/auth/email/link') {
+      if ((body().token as string) !== SIGN_IN_LINK_TOKEN || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
+      this.signIn = 'approved'; this.signedIn.add(user.userId); this.join(user);
       return json({ token: 'test-token', user });
+    }
+    if (path === '/v1/auth/email/requests') {
+      if ((body().requestId as string) !== SIGN_IN_REQUEST) return json({ status: 'expired' });
+      if (this.signIn === 'pending') return json({ status: 'pending' });
+      if (this.signIn !== 'approved') return json({ status: 'expired' });
+      this.signIn = 'claimed';
+      return json({ status: 'signedIn', token: 'test-token', user });
     }
     if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });

@@ -22,7 +22,7 @@ export default function PrivacyPage() {
         <h2>What we collect</h2>
         <ul>
           <li>
-            <strong>Your email address</strong>, if you sign in, so we can send you a sign-in code.
+            <strong>Your email address</strong>, if you sign in, so we can send you a sign-in link.
           </li>
           <li>
             <strong>Your name</strong>, so the table knows who has picked and paid.

@@ -4,11 +4,15 @@ const unauthenticated = (page: Page) =>
   page.route('**/v1/me', (route) =>
     route.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'No token' } } }),
   );
-// Local dev sign-in isn't on the test server; the form falls back to email codes.
+// Local dev sign-in isn't on the test server; the form falls back to email links.
 const noDevSignIn = (page: Page) =>
   page.route('**/v1/auth/email/dev-sign-in', (route) =>
     route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'no' } } }),
   );
+
+// The emailed link hasn't been opened yet.
+const stillWaiting = (page: Page) =>
+  page.route('**/v1/auth/email/requests', (route) => route.fulfill({ json: { status: 'pending' } }));
 
 test('signed-out visitors land on the front door', async ({ page }) => {
   await unauthenticated(page);
@@ -33,8 +37,9 @@ test('email step validates before calling the API', async ({ page }) => {
   let called = false;
   await page.route('**/v1/auth/email/start', (route) => {
     called = true;
-    return route.fulfill({ json: { ok: true } });
+    return route.fulfill({ json: { ok: true, requestId: 'req.1' } });
   });
+  await stillWaiting(page);
   await page.goto('/sign-in');
   const submit = page.locator('form button[type="submit"]');
   await page.getByLabel('Email').fill('not-an-email');
@@ -44,25 +49,54 @@ test('email step validates before calling the API', async ({ page }) => {
 
   await page.getByLabel('Email').fill('alice@example.com');
   await submit.click();
-  await expect(page.getByLabel('6-digit code')).toBeVisible();
+  await expect(page.getByText('Check your email')).toBeVisible();
   expect(called).toBe(true);
 });
 
-test('the code step survives a reload while fetching the code', async ({ page }) => {
+test('waiting for the link survives a reload', async ({ page }) => {
   await unauthenticated(page);
   await noDevSignIn(page);
-  await page.route('**/v1/auth/email/start', (route) => route.fulfill({ json: { ok: true } }));
+  await page.route('**/v1/auth/email/start', (route) => route.fulfill({ json: { ok: true, requestId: 'req.1' } }));
+  await stillWaiting(page);
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('alice@example.com');
   await page.locator('form button[type="submit"]').click();
-  await expect(page.getByLabel('6-digit code')).toBeVisible();
+  await expect(page.getByText('Check your email')).toBeVisible();
 
   await page.reload();
-  await expect(page.getByLabel('6-digit code')).toBeVisible();
+  await expect(page.getByText('Check your email')).toBeVisible();
   await expect(page.getByText('alice@example.com')).toBeVisible();
 
   await page.getByRole('button', { name: 'Different email' }).click();
   await page.reload();
+  await expect(page.getByLabel('Email')).toBeVisible();
+});
+
+test('a request that expires while waiting goes back to the email step', async ({ page }) => {
+  await unauthenticated(page);
+  await noDevSignIn(page);
+  await page.route('**/v1/auth/email/start', (route) => route.fulfill({ json: { ok: true, requestId: 'req.1' } }));
+  await page.route('**/v1/auth/email/requests', (route) => route.fulfill({ json: { status: 'expired' } }));
+  await page.goto('/sign-in');
+  await page.getByLabel('Email').fill('alice@example.com');
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByText('Link expired. Send a new one.')).toBeVisible();
+  await expect(page.getByLabel('Email')).toBeVisible();
+});
+
+test('an expired or used sign-in link says so, with a way to send a new one', async ({ page }) => {
+  await unauthenticated(page);
+  let sent: unknown = null;
+  await page.route('**/v1/auth/email/link', (route) => {
+    sent = route.request().postDataJSON();
+    return route.fulfill({ status: 401, json: { error: { code: 'AUTH_INVALID', message: 'Link expired' } } });
+  });
+  await page.goto('/sign-in/verify#t=old.token');
+  await expect(page.getByRole('heading', { name: 'Link expired' })).toBeVisible();
+  expect(sent).toEqual({ token: 'old.token' });
+  expect(page.url()).not.toContain('old.token');
+  await page.getByRole('link', { name: 'Send a new link' }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
   await expect(page.getByLabel('Email')).toBeVisible();
 });
 

@@ -3,44 +3,47 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
-import { useDevEmailSignIn, useStartEmailOtp, useVerifyEmailOtp } from '@gdp/core/api/hooks/useEmailOtp';
+import { useDevEmailSignIn, useSignInRequest, useStartEmailSignIn } from '@gdp/core/api/hooks/useEmailSignIn';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { decodePayoutFromQR, readPayoutFragment } from '@gdp/core/lib/qrPayload';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
+import { rememberReturnTo } from '@/lib/signInReturn';
 import Link from 'next/link';
 import { Box, Button, Notice, Page, Row, Section, Title } from '@/components/ui';
 
-type Stage = 'EMAIL' | 'AWAITING_CODE';
+type Stage = 'EMAIL' | 'WAITING';
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
-// The email a code was sent to, so the code step survives the tab being
-// reloaded or discarded while the user fetches the code (common on phones).
-// Kept for the code's lifetime (10 minutes on the API).
-const PENDING_CODE_KEY = 'gdp.signIn.pendingCode';
-const PENDING_CODE_MS = 10 * 60 * 1000;
+// The link this tab is waiting on (email and the secret requestId), so the
+// wait survives the tab being reloaded or discarded while the user opens
+// their email (common on phones). Kept for the link's lifetime (15 minutes).
+const PENDING_KEY = 'gdp.signIn.pending';
+const PENDING_MS = 15 * 60 * 1000;
 
-function readPendingCode(): string | null {
+type Pending = { email: string; requestId: string };
+
+function readPending(): Pending | null {
   try {
-    const raw = window.sessionStorage.getItem(PENDING_CODE_KEY);
+    const raw = window.sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
-    const { email, sentAt } = JSON.parse(raw) as { email?: unknown; sentAt?: unknown };
-    if (typeof email === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_CODE_MS) return email;
-    window.sessionStorage.removeItem(PENDING_CODE_KEY);
+    const { email, requestId, sentAt } = JSON.parse(raw) as { email?: unknown; requestId?: unknown; sentAt?: unknown };
+    if (typeof email === 'string' && typeof requestId === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_MS) return { email, requestId };
+    window.sessionStorage.removeItem(PENDING_KEY);
   } catch {}
   return null;
 }
 
-function writePendingCode(email: string | null) {
+function writePending(p: Pending | null) {
   try {
-    if (email) window.sessionStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email, sentAt: Date.now() }));
-    else window.sessionStorage.removeItem(PENDING_CODE_KEY);
+    if (p) window.sessionStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, sentAt: Date.now() }));
+    else window.sessionStorage.removeItem(PENDING_KEY);
   } catch {}
 }
 
 /**
  * The front door. Signed-out visitors see what the app does and sign in
- * with an email code. Arriving from a join link shows whose bill it is.
+ * with an emailed link. Arriving from a join link shows whose bill it is.
  */
 export default function SignInPage() {
   return (
@@ -72,7 +75,7 @@ function Landing() {
     return (
       <Page>
         <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
-        <EmailOtpFlow cta="Continue" />
+        <EmailLinkFlow cta="Continue" />
       </Page>
     );
   }
@@ -86,7 +89,7 @@ function Landing() {
         <Row title="3. Everyone pays you back" sub="Straight to your bank account." />
       </Box>
       <Section title="Sign in or create an account">
-        <EmailOtpFlow cta="Email me a code" />
+        <EmailLinkFlow cta="Email me a link" />
       </Section>
       <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
       <nav className="legal-links" aria-label="Legal">
@@ -109,26 +112,41 @@ function useDestination() {
   return safeInternalPath(useSearchParams().get('from'));
 }
 
-function EmailOtpFlow({ cta }: { cta: string }) {
+function EmailLinkFlow({ cta }: { cta: string }) {
   const router = useRouter();
   const dest = useDestination();
   const [stage, setStage] = useState<Stage>('EMAIL');
   const [email, setEmail] = useState('');
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [code, setCode] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
-  const startOtp = useStartEmailOtp();
-  const verifyOtp = useVerifyEmailOtp();
+  const startSignIn = useStartEmailSignIn();
   const devSignIn = useDevEmailSignIn();
   const [devAvailable, setDevAvailable] = useState(DEV_SIGNIN_ENABLED);
+  const request = useSignInRequest(stage === 'WAITING' ? requestId : null);
 
-  // Back on the code step if a code was sent from this tab recently.
+  // Still waiting if a link was sent from this tab recently.
   useEffect(() => {
-    const pending = readPendingCode();
+    const pending = readPending();
     if (!pending) return;
-    setEmail(pending);
-    setStage('AWAITING_CODE');
+    setEmail(pending.email);
+    setRequestId(pending.requestId);
+    setStage('WAITING');
   }, []);
+
+  // The link was opened (here or anywhere): this tab is signed in now.
+  const status = request.data?.status;
+  useEffect(() => {
+    if (status === 'signedIn') {
+      writePending(null);
+      router.replace(dest);
+    } else if (status === 'expired') {
+      writePending(null);
+      setRequestId(null);
+      setStage('EMAIL');
+      setEmailError('Link expired. Send a new one.');
+    }
+  }, [status, dest, router]);
 
   // Local dev: sign straight back in as the last email used, unless the
   // user just signed out in this tab.
@@ -155,6 +173,23 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     return () => clearInterval(t);
   }, [resendCountdown]);
 
+  /** Email a link; true once this tab is waiting on it (or signed in). */
+  const send = async (address: string): Promise<boolean> => {
+    const started = await startSignIn.mutateAsync({ email: address });
+    if (started.token) {
+      // An exempt address: signed in already, no link.
+      router.replace(dest);
+      return true;
+    }
+    if (!started.requestId) return false;
+    rememberReturnTo(dest);
+    writePending({ email: address, requestId: started.requestId });
+    setRequestId(started.requestId);
+    setStage('WAITING');
+    setResendCountdown(RESEND_LOCKOUT_SECONDS);
+    return true;
+  };
+
   const handleStart = async () => {
     setEmailError(null);
     const trimmed = email.trim().toLowerCase();
@@ -178,16 +213,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
       }
     }
     try {
-      const started = await startOtp.mutateAsync({ email: trimmed });
-      if (started.token) {
-        // An exempt address: signed in already, no code.
-        router.replace(dest);
-        return;
-      }
-      writePendingCode(trimmed);
-      setStage('AWAITING_CODE');
-      setCode('');
-      setResendCountdown(RESEND_LOCKOUT_SECONDS);
+      if (!(await send(trimmed))) setEmailError("Couldn't reach the server. Check your connection.");
     } catch (err) {
       setEmailError(err instanceof ApiError && err.code === 'INVALID_INPUT'
         ? "The server didn't accept that email."
@@ -197,31 +223,12 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     }
   };
 
-  // Takes the code as an argument because the auto-submit on the sixth
-  // digit fires from the change handler, before `code` state has caught up.
-  const handleVerify = async (value: string = code) => {
-    const trimmed = value.trim();
-    if (trimmed.length !== 6 || verifyOtp.isPending) return;
-    try {
-      await verifyOtp.mutateAsync({ email, code: trimmed });
-      writePendingCode(null);
-      router.replace(dest);
-    } catch {
-      setCode('');
-    }
-  };
-
   const handleResend = async () => {
     if (resendCountdown > 0) return;
-    setCode('');
-    try {
-      await startOtp.mutateAsync({ email });
-      writePendingCode(email);
-      setResendCountdown(RESEND_LOCKOUT_SECONDS);
-    } catch {}
+    try { await send(email); } catch {}
   };
 
-  const busy = startOtp.isPending || devSignIn.isPending;
+  const busy = startSignIn.isPending || devSignIn.isPending;
 
   if (stage === 'EMAIL') {
     return (
@@ -244,7 +251,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
             aria-describedby={emailError ? 'email-err' : 'email-hint'}
           />
           {emailError ? <div id="email-err" className="field__err">{emailError}</div> : (
-            <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no code needed.' : 'We’ll email you a 6-digit code. No password.'}</div>
+            <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no link needed.' : 'We’ll email you a link. No password.'}</div>
           )}
         </div>
         <Button type="submit" busy={busy}>{devAvailable ? 'Continue' : cta}</Button>
@@ -252,34 +259,21 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     );
   }
 
-  const canResend = resendCountdown <= 0 && !startOtp.isPending;
+  const canResend = resendCountdown <= 0 && !startSignIn.isPending;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void handleVerify(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="field">
-        <label htmlFor="otp">6-digit code</label>
-        <input
-          id="otp"
-          className="input input--code"
-          value={code}
-          onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) void handleVerify(v); }}
-          placeholder="123456"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          autoFocus
-          maxLength={6}
-          disabled={verifyOtp.isPending}
-        />
-        <div className="field__hint">Sent to <b>{email}</b></div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div role="status">
+        <Notice tone="info" title="Check your email">
+          <div className="muted">{email}</div>
+        </Notice>
       </div>
-      {verifyOtp.isError ? <Notice tone="error">That code didn’t work. Check your email, or send a new one.</Notice> : null}
-      <Button type="submit" busy={verifyOtp.isPending} disabled={code.length !== 6}>Sign in</Button>
       <div className="btn-row">
         <Button tone="text" onClick={handleResend} disabled={!canResend}>
-          {startOtp.isPending ? 'Sending…' : canResend ? 'Resend code' : `Resend in ${resendCountdown}s`}
+          {startSignIn.isPending ? 'Sending…' : canResend ? 'Resend' : `Resend in ${resendCountdown}s`}
         </Button>
-        {startOtp.error instanceof ApiError && startOtp.error.code === 'RATE_LIMITED' ? <p className="field__err" role="alert">{startOtp.error.message}</p> : null}
-        <Button tone="text" onClick={() => { writePendingCode(null); setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
+        {startSignIn.error instanceof ApiError && startSignIn.error.code === 'RATE_LIMITED' ? <p className="field__err" role="alert">{startSignIn.error.message}</p> : null}
+        <Button tone="text" onClick={() => { writePending(null); setRequestId(null); setStage('EMAIL'); }}>Different email</Button>
       </div>
-    </form>
+    </div>
   );
 }

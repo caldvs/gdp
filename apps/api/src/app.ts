@@ -160,6 +160,8 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       buildAuthRoutes({
         emailSender,
         jwtSecret: sessionJwtSecret,
+        appBaseUrl: env.APP_BASE_URL,
+        linkOriginAllowed: allowed.length === 0 ? null : originAllowed,
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(

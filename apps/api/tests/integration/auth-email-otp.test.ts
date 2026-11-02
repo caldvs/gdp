@@ -32,7 +32,6 @@ function buildApp() {
     emailSender: sender,
     sessionJwtSecret: SECRET,
     idTokenVerifier: createSessionTokenVerifier(SECRET),
-    paymentProvider: null,
   });
   return { app, sender };
 }

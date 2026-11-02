@@ -104,7 +104,6 @@ jobs:
         # environment's variables; see infra/main.ts.
         env:
           STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
-          TRUELAYER_ENABLED: ${{ vars.TRUELAYER_ENABLED }}
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
           # Comma list of emails that never pay the table fee. A secret
           # (keeps the addresses out of logs) or a variable; either works.

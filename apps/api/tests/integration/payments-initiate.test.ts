@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
-import { MockTrueLayerProvider } from '../../src/services/payments/mockProvider.js';
 import {
   buildPayingSession,
   ensureBillsBucket,
@@ -13,13 +12,11 @@ import {
 } from './helpers.js';
 
 const buildApp = () => {
-  const provider = new MockTrueLayerProvider('test-secret');
   const app = createApp({
     idTokenVerifier: fakeVerifier,
     billParser: new FixtureBillParser(sampleParsedBill),
-    paymentProvider: provider,
   });
-  return { app, provider };
+  return { app };
 };
 
 describe('POST /v1/sessions/:id/payments', () => {
@@ -50,20 +47,20 @@ describe('POST /v1/sessions/:id/payments', () => {
         collectorUserId: string;
         amountPence: number;
         currency: string;
-        provider: string;
         status: string;
       };
-      instructions: { type: string; url?: string };
+      instructions: { type: string; reference: string; amountPence: number };
     };
     expect(body.payment.payerUserId).toBe(guestA);
     expect(body.payment.collectorUserId).toBe(creator);
     expect(body.payment.sessionId).toBe(sessionId);
     expect(body.payment.amountPence).toBeGreaterThan(0);
     expect(body.payment.currency).toBe('GBP');
-    expect(body.payment.provider).toBe('truelayer');
+    expect(body.payment).not.toHaveProperty('provider');
     expect(body.payment.status).toBe('pending');
-    expect(body.instructions.type).toBe('redirect');
-    expect(body.instructions.url).toMatch(/^https:\/\//);
+    expect(body.instructions.type).toBe('manual_transfer');
+    expect(body.instructions.reference).toBe(`gdp-${sessionId.slice(0, 8)}`);
+    expect(body.instructions.amountPence).toBe(body.payment.amountPence);
   });
 
   it('after initiate, the session shows the participant as payment.pending with the paymentId', async () => {

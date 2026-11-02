@@ -100,11 +100,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>%%TYPES%%</b> item types</span><span><b>2</b> GSIs</span><span><b>%%EXPIRING%%</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>%%TYPES%%</b> item types</span><span><b>1</b> GSI</span><span><b>%%EXPIRING%%</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -139,7 +139,6 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
-            <tr><td>Payment from webhook</td><td>GSI2 <code>GSI2PK = PROVPAY#{providerId}</code></td><td class="op">Query</td></tr>
             <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
             <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
             <tr><td>Replay a request</td><td><code>IDMP#{user}#{endpoint}</code> / <code>KEY#{key}</code></td><td class="op">Get</td></tr>

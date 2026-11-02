@@ -5,7 +5,7 @@ Diagrams of the system as it is on `main`.
 | Diagram | Shows |
 | --- | --- |
 | [System](system.html) | Clients, the web app, API Gateway, the Lambda with every endpoint, AWS services and third parties |
-| [Data model](data-model.html) | The DynamoDB single table: every item type, its keys and TTL, both GSIs, access patterns and transactions |
+| [Data model](data-model.html) | The DynamoDB single table: every item type, its keys and TTL, the GSI, access patterns and transactions |
 | [Domains and certificates](domains.md) | How `paymeback.dev` names reach Vercel and AWS, how the API certificate is issued, why `API_DOMAIN`/`API_CERT_ARN` are GitHub variables, where config lives |
 
 The `.html` files are the real diagrams (light and dark theme, readable at any size). GitHub won't render them, so open them locally or use the PNG previews below.

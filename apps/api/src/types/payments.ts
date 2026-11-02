@@ -1,15 +1,9 @@
 import { z } from 'zod';
 
-export const PaymentStatusSchema = z.enum([
-  'pending',
-  'authorized',
-  'succeeded',
-  'failed',
-  'refunded',
-]);
+export const PaymentStatusSchema = z.enum(['pending', 'succeeded', 'failed']);
 export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
 
-export const PaymentEventSourceSchema = z.enum(['api', 'webhook', 'system']);
+export const PaymentEventSourceSchema = z.enum(['api', 'system']);
 
 export const PaymentEventSchema = z.object({
   at: z.string().datetime(),
@@ -20,9 +14,6 @@ export const PaymentEventSchema = z.object({
 });
 export type PaymentEvent = z.infer<typeof PaymentEventSchema>;
 
-export const PaymentProviderNameSchema = z.enum(['truelayer', 'manual']);
-export type PaymentProviderName = z.infer<typeof PaymentProviderNameSchema>;
-
 export const PaymentSchema = z.object({
   paymentId: z.string().uuid(),
   sessionId: z.string().uuid(),
@@ -30,8 +21,6 @@ export const PaymentSchema = z.object({
   collectorUserId: z.string(),
   amountPence: z.number().int().positive(),
   currency: z.literal('GBP'),
-  provider: PaymentProviderNameSchema,
-  providerPaymentId: z.string(),
   status: PaymentStatusSchema,
   idempotencyKey: z.string(),
   events: z.array(PaymentEventSchema),
@@ -46,11 +35,8 @@ export const PaymentSchema = z.object({
 });
 export type Payment = z.infer<typeof PaymentSchema>;
 
-// Frontend-facing instructions for completing a guest payment. Discriminated
-// on `type` so the mobile app can switch UI:
-// - `redirect`: open the URL (TrueLayer hosted page); webhook drives state
-// - `manual_transfer`: render bank details + optional Monzo/Revolut links;
-//   guest pays via their own banking app, lead confirms receipt manually
+// How a guest pays the lead: from their own banking app, with these
+// details and reference; the lead confirms the money arrived.
 export const ManualTransferInstructionsSchema = z.object({
   type: z.literal('manual_transfer'),
   // Absent when the lead's bank details only live on their device
@@ -71,16 +57,7 @@ export const ManualTransferInstructionsSchema = z.object({
 });
 export type ManualTransferInstructions = z.infer<typeof ManualTransferInstructionsSchema>;
 
-export const RedirectInstructionsSchema = z.object({
-  type: z.literal('redirect'),
-  url: z.string().url(),
-});
-export type RedirectInstructions = z.infer<typeof RedirectInstructionsSchema>;
-
-export const PaymentInstructionsSchema = z.discriminatedUnion('type', [
-  ManualTransferInstructionsSchema,
-  RedirectInstructionsSchema,
-]);
+export const PaymentInstructionsSchema = ManualTransferInstructionsSchema;
 export type PaymentInstructions = z.infer<typeof PaymentInstructionsSchema>;
 
 export const InitiatePaymentResponseSchema = z.object({

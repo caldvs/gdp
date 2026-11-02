@@ -111,7 +111,7 @@ col3_end = y
 # ---- Column 4: payments + indexes
 y = 80
 gx, gy = COLS[3], y
-gh = 250
+gh = 165
 a(f'<rect class="node gsi" x="{gx}" y="{gy}" width="{CW}" height="{gh}" rx="10"/>')
 text(gx + 18, gy + 27, 'Table gdp-{env}', 't-title')
 text(gx + 18, gy + 50, 'On-demand · pk (S) / sk (S) · TTL ttlAt', 't-attr')
@@ -119,15 +119,11 @@ text(gx + 18, gy + 80, 'GSI1', 't-inner'); text(gx + 74, gy + 80, 'GSI1PK / GSI1
 text(gx + 18, gy + 99, 'Only on participant rows: USER#{userId}', 't-attr')
 text(gx + 18, gy + 117, '→ sessionId. UUIDv7 ids sort by time,', 't-attr')
 text(gx + 18, gy + 135, 'so reverse order = newest first.', 't-attr')
-text(gx + 18, gy + 165, 'GSI2', 't-inner'); text(gx + 74, gy + 165, 'GSI2PK', 't-key')
-text(gx + 18, gy + 184, 'Only on payment rows:', 't-attr')
-text(gx + 18, gy + 202, 'PROVPAY#{providerPaymentId}', 't-attr')
-text(gx + 18, gy + 220, 'finds a payment from a webhook.', 't-attr')
 P['Table'] = (gx, gy, CW, gh)
 y = gy + gh + GAP
 pay_y = max(y, P['Session'][1] + rowpos['PART'][0] - P['Session'][1] - 40)
-y = place(3, pay_y, 'Payment', 'pay', 'No TTL', [('pk', 'PAY#{paymentId}'), ('sk', 'same as pk'), ('GSI2', 'PROVPAY#{providerPaymentId}')],
-          ['sessionId, payerUserId, collectorUserId', 'amountPence, currency GBP', 'provider (truelayer · mock · manual)',
+y = place(3, pay_y, 'Payment', 'pay', 'No TTL', [('pk', 'PAY#{paymentId}'), ('sk', 'same as pk')],
+          ['sessionId, payerUserId, collectorUserId', 'amountPence, currency GBP',
            'status, idempotencyKey', 'events[] { at, from, to, source }', 'createdAt, payerClaimedPaidAt']) + GAP
 col4_end = y
 

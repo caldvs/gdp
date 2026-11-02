@@ -16,13 +16,10 @@ import {
   UpdateSessionRequestSchema,
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
-import type { PaymentProvider } from '../services/payments/provider.js';
 import type { ReportService } from '../services/sessions/reportService.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
-  /** null = manual mode; no provider call on initiate. */
-  paymentProvider: PaymentProvider | null;
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
 }
@@ -218,7 +215,6 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         caller,
         sessionId,
         idempotencyKey,
-        provider: deps.paymentProvider,
         logger: c.var.logger,
       });
       return c.json({ payment: result.payment, instructions: result.instructions }, 201);

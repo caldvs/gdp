@@ -43,7 +43,7 @@ More than 3 Lambda errors in 5 minutes. Open the _Errors and warnings_ and _Cras
 | `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts`  | Fix the env block in `infra/main.ts`, redeploy |
 | `Dynamic require of …`                   | Bundle banner missing                         | Check `bundling.banner` in `infra/main.ts`     |
 | `Task timed out after 30`                | A downstream call hung (usually bill reading) | See lambda-duration                            |
-| `PAYMENT_PROVIDER_ERROR`                 | Only with TrueLayer, which isn't in use       | Check `PAYMENT_PROVIDER` is `manual`           |
+| `PAYMENT_PROVIDER_ERROR`                 | Stripe refused a table-fee call               | The log line has Stripe's message              |
 
 ### lambda-duration
 

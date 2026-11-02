@@ -19,7 +19,6 @@ import {
   type NearbySearch,
 } from './services/venues/nearbyVenues.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
-import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
 import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
@@ -42,9 +41,6 @@ import {
   type ReadJob,
 } from './services/bills/readService.js';
 import { baseLogger } from './logging/logger.js';
-import type { PaymentProvider } from './services/payments/provider.js';
-import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
-import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
 import Stripe from 'stripe';
 import { createTableFeeService, type TableFeeStore } from './services/billing/tableFee.js';
 import { parseEmailList } from './config/exemptEmails.js';
@@ -75,11 +71,6 @@ export interface AppDeps {
    * code). Defaults to AUTH_TEST_ACCOUNTS. Ignored when APP_ENV=prod.
    */
   testAccountSignIn?: boolean;
-  /**
-   * Pass a concrete provider for tests. Pass `null` to force manual mode.
-   * Omit to fall back to env-driven default.
-   */
-  paymentProvider?: PaymentProvider | null;
   /**
    * Stripe client for the lead's table fee. Omit to build one from
    * STRIPE_SECRET_KEY; pass `null` to leave the billing routes unmounted.
@@ -113,33 +104,6 @@ const defaultVenueResolver = (): VenueResolver =>
 const defaultNearbySearch = (): NearbySearch =>
   env.VENUE_LOOKUP === 'amazon-location' ? amazonLocationNearby(env.AWS_REGION) : noNearby;
 
-const defaultPaymentProvider = (): PaymentProvider | null => {
-  if (env.PAYMENT_PROVIDER === 'manual') return null;
-  if (env.PAYMENT_PROVIDER === 'truelayer') {
-    if (
-      !env.TRUELAYER_CLIENT_ID ||
-      !env.TRUELAYER_CLIENT_SECRET ||
-      !env.TRUELAYER_SIGNING_KID ||
-      !env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM ||
-      !env.TRUELAYER_RETURN_URI
-    ) {
-      throw new Error(
-        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_RETURN_URI',
-      );
-    }
-    return new TrueLayerSandboxProvider({
-      environment: env.TRUELAYER_ENVIRONMENT,
-      clientId: env.TRUELAYER_CLIENT_ID,
-      clientSecret: env.TRUELAYER_CLIENT_SECRET,
-      signingKid: env.TRUELAYER_SIGNING_KID,
-      signingPrivateKeyPem: env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM,
-      returnUri: env.TRUELAYER_RETURN_URI,
-    });
-  }
-  const secret = env.TRUELAYER_WEBHOOK_SECRET ?? 'local-mock-secret';
-  return new MockTrueLayerProvider(secret);
-};
-
 const defaultBillParser = (): BillParser =>
   createBillParser({
     bedrockModelId: env.BEDROCK_MODEL_ID,
@@ -168,11 +132,6 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);
   const idTokenVerifier =
     deps.idTokenVerifier ?? (env.SESSION_JWT_SECRET ? defaultIdTokenVerifier() : undefined);
-  // `paymentProvider: undefined` (omitted) → use env default (which may itself be null).
-  // `paymentProvider: null` → explicit "manual mode" override (used in tests).
-  const paymentProvider =
-    deps.paymentProvider === undefined ? defaultPaymentProvider() : deps.paymentProvider;
-
   app.use('*', requestId());
   app.use('*', requestLogger());
 
@@ -235,15 +194,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     '/v1/sessions',
     buildSessionRoutes({
       idTokenVerifier,
-      paymentProvider,
       reports: createReportService({ emailSender }),
     }),
   );
   app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
-  // No webhook route in manual mode — there's no provider sending events.
-  if (paymentProvider) {
-    app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
-  }
 
   // The lead's table fee, paid through Stripe's embedded form.
   const stripe =

@@ -40,11 +40,11 @@ tags:
   - name: sessions
     description: Group dining sessions, the join flow, and claim management
   - name: payments
-    description: Open Banking payments from participants to the collector
+    description: Guests paying the lead by bank transfer, confirmed by the lead
   - name: billing
     description: The lead's table fee, paid to Group Dine Pay through Stripe
   - name: webhooks
-    description: Server-to-server callbacks from payment providers
+    description: Server-to-server callbacks (Stripe)
   - name: ops
     description: Health and readiness probes
 
@@ -701,9 +701,8 @@ paths:
         `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
         (subsequent calls to `/by-code` will resolve it).
 
-        Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
-        those live device-local and reach guests via the join QR. The previous
-        `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
+        Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
+        reach guests via the join QR.
       responses:
         '200':
           description: Session, now in `claiming` with the join code visible
@@ -1090,12 +1089,12 @@ paths:
       description: |
         The current user must be a participant in the session, the session must be in `paying`, and the
         participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
-        record with a TrueLayer redirect URL the client should open to complete the authentication.
+        record and the details the guest pays with from their own banking app.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '201':
-          description: Payment created and authorized with TrueLayer
+          description: Payment created
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InitiatePaymentResponse' }
@@ -1109,11 +1108,6 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Session not in `paying`, or payment status not unpaid/failed
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '502':
-          description: TrueLayer error
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1149,13 +1143,9 @@ paths:
       operationId: confirmManualPayment
       summary: Collector confirms a manual payment was received
       description: |
-        Manual mode only. The collector marks a guest payment as `succeeded` after seeing
-        the funds arrive in their bank account. Idempotent — confirming a payment already
-        in `succeeded` returns the same payment unchanged. When this is the last unpaid
-        guest, the session transitions to `settled` automatically.
-
-        Rejected for `provider != manual` payments (those advance via webhook from
-        TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+        The collector marks a guest payment as `succeeded` after seeing the funds arrive in
+        their bank account. Idempotent — confirming a payment already in `succeeded` returns
+        the same payment unchanged.
       responses:
         '200':
           description: Payment, now in `succeeded`
@@ -1169,7 +1159,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
-          description: Payment is non-manual, or in a state that can't be confirmed
+          description: Payment is in a state that can't be confirmed
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1186,9 +1176,6 @@ paths:
         **Does not advance payment status** — only the lead's `/confirm` does that. This claim
         exists purely as a UX signal: the lead's session view can flag pending payments where
         the payer says they've already paid, so the lead knows which ones to confirm next.
-
-        Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
-        payments advance via webhook from TL, not via the payer self-claiming).
       responses:
         '200':
           description: Payment with `payerClaimedPaidAt` set
@@ -1283,46 +1270,6 @@ paths:
         '200': { description: Event accepted }
         '401':
           description: Invalid signature
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
-  /webhooks/truelayer:
-    post:
-      tags: [webhooks]
-      operationId: truelayerWebhook
-      summary: TrueLayer payment-status webhook
-      description: |
-        Provider-to-server callback. Authentication is via TrueLayer's `Tl-Signature` header
-        (request signing scheme) verified using TrueLayer's public JWKS. The body is provider-defined;
-        we resolve `providerPaymentId` to our `paymentId` via GSI2 and apply the state transition.
-
-        Returns `200` for accepted updates (idempotent), `401` for invalid signature, `404` if the
-        provider payment id cannot be resolved.
-      security: []
-      parameters:
-        - in: header
-          name: Tl-Signature
-          required: true
-          schema: { type: string }
-          description: TrueLayer JWS detached signature of the raw body
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Provider-defined; passed through to verification then state machine.
-      responses:
-        '200':
-          description: Update accepted
-        '401':
-          description: Signature verification failed
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '404':
-          description: providerPaymentId not found
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1446,7 +1393,6 @@ components:
                 - PARSE_TIMEOUT
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
-                - PAYOUT_ACCOUNT_REQUIRED
                 - TABLE_FEE_PAID
                 - TABLE_FEE_WAIVED
                 - INTERNAL_ERROR
@@ -1811,7 +1757,7 @@ components:
 
     PaymentStatus:
       type: string
-      enum: [pending, authorized, succeeded, failed, refunded]
+      enum: [pending, succeeded, failed]
 
     Payment:
       type: object
@@ -1823,7 +1769,6 @@ components:
           collectorUserId,
           amountPence,
           currency,
-          provider,
           status,
           createdAt,
         ]
@@ -1834,8 +1779,6 @@ components:
         collectorUserId: { type: string }
         amountPence: { type: integer, format: int64, minimum: 0 }
         currency: { type: string, enum: [GBP] }
-        provider: { type: string, enum: [truelayer, manual] }
-        providerPaymentId: { type: string }
         status: { $ref: '#/components/schemas/PaymentStatus' }
         idempotencyKey: { type: string, format: uuid }
         events:
@@ -1848,7 +1791,7 @@ components:
               at: { type: string, format: date-time }
               from: { $ref: '#/components/schemas/PaymentStatus' }
               to: { $ref: '#/components/schemas/PaymentStatus' }
-              source: { type: string, enum: [api, webhook, system] }
+              source: { type: string, enum: [api, system] }
               note: { type: string }
         createdAt: { type: string, format: date-time }
         payerClaimedPaidAt:
@@ -2032,26 +1975,11 @@ components:
 
     PaymentInstructions:
       description: |
-        Discriminated union telling the client how to actually complete the payment.
-        - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
-        - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
-          the guest pays via their own banking app, then the lead confirms receipt
-          via `POST /v1/payments/{paymentId}/confirm`.
-      oneOf:
-        - $ref: '#/components/schemas/RedirectInstructions'
+        How the guest pays: the bank details and reference to use in their own banking app,
+        plus optional Monzo/Revolut links. The lead then confirms receipt via
+        `POST /v1/payments/{paymentId}/confirm`.
+      allOf:
         - $ref: '#/components/schemas/ManualTransferInstructions'
-      discriminator:
-        propertyName: type
-        mapping:
-          redirect: '#/components/schemas/RedirectInstructions'
-          manual_transfer: '#/components/schemas/ManualTransferInstructions'
-
-    RedirectInstructions:
-      type: object
-      required: [type, url]
-      properties:
-        type: { type: string, enum: [redirect] }
-        url: { type: string, format: uri }
 
     ManualTransferInstructions:
       type: object

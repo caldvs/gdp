@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ApiError, type components } from '@gdp/core/api';
+import { type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useInitiatePayment } from '@gdp/core/api/hooks/useInitiatePayment';
 import { useMe } from '@gdp/core/api/hooks/useMe';
@@ -54,10 +54,7 @@ export default function PayPage() {
     if (due <= 0) return;
     started.current = true;
     initiate.mutate(undefined, {
-      onSuccess: (res) => {
-        if (res.instructions.type === 'manual_transfer') setInstructions(res.instructions);
-        else if (res.instructions.type === 'redirect') window.open(res.instructions.url, '_blank', 'noopener');
-      },
+      onSuccess: (res) => setInstructions(res.instructions),
     });
   }, [mine, isCreator, l, due, initiate]);
 
@@ -83,7 +80,7 @@ export default function PayPage() {
   const reference = instructions?.reference ?? (open ? `gdp-${id.slice(0, 8)}` : undefined);
   const monzo = payout.data?.monzoHandle ? monzoPayUrl(payout.data.monzoHandle, amount, reference) : null;
   const revolut = payout.data?.revolutTag ? revolutPayUrl(payout.data.revolutTag) : null;
-  const startError = initiate.error instanceof ApiError && initiate.error.code === 'PAYOUT_ACCOUNT_REQUIRED' && bd ? null : initiate.error?.message;
+  const startError = initiate.error?.message;
 
   const copy = async (key: string, text: string) => {
     if (await copyText(text)) { setCopied(key); setTimeout(() => setCopied(null), 1400); }

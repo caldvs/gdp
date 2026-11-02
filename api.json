@@ -1,6 +1,6 @@
 {
-  "sha": "c348461c1246b85a40a7cbdfbf06120687d0c549",
-  "recordedAt": "2026-11-02T16:05:00.678Z",
+  "sha": "7c877d60f18043e4e1a4419d61b6d8b07a161123",
+  "recordedAt": "2026-11-02T18:08:31.908Z",
   "total": {
     "lines": {
       "total": 2470,
@@ -21,10 +21,10 @@
       "pct": 89.83
     },
     "branches": {
-      "total": 1679,
-      "covered": 1238,
+      "total": 1681,
+      "covered": 1239,
       "skipped": 0,
-      "pct": 73.73
+      "pct": 73.7
     },
     "branchesTrue": {
       "total": 0,

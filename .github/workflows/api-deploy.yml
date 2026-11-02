@@ -33,7 +33,7 @@ concurrency:
 
 permissions:
   id-token: write # for OIDC
-  contents: read
+  contents: write # to move the api-prod tag (#80)
 
 jobs:
   deploy:
@@ -140,6 +140,17 @@ jobs:
           fn=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \
             '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
           npx tsx scripts/deps-check.ts "$fn"
+
+      # #80: mark the commit prod's API now runs. Web Deploy only puts a web
+      # build live when the API it talks to has the same API code, so a web
+      # change that needs a new route waits for this.
+      - name: Mark what prod runs (api-prod tag)
+        if: env.ENV_NAME == 'prod'
+        working-directory: .
+        run: |
+          git tag -f api-prod "$GITHUB_SHA"
+          git push -f origin refs/tags/api-prod
+          echo "Prod API now runs ${GITHUB_SHA::7} (api-prod)" >>"$GITHUB_STEP_SUMMARY"
 
       # The deploy roles' own stacks (infra/githubDeploy.ts), dev and prod,
       # from the dev job only: both live in this account. Last, so a mistake

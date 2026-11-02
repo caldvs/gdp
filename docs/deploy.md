@@ -193,8 +193,9 @@ to the page's own origin, which is right on Vercel.
 ## After the first deploy
 
 - **SES sandbox.** New SES accounts only send to verified addresses, so
-  guests can't receive sign-in codes. Request production access (SES console
-  → Account dashboard), or verify each tester's address meanwhile.
+  guests can't receive sign-in codes. `paymeback.dev` is verified and
+  production access was requested on 2 Nov 2026: see [email.md](email.md)
+  for the setup, the status and what to do once it's approved.
 - **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
 - **Bedrock model access.** Enable Claude Sonnet 4.6 in the Bedrock console
   (eu-west-2), or no bill can be read.

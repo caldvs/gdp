@@ -66,9 +66,9 @@ export class CostReportStack extends cdk.Stack {
       }),
     );
 
-    // 07:00 UTC: 7am in winter, 8am in summer.
+    // 10:00 UTC: 10am in winter, 11am in summer.
     new events.Rule(this, 'EveryMorning', {
-      schedule: events.Schedule.cron({ minute: '0', hour: '7' }),
+      schedule: events.Schedule.cron({ minute: '0', hour: '10' }),
       targets: [new targets.LambdaFunction(fn, { retryAttempts: 2 })],
     });
 

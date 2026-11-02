@@ -64,7 +64,7 @@ zones = S[nodes_start:]; del S[nodes_start:]
 # ---- Column 4: AWS services, sequential with gaps for external lines
 c4 = [
     ('ddb', 395), ('ses', 88), ('sec', 90),
-    ('gap', 'truelayer'), ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('location', 60), ('s3', 96),
+    ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('location', 60), ('s3', 96),
 ]
 y = 70; pos = {}; gaps = {}; prev = None
 for k, v in c4:
@@ -85,7 +85,7 @@ def E(*args, **kw):
 # ---- Clients
 card(40, 70, 180, 118, 'Lead diner', ['Mobile browser', 'Photographs the bill', 'Bank details kept on', 'device (ADR-0002)'], 'node key')
 card(40, 300, 180, 100, 'Guests', ['Mobile browser', 'Join by QR or code', 'Up to ~10 people'])
-card(40, 520, 180, 100, 'Guest’s bank app', ['Approves TrueLayer', 'pay-in, or manual', 'transfer to the lead'], 'node ext')
+card(40, 520, 180, 100, 'Guest’s bank app', ['Pays the lead by', 'bank transfer'], 'node ext')
 
 # ---- Frontend
 rect(290, 70, 200, 400, 'node key')
@@ -129,9 +129,9 @@ y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET
 y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify'), ('POST', '/test-sign-in')]) + 10
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10
-y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid'), ('GET', '/return')]) + 10
+y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing/table-fee', [('POST', '/'), ('GET', '/{billId}')]) + 10
-y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/truelayer'), ('POST', '/stripe')]) + 10
+y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe')]) + 10
 colA_end = y
 
 y = 308
@@ -147,12 +147,14 @@ svc = [
     ('bills', 'upload, parse, amend, image'),
     ('bills', 'parser, venueResolver'),
     ('sessions', 'allocation, joinCode, report'),
-    ('payments', 'stateMachine, provider'),
+    ('payments', 'paymentService, ledger'),
     ('billing', 'tableFee'),
     ('venues', 'nearbyVenues'),
     ('email', 'sender (SES or console)'),
     ('storage', 'one store per entity'),
 ]
+# The services list sets the floor for both columns, so it never runs into the providers strip.
+colA_end = max(colA_end, svc_top + 34 + 40 * len(svc))
 svc_h = colA_end - 10 - svc_top
 rect(BX, svc_top, BW, svc_h, 'inner', 7)
 text(BX + 12, svc_top + 21, 'Services', 't-inner')
@@ -166,8 +168,7 @@ py = colA_end
 rect(AX, py, LW - 32, LAMBDA_BOTTOM - 16 - py, 'inner', 7)
 text(AX + 12, py + 22, 'Swappable providers (env)', 't-inner')
 text(AX + 12, py + 44, 'Parser: Bedrock · fixture', 't-mono')
-text(AX + 12, py + 62, 'Payments: TrueLayer · mock · manual', 't-mono')
-text(AX + 12, py + 80, 'Email: SES · console     Venue: Location · none', 't-mono')
+text(AX + 12, py + 62, 'Email: SES · console     Venue: Location · none', 't-mono')
 
 # ---- Column 4 nodes
 def c4card(k, title, lines, cls='node'):
@@ -176,15 +177,15 @@ ddb_y, ddb_h = pos['ddb']
 rect(C4X, ddb_y, C4W, ddb_h)
 text(C4X + 16, ddb_y + 28, 'DynamoDB', 't-title')
 text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
-text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · GSI2 · TTL')
+text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# OTP#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
-                   ('JCODE#', 'Join codes'), ('PAY# PROVPAY#', 'Payments, provider index'),
+                   ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
                    ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
-c4card('sec', 'Secrets Manager + SSM', ['JWT, Stripe, TrueLayer secrets', 'read at cold start'])
+c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
@@ -194,7 +195,6 @@ c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Del
 # ---- Column 5 externals at gap y's
 def ext(key, title, lines, h=72):
     cy = gaps[key]; card(C5X, cy - h // 2, C5W, h, title, lines, 'node ext')
-ext('truelayer', 'TrueLayer', ['Open-banking pay-ins', 'Webhooks back'], 82)
 ext('stripe', 'Stripe', ['Table-fee Checkout', 'Webhooks back'], 82)
 s3y = pos['s3'][0]
 card(C5X, s3y - 10, C5W, 92, 'GitHub Actions', ['CI, e2e, typecheck', 'Deploys dev from main'], 'node ext')
@@ -215,7 +215,7 @@ E(f'M1260,{pos["cw"][0]+pos["cw"][1]} L1260,{pos["sns"][0]-2}')
 E(f'M1080,{pos["bedrock"][0]+35} L{C4X-2},{pos["bedrock"][0]+35}', [(1115, pos["bedrock"][0]+27, 'parse', 'middle')])
 E(f'M1080,{pos["location"][0]+35} L{C4X-2},{pos["location"][0]+35}', [(1115, pos["location"][0]+27, 'look up', 'middle')])
 E(f'M1080,{pos["s3"][0]+55} L{C4X-2},{pos["s3"][0]+55}', [(1115, pos["s3"][0]+47, 'SDK', 'middle')], both=True)
-for key, lab, both in [('truelayer', 'Create payment · webhooks', True), ('stripe', 'Checkout · webhooks', True)]:
+for key, lab, both in [('stripe', 'Checkout · webhooks', True)]:
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')

@@ -458,9 +458,8 @@ export interface paths {
          *     `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
          *     (subsequent calls to `/by-code` will resolve it).
          *
-         *     Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
-         *     those live device-local and reach guests via the join QR. The previous
-         *     `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
+         *     Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
+         *     reach guests via the join QR.
          */
         post: operations["shareSession"];
         delete?: never;
@@ -736,7 +735,7 @@ export interface paths {
          * Initiate a payment from the current participant to the collector
          * @description The current user must be a participant in the session, the session must be in `paying`, and the
          *     participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
-         *     record with a TrueLayer redirect URL the client should open to complete the authentication.
+         *     record and the details the guest pays with from their own banking app.
          */
         post: operations["initiatePayment"];
         delete?: never;
@@ -780,13 +779,9 @@ export interface paths {
         put?: never;
         /**
          * Collector confirms a manual payment was received
-         * @description Manual mode only. The collector marks a guest payment as `succeeded` after seeing
-         *     the funds arrive in their bank account. Idempotent — confirming a payment already
-         *     in `succeeded` returns the same payment unchanged. When this is the last unpaid
-         *     guest, the session transitions to `settled` automatically.
-         *
-         *     Rejected for `provider != manual` payments (those advance via webhook from
-         *     TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+         * @description The collector marks a guest payment as `succeeded` after seeing the funds arrive in
+         *     their bank account. Idempotent — confirming a payment already in `succeeded` returns
+         *     the same payment unchanged.
          */
         post: operations["confirmManualPayment"];
         delete?: never;
@@ -812,9 +807,6 @@ export interface paths {
          *     **Does not advance payment status** — only the lead's `/confirm` does that. This claim
          *     exists purely as a UX signal: the lead's session view can flag pending payments where
          *     the payer says they've already paid, so the lead knows which ones to confirm next.
-         *
-         *     Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
-         *     payments advance via webhook from TL, not via the payer self-claiming).
          */
         post: operations["markPaymentPaidByPayer"];
         delete?: never;
@@ -891,31 +883,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/webhooks/truelayer": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * TrueLayer payment-status webhook
-         * @description Provider-to-server callback. Authentication is via TrueLayer's `Tl-Signature` header
-         *     (request signing scheme) verified using TrueLayer's public JWKS. The body is provider-defined;
-         *     we resolve `providerPaymentId` to our `paymentId` via GSI2 and apply the state transition.
-         *
-         *     Returns `200` for accepted updates (idempotent), `401` for invalid signature, `404` if the
-         *     provider payment id cannot be resolved.
-         */
-        post: operations["truelayerWebhook"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -948,7 +915,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1252,7 +1219,7 @@ export interface components {
             myPaymentStatus: "unpaid" | "self_paid" | "pending" | "succeeded" | "failed";
         };
         /** @enum {string} */
-        PaymentStatus: "pending" | "authorized" | "succeeded" | "failed" | "refunded";
+        PaymentStatus: "pending" | "succeeded" | "failed";
         Payment: {
             /** Format: uuid */
             paymentId: string;
@@ -1264,9 +1231,6 @@ export interface components {
             amountPence: number;
             /** @enum {string} */
             currency: "GBP";
-            /** @enum {string} */
-            provider: "truelayer" | "manual";
-            providerPaymentId?: string;
             status: components["schemas"]["PaymentStatus"];
             /** Format: uuid */
             idempotencyKey?: string;
@@ -1277,7 +1241,7 @@ export interface components {
                 from: components["schemas"]["PaymentStatus"];
                 to: components["schemas"]["PaymentStatus"];
                 /** @enum {string} */
-                source: "api" | "webhook" | "system";
+                source: "api" | "system";
                 note?: string;
             }[];
             /** Format: date-time */
@@ -1416,27 +1380,13 @@ export interface components {
             instructions: components["schemas"]["PaymentInstructions"];
         };
         /**
-         * @description Discriminated union telling the client how to actually complete the payment.
-         *     - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
-         *     - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
-         *       the guest pays via their own banking app, then the lead confirms receipt
-         *       via `POST /v1/payments/{paymentId}/confirm`.
+         * @description How the guest pays: the bank details and reference to use in their own banking app,
+         *     plus optional Monzo/Revolut links. The lead then confirms receipt via
+         *     `POST /v1/payments/{paymentId}/confirm`.
          */
-        PaymentInstructions: components["schemas"]["RedirectInstructions"] | components["schemas"]["ManualTransferInstructions"];
-        RedirectInstructions: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "redirect";
-            /** Format: uri */
-            url: string;
-        };
+        PaymentInstructions: components["schemas"]["ManualTransferInstructions"];
         ManualTransferInstructions: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             type: "manual_transfer";
             /** @description The collector's bank details, when stored server-side. Omitted when they only live on the lead's device (ADR-0002); clients then use the details from the join QR fragment. */
             bankDetails?: {
@@ -2695,7 +2645,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Payment created and authorized with TrueLayer */
+            /** @description Payment created */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2718,15 +2668,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Session not in `paying`, or payment status not unpaid/failed */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description TrueLayer error */
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2799,7 +2740,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Payment is non-manual, or in a state that can't be confirmed */
+            /** @description Payment is in a state that can't be confirmed */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2940,49 +2881,6 @@ export interface operations {
             };
             /** @description Invalid signature */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    truelayerWebhook: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description TrueLayer JWS detached signature of the raw body */
-                "Tl-Signature": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
-        responses: {
-            /** @description Update accepted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Signature verification failed */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description providerPaymentId not found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

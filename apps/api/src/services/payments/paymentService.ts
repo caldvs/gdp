@@ -1,6 +1,5 @@
 import { v7 as uuidv7 } from 'uuid';
 import {
-  aggregatePayment,
   computeOwedForParticipant,
   draftOf,
   paymentsOf,
@@ -12,21 +11,17 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { billStore } from '../../storage/billStore.js';
-import { isAlreadyApplied, nextStatus } from './stateMachine.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Participant, Session } from '../../types/sessions.js';
 import type { Payment, PaymentEvent, PaymentInstructions } from '../../types/payments.js';
 import type { PayoutAccount } from '../../types/users.js';
-import type { PaymentProvider, WebhookEvent } from './provider.js';
 
 export const paymentService = {
   async initiate(input: {
     caller: VerifiedCaller;
     sessionId: string;
     idempotencyKey: string;
-    /** null = manual mode (guest pays via their own banking app, lead confirms). */
-    provider: PaymentProvider | null;
     logger?: Logger;
   }): Promise<{ payment: Payment; instructions: PaymentInstructions }> {
     const session = await sessionStore.get(input.sessionId);
@@ -65,18 +60,12 @@ export const paymentService = {
       );
     }
     // A payment opened earlier and not sent yet: reuse it if it's still
-    // for the right amount (manual: same reference and details), else
+    // for the right amount (same reference and details), else
     // close it and open one for the new amount.
     const draft = draftOf(entries);
     if (draft) {
       const old = await paymentStore.get(draft.paymentId);
-      if (
-        old &&
-        old.status === 'pending' &&
-        old.amountPence === duePence &&
-        old.provider === 'manual' &&
-        !input.provider
-      ) {
+      if (old && old.status === 'pending' && old.amountPence === duePence) {
         const collectorNow = await userStore.get(session.collectorUserId);
         return {
           payment: old,
@@ -106,50 +95,20 @@ export const paymentService = {
       entries = entries.filter((e) => e.paymentId !== draft.paymentId);
     }
 
-    // Beneficiary = the collector's saved bank details. Per ADR-0002 the
-    // lead's bank details normally live on their device and reach guests
-    // inside the join QR, so in manual mode they're optional here: if we
-    // have them we echo them back (plus Monzo/Revolut links), otherwise
-    // the client shows the details it got from the QR. A real provider
-    // (TrueLayer) needs a beneficiary, so it still requires them.
+    // The guest pays from their own banking app and the lead confirms it
+    // arrived (/confirm). Per ADR-0002 the lead's bank details normally live
+    // on their device and reach guests in the join QR: if the server has
+    // them they're echoed back (with Monzo/Revolut links), otherwise the
+    // client shows the ones from the QR.
     const collector = await userStore.get(session.collectorUserId);
-    if (input.provider && !collector?.payoutAccount) {
-      throw new AppError('PAYOUT_ACCOUNT_REQUIRED', 'Collector has no payout account on file');
-    }
-
     const paymentId = uuidv7();
     const reference = `gdp-${session.sessionId.slice(0, 8)}`;
     const amountPence = duePence;
-
-    let providerPaymentId: string;
-    let providerName: 'truelayer' | 'manual';
-    let instructions: PaymentInstructions;
-
-    if (input.provider) {
-      const initiated = await initiateOrTranslate(input.provider, {
-        paymentId,
-        amountPence,
-        currency: 'GBP',
-        payerUserId: participant.userId,
-        collectorUserId: session.collectorUserId,
-        reference,
-        beneficiary: collector!.payoutAccount!,
-      });
-      providerPaymentId = initiated.providerPaymentId;
-      providerName = input.provider.name;
-      instructions = { type: 'redirect', url: initiated.authorizationUrl };
-    } else {
-      // Manual mode: no external provider call. The "providerPaymentId" is
-      // synthetic — it just satisfies the schema. Guest pays via their own
-      // banking app; the lead drives the state transition via /confirm.
-      providerPaymentId = `manual-${paymentId}`;
-      providerName = 'manual';
-      instructions = buildManualInstructions({
-        payoutAccount: collector?.payoutAccount,
-        reference,
-        amountPence,
-      });
-    }
+    const instructions = buildManualInstructions({
+      payoutAccount: collector?.payoutAccount,
+      reference,
+      amountPence,
+    });
 
     const now = new Date().toISOString();
     const payment: Payment = {
@@ -159,8 +118,6 @@ export const paymentService = {
       collectorUserId: session.collectorUserId,
       amountPence,
       currency: 'GBP',
-      provider: providerName,
-      providerPaymentId,
       status: 'pending',
       idempotencyKey: input.idempotencyKey,
       events: [{ at: now, from: 'pending', to: 'pending', source: 'system', note: 'created' }],
@@ -183,8 +140,7 @@ export const paymentService = {
    * concurrent claims both end up with the same canonical timestamp (the
    * earlier write wins via DDB's `if_not_exists`). Doesn't advance state;
    * it's purely a UX signal so the lead knows which pending payments are
-   * awaiting confirmation. Available for any provider, but really only
-   * meaningful in manual mode (TL-mediated payments advance via webhook).
+   * awaiting confirmation.
    */
   async markPaidByPayer(input: { caller: VerifiedCaller; paymentId: string }): Promise<Payment> {
     // Read first to enforce auth + state guards. The actual write is a
@@ -233,11 +189,7 @@ export const paymentService = {
     return updated;
   },
 
-  /**
-   * Manual mode only: collector marks a guest payment as received. Drives
-   * the same DDB updates that a webhook would, plus runs session settlement.
-   * Rejected for non-manual payments — those advance via webhook only.
-   */
+  /** The collector marks a guest payment as received. */
   async confirmManual(input: {
     caller: VerifiedCaller;
     paymentId: string;
@@ -247,12 +199,6 @@ export const paymentService = {
     if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
     if (payment.collectorUserId !== input.caller.userId) {
       throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
-    }
-    if (payment.provider !== 'manual') {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        'Only manual payments can be confirmed by the collector; provider-mediated payments advance via webhook',
-      );
     }
     if (payment.status === 'succeeded') {
       // Idempotent: already confirmed.
@@ -311,108 +257,7 @@ export const paymentService = {
     }
     return payment;
   },
-
-  /**
-   * Apply a verified webhook event to the payment + participant. Returns
-   * the new payment status (or the unchanged one for replays / unknown
-   * transitions). Settlement of the session itself is handled by
-   * `maybeSettleSession` which runs after every successful payment.
-   */
-  async applyWebhookEvent(input: {
-    event: WebhookEvent;
-    logger?: Logger;
-  }): Promise<{ status: 'applied' | 'noop' | 'invalid_transition' }> {
-    const payment = await paymentStore.findByProviderPaymentId(input.event.providerPaymentId);
-    if (!payment) {
-      throw new AppError('PAYMENT_NOT_FOUND', 'Provider payment id is unknown');
-    }
-
-    if (isAlreadyApplied(payment.status, input.event.type)) {
-      input.logger?.debug({ paymentId: payment.paymentId }, 'webhook replay');
-      return { status: 'noop' };
-    }
-
-    const next = nextStatus(payment.status, input.event.type);
-    if (!next) {
-      input.logger?.warn(
-        {
-          paymentId: payment.paymentId,
-          from: payment.status,
-          eventType: input.event.type,
-        },
-        'invalid payment state transition',
-      );
-      return { status: 'invalid_transition' };
-    }
-
-    const session = await sessionStore.get(payment.sessionId);
-    if (!session) {
-      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    }
-    const participant = session.participants.find((p) => p.userId === payment.payerUserId);
-    if (!participant) {
-      throw new AppError('SESSION_NOT_FOUND', 'Participant not found');
-    }
-
-    const now = new Date().toISOString();
-    const event: PaymentEvent = {
-      at: now,
-      from: payment.status,
-      to: next,
-      source: 'webhook',
-      note: input.event.reason ?? input.event.type,
-    };
-
-    const updatedPayment: Payment = {
-      ...payment,
-      status: next,
-      events: [...payment.events, event],
-    };
-
-    const entries = paymentsOf(participant, payment.amountPence);
-    const prev = entries.find((e) => e.paymentId === payment.paymentId) ?? {
-      paymentId: payment.paymentId,
-      amountPence: payment.amountPence,
-    };
-    // A refund takes the payment off the guest's list, so it's owed again.
-    const remaining = entries.filter((e) => e.paymentId !== payment.paymentId);
-    const updatedParticipant: Participant =
-      next === 'refunded'
-        ? { ...participant, payments: remaining, payment: aggregatePayment(remaining) }
-        : withPayment(participant, entries, {
-            ...prev,
-            status: next === 'succeeded' ? 'succeeded' : next === 'failed' ? 'failed' : 'pending',
-            ...(next === 'succeeded' ? { paidAt: now } : {}),
-            ...(next === 'failed' ? { reason: input.event.reason ?? 'failed' } : {}),
-          });
-
-    await paymentStore.applyUpdate({
-      payment: updatedPayment,
-      participant: updatedParticipant,
-    });
-
-    if (next === 'succeeded') {
-      maybeSettleSession(
-        { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
-        input.logger,
-      );
-    }
-
-    return { status: 'applied' };
-  },
 };
-
-async function initiateOrTranslate(
-  provider: PaymentProvider,
-  args: Parameters<PaymentProvider['initiate']>[0],
-): Promise<Awaited<ReturnType<PaymentProvider['initiate']>>> {
-  try {
-    return await provider.initiate(args);
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    throw new AppError('PAYMENT_PROVIDER_ERROR', 'Payment provider error during initiate');
-  }
-}
 
 function replaceParticipant(participants: Participant[], updated: Participant): Participant[] {
   return participants.map((p) => (p.userId === updated.userId ? updated : p));

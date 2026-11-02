@@ -40,7 +40,6 @@ const buildApp = () =>
   createApp({
     idTokenVerifier: fakeVerifier,
     billParser: new FixtureBillParser(parsed),
-    paymentProvider: null, // manual transfers, as in production today
   });
 type App = ReturnType<typeof buildApp>;
 

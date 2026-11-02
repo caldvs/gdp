@@ -12,7 +12,6 @@ const setup = (exempt: string) => {
     emailSender: { provider: 'none', send },
     sessionJwtSecret: SECRET,
     idTokenVerifier: createSessionTokenVerifier(SECRET),
-    paymentProvider: null,
     exemptEmails: exempt,
   });
   const start = (email: string) =>

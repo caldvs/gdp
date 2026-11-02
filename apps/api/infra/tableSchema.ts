@@ -14,9 +14,5 @@ export const tableSchema = {
       partitionKey: 'GSI1PK',
       sortKey: 'GSI1SK',
     },
-    {
-      indexName: 'GSI2',
-      partitionKey: 'GSI2PK',
-    },
   ],
 } as const;

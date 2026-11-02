@@ -1,7 +1,6 @@
 import {
   GetCommand,
   PutCommand,
-  QueryCommand,
   TransactWriteCommand,
   UpdateCommand,
   type TransactWriteCommandInput,
@@ -15,14 +14,22 @@ const SESSION_TTL_DAYS = 30;
 const paymentPk = (paymentId: string) => `PAY#${paymentId}`;
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const partSk = (userId: string) => `PART#${userId}`;
-const provIdx = (providerPaymentId: string) => `PROVPAY#${providerPaymentId}`;
 const userIdx = (userId: string) => `USER#${userId}`;
 
 const ttlEpochSeconds = (): number =>
   Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
 
+// Rows written before TrueLayer was removed also carry GSI2PK, provider
+// and providerPaymentId; drop them so every payment reads the same.
 const stripKeys = (item: Record<string, unknown>): Record<string, unknown> => {
-  const { pk: _pk, sk: _sk, GSI2PK: _gsi, ...rest } = item;
+  const {
+    pk: _pk,
+    sk: _sk,
+    GSI2PK: _gsi,
+    provider: _provider,
+    providerPaymentId: _providerPaymentId,
+    ...rest
+  } = item;
   return rest;
 };
 
@@ -34,7 +41,6 @@ export const paymentStore = {
         Item: {
           pk: paymentPk(payment.paymentId),
           sk: paymentPk(payment.paymentId),
-          GSI2PK: provIdx(payment.providerPaymentId),
           ...payment,
         },
       }),
@@ -52,24 +58,9 @@ export const paymentStore = {
     return stripKeys(result.Item) as Payment;
   },
 
-  async findByProviderPaymentId(providerPaymentId: string): Promise<Payment | null> {
-    const result = await ddb.send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        IndexName: 'GSI2',
-        KeyConditionExpression: 'GSI2PK = :pk',
-        ExpressionAttributeValues: { ':pk': provIdx(providerPaymentId) },
-        Limit: 1,
-      }),
-    );
-    if (!result.Items || result.Items.length === 0) return null;
-    return stripKeys(result.Items[0]!) as Payment;
-  },
-
   /**
    * Atomically update a payment's status and the matching participant row.
-   * Used both at initiate-time (pending → registered) and on every webhook
-   * event so the two views can never disagree.
+   * Used at initiate and on confirm so the two views can never disagree.
    */
   async applyUpdate(input: { payment: Payment; participant: Participant }): Promise<void> {
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
@@ -79,7 +70,6 @@ export const paymentStore = {
           Item: {
             pk: paymentPk(input.payment.paymentId),
             sk: paymentPk(input.payment.paymentId),
-            GSI2PK: provIdx(input.payment.providerPaymentId),
             ...input.payment,
           },
         },

@@ -116,33 +116,6 @@ class GdpBackendStack extends cdk.Stack {
     const secretSources: Record<string, string> = {
       SESSION_JWT_SECRET: `gdp-${envName}/session-jwt-secret`,
     };
-    // TrueLayer (pay-by-bank) is off: PAYMENT_PROVIDER is `manual`. Its
-    // settings are only used with TRUELAYER_ENABLED=true (a GitHub
-    // environment variable, or `-c truelayer=true` locally), so a new
-    // environment doesn't need placeholder TrueLayer secrets to deploy.
-    const trueLayerEnabled =
-      process.env.TRUELAYER_ENABLED === 'true' || this.node.tryGetContext('truelayer') === 'true';
-    const trueLayerEnv: Record<string, string> = trueLayerEnabled
-      ? {
-          TRUELAYER_CLIENT_ID: ssm.StringParameter.valueForStringParameter(
-            this,
-            `/gdp-${envName}/truelayer-client-id`,
-          ),
-          TRUELAYER_SIGNING_KID: ssm.StringParameter.valueForStringParameter(
-            this,
-            `/gdp-${envName}/truelayer-signing-kid`,
-          ),
-          TRUELAYER_ENVIRONMENT: 'sandbox',
-        }
-      : {};
-    if (trueLayerEnabled) {
-      Object.assign(secretSources, {
-        TRUELAYER_CLIENT_SECRET: `gdp-${envName}/truelayer-client-secret`,
-        TRUELAYER_WEBHOOK_SECRET: `gdp-${envName}/truelayer-webhook-secret`,
-        TRUELAYER_SIGNING_PRIVATE_KEY_PEM: `gdp-${envName}/truelayer-signing-private-key`,
-      });
-    }
-
     // Stripe (the lead's table fee) is off until its secrets exist. Turn it on with
     // STRIPE_ENABLED=true (a GitHub environment variable the deploy
     // workflow passes through, or `-c stripe=true` locally) once
@@ -203,12 +176,6 @@ class GdpBackendStack extends cdk.Stack {
         VENUE_LOOKUP: 'amazon-location',
         SES_FROM_EMAIL: sesFromEmail,
 
-        ...trueLayerEnv,
-        // `manual` = guests pay the lead via their own banking app (Monzo/
-        // Revolut deep links if available, raw sort+account otherwise),
-        // lead confirms receipt manually. Free of TrueLayer fees. Switch
-        // to `truelayer` once TL Live commercial onboarding is in place.
-        PAYMENT_PROVIDER: 'manual',
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
         // Leads who never pay the table fee: a comma list from the GitHub
         // environment (secret or variable TABLE_FEE_EXEMPT_EMAILS).
@@ -366,14 +333,6 @@ class GdpBackendStack extends cdk.Stack {
       // The CNAME to add in Vercel DNS: <api name> → this value.
       new cdk.CfnOutput(this, 'ApiDomainTargetOutput', { value: domainName.regionalDomainName });
       new cdk.CfnOutput(this, 'ApiDomainUrlOutput', { value: `https://${apiDomain}` });
-    }
-
-    // The TrueLayer return URL has to match what's registered in the Console.
-    // We resolve it from the API endpoint so a stack re-create still produces
-    // a coherent value in the Lambda env — but the Console-side URL must be
-    // updated by hand if the API endpoint ever changes.
-    if (trueLayerEnabled) {
-      fn.addEnvironment('TRUELAYER_RETURN_URI', `${httpApi.apiEndpoint}/v1/payments/return`);
     }
 
     // ---------------- Observability: alarms ----------------

@@ -28,7 +28,6 @@ const buildApp = (emailSender: EmailSender) =>
   createApp({
     idTokenVerifier: fakeVerifier,
     billParser: new FixtureBillParser(sampleParsedBill),
-    paymentProvider: null,
     emailSender,
   });
 

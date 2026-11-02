@@ -15,7 +15,6 @@ const buildApp = () =>
   createApp({
     idTokenVerifier: fakeVerifier,
     billParser: new FixtureBillParser(sampleParsedBill),
-    paymentProvider: null, // manual mode
   });
 
 const initiate = async (

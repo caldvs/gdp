@@ -10,7 +10,7 @@ import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
 import { rememberReturnTo } from '@/lib/signInReturn';
 import Link from 'next/link';
-import { Box, Button, Notice, Page, Row, Section, Title } from '@/components/ui';
+import { Avatar, BankIcon, Button, CameraIcon, Notice, Page, QrIcon, TickIcon, Title } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'WAITING';
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
@@ -81,23 +81,67 @@ function Landing() {
   }
 
   return (
-    <Page>
-      <Title title="Split the bill, get paid back" sub="Scan the bill. Friends pick what they had and pay you by bank transfer." />
-      <Box>
-        <Row title="1. Scan the bill" sub="We read the items and prices." />
-        <Row title="2. Share a code with the table" sub="Friends open it on their phones." />
-        <Row title="3. Everyone pays you back" sub="Straight to your bank account." />
-      </Box>
-      <Section title="Sign in or create an account">
-        <EmailLinkFlow cta="Email me a link" />
-      </Section>
-      <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
-      <nav className="legal-links" aria-label="Legal">
-        <Link href="/terms">Terms</Link>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/refunds">Refunds</Link>
-      </nav>
-    </Page>
+    <main className="land">
+      <section className="land__hero">
+        <div className="land__intro">
+          <h1 className="land__h">Split the bill, <span className="land__em">get paid back</span></h1>
+          <p className="land__sub">Snap the bill. Friends tap what they had and pay you back.</p>
+          <div className="land__card">
+            <h2 className="land__card-h">Sign in or create an account</h2>
+            <EmailLinkFlow cta="Email me a link" />
+          </div>
+          <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
+        </div>
+        <BillPreview />
+      </section>
+      <ol className="land__steps" aria-label="How it works">
+        <li><span className="land__icon"><CameraIcon /></span>Scan the bill</li>
+        <li><span className="land__icon"><QrIcon /></span>Share the code</li>
+        <li><span className="land__icon"><BankIcon /></span>Get paid back</li>
+      </ol>
+      <footer className="land__foot">
+        <nav className="legal-links" aria-label="Legal">
+          <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/refunds">Refunds</Link>
+        </nav>
+      </footer>
+    </main>
+  );
+}
+
+const PREVIEW: { item: string; price: string; who: string[] }[] = [
+  { item: 'Margherita', price: '£12.50', who: ['Sam'] },
+  { item: 'Garlic bread', price: '£5.50', who: ['Priya', 'Tom'] },
+  { item: 'Peroni ×2', price: '£11.00', who: ['Tom'] },
+  { item: 'Tiramisu', price: '£6.50', who: [] },
+];
+
+/** A made-up bill mid-split: who had what, and a payment landing. Decoration only. */
+function BillPreview() {
+  return (
+    <div className="land__art" aria-hidden="true">
+      <div className="land__bill">
+        <div className="land__bill-head">
+          <b>Table 12</b>
+          <span>£35.50</span>
+        </div>
+        {PREVIEW.map((r) => (
+          <div key={r.item} className="land__bill-row">
+            <span className="land__who">
+              {r.who.length ? r.who.map((n) => <Avatar key={n} name={n} sm />) : <span className="land__nobody" />}
+            </span>
+            <span className="land__item">{r.item}</span>
+            <span className="land__price">{r.price}</span>
+          </div>
+        ))}
+      </div>
+      <div className="land__paid">
+        <span className="land__paid-tick"><TickIcon size={16} /></span>
+        <span>Sam paid you</span>
+        <b>£12.50</b>
+      </div>
+    </div>
   );
 }
 

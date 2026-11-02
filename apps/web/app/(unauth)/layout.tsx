@@ -23,7 +23,7 @@ export default function UnauthLayout({ children }: { children: React.ReactNode }
   return (
     <div className="app">
       <TestBar open reload={false} />
-      <Header />
+      <Header wide />
       <Suspense fallback={<Centre><Spinner /></Centre>}>
         <UnauthGate>{children}</UnauthGate>
       </Suspense>

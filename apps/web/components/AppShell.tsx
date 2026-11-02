@@ -12,10 +12,10 @@ import { Button, Centre, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
 import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
-export function Header({ onMenu, menuOpen }: { onMenu?: () => void; menuOpen?: boolean }) {
+export function Header({ onMenu, menuOpen, wide }: { onMenu?: () => void; menuOpen?: boolean; wide?: boolean }) {
   return (
     <header className="hdr">
-      <div className="hdr__in">
+      <div className={wide ? 'hdr__in hdr__in--wide' : 'hdr__in'}>
         <Link href="/" className="brand">
           <span className="brand__mark" aria-hidden>G</span>
           Group Dine Pay

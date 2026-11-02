@@ -309,6 +309,62 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .demo-banner__tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 1px; }
 .demo-banner__close { margin-left: auto; background: none; border: 0; color: inherit; font-size: 18px; line-height: 1; opacity: .7; }
 
+/* ============ Landing (signed out) ============
+   Wider than the app column: intro and sign-in on the left, a made-up bill
+   mid-split on the right; one column on phones with the form first. */
+.hdr__in--wide { max-width: calc(1040px + 2 * var(--gutter)); }
+.land { --land: 1040px; flex: 1; width: 100%; max-width: calc(var(--land) + 2 * var(--gutter)); margin: 0 auto; padding: 32px var(--gutter) calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 48px; }
+.land__hero { display: grid; gap: 40px; align-items: center; }
+.land__intro { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.land__h { font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; }
+.land__em { color: var(--accent); }
+.land__sub { font-size: 18px; line-height: 1.45; color: var(--mute); max-width: 30em; }
+.land__card { display: flex; flex-direction: column; gap: 16px; padding: 20px; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: 0 1px 2px rgba(31,35,40,.06), 0 8px 24px rgba(31,35,40,.06); }
+.land__card-h { font-size: 17px; font-weight: 600; }
+
+/* The bill picture. */
+.land__art { position: relative; padding: 28px 20px 44px; border-radius: 20px; background: linear-gradient(160deg, #e1eafb 0%, #edf2fb 100%); }
+.land__bill { max-width: 360px; margin: 0 auto; background: var(--bg); border-radius: var(--radius-card) var(--radius-card) 0 0; padding: 18px 18px 26px; display: flex; flex-direction: column; filter: drop-shadow(0 10px 24px rgba(31,35,40,.10)) drop-shadow(0 1px 2px rgba(31,35,40,.08));
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 9px repeat-x;
+          mask: linear-gradient(#000 0 0) top / 100% calc(100% - 9px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / 18px 9px repeat-x; }
+.land__bill-head { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px dashed var(--line-strong); font-variant-numeric: tabular-nums; }
+.land__bill-head b { font-size: 17px; }
+.land__bill-head span { color: var(--mute); font-size: 15px; }
+.land__bill-row { display: flex; align-items: center; gap: 12px; min-height: 48px; font-size: 15px; }
+.land__bill-row + .land__bill-row { border-top: 1px solid var(--line); }
+.land__who { flex: none; width: 40px; display: inline-flex; }
+.land__who .avatar { animation: none; }
+.land__who .avatar + .avatar { margin-left: -6px; }
+.land__who .avatar:first-child { background: var(--accent); border-color: var(--accent); color: #fff; }
+.land__who .avatar + .avatar { background: #e6f4ea; border-color: var(--ok-line); color: var(--ok-ink); }
+.land__nobody { width: 24px; height: 24px; border-radius: 50%; border: 1.5px dashed var(--line-strong); }
+.land__item { flex: 1; min-width: 0; }
+.land__price { font-variant-numeric: tabular-nums; }
+.land__bill-row:last-child { color: var(--mute); }
+.land__paid { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; white-space: nowrap; padding: 10px 14px; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: 0 8px 24px rgba(31,35,40,.12); font-size: 15px; }
+.land__paid b { font-variant-numeric: tabular-nums; margin-left: 4px; }
+.land__paid-tick { width: 26px; height: 26px; border-radius: 50%; background: var(--ok-ink); color: #fff; display: inline-flex; align-items: center; justify-content: center; }
+
+/* How it works: three icons, three words each. */
+.land__steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.land__steps li { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 8px; text-align: center; font-size: 15px; font-weight: 600; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
+.land__icon { width: 44px; height: 44px; border-radius: 12px; background: #e8f0fe; color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.land__icon svg { width: 22px; height: 22px; }
+.land__foot { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+
+@media (min-width: 880px) {
+  .land { padding-top: 64px; gap: 64px; }
+  .land__hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; }
+  .land__intro { max-width: 460px; }
+  .land__h { font-size: 48px; }
+  .land__sub { font-size: 19px; }
+  .land__card { padding: 24px; }
+  .land__art { padding: 48px 32px 64px; }
+  .land__paid { left: auto; right: 8px; bottom: 28px; transform: none; }
+  .land__steps { gap: 20px; }
+  .land__steps li { flex-direction: row; justify-content: center; gap: 14px; padding: 20px; font-size: 16px; }
+}
+
 /* ============ Legal pages (terms, privacy, refunds) ============ */
 .legal { gap: 20px; }
 .legal section { display: flex; flex-direction: column; gap: 8px; }

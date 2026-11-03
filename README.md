@@ -2,6 +2,8 @@
 
 Snap the bill, share a QR, claim what you had, pay the lead direct. Guests don't install anything.
 
+Live at **[paymeback.dev](https://paymeback.dev)**; the test site is [test.paymeback.dev](https://test.paymeback.dev).
+
 A web app (mobile-first) and its API, in one npm workspaces repo.
 
 ```

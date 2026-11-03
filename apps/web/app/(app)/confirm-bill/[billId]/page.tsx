@@ -10,7 +10,6 @@ import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
-import { answersForBill, spendAnswer, type ScanVenue } from '@gdp/core/lib/scanAnswers';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
   ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalLine, Totals,
@@ -78,7 +77,6 @@ function CheckBill() {
   const [venueName, setVenueName] = useState('');
   // A place the lead picked while the bill was read (#61): its ID and
   // address go with the name, as long as the name isn't changed.
-  const [venuePick, setVenuePick] = useState<ScanVenue | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
@@ -86,16 +84,6 @@ function CheckBill() {
   useEffect(() => {
     if (bill.data && !hydrated) {
       hydrateFrom(bill.data);
-      // #61: where the lead said they were beats what was printed. Used
-      // once: the autosave below sends it as the bill's venue.
-      const said = !isMidSession && billId ? answersForBill(billId)?.venue : undefined;
-      if (said && billId) {
-        if (said.name !== bill.data.venue?.name || (said.placeId && said.placeId !== bill.data.venue?.placeId)) {
-          setVenueName(said.name);
-          setVenuePick(said);
-        }
-        spendAnswer(billId, 'venue');
-      }
       setHydrated(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -121,13 +109,12 @@ function CheckBill() {
     if (!b) return false;
     if (b.items.length !== items.length || b.serviceChargePence !== servicePence || b.taxPence !== taxPence) return true;
     if (venueName.trim() && venueName.trim() !== (b.venue?.name ?? '')) return true;
-    if (venuePick?.placeId && venuePick.name === venueName.trim() && venuePick.placeId !== b.venue?.placeId) return true;
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
         parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
-  }, [bill.data, items, servicePence, taxPence, venueName, venuePick]);
+  }, [bill.data, items, servicePence, taxPence, venueName]);
 
   // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
@@ -168,9 +155,7 @@ function CheckBill() {
     serviceChargePence: servicePence,
     ...(venueName.trim()
       ? {
-          venue: venuePick && venuePick.name === venueName.trim()
-            ? { name: venuePick.name, ...(venuePick.placeId ? { placeId: venuePick.placeId } : {}), ...(venuePick.address ? { address: venuePick.address } : {}) }
-            : { name: venueName.trim() },
+          venue: { name: venueName.trim() },
         }
       : {}),
   });
@@ -196,10 +181,7 @@ function CheckBill() {
       }
     }
     try {
-      // #61: how many are eating, if the lead said while the bill was read.
-      const expectedDiners = answersForBill(billId)?.expectedDiners;
-      const created = await createSession.mutateAsync({ billId, ...(expectedDiners !== undefined ? { expectedDiners } : {}) });
-      spendAnswer(billId, 'expectedDiners');
+      const created = await createSession.mutateAsync({ billId });
       await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
       router.replace(`/session/${created.sessionId}/share`);
     } catch (err) {
@@ -226,8 +208,8 @@ function CheckBill() {
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
-  // #65: nothing on the photo names the place: ask at the top instead of a link.
-  const noVenue = !b.venue?.name && items.length > 0;
+  // #136: nothing on the photo names the place: none is shown, or asked.
+  const noVenue = !b.venue?.name;
   const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
@@ -259,25 +241,6 @@ function CheckBill() {
 
         {editing === 'venue' ? (
           <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />
-        ) : null}
-        {noVenue ? (
-          <div className="field">
-            <label htmlFor="venue-where">Where was this?</label>
-            <input
-              id="venue-where"
-              className="input"
-              value={venueName}
-              maxLength={80}
-              placeholder="Name of the place"
-              aria-describedby="venue-where-hint"
-              // Saves when they leave the field (the autosave waits while editing).
-              onFocus={() => setEditing('venue-field')}
-              onBlur={() => setEditing(null)}
-              onChange={(e) => setVenueName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            />
-            <span id="venue-where-hint" className="field__hint">Not on the photo. Shown to everyone.</span>
-          </div>
         ) : null}
 
         {noTotal ? (

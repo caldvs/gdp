@@ -27,8 +27,7 @@ export function PendingReadRow({ sessionBillIds }: { sessionBillIds: string[] | 
 
   if (!pending || listed) return null;
   if (billId) {
-    // Back to the reading page: its questions, then Review bill (#135).
-    return <RowLink href={`/reading/${pending.readId}`} card strong title="Bill read" sub="Check it, then share" end={<Badge tone="ok">Ready</Badge>} />;
+    return <RowLink href={`/confirm-bill/${billId}`} card strong title="Bill read" sub="Check it, then share" end={<Badge tone="ok">Ready</Badge>} />;
   }
   if (read.data?.status === 'failed' || read.isError) {
     return <RowLink href={`/reading/${pending.readId}`} card strong title="Couldn’t read your bill" sub="Try again" end={<Badge tone="warn">Failed</Badge>} />;

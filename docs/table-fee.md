@@ -9,8 +9,10 @@ The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it, *Cont
 1. On the bill page, *Pay £x fee & get QR code* re-checks the fee with the API (an edit may have crossed £100) and goes to `/table-fee/<billId>` if it's unpaid.
 2. `POST /v1/billing/table-fee` checks the bill is the caller's and unpaid, picks the price by lookup key (`table_fee_2` or `table_fee_3`), and creates a Checkout Session with `client_reference_id` and `metadata.billId`.
 3. The page mounts the form. Cards and wallets finish in place; anything that needs a redirect comes back to the same page with `?session_id=`.
-4. Stripe calls `POST /webhooks/stripe`. After the signature check, `checkout.session.completed` with `payment_status: paid` writes `FEE#<billId>` (once; repeats write nothing). The row has no TTL: it's a tax record.
+4. Stripe calls `POST /webhooks/stripe`. After the signature check, `checkout.session.completed` with `payment_status: paid` writes `FEE#<billId>` (once; repeats write nothing; a refunded fee can be replaced by a new payment). The row has no TTL: it's a tax record.
 5. The page polls `GET /v1/billing/table-fee/<billId>?session_id=<cs_…>` until it's `paid`, then continues to the QR. If the webhook hasn't landed, the API asks Stripe about that Checkout Session and records the fee itself when it's the caller's, for this bill, and paid. So a late or missing webhook (locally, no `stripe listen`) no longer leaves the page spinning. After 30 seconds unpaid the page stops polling and offers *Check again*.
+
+**Refunds** (the Refunds page: "If nobody joins the bill before you close it or bin it, we refund the fee to your card"). After `POST /v1/sessions/{id}/close` or `/abandon`, if nobody but the lead is in the session and the bill has a paid fee, the API refunds the whole payment in Stripe (idempotency key `table-fee-refund-<checkout session>`) and writes `refundId` and `refundedAt` on the `FEE#` row (once). Closing or binning never fails because of a refund: a Stripe error is logged as `table_fee.refund_failed` and the next close or bin tries again. A refunded fee counts as unpaid, so sharing that bill again costs a new fee; a resent webhook for the refunded payment writes nothing. The "email us" cases on the Refunds page stay manual. Tests: `tableFee.test.ts` (*refund policy*) and `tests/integration/table-fee-refund.test.ts`.
 
 **Exempt leads.** An email on `TABLE_FEE_EXEMPT_EMAILS` gets status `waived` (£0): *Continue* goes straight to the QR, and `POST /v1/billing/table-fee` refuses with `TABLE_FEE_WAIVED`. The same addresses sign in without a code (`/v1/auth/email/start` returns the session). A fee paid before the address was added still shows as `paid`.
 
@@ -41,5 +43,5 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 - [ ] One free bill a month per lead.
 - [ ] The server doesn't require the fee yet: `POST /v1/sessions/{id}/share` (the QR) should need a paid fee or the month's free bill. Everything before it (scan, check, edit, bank details) stays free.
 - [ ] Guests repay their share of the fee in what they owe, shown as "App fee".
-- [ ] Refund automatically when a bill is closed or abandoned before anyone joins.
+- [x] Refund automatically when a bill is closed or abandoned before anyone joins (API). Not shown on screen yet (#132).
 - [ ] e2e: stub the form in `FakeApi` and cover pay → share.

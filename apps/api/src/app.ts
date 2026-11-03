@@ -192,15 +192,6 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       }),
     }),
   );
-  app.route(
-    '/v1/sessions',
-    buildSessionRoutes({
-      idTokenVerifier,
-      reports: createReportService({ emailSender }),
-    }),
-  );
-  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
-
   // The lead's table fee, paid through Stripe's embedded form.
   const stripe =
     deps.stripe === undefined
@@ -208,14 +199,27 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         ? new Stripe(env.STRIPE_SECRET_KEY)
         : null
       : deps.stripe;
-  if (stripe) {
-    const tableFees = createTableFeeService({
-      stripe,
-      store: deps.tableFeeStore ?? defaultTableFeeStore,
-      getBill: (billId) => billStore.getLatest(billId),
-      appBaseUrl: env.APP_BASE_URL,
-      exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
-    });
+  const tableFees = stripe
+    ? createTableFeeService({
+        stripe,
+        store: deps.tableFeeStore ?? defaultTableFeeStore,
+        getBill: (billId) => billStore.getLatest(billId),
+        appBaseUrl: env.APP_BASE_URL,
+        exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
+      })
+    : null;
+
+  app.route(
+    '/v1/sessions',
+    buildSessionRoutes({
+      idTokenVerifier,
+      reports: createReportService({ emailSender }),
+      ...(tableFees ? { tableFees } : {}),
+    }),
+  );
+  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
+
+  if (stripe && tableFees) {
     app.route('/v1/billing', buildBillingRoutes({ idTokenVerifier, tableFees }));
     const webhookSecret = deps.stripeWebhookSecret ?? env.STRIPE_WEBHOOK_SECRET;
     if (webhookSecret) {

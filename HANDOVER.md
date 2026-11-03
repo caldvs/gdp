@@ -2,7 +2,7 @@
 
 _Where the work is right now. Rewrite this when you finish something; don't append history._
 
-_Last updated 2 Nov 2026._
+_Last updated 3 Nov 2026._
 
 ## State of main
 
@@ -25,11 +25,12 @@ _Last updated 2 Nov 2026._
 - **Environments** are named everywhere: `APP_ENV` (API: local | dev | prod; Lambdas run `NODE_ENV=production`) and `NEXT_PUBLIC_APP_ENV` (web). The web build fails without an API URL or with the wrong kind of Stripe key, and the dependency check fails on a Stripe secret key of the wrong mode. See the Environments table in [docs/deploy.md](docs/deploy.md).
 - **Scanning:** *Scan a bill* opens our own camera (`Camera.tsx`: back camera, bill-shaped guide, gallery, torch where supported), falling back to the phone's camera app when there's no camera API or access is refused. Every photo is shown as *All in?* (*Retake* / *Use photo*) before anything uploads. Not yet tried on a real iPhone and Android phone with a long receipt: if small print reads worse than with the phone's own camera, raise the resolution.
 - **Look** (#127, the redesign board): pale grey page, white cards, Plus Jakarta Sans via `next/font`, coral `#D42A55` for the main button and the logo (a coin whose £ rolls through €, $ and ¥), black links and outline buttons; tokens in `apps/web/app/globals.css`. Emails use the same coral. **Storybook** in `apps/web`: `npm run storybook -w apps/web` (port 6006); stories in `apps/web/stories/` cover `ui.tsx`, the forms, the header, the join QR and three screens. Not run in CI.
+- **Table fee refunds** (#132, API only): closing or binning a bill nobody joined refunds the fee in Stripe and marks the `FEE#` row refunded; the bill can then be shared again for a new fee. A failed refund doesn't block the close: it's logged as `table_fee.refund_failed` and retried on the next close or bin. Not shown on screen yet. See [docs/table-fee.md](docs/table-fee.md).
 - **Exempt accounts:** emails in the GitHub environment's `TABLE_FEE_EXEMPT_EMAILS` (secret or variable, comma separated) skip the table fee (status `waived`) and sign in with no link (`/email/start` returns the session). Set it on `dev` and `prod`; it applies from the next API deploy.
 
 ## Next up
 
-**Redesign** (board: the "Pay Me Back redesign" artifact), tracked as #127–#133: 1 look (done), the signed-out homepage #133 (done: H1/H3 with the sign-in card kept on the page), 2 wording (platform fee, credits), 3 the QR builds in, 4 claiming by portion with Split (API first), 5 the lead's Your items / The table tabs and a plain statement, 6 refund the fee if nobody joins.
+**Redesign** (board: the "Pay Me Back redesign" artifact), tracked as #127–#133: 1 look (done), the signed-out homepage #133 (done: H1/H3 with the sign-in card kept on the page), 2 wording (platform fee, credits), 3 the QR builds in, 4 claiming by portion with Split (API first), 5 the lead's Your items / The table tabs and a plain statement, 6 refund the fee if nobody joins (API done; left: show it on the close screen and in fees, and decide whether a time limit also refunds).
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: dev and prod each paired across Vercel, AWS and Stripe. Phases 1, 2 and 4 are done, and Production is on the prod API (#78). **Domain:** `paymeback.dev` (DNS on Vercel) serves Production, `test.paymeback.dev` serves the `preview` branch. API CORS is now an allow-list per stage (`src/config/allowedOrigins.ts`), and CDK adds `api.paymeback.dev` / `api.test.paymeback.dev` once the ACM certificates exist (by hand: docs/deploy.md, _Domains_). SES is out of the sandbox and sends from `noreply@paymeback.dev` ([docs/email.md](docs/email.md)). Then: Stripe live (#79). Prod alerts have no subscriber yet (#81).
 

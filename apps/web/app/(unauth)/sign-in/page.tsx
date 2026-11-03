@@ -117,12 +117,17 @@ function Landing() {
       </section>
 
       <section id="pricing" className="home__pricing" aria-labelledby="price-h">
-        <h2 id="price-h" className="home__h2">Pricing</h2>
-        <p className="home__sub">The person who pays the bill covers a small fee. Friends pay it back inside what they owe.</p>
-        <div className="home__prices">
-          <div className="home__price"><span>First bill each month</span><b>Free</b></div>
-          <div className="home__price"><span>Every bill after that</span><b>£2</b><span>£3 when the bill is over £100</span></div>
+        <div className="home__pricing-text">
+          <h2 id="price-h" className="home__h2">One free bill a month</h2>
+          <p className="home__sub">The person who pays covers a small fee. Friends pay it back in what they owe.</p>
+          <ul className="home__key">
+            <li><span className="home__key-mark" aria-hidden="true"><Ring width={44} height={30} /></span><span><b>Free</b> · your first bill each month</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£2</span></span><span>every bill after that</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£3</span></span><span>when the bill is over £100</span></li>
+            <li><span className="home__key-mark" aria-hidden="true"><span className="home__dot" /></span><span>a new free bill on the 1st</span></li>
+          </ul>
         </div>
+        <ExampleMonth />
       </section>
 
       <footer className="home__foot">
@@ -210,6 +215,89 @@ function ExampleBill() {
   );
 }
 
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+type Meal = 'std' | 'big';
+
+/** The hand-drawn circle round the free bill. */
+function Ring({ width, height, className }: { width: number; height: number; className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" width={width} height={height} viewBox="0 0 60 58" preserveAspectRatio="none">
+      <path d="M37 5C18 3 4 14 5 30c1 15 15 23 29 22 16-1 23-12 21-26C53 13 42 4 25 8" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/**
+ * This month as a calendar with three made-up meals: the first is circled
+ * as free, the rest show their fee. Tapping a day adds a meal, again makes
+ * it a bill over £100, and again takes it away. The page is prerendered,
+ * so the month is only filled in once it's in the visitor's browser.
+ */
+function ExampleMonth() {
+  const [month, setMonth] = useState<{ y: number; m: number } | null>(null);
+  const [meals, setMeals] = useState<Record<number, Meal>>({ 6: 'std', 14: 'std', 21: 'big' });
+  useEffect(() => {
+    const now = new Date();
+    setMonth({ y: now.getFullYear(), m: now.getMonth() });
+  }, []);
+
+  const days = Object.keys(meals).map(Number).sort((a, b) => a - b);
+  const first = days[0];
+  const fees = days.reduce((sum, d) => sum + (d === first ? 0 : meals[d] === 'big' ? 3 : 2), 0);
+  const summary = days.length === 0 ? 'No bills yet' : days.length === 1 ? '1 bill · free' : `${days.length} bills · £${fees} in fees`;
+  const cycle = (d: number) => setMeals((prev) => {
+    const next = { ...prev };
+    if (!prev[d]) next[d] = 'std';
+    else if (prev[d] === 'std') next[d] = 'big';
+    else delete next[d];
+    return next;
+  });
+
+  // Six Monday-first weeks: blanks, this month, then next month's first days.
+  const cells: ({ kind: 'blank' } | { kind: 'day' | 'next'; n: number })[] = [];
+  if (month) {
+    const lead = (new Date(month.y, month.m, 1).getDay() + 6) % 7;
+    const count = new Date(month.y, month.m + 1, 0).getDate();
+    for (let i = 0; i < lead; i++) cells.push({ kind: 'blank' });
+    for (let n = 1; n <= count; n++) cells.push({ kind: 'day', n });
+    for (let n = 1; cells.length < 42; n++) cells.push({ kind: 'next', n });
+  } else {
+    while (cells.length < 42) cells.push({ kind: 'blank' });
+  }
+  const name = month ? MONTHS[month.m] : '';
+
+  return (
+    <div className="home__cal">
+      <div className="home__cal-top"><b>{name}</b><span>{month?.y}</span></div>
+      <div className="home__cal-grid home__cal-wd" aria-hidden="true">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+      </div>
+      <div className="home__cal-grid" role="group" aria-label={`${name}: pick a day to add a meal`}>
+        {cells.map((c, i) => {
+          if (c.kind === 'blank') return <span key={i} className="home__cal-cell" />;
+          if (c.kind === 'next') {
+            return <span key={i} className="home__cal-cell home__cal-next">{c.n}{c.n === 1 ? <span className="home__dot" aria-hidden="true" /> : null}</span>;
+          }
+          const meal = meals[c.n];
+          const free = !!meal && c.n === first;
+          const fee = meal === 'big' ? '£3' : '£2';
+          return (
+            <button key={i} type="button" className={meal ? 'home__cal-cell home__cal-day home__cal-day--meal' : 'home__cal-cell home__cal-day'} onClick={() => cycle(c.n)} aria-pressed={!!meal}>
+              {free ? <Ring width={50} height={50} className="home__cal-ring" /> : null}
+              <span>{c.n}</span>{meal ? ' ' : null}
+              {free ? <small className="home__cal-free">Free</small> : meal ? <small className="home__fee">{fee}</small> : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="home__cal-foot">
+        <b role="status">{summary}</b>
+        <span>Pick a day to add a meal</span>
+      </div>
+    </div>
+  );
+}
 
 function rememberDevEmail(email: string) {
   try {

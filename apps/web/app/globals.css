@@ -380,12 +380,35 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__card span:last-child { font-size: 15px; line-height: 1.5; color: var(--mute); }
 .home__num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-tint); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
 
-/* Pricing. */
-.home__pricing { display: flex; flex-direction: column; gap: 12px; }
-.home__prices { display: grid; gap: 14px; margin-top: 8px; max-width: 780px; }
-.home__price { display: flex; flex-direction: column; gap: 4px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); }
-.home__price span { font-size: 15px; color: var(--mute); }
-.home__price b { font-size: 36px; font-weight: 800; letter-spacing: -.02em; }
+/* Pricing: this month as a calendar, the free bill circled. */
+.home__pricing { display: grid; gap: 24px; scroll-margin-top: 24px; }
+.home__pricing-text { display: flex; flex-direction: column; gap: 12px; }
+.home__key { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 16px; }
+.home__key li { display: flex; align-items: center; gap: 12px; }
+.home__key-mark { width: 48px; flex: none; display: flex; justify-content: center; color: var(--accent); }
+.home__fee { font-size: 12px; font-weight: 700; line-height: 1; color: var(--ink); background: #f0f0f0; padding: 4px 8px; border-radius: 999px; }
+.home__key .home__fee { font-size: 14px; padding: 4px 10px; }
+.home__dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.home__key .home__dot { width: 10px; height: 10px; }
+
+.home__cal { width: 100%; max-width: 520px; justify-self: center; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 16px 12px 12px; border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+.home__cal-top { display: flex; align-items: baseline; justify-content: space-between; min-height: 24px; padding: 0 6px; }
+.home__cal-top b { font-size: 17px; }
+.home__cal-top span { font-size: 14px; color: var(--mute); }
+.home__cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
+.home__cal-wd { font-size: 12px; font-weight: 700; color: var(--mute); text-align: center; }
+.home__cal-cell { position: relative; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 15px; }
+.home__cal-day { border: 0; border-radius: 10px; background: none; padding: 0; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; }
+.home__cal-day:hover { background: var(--page); }
+.home__cal-day--meal { font-weight: 700; }
+.home__cal-next { color: #b0b0b0; }
+.home__cal-ring { position: absolute; inset: 0; margin: auto; overflow: visible; color: var(--accent); }
+.home__cal-ring path { stroke-dasharray: 160; animation: home-ring .6s ease-out both; }
+@keyframes home-ring { from { stroke-dashoffset: 160; } to { stroke-dashoffset: 0; } }
+.home__cal-free { font-size: 10px; font-weight: 800; line-height: 1.2; color: var(--accent); }
+.home__cal-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 10px 6px 2px; border-top: 1px solid var(--line); font-size: 15px; }
+.home__cal-foot span { font-size: 13px; color: var(--mute); }
+@media (prefers-reduced-motion: reduce) { .home__cal-ring path { animation: none; } }
 
 .home__foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 14px; color: var(--mute); }
 .home__foot nav { display: flex; gap: 20px; }
@@ -404,7 +427,6 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 
 @media (min-width: 640px) {
   .home__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .home__prices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 900px) {
   .home { padding-top: 72px; padding-bottom: 40px; gap: 64px; }
@@ -417,8 +439,8 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
   .home__desk { display: inline; }
   .home__desk-flex, .home__join { display: flex; }
   .home__bubble { display: flex; }
-  .home__band, .home__pricing { display: block; }
-  .home__pricing { display: flex; }
+  .home__band { display: block; }
+  .home__pricing { display: grid; }
   .home__example { padding-bottom: 60px; }
   .home__login { margin-top: 0; }
   .home__pricing .home__sub { max-width: none; }
@@ -431,6 +453,11 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
   .home__bill-row { min-height: 52px; font-size: 16px; }
   .home__pill { font-size: 14px; padding: 5px 12px; }
   .home__band { padding: 64px 0; }
+  .home__pricing { grid-template-columns: minmax(0, 1fr) 520px; gap: 72px; align-items: center; }
+  .home__cal { padding: 22px 20px 16px; gap: 10px; }
+  .home__cal-top b { font-size: 20px; }
+  .home__cal-cell, .home__cal-day { height: 60px; font-size: 17px; }
+  .home__cal-ring { width: 60px; height: 58px; }
 }
 
 /* ============ Legal pages (terms, privacy, refunds) ============ */

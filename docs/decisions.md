@@ -26,6 +26,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 
 ## Product
 
+- **The name is Pay Me Back** (#111, 2 Nov 2026), written as three words in every place people see it, short form included (tab titles, emails). The site is `paymeback.dev`. The logo is a coral coin whose £ rolls through €, $ and ¥ (#127).
 - **Web only.** No native app. The UI is plain mobile web, deliberately not iOS-styled.
 - **As few words as possible** on every screen.
 - **Accounts are optional** (decided 31 Oct). Not built yet: everyone still signs in with an emailed link. Name-only guest join needs API work.

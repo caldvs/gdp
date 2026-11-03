@@ -40,7 +40,7 @@ Set up 2 Nov 2026:
 
 Production access was granted on 2 Nov 2026 (support case 179364906300659) for eu-west-2: any address, up to 50,000 a day at 14 a second. Mail type *Transactional*, website `https://paymeback.dev`.
 
-- Both environments send from `noreply@paymeback.dev` (the SSM parameters above), DKIM-signed by the domain.
+- Both environments send from `noreply@paymeback.dev` (the SSM parameters above), DKIM-signed by the domain, with the sender name *Pay Me Back* (`EMAIL_FROM_NAME` in `src/services/email/factory.ts`).
 - Bounces and complaints go on SES's **account-level suppression list**, which is on. The app doesn't see them yet.
 - The other regions (eu-west-1, us-east-1) are still in the sandbox; we don't send from them.
 - Need more? Request a higher quota before it's reached (SES console → Account dashboard).

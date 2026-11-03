@@ -20,7 +20,13 @@ export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void
           <span className="brand__mark" aria-hidden><span className="brand__roll"><span>£</span><span>€</span><span>$</span><span>¥</span><span>£</span></span></span>
           Pay Me Back
         </Link>
-        {signIn ? <a href="#sign-in" className="hdr__link">Sign in</a> : null}
+        {signIn ? (
+          <nav className="hdr__nav" aria-label="Front door">
+            <a href="#how" className="hdr__nav-link">How it works</a>
+            <a href="#pricing" className="hdr__nav-link">Pricing</a>
+            <a href="#sign-in" className="hdr__link">Sign in</a>
+          </nav>
+        ) : null}
         {onMenu ? (
           <button type="button" className="icon-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={!!menuOpen} aria-controls="main-menu" onClick={onMenu}>
             {menuOpen ? <CloseIcon /> : <MenuIcon />}

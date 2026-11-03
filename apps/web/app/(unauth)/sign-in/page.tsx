@@ -86,11 +86,16 @@ function Landing() {
       <section className="home__hero">
         <div className="home__intro">
           <h1 className="home__h">Pay the bill.<br />Get paid back.</h1>
-          <p className="home__sub">Snap the receipt. Friends tick what they had and pay you. No app to download.</p>
+          <p className="home__sub">Snap the receipt. Friends tick what they had and pay you.<span className="home__desk"> No app to download.</span></p>
           <JoinBar />
           <ScanHere />
         </div>
         <ExampleBill />
+        <ol className="home__steps">
+          <li><span className="home__num" aria-hidden="true">1</span>Snap the bill</li>
+          <li><span className="home__num" aria-hidden="true">2</span>Share the QR code</li>
+          <li><span className="home__num" aria-hidden="true">3</span>Get paid back</li>
+        </ol>
       </section>
 
       <section id="sign-in" className="home__login" aria-labelledby="login-h">
@@ -100,18 +105,18 @@ function Landing() {
         </div>
       </section>
 
-      <section className="home__band" aria-labelledby="how-h">
+      <section id="how" className="home__band" aria-labelledby="how-h">
         <div className="home__band-in">
           <h2 id="how-h" className="home__h2">How it works</h2>
           <ol className="home__cards">
             <li className="home__card"><span className="home__num" aria-hidden="true">1</span><b>Snap the bill</b><span>Take a photo of the receipt. Every item is read for you, and you can fix anything that’s off.</span></li>
-            <li className="home__card"><span className="home__num" aria-hidden="true">2</span><b>Share the QR code</b><span>Friends scan it at the table and join with their name.</span></li>
+            <li className="home__card"><span className="home__num" aria-hidden="true">2</span><b>Share the QR code</b><span>Friends scan it at the table. They join with their name, no account needed.</span></li>
             <li className="home__card"><span className="home__num" aria-hidden="true">3</span><b>Get paid back</b><span>Everyone ticks what they had and pays you by bank transfer. You see who’s paid.</span></li>
           </ol>
         </div>
       </section>
 
-      <section className="home__pricing" aria-labelledby="price-h">
+      <section id="pricing" className="home__pricing" aria-labelledby="price-h">
         <h2 id="price-h" className="home__h2">Pricing</h2>
         <p className="home__sub">The person who pays the bill covers a small fee. Friends pay it back inside what they owe.</p>
         <div className="home__prices">
@@ -176,11 +181,11 @@ function ScanHere() {
   );
 }
 
-const EXAMPLE: { item: string; who: string; tone?: 'paid' | 'open' }[] = [
+const EXAMPLE: { item: string; who: string; tone?: 'paid' | 'open'; desk?: boolean }[] = [
   { item: 'Calamari', who: 'Priya · paid', tone: 'paid' },
   { item: 'Seafood risotto', who: 'Sam' },
   { item: 'Lasagne', who: 'Tom' },
-  { item: 'Negroni × 2', who: 'You' },
+  { item: 'Negroni × 2', who: 'You', desk: true },
   { item: 'Affogato × 2', who: 'Not claimed', tone: 'open' },
 ];
 
@@ -191,7 +196,7 @@ function ExampleBill() {
       <div className="home__bill">
         <div className="home__bill-top"><b>Gennaro</b><span>£131.29 · 4 people</span></div>
         {EXAMPLE.map((r) => (
-          <div key={r.item} className={r.tone === 'open' ? 'home__bill-row home__bill-row--open' : 'home__bill-row'}>
+          <div key={r.item} className={['home__bill-row', r.tone === 'open' && 'home__bill-row--open', r.desk && 'home__desk-flex'].filter(Boolean).join(' ')}>
             <span>{r.item}</span>
             <span className={r.tone === 'paid' ? 'home__pill home__pill--paid' : r.tone === 'open' ? 'home__pill home__pill--open' : 'home__pill'}>{r.who}</span>
           </div>

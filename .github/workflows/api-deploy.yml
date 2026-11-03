@@ -119,8 +119,11 @@ jobs:
       - name: Extract API URL
         id: api
         run: |
+          # The custom domain (api.paymeback.dev / api.test.paymeback.dev)
+          # when the stack has one, so the smoke test goes through its DNS
+          # and certificate; else the execute-api URL.
           url=$(jq -r --arg s "${{ steps.stack.outputs.name }}" \
-            '.[$s].ApiUrlOutput' "cdk-outputs.${ENV_NAME}.json")
+            '.[$s].ApiDomainUrlOutput // .[$s].ApiUrlOutput' "cdk-outputs.${ENV_NAME}.json")
           if [ -z "$url" ] || [ "$url" = "null" ]; then
             echo "::error::ApiUrlOutput missing from cdk-outputs.${ENV_NAME}.json"
             cat "cdk-outputs.${ENV_NAME}.json"

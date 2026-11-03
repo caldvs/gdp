@@ -102,7 +102,7 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
         category: 'sign-in',
         body: {
           text: `Sign in to paymeback.dev:\n\n${link}\n\nThe link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.`,
-          html: `<p><a href="${link}" style="display:inline-block;padding:12px 20px;background:#1f6feb;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a></p><p>Or open this link: <a href="${link}">${link}</a></p><p>The link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.</p>`,
+          html: `<p><a href="${link}" style="display:inline-block;padding:12px 20px;background:#d42a55;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a></p><p>Or open this link: <a href="${link}">${link}</a></p><p>The link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.</p>`,
         },
       });
     deps.logger?.info({ event: 'signin.start', email }, 'Sign-in link issued');

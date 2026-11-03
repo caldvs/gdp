@@ -23,7 +23,7 @@ Next 16 differs from older versions: read [AGENTS.md](AGENTS.md) before changing
 
 ## Code
 
-- `app/globals.css` is the whole design system: white background, system font, one blue `#0B57D0` for actions, 56–64px tap targets.
+- `app/globals.css` is the whole design system: pale grey page with white cards, Plus Jakarta Sans (`next/font`), coral `#D42A55` for the main action and the logo, black for links and secondary buttons, 56–64px tap targets.
 - `components/ui.tsx` has the building blocks (Page, Title, Box, Row, Badge, Totals, Button, ActionBar, Dialog, …). Use them rather than new styles.
 - `components/AppShell.tsx` is the header, menu and sign-in gate. `components/Scanner.tsx` is photo → check ("All in?") → upload → read; `components/Camera.tsx` is the in-app camera it opens.
 - API calls and hooks come from `@gdp/core` ([packages/core](../../packages/core/README.md)).

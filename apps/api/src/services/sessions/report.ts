@@ -243,19 +243,19 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
     `<tr><td style="padding:6px 0;${style}">${left}</td><td style="padding:6px 0;text-align:right;white-space:nowrap;${style}">${right}</td></tr>`;
   const lineRow = (l: ReportLine) =>
     row(
-      `${esc(l.name)}${l.detail ? ` <span style="color:#59636e">${esc(l.detail)}</span>` : ''}`,
+      `${esc(l.name)}${l.detail ? ` <span style="color:#6a6a6a">${esc(l.detail)}</span>` : ''}`,
       money(l.pence),
     );
   const block = (d: DinerReport) => {
     const title = forLead ? `${esc(d.displayName)}${d.isLead ? ' (you)' : ''}` : 'You had';
     const lines = d.lines.length
       ? d.lines.map(lineRow).join('')
-      : row('<span style="color:#59636e">Nothing yet</span>', '');
+      : row('<span style="color:#6a6a6a">Nothing yet</span>', '');
     return (
       `<h2 style="margin:24px 0 4px;font-size:17px">${title}</h2>` +
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px">` +
       lines +
-      row('<span style="color:#59636e">Service and tax</span>', money(d.extrasPence)) +
+      row('<span style="color:#6a6a6a">Service and tax</span>', money(d.extrasPence)) +
       row(
         `<b>${money(d.totalPence)}</b>`,
         `<span style="color:${d.paid.kind === 'not_paid' ? '#9a6700' : '#1a7f37'}">${esc(paidText(d, report.leadName, forLead))}</span>`,
@@ -266,10 +266,10 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
   };
 
   let html =
-    `<div style="${font};color:#1f2328;max-width:560px;margin:0 auto;padding:24px 16px">` +
-    `<div style="font-size:15px;font-weight:600;color:#0b57d0">Pay Me Back</div>` +
+    `<div style="${font};color:#222222;max-width:560px;margin:0 auto;padding:24px 16px">` +
+    `<div style="font-size:15px;font-weight:800;color:#d42a55">Pay Me Back</div>` +
     `<h1 style="margin:16px 0 4px;font-size:24px">${esc(where)}</h1>` +
-    `<div style="color:#59636e;font-size:15px">${esc(date)} · ${state}</div>` +
+    `<div style="color:#6a6a6a;font-size:15px">${esc(date)} · ${state}</div>` +
     shown.map(block).join('');
   if (forLead && report.unclaimed.length > 0) {
     html +=
@@ -280,7 +280,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
   }
   if (forLead) {
     html +=
-      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px;margin-top:24px;border-top:2px solid #1f2328">` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px;margin-top:24px;border-top:2px solid #222222">` +
       row('Bill', money(report.billTotalPence)) +
       row('Collected', money(report.collectedPence)) +
       row('To collect', money(report.toCollectPence)) +

@@ -17,7 +17,7 @@ export function Header({ onMenu, menuOpen, wide }: { onMenu?: () => void; menuOp
     <header className="hdr">
       <div className={wide ? 'hdr__in hdr__in--wide' : 'hdr__in'}>
         <Link href="/" className="brand">
-          <span className="brand__mark" aria-hidden>P</span>
+          <span className="brand__mark" aria-hidden><span className="brand__roll"><span>£</span><span>€</span><span>$</span><span>¥</span><span>£</span></span></span>
           Pay Me Back
         </Link>
         {onMenu ? (

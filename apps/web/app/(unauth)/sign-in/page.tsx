@@ -10,6 +10,7 @@ import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
 import { rememberReturnTo } from '@/lib/signInReturn';
 import Link from 'next/link';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button, Notice, Page, Title } from '@/components/ui';
 
 type Stage = 'EMAIL' | 'WAITING';
@@ -81,88 +82,129 @@ function Landing() {
   }
 
   return (
-    <main className="bnb">
-      <section className="bnb__hero">
-        <div className="bnb__intro">
-          <h1 className="bnb__h">Split the bill, get paid back</h1>
-          <p className="bnb__sub">Snap the bill. Everyone taps what they had and pays you back.</p>
+    <main className="home">
+      <section className="home__hero">
+        <div className="home__intro">
+          <h1 className="home__h">Pay the bill.<br />Get paid back.</h1>
+          <p className="home__sub">Snap the receipt. Friends tick what they had and pay you. No app to download.</p>
+          <JoinBar />
+          <ScanHere />
         </div>
-        <div className="bnb__login">
-          <h2 className="bnb__login-top">Log in or sign up</h2>
-          <div className="bnb__login-body">
-            <p className="bnb__welcome">Welcome</p>
-            <EmailLinkFlow cta="Email me a link" />
-            <div className="bnb__or"><span>or</span></div>
-            <Button tone="secondary" href="/join">Join a bill with a code</Button>
-          </div>
+        <ExampleBill />
+      </section>
+
+      <section id="sign-in" className="home__login" aria-labelledby="login-h">
+        <h2 id="login-h" className="home__login-top">Log in or sign up</h2>
+        <div className="home__login-body">
+          <EmailLinkFlow cta="Email me a link" />
         </div>
       </section>
 
-      <section className="bnb__how" aria-labelledby="how-h">
-        <h2 id="how-h" className="bnb__how-h">How it works</h2>
-        <ol className="bnb__cards">
-          <li className="bnb__card">
-            <div className="bnb__pic bnb__pic--scan" aria-hidden="true">
-              <div className="bnb__slip">
-                <i /><i /><i /><i /><i className="bnb__slip-total" />
-              </div>
-              <span className="bnb__corners" />
-            </div>
-            <b>Scan the bill</b>
-            <span>We read every item and price</span>
-          </li>
-          <li className="bnb__card">
-            <div className="bnb__pic bnb__pic--share" aria-hidden="true">
-              <div className="bnb__qr">
-                <svg viewBox="0 0 21 21" shapeRendering="crispEdges">
-                  <path d={QR} fill="currentColor" />
-                </svg>
-              </div>
-            </div>
-            <b>Share the code</b>
-            <span>Friends join from their phones</span>
-          </li>
-          <li className="bnb__card">
-            <div className="bnb__pic bnb__pic--paid" aria-hidden="true">
-              <div className="bnb__note">
-                <span className="bnb__note-face">S</span>
-                <span className="bnb__note-txt"><b>Sam paid you</b><small>Margherita</small></span>
-                <span className="bnb__note-amt">£12.50</span>
-              </div>
-              <div className="bnb__note bnb__note--2">
-                <span className="bnb__note-face bnb__note-face--2">P</span>
-                <span className="bnb__note-txt"><b>Priya paid you</b><small>Garlic bread</small></span>
-                <span className="bnb__note-amt">£2.75</span>
-              </div>
-            </div>
-            <b>Get paid back</b>
-            <span>Straight to your bank</span>
-          </li>
-        </ol>
+      <section className="home__band" aria-labelledby="how-h">
+        <div className="home__band-in">
+          <h2 id="how-h" className="home__h2">How it works</h2>
+          <ol className="home__cards">
+            <li className="home__card"><span className="home__num" aria-hidden="true">1</span><b>Snap the bill</b><span>Take a photo of the receipt. Every item is read for you, and you can fix anything that’s off.</span></li>
+            <li className="home__card"><span className="home__num" aria-hidden="true">2</span><b>Share the QR code</b><span>Friends scan it at the table and join with their name.</span></li>
+            <li className="home__card"><span className="home__num" aria-hidden="true">3</span><b>Get paid back</b><span>Everyone ticks what they had and pays you by bank transfer. You see who’s paid.</span></li>
+          </ol>
+        </div>
       </section>
 
-      <footer className="bnb__foot">
+      <section className="home__pricing" aria-labelledby="price-h">
+        <h2 id="price-h" className="home__h2">Pricing</h2>
+        <p className="home__sub">The person who pays the bill covers a small fee. Friends pay it back inside what they owe.</p>
+        <div className="home__prices">
+          <div className="home__price"><span>First bill each month</span><b>Free</b></div>
+          <div className="home__price"><span>Every bill after that</span><b>£2</b><span>£3 when the bill is over £100</span></div>
+        </div>
+      </section>
+
+      <footer className="home__foot">
+        <span>© Pay Me Back</span>
         <nav aria-label="Legal">
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/refunds">Refunds</Link>
         </nav>
       </footer>
+
+      <div className="actionbar home__bar">
+        <div className="actionbar__in actionbar__in--stack">
+          <p className="home__bar-note">First bill each month is free</p>
+          <div className="btn-row">
+            <Button tone="secondary" href="/join">Join a bill</Button>
+            <a className="btn btn--primary grow" href="#sign-in">Scan a bill</a>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
 
-/* A made-up 21x21 QR-style pattern: three finder squares and some modules. */
-const QR = [
-  'M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2z',
-  'M14 0h7v7h-7zM15 1v5h5V1zM16 2h3v3h-3z',
-  'M0 14h7v7H0zM1 15v5h5v-5zM2 16h3v3H2z',
-  'M8 0h1v2H8zM10 1h2v1h-2zM9 3h2v2H9zM12 4h1v3h-1zM8 6h2v2H8z',
-  'M0 8h2v1H0zM3 8h3v1H3zM2 10h2v2H2zM5 10h1v3H5zM0 12h1v1H0z',
-  'M8 9h3v1H8zM12 8h2v2h-2zM9 11h1v3H9zM11 11h3v1h-3zM13 13h2v2h-2zM10 15h2v1h-2z',
-  'M15 8h2v1h-2zM18 8h3v2h-3zM16 10h2v3h-2zM19 11h2v1h-2zM15 13h1v1h-1z',
-  'M8 16h1v3H8zM10 17h3v1h-3zM9 20h4v1H9zM14 16h2v2h-2zM17 15h1v3h-1zM19 14h2v1h-2zM15 19h3v2h-3zM19 17h2v4h-2z',
-].join('');
+/** "Got a code from a friend?": goes to that bill (signing in first if need be). */
+function JoinBar() {
+  const router = useRouter();
+  const [code, setCode] = useState('');
+  const clean = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return (
+    <form className="home__join" onSubmit={(e) => { e.preventDefault(); if (clean.length >= 4) router.push(`/join/${clean}`); }}>
+      <div className="home__join-field">
+        <label htmlFor="join-code">Got a code from a friend?</label>
+        <input id="join-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter it to join their bill" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} />
+      </div>
+      <button type="submit" className="home__join-go">
+        Join
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </button>
+    </form>
+  );
+}
+
+/** Desktop only: a QR that opens the site on the phone in your pocket. */
+function ScanHere() {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => setUrl(window.location.origin), []);
+  return (
+    <div className="home__scan">
+      {url ? <QRCodeSVG value={url} size={76} level="M" bgColor="#ffffff" fgColor="#222222" title="Opens Pay Me Back on your phone" /> : <span className="home__scan-blank" />}
+      <div>
+        <b>Paying for the table?</b>
+        <span>Point your phone camera here to scan the bill.</span>
+      </div>
+    </div>
+  );
+}
+
+const EXAMPLE: { item: string; who: string; tone?: 'paid' | 'open' }[] = [
+  { item: 'Calamari', who: 'Priya · paid', tone: 'paid' },
+  { item: 'Seafood risotto', who: 'Sam' },
+  { item: 'Lasagne', who: 'Tom' },
+  { item: 'Negroni × 2', who: 'You' },
+  { item: 'Affogato × 2', who: 'Not claimed', tone: 'open' },
+];
+
+/** A made-up bill mid-split. Decoration: the words are in the headline. */
+function ExampleBill() {
+  return (
+    <div className="home__example" aria-hidden="true">
+      <div className="home__bill">
+        <div className="home__bill-top"><b>Gennaro</b><span>£131.29 · 4 people</span></div>
+        {EXAMPLE.map((r) => (
+          <div key={r.item} className={r.tone === 'open' ? 'home__bill-row home__bill-row--open' : 'home__bill-row'}>
+            <span>{r.item}</span>
+            <span className={r.tone === 'paid' ? 'home__pill home__pill--paid' : r.tone === 'open' ? 'home__pill home__pill--open' : 'home__pill'}>{r.who}</span>
+          </div>
+        ))}
+      </div>
+      <div className="home__bubble">
+        <span className="home__bubble-tick"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg></span>
+        Priya paid you £23.50
+      </div>
+    </div>
+  );
+}
+
 
 function rememberDevEmail(email: string) {
   try {

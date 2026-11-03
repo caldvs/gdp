@@ -19,11 +19,19 @@ function UnauthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Arriving from a join link shows its own sign-in, so no header link then. */
+function FrontDoorHeader() {
+  const from = useSearchParams().get('from');
+  return <Header wide signIn={!from} />;
+}
+
 export default function UnauthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
       <TestBar open reload={false} />
-      <Header wide />
+      <Suspense fallback={<Header wide />}>
+        <FrontDoorHeader />
+      </Suspense>
       <Suspense fallback={<Centre><Spinner /></Centre>}>
         <UnauthGate>{children}</UnauthGate>
       </Suspense>

@@ -24,7 +24,7 @@ async function ctxFor(browser: Browser, api: FakeApi, user: User, opts: Paramete
  */
 async function signInWithLink(browser: Browser, api: FakeApi, page: Page) {
   await page.getByLabel('Email').fill('sam@example.com');
-  await page.locator('form button[type="submit"]').click();
+  await page.locator('form:has(#email) button[type="submit"]').click();
   await expect(page.getByText('Check your email')).toBeVisible();
   const { ctx: mailApp, page: linkTab } = await ctxFor(browser, api, users.sam, { signedIn: false });
   await linkTab.goto(`/sign-in/verify#t=${SIGN_IN_LINK_TOKEN}`);

@@ -40,7 +40,7 @@ const sessionIdOf = (clientSecret: string) => clientSecret.split('_secret_')[0] 
 const WAIT_MS = 30_000;
 
 /**
- * F3: the lead pays the table fee in Stripe's embedded form, then goes back
+ * F3: the lead pays the platform fee in Stripe's embedded form, then goes back
  * to share the bill. Card details stay inside Stripe's iframe.
  */
 export default function TableFeePage({ params }: { params: Promise<{ billId: string }> }) {
@@ -81,7 +81,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
     })();
   }, [paid, billId, router, createSession]);
 
-  const back = <BackLink href={`/confirm-bill/${billId}`}>Table fee</BackLink>;
+  const back = <BackLink href={`/confirm-bill/${billId}`}>Platform fee</BackLink>;
 
   if (!stripePromise) {
     return (
@@ -126,7 +126,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
               ? 'Making your QR code'
               : stage === 'slow'
                 ? 'Stripe hasn’t confirmed yet.'
-                : `${pounds(status.data.amountPence)} table fee`}
+                : `${pounds(status.data.amountPence)} platform fee`}
           </p>
           <div className="pay-wait__bar" aria-hidden="true">
             <span className={stage === 'qr' ? 'on' : 'busy'} />
@@ -155,7 +155,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   return (
     <Page sub>
       {back}
-      <Title title={`Pay ${pounds(status.data.amountPence)} fee`} sub="Then your QR code" />
+      <Title title={`Pay ${pounds(status.data.amountPence)} platform fee`} sub="Then your QR code" />
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {
@@ -220,6 +220,7 @@ function Form({ onConfirmed }: { onConfirmed: () => void }) {
     <>
       <CheckoutForm options={{ layout: 'expanded' }} onConfirm={onConfirm} />
       {error ? <Notice tone="error" title="Payment didn’t go through.">{error}</Notice> : null}
+      <p className="muted small" style={{ textAlign: 'center' }}>Refunded if nobody joins · Apple Pay, Google Pay or card</p>
     </>
   );
 }

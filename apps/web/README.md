@@ -12,7 +12,7 @@ Next 16 differs from older versions: read [AGENTS.md](AGENTS.md) before changing
 | `/capture` | Photograph or choose a bill |
 | `/confirm-bill/[billId]` | Check and edit the read items, then *Pay fee & get QR code* or *Continue* |
 | `/payout-account` | The lead's bank details, kept in the browser |
-| `/table-fee/[billId]` | Stripe's embedded form for the table fee |
+| `/table-fee/[billId]` | Stripe's embedded form for the platform fee |
 | `/session/[id]` | The bill: the lead's table, or the guest's *What did you have?* |
 | `/session/[id]/share` | QR, join code, copy or share the link |
 | `/session/[id]/pay` | The guest's bank details, Monzo/Revolut links, *I've paid* |
@@ -35,7 +35,7 @@ Next 16 differs from older versions: read [AGENTS.md](AGENTS.md) before changing
 
 - `NEXT_PUBLIC_API_BASE_URL`: the API. `npm run dev:local` sets it to `http://localhost:3000`.
 - `NEXT_PUBLIC_PUBLIC_BASE_URL`: the site's own URL for QR codes; defaults to the page origin.
-- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`: for the table fee.
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`: for the platform fee.
 
 ## Tests
 

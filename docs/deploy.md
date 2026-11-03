@@ -24,7 +24,7 @@ the checks below fail a deploy or build that crosses rows.
 | dev   | Vercel Preview, `test.paymeback.dev` | `GdpBackendDev`, `api.test.paymeback.dev` | Sandbox | `dev`  |
 | prod  | Vercel Production, `paymeback.dev`   | `GdpBackendProd`, `api.paymeback.dev`     | Live    | `prod` |
 
-Vercel Production has no Stripe key until Stripe goes live (#79), so it shows no table fee.
+Vercel Production has no Stripe key until Stripe goes live (#79), so it shows no platform fee.
 
 ## Domains
 
@@ -75,7 +75,7 @@ run summary. Then:
    `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
    `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
    Stripe live is ready. Optional secret `TABLE_FEE_EXEMPT_EMAILS`: emails that
-   never pay the table fee and sign in with no code (docs/table-fee.md).
+   never pay the platform fee and sign in with no code (docs/table-fee.md).
 2. In eu-west-2: the SSM parameter `/gdp-prod/ses-from-email` (the same
    verified sender as dev works; it's one account) and the secret
    `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM
@@ -203,6 +203,6 @@ to the page's own origin, which is right on Vercel.
 - **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
 - **Bedrock model access.** Enable Claude Sonnet 4.6 in the Bedrock console
   (eu-west-2), or no bill can be read.
-- **Table fee.** Stripe setup is in [table-fee.md](table-fee.md).
+- **Platform fee.** Stripe setup is in [table-fee.md](table-fee.md).
 - **Real-device check.** Scan a real bill on a phone against the deployed
   API.

@@ -5,10 +5,10 @@ addons.setConfig({
   theme: create({
     base: 'light',
     brandTitle: 'Pay Me Back UI',
-    colorPrimary: '#0b57d0',
-    colorSecondary: '#0b57d0',
-    appBg: '#f3f5f8',
-    appContentBg: '#f3f5f8',
+    colorPrimary: '#d42a55',
+    colorSecondary: '#d42a55',
+    appBg: '#f7f7f7',
+    appContentBg: '#f7f7f7',
     fontBase: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
   }),
 });

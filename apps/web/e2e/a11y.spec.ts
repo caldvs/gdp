@@ -56,7 +56,7 @@ function busyTable() {
 
 test('landing', async ({ page }) => {
   await open(page, new FakeApi(), null, '/sign-in');
-  await expect(page.getByRole('heading', { name: 'Split the bill, get paid back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Pay the bill/ })).toBeVisible();
   await audit(page);
 });
 

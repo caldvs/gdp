@@ -318,88 +318,94 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .demo-banner__close { margin-left: auto; background: none; border: 0; color: inherit; font-size: 18px; line-height: 1; opacity: .7; }
 
 .hdr__in--wide { max-width: calc(1120px + 2 * var(--gutter)); }
-/* ============ Landing (signed out) ============
-   Airbnb-ish: a white page, a big plain headline, the sign-in as a
-   "Log in or sign up" card, and how it works as picture cards. */
-.app:has(.bnb) { background: #fff; }
-.bnb { --b-ink: #222222; --b-grey: #6a6a6a; --b-line: #dddddd; --b-coral: var(--accent);
-  flex: 1; width: 100%; max-width: calc(1120px + 2 * var(--gutter)); margin: 0 auto; padding: 32px var(--gutter) 0; display: flex; flex-direction: column; gap: 48px; color: var(--b-ink); }
-.bnb__hero { display: grid; gap: 28px; }
-.bnb__intro { display: flex; flex-direction: column; gap: 14px; }
-.bnb__h { font-size: 34px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; text-wrap: balance; }
-.bnb__sub { font-size: 18px; line-height: 1.45; color: var(--b-grey); max-width: 28em; }
+/* ============ Front door (signed out, #133) ============
+   The redesign board's H1 (phone) and H3 (desktop): headline, a join-code
+   bar, an example bill mid-split, sign-in, how it works, pricing. */
+.app:has(.home) { background: #fff; }
+.hdr__link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; margin-left: auto; font-size: 16px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.home { flex: 1; width: 100%; max-width: calc(1120px + 2 * var(--gutter)); margin: 0 auto; padding: 28px var(--gutter) calc(150px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 40px; }
+.home__hero { display: grid; gap: 28px; }
+.home__intro { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.home__h { font-size: 34px; line-height: 1.08; font-weight: 800; letter-spacing: -.03em; }
+.home__sub { font-size: 17px; line-height: 1.45; color: var(--mute); max-width: 30em; }
+.home__h2 { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
 
-/* The sign-in card. */
-.bnb__login { border: 1px solid var(--b-line); border-radius: 12px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.08); overflow: hidden; }
-.bnb__login-top { font-size: 16px; font-weight: 700; text-align: center; padding: 18px 24px; border-bottom: 1px solid #ebebeb; }
-.bnb__login-body { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
-.bnb__welcome { font-size: 22px; font-weight: 600; }
-.bnb .field { position: relative; gap: 6px; }
-.bnb .field > label { position: absolute; top: 9px; left: 13px; font-size: 12px; font-weight: 400; color: var(--b-grey); pointer-events: none; }
-.bnb .input { height: 58px; padding: 22px 12px 6px; border: 1px solid #b0b0b0; border-radius: 8px; font-size: 16px; color: var(--b-ink); }
-.bnb .input::placeholder { color: transparent; }
-.bnb .input:focus { outline: 2px solid var(--b-ink); outline-offset: -1px; border-color: var(--b-ink); }
-.bnb .input--code { padding: 22px 12px 6px; text-align: left; font-size: 18px; }
-.bnb .field__hint { font-size: 13px; color: var(--b-grey); }
-.bnb .btn { height: 48px; border-radius: 8px; font-size: 16px; }
-.bnb .btn--primary { background: var(--b-coral); color: #fff; }
-.bnb .btn--primary:hover { background: var(--accent-hover); }
-.bnb .btn--secondary { border-color: var(--b-ink); color: var(--b-ink); }
-.bnb .btn--secondary:hover { background: #f7f7f7; }
-.bnb .btn--text { color: var(--b-ink); text-decoration: underline; font-weight: 600; font-size: 14px; }
-.bnb .notice--info { border-color: var(--b-line); border-radius: 8px; }
-.bnb__or { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--b-grey); }
-.bnb__or::before, .bnb__or::after { content: ''; flex: 1; border-top: 1px solid var(--b-line); }
+/* "Got a code from a friend?": an Airbnb-style search pill. */
+.home__join { display: flex; align-items: center; gap: 12px; max-width: 460px; margin-top: 6px; padding: 6px 6px 6px 22px; border: 1px solid #dddddd; border-radius: 999px; background: #fff; box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+.home__join:focus-within { box-shadow: 0 0 0 2px var(--ink), 0 6px 16px rgba(0,0,0,.12); }
+.home__join-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home__join-field label { font-size: 13px; font-weight: 700; }
+.home__join-field input { border: 0; padding: 0; margin: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); min-width: 0; outline: none; }
+.home__join-field input::placeholder { color: var(--mute); }
+.home__join-go { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--accent); color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+.home__join-go:hover { background: var(--accent-hover); }
 
-/* How it works: listing-style cards with drawn pictures. */
-.bnb__how { display: flex; flex-direction: column; gap: 18px; }
-.bnb__how-h { font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
-.bnb__cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 28px; }
-.bnb__card { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
-.bnb__card b { margin-top: 10px; font-weight: 600; }
-.bnb__card > span { color: var(--b-grey); }
-.bnb__pic { position: relative; aspect-ratio: 3 / 2; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.bnb__pic--scan { background: #f2e9df; }
-.bnb__pic--share { background: #fde7ea; }
-.bnb__pic--paid { background: #e3f1e8; flex-direction: column; gap: 10px; }
+/* Desktop: scan with your phone. Hidden on phones, which are the phone. */
+.home__scan { display: none; align-items: center; gap: 16px; max-width: 460px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; }
+.home__scan b { display: block; font-size: 16px; }
+.home__scan span { font-size: 15px; color: var(--mute); }
+.home__scan svg, .home__scan-blank { flex: none; width: 76px; height: 76px; }
 
-.bnb__slip { width: 26%; aspect-ratio: 3 / 4.4; background: #fff; border-radius: 4px; padding: 10% 9%; display: flex; flex-direction: column; gap: 9%; box-shadow: 0 8px 18px rgba(80,50,20,.16); transform: rotate(-4deg); }
-.bnb__slip i { display: block; height: 5px; border-radius: 3px; background: #e2dbd2; }
-.bnb__slip i:nth-child(2) { width: 70%; }
-.bnb__slip i:nth-child(4) { width: 82%; }
-.bnb__slip .bnb__slip-total { margin-top: auto; height: 7px; background: #b9ad9f; width: 55%; align-self: flex-end; }
-.bnb__corners { position: absolute; inset: 12% 33%; border-radius: 6px;
-  background: linear-gradient(#fff 0 0) top left / 22px 3px, linear-gradient(#fff 0 0) top left / 3px 22px, linear-gradient(#fff 0 0) top right / 22px 3px, linear-gradient(#fff 0 0) top right / 3px 22px,
-              linear-gradient(#fff 0 0) bottom left / 22px 3px, linear-gradient(#fff 0 0) bottom left / 3px 22px, linear-gradient(#fff 0 0) bottom right / 22px 3px, linear-gradient(#fff 0 0) bottom right / 3px 22px;
-  background-repeat: no-repeat; filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
+/* The example bill and its "paid you" bubble. */
+.home__example { position: relative; width: 100%; max-width: 420px; justify-self: center; padding-bottom: 60px; }
+.home__bill { border: 1px solid var(--line); border-radius: 16px; background: #fff; box-shadow: 0 6px 16px rgba(0,0,0,.12); padding: 6px 16px 8px; }
+.home__bill-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0 8px; }
+.home__bill-top b { font-size: 17px; font-weight: 700; }
+.home__bill-top span { font-size: 15px; color: var(--mute); font-variant-numeric: tabular-nums; }
+.home__bill-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; border-top: 1px solid var(--line); font-size: 15px; }
+.home__bill-row--open { color: var(--mute); }
+.home__pill { font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--page); white-space: nowrap; }
+.home__pill--paid { color: var(--ok-ink); background: var(--ok-bg); }
+.home__pill--open { background: none; padding: 0; }
+.home__bubble { position: absolute; left: 12px; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; background: #fff; border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 6px 16px rgba(0,0,0,.12); font-size: 15px; font-weight: 600; }
+.home__bubble-tick { width: 32px; height: 32px; border-radius: 50%; background: var(--ok-bg); color: var(--ok-ink); display: inline-flex; align-items: center; justify-content: center; }
 
-.bnb__qr { width: 32%; aspect-ratio: 1; background: #fff; border-radius: 14px; padding: 7%; color: var(--b-ink); box-shadow: 0 8px 18px rgba(120,20,40,.12); transform: rotate(3deg); }
-.bnb__qr svg { display: block; width: 100%; height: 100%; }
+/* Log in or sign up. */
+.home__login { width: 100%; max-width: 460px; border: 1px solid #dddddd; border-radius: 12px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.08); overflow: hidden; scroll-margin-top: 24px; }
+.home__login-top { font-size: 16px; font-weight: 700; text-align: center; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.home__login-body { padding: 24px; }
+.home__login .field { position: relative; gap: 6px; }
+.home__login .field > label { position: absolute; top: 9px; left: 13px; font-size: 12px; font-weight: 400; color: var(--mute); pointer-events: none; }
+.home__login .input { height: 58px; padding: 22px 12px 6px; font-size: 16px; }
+.home__login .input::placeholder { color: transparent; }
+.home__login .field__hint { font-size: 13px; }
 
-.bnb__note { width: 78%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #fff; border-radius: 12px; box-shadow: 0 6px 16px rgba(20,70,40,.12); font-size: 14px; }
-.bnb__note--2 { width: 72%; transform: translateX(6%); }
-.bnb__note-face { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #222; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
-.bnb__note-face--2 { background: #c8174f; }
-.bnb__note-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
-.bnb__note-txt small { color: var(--b-grey); font-size: 12px; }
-.bnb__note-amt { font-weight: 600; font-variant-numeric: tabular-nums; color: #11692f; }
+/* How it works, on a grey band. */
+.home__band { background: var(--page); box-shadow: 0 0 0 100vmax var(--page); clip-path: inset(0 -100vmax); padding: 36px 0; }
+.home__band-in { display: flex; flex-direction: column; gap: 20px; }
+.home__cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.home__card { display: flex; flex-direction: column; gap: 6px; padding: 20px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); }
+.home__card b { font-size: 18px; font-weight: 700; margin-top: 4px; }
+.home__card span:last-child { font-size: 15px; line-height: 1.5; color: var(--mute); }
+.home__num { width: 36px; height: 36px; border-radius: 50%; background: var(--accent-tint); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800; }
 
-.bnb__foot { margin-top: 8px; padding: 22px 0 calc(22px + env(safe-area-inset-bottom)); background: #f7f7f7; box-shadow: 0 0 0 100vmax #f7f7f7; clip-path: inset(0 -100vmax); border-top: 1px solid var(--b-line); }
-.bnb__foot nav { display: flex; gap: 20px; font-size: 14px; }
-.bnb__foot a { color: var(--b-ink); display: inline-flex; align-items: center; min-height: 44px; }
+/* Pricing. */
+.home__pricing { display: flex; flex-direction: column; gap: 12px; }
+.home__prices { display: grid; gap: 14px; margin-top: 8px; max-width: 780px; }
+.home__price { display: flex; flex-direction: column; gap: 4px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); }
+.home__price span { font-size: 15px; color: var(--mute); }
+.home__price b { font-size: 36px; font-weight: 800; letter-spacing: -.02em; }
+
+.home__foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 14px; color: var(--mute); }
+.home__foot nav { display: flex; gap: 20px; }
+.home__foot a { color: var(--ink); display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 2px; }
+
+/* Phones: Join / Scan stay in reach. */
+.home__bar-note { text-align: center; font-size: 14px; color: var(--mute); }
 
 @media (min-width: 640px) {
-  .bnb__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
-  .bnb__pic { aspect-ratio: 20 / 19; }
-  .bnb__slip { width: 34%; }
-  .bnb__corners { inset: 14% 27%; }
-  .bnb__qr { width: 40%; }
+  .home__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .home__prices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 900px) {
-  .bnb { padding-top: 72px; gap: 80px; }
-  .bnb__hero { grid-template-columns: minmax(0, 1fr) 420px; gap: 80px; align-items: center; }
-  .bnb__h { font-size: 52px; }
-  .bnb__sub { font-size: 20px; }
+  .home { padding-top: 72px; padding-bottom: 40px; gap: 64px; }
+  .home__hero { grid-template-columns: minmax(0, 1fr) 420px; gap: 72px; align-items: center; }
+  .home__h { font-size: 60px; }
+  .home__sub { font-size: 20px; }
+  .home__h2 { font-size: 32px; }
+  .home__scan { display: flex; }
+  .home__bar { display: none; }
+  .home__band { padding: 64px 0; }
 }
 
 /* ============ Legal pages (terms, privacy, refunds) ============ */

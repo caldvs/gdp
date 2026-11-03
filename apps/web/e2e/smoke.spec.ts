@@ -18,7 +18,7 @@ test('signed-out visitors land on the front door', async ({ page }) => {
   await unauthenticated(page);
   await page.goto('/');
   await expect(page).toHaveURL(/\/sign-in$/);
-  await expect(page.getByRole('heading', { name: 'Split the bill, get paid back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Pay the bill/ })).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
 });
 
@@ -41,7 +41,7 @@ test('email step validates before calling the API', async ({ page }) => {
   });
   await stillWaiting(page);
   await page.goto('/sign-in');
-  const submit = page.locator('form button[type="submit"]');
+  const submit = page.locator('form:has(#email) button[type="submit"]');
   await page.getByLabel('Email').fill('not-an-email');
   await submit.click();
   await expect(page.getByText("That doesn't look like an email address.")).toBeVisible();
@@ -60,7 +60,7 @@ test('waiting for the link survives a reload', async ({ page }) => {
   await stillWaiting(page);
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('alice@example.com');
-  await page.locator('form button[type="submit"]').click();
+  await page.locator('form:has(#email) button[type="submit"]').click();
   await expect(page.getByText('Check your email')).toBeVisible();
 
   await page.reload();
@@ -79,7 +79,7 @@ test('a request that expires while waiting goes back to the email step', async (
   await page.route('**/v1/auth/email/requests', (route) => route.fulfill({ json: { status: 'expired' } }));
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill('alice@example.com');
-  await page.locator('form button[type="submit"]').click();
+  await page.locator('form:has(#email) button[type="submit"]').click();
   await expect(page.getByText('Link expired. Send a new one.')).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
 });

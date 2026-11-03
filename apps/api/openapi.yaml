@@ -1706,7 +1706,7 @@ components:
         expectedDiners:
           type: integer
           minimum: 2
-          maximum: 10
+          maximum: 99
           description: |
             How many people the lead said are eating, lead included. Shown as
             "3 of 4 joined"; never used in the money maths. Absent until set.
@@ -1978,7 +1978,7 @@ components:
         expectedDiners:
           type: integer
           minimum: 2
-          maximum: 10
+          maximum: 99
           description: How many people are eating, lead included. Optional.
 
     UpdateSessionRequest:
@@ -1989,7 +1989,7 @@ components:
         expectedDiners:
           type: [integer, 'null']
           minimum: 2
-          maximum: 10
+          maximum: 99
           description: How many people are eating, lead included; `null` clears it.
 
     JoinByCodeRequest:

@@ -118,7 +118,7 @@ export const SHARE_ACTIVITY_KEEP = 10;
 // How many people the lead said are eating, the lead included (#64).
 // Only shown as progress ("3 of 4 joined"); never used in the money maths.
 export const EXPECTED_DINERS_MIN = 2;
-export const EXPECTED_DINERS_MAX = 10;
+export const EXPECTED_DINERS_MAX = 99;
 const ExpectedDinersSchema = z.number().int().min(EXPECTED_DINERS_MIN).max(EXPECTED_DINERS_MAX);
 
 export const SessionSchema = z.object({

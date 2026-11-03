@@ -408,7 +408,7 @@ export function Ended({ s, isCreator }: { s: Session; isCreator: boolean }) {
 
 /* ============================ bits ============================ */
 
-const PARTY_MAX = 10;
+const PARTY_MAX = 99;
 
 function PartySizeSheet({ n, min, busy, error, canClear, onChange, onCancel, onOk }: {
   n: number; min: number; busy: boolean; error?: string; canClear: boolean; onChange: (n: number) => void; onCancel: () => void; onOk: (n: number | null) => void;

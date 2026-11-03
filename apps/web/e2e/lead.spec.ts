@@ -25,7 +25,6 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
 
   await lead.getByRole('button', { name: 'Use photo' }).click();
 
-  await lead.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByText('Gennaro · 5 items')).toBeVisible();
 
@@ -57,7 +56,6 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await lead.goto('/');
   await lead.locator('input[capture]').setInputFiles(PHOTO);
   await lead.getByRole('button', { name: 'Use photo' }).click();
-  await lead.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
@@ -84,21 +82,14 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   await expect(lead.getByText('matches the receipt')).toBeVisible();
 });
 
-test('#65 no venue on the photo: "Where was this?" at the top, saved when they leave it', async ({ browser }) => {
+test('#136 no venue on the photo: none shown, none asked', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await expect(lead.getByText('Not on the photo. Shown to everyone.')).toBeVisible();
-  await lead.getByLabel('Where was this?').fill('The Dog & Partridge');
-  await lead.getByLabel('Where was this?').press('Enter');
-
-  // Saved once, then shown like any venue, with a change link.
-  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByText(/^5 items/)).toBeVisible();
   await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
-  await expect(lead.getByRole('button', { name: 'Change venue' })).toBeVisible();
-  const amends = api.requests.filter((r) => r.path.endsWith('/amend') && (r.body ?? '').includes('Dog & Partridge'));
-  expect(amends).toHaveLength(1);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
 });
 
 test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {
@@ -152,7 +143,7 @@ test('parse errors say what went wrong', async ({ browser }) => {
   await expect(lead.getByText('CredentialsProviderError. Check the API terminal, then try again.')).toBeVisible();
 });
 
-test('leave while the bill is read: Bills shows it, and coming back returns to the questions', async ({ browser }) => {
+test('leave while the bill is read: Bills shows it, and coming back opens Review bill', async ({ browser }) => {
   const api = new FakeApi();
   api.holdReads = true;
   const lead = await diner(browser, api, users.lead, '/');
@@ -169,10 +160,6 @@ test('leave while the bill is read: Bills shows it, and coming back returns to t
   api.holdReads = false;
   await expect(lead.getByRole('link', { name: /Bill read/ })).toBeVisible({ timeout: 10_000 });
   await lead.getByRole('link', { name: /Bill read/ }).click();
-  // #135: back to the reading page (how many, where), then Review bill.
-  await expect(lead.getByRole('heading', { name: 'Bill read' })).toBeVisible({ timeout: 15_000 });
-  await expect(lead.getByRole('heading', { name: 'How many of you?' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Review bill' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
 });
 
@@ -188,7 +175,6 @@ test('a slow read keeps the photo, and Try again reads it', async ({ browser }) 
 
   await lead.getByRole('button', { name: 'Try again' }).click();
 
-  await lead.getByRole('button', { name: 'Review bill' }).click({ timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
 });
 

@@ -6,7 +6,6 @@ import { loadStripe, type StripeCheckoutFormConfirmEvent } from '@stripe/stripe-
 import { CheckoutForm, CheckoutFormProvider, useCheckoutForm } from '@stripe/react-stripe-js/checkout';
 import { api, ApiError } from '@gdp/core/api';
 import { useCreateSession } from '@gdp/core/api/hooks/useSession';
-import { answersForBill, spendAnswer } from '@gdp/core/lib/scanAnswers';
 import { useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { ActionBar, BackLink, Button, Centre, Notice, Page, QrIcon, Spinner, TickIcon, Title } from '@/components/ui';
@@ -71,10 +70,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
     started.current = true;
     void (async () => {
       try {
-        // #61: how many are eating, if the lead said while the bill was read.
-        const expectedDiners = answersForBill(billId)?.expectedDiners;
-        const created = await createSession.mutateAsync({ billId, ...(expectedDiners !== undefined ? { expectedDiners } : {}) });
-        spendAnswer(billId, 'expectedDiners');
+        const created = await createSession.mutateAsync({ billId });
         await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
         router.replace(`/session/${created.sessionId}/share`);
       } catch (err) {

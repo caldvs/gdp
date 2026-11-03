@@ -17,15 +17,45 @@ import {
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import type { ReportService } from '../services/sessions/reportService.js';
+import type { TableFeeService } from '../services/billing/tableFee.js';
+import type { Session } from '../types/sessions.js';
+import { baseLogger } from '../logging/logger.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
+  /** Refunds the table fee when nobody joined. Absent when Stripe is off. */
+  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined'>;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   const r = new Hono();
+
+  // Closing or binning the bill always succeeds for the lead; a refund
+  // that fails is logged for a manual one (the Refunds page's "ask us").
+  const refundIfNobodyJoined = async (session: Session) => {
+    if (!deps.tableFees) return;
+    try {
+      const outcome = await deps.tableFees.refundIfNobodyJoined(session);
+      if (outcome === 'refunded') {
+        baseLogger.info(
+          { event: 'table_fee.refunded', sessionId: session.sessionId, billId: session.billId },
+          'Table fee refunded: nobody joined',
+        );
+      }
+    } catch (err) {
+      baseLogger.error(
+        {
+          event: 'table_fee.refund_failed',
+          sessionId: session.sessionId,
+          billId: session.billId,
+          err,
+        },
+        'Table fee refund failed',
+      );
+    }
+  };
 
   r.post(
     '/',
@@ -180,6 +210,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       sessionId,
       ...(reports ? { onClosed: (id: string) => reports.emailEveryone(id) } : {}),
     });
+    await refundIfNobodyJoined(session);
     return c.json(session);
   });
 
@@ -199,6 +230,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');
     const session = await sessionService.abandon({ caller, sessionId });
+    await refundIfNobodyJoined(session);
     return c.json(session);
   });
 

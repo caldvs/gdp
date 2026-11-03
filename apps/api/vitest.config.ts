@@ -43,6 +43,8 @@ export default defineConfig({
         // Money maths: every line covered (the uncovered branches are
         // defensive `?? 0` fallbacks).
         'src/services/sessions/allocation.ts': { lines: 100, branches: 80, functions: 100 },
+        // Takes and refunds real money: keep it tested.
+        'src/services/billing/tableFee.ts': { lines: 90, branches: 75, functions: 100 },
       },
     },
   },

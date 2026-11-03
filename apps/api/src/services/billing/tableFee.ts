@@ -22,13 +22,45 @@ export interface TableFee {
   paymentIntentId?: string;
   amountPence: number;
   paidAt: string;
+  /** Set once the fee has gone back to the lead's card. */
+  refundId?: string;
+  refundedAt?: string;
 }
 
 export interface TableFeeStore {
   get(billId: string): Promise<TableFee | null>;
-  /** Idempotent: a second write for the same bill is ignored. */
+  /**
+   * Idempotent: a second write for the same Checkout Session is ignored.
+   * A refunded fee can be replaced by a new payment (the lead shares the
+   * bill again), but never by its own, already refunded, Checkout Session.
+   */
   putIfAbsent(fee: TableFee): Promise<'recorded' | 'duplicate'>;
+  /** Marks the fee refunded, once. `duplicate` if it already was, or there's no fee. */
+  markRefunded(
+    billId: string,
+    refund: { refundId: string; refundedAt: string },
+  ): Promise<'recorded' | 'duplicate'>;
 }
+
+/** What `refundIfNobodyJoined` did, for logs and tests. */
+export type RefundOutcome =
+  'refunded' | 'guests_joined' | 'no_fee' | 'already_refunded' | 'no_payment_intent';
+
+/** The parts of a session the refund policy looks at. */
+export interface ClosedSession {
+  sessionId: string;
+  billId: string;
+  creatorUserId: string;
+  participants: ReadonlyArray<{ userId: string }>;
+}
+
+/**
+ * The Refunds page: "If nobody joins the bill before you close it or bin
+ * it, we refund the fee to your card." Anyone other than the lead in the
+ * session counts as joining.
+ */
+export const nobodyJoined = (session: ClosedSession): boolean =>
+  session.participants.every((p) => p.userId === session.creatorUserId);
 
 /**
  * Checkout Session for the embedded form. The `fixed_by_ui` values come from
@@ -102,7 +134,8 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
 
   const startCheckoutUnsafe = async (input: { caller: VerifiedCaller; billId: string }) => {
     const bill = await loadOwnBill(input.billId, input.caller);
-    if (await deps.store.get(bill.billId)) {
+    const existing = await deps.store.get(bill.billId);
+    if (existing && !existing.refundedAt) {
       throw new AppError('TABLE_FEE_PAID', 'The fee for this bill is already paid');
     }
     if (isExempt(input.caller)) {
@@ -196,8 +229,11 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     }): Promise<TableFeeStatus> {
       const bill = await loadOwnBill(input.billId, input.caller);
       let fee = await deps.store.get(bill.billId);
+      // A refunded fee bought nothing: sharing the bill again costs a new fee.
+      if (fee?.refundedAt) fee = null;
       if (!fee && input.checkoutSessionId) {
         fee = await reconcile(bill, input.caller, input.checkoutSessionId);
+        if (fee?.refundedAt) fee = null;
       }
       if (fee)
         return {
@@ -209,6 +245,47 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       if (isExempt(input.caller)) return { billId: bill.billId, status: 'waived', amountPence: 0 };
       const amountPence = feeLookupKeyFor(bill.totalPence) === 'table_fee_3' ? 300 : 200;
       return { billId: bill.billId, status: 'unpaid', amountPence };
+    },
+
+    /**
+     * Refunds the lead's fee when the bill closes or is binned before any
+     * guest joined (the Refunds page). Safe to call twice: the fee row
+     * records the refund, and Stripe's idempotency key stops a second one
+     * if the row write is lost.
+     */
+    async refundIfNobodyJoined(session: ClosedSession): Promise<RefundOutcome> {
+      if (!nobodyJoined(session)) return 'guests_joined';
+      const fee = await deps.store.get(session.billId);
+      if (!fee) return 'no_fee';
+      if (fee.refundedAt) return 'already_refunded';
+      let paymentIntentId = fee.paymentIntentId;
+      if (!paymentIntentId) {
+        const cs = await timed('stripe', 'checkout.sessions.retrieve', () =>
+          deps.stripe.checkout.sessions.retrieve(fee.checkoutSessionId),
+        );
+        paymentIntentId =
+          typeof cs.payment_intent === 'string' ? cs.payment_intent : cs.payment_intent?.id;
+      }
+      if (!paymentIntentId) return 'no_payment_intent';
+      const refund = await timed('stripe', 'refunds.create', () =>
+        deps.stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            reason: 'requested_by_customer',
+            metadata: {
+              billId: session.billId,
+              sessionId: session.sessionId,
+              policy: 'nobody_joined',
+            },
+          },
+          { idempotencyKey: `table-fee-refund-${fee.checkoutSessionId}` },
+        ),
+      );
+      const written = await deps.store.markRefunded(session.billId, {
+        refundId: refund.id,
+        refundedAt: new Date().toISOString(),
+      });
+      return written === 'recorded' ? 'refunded' : 'already_refunded';
     },
 
     /** Applies a verified Stripe event. Safe to receive the same event twice. */

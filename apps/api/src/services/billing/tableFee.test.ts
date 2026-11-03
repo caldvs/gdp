@@ -5,6 +5,7 @@ import {
   checkoutSessionParams,
   createTableFeeService,
   feeLookupKeyFor,
+  nobodyJoined,
   parseEmailList,
   type TableFee,
   type TableFeeStore,
@@ -24,9 +25,20 @@ const memoryStore = (): TableFeeStore & { rows: Map<string, TableFee> } => {
   return {
     rows,
     get: (billId) => Promise.resolve(rows.get(billId) ?? null),
+    // Same rules as the DynamoDB condition in storage/tableFeeStore.ts.
     putIfAbsent: (fee) => {
-      if (rows.has(fee.billId)) return Promise.resolve('duplicate' as const);
+      const existing = rows.get(fee.billId);
+      const replaceable =
+        !existing ||
+        (!!existing.refundedAt && existing.checkoutSessionId !== fee.checkoutSessionId);
+      if (!replaceable) return Promise.resolve('duplicate' as const);
       rows.set(fee.billId, fee);
+      return Promise.resolve('recorded' as const);
+    },
+    markRefunded: (billId, refund) => {
+      const existing = rows.get(billId);
+      if (!existing || existing.refundedAt) return Promise.resolve('duplicate' as const);
+      rows.set(billId, { ...existing, ...refund });
       return Promise.resolve('recorded' as const);
     },
   };
@@ -354,5 +366,143 @@ describe('tableFeeService.status', () => {
     const { svc } = setup(new Error('No such checkout.session'));
     const res = await svc.status({ caller: LEAD, billId: BILL_ID, checkoutSessionId: 'cs_bad' });
     expect(res.status).toBe('unpaid');
+  });
+});
+
+/**
+ * The Refunds page (apps/web/app/(legal)/refunds/page.tsx): "If nobody
+ * joins the bill before you close it or bin it, we refund the fee to your
+ * card." These pin the code to that sentence.
+ */
+describe('refund policy: nobody joined', () => {
+  const SESSION_ID = '0193ab12-0000-7000-8000-0000000000aa';
+  const GUEST = 'user-guest';
+  const paidFee = (over: Partial<TableFee> = {}): TableFee => ({
+    billId: BILL_ID,
+    userId: LEAD.userId,
+    checkoutSessionId: 'cs_paid',
+    paymentIntentId: 'pi_paid',
+    amountPence: 300,
+    paidAt: '2026-11-03T19:00:00.000Z',
+    ...over,
+  });
+  const leadOnly = {
+    sessionId: SESSION_ID,
+    billId: BILL_ID,
+    creatorUserId: LEAD.userId,
+    participants: [{ userId: LEAD.userId }],
+  };
+  const withGuest = { ...leadOnly, participants: [{ userId: LEAD.userId }, { userId: GUEST }] };
+
+  const setup = (fee: TableFee | null = paidFee()) => {
+    const store = memoryStore();
+    if (fee) store.rows.set(BILL_ID, fee);
+    const refundsCreate = vi.fn((_params: object, _opts: object) =>
+      Promise.resolve({ id: 're_1', status: 'succeeded' }),
+    );
+    const retrieve = vi.fn(() =>
+      Promise.resolve({ id: 'cs_paid', payment_intent: 'pi_looked_up' }),
+    );
+    const { stripe: base, create } = fakeStripe();
+    const stripe = {
+      ...(base as unknown as object),
+      refunds: { create: refundsCreate },
+      checkout: { sessions: { create, retrieve } },
+    } as unknown as Stripe;
+    const service = createTableFeeService({
+      stripe,
+      store,
+      getBill: () => Promise.resolve(bill(12_000)),
+      appBaseUrl: 'https://gdp.example',
+    });
+    return { store, service, refundsCreate, retrieve };
+  };
+
+  it('counts only people other than the lead as joining', () => {
+    expect(nobodyJoined(leadOnly)).toBe(true);
+    expect(nobodyJoined({ ...leadOnly, participants: [] })).toBe(true);
+    expect(nobodyJoined(withGuest)).toBe(false);
+  });
+
+  it('refunds the whole fee to the card it was paid with when nobody joined', async () => {
+    const { service, store, refundsCreate } = setup();
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
+    expect(refundsCreate).toHaveBeenCalledTimes(1);
+    expect(refundsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ payment_intent: 'pi_paid', reason: 'requested_by_customer' }),
+      { idempotencyKey: 'table-fee-refund-cs_paid' },
+    );
+    // No `amount`: Stripe refunds the full charge, £2 or £3 alike.
+    expect(refundsCreate.mock.calls[0]?.[0]).not.toHaveProperty('amount');
+    const refunded = store.rows.get(BILL_ID);
+    expect(refunded?.refundId).toBe('re_1');
+    expect(refunded?.refundedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('keeps the fee once anyone has joined', async () => {
+    const { service, store, refundsCreate } = setup();
+    expect(await service.refundIfNobodyJoined(withGuest)).toBe('guests_joined');
+    expect(refundsCreate).not.toHaveBeenCalled();
+    expect(store.rows.get(BILL_ID)?.refundedAt).toBeUndefined();
+  });
+
+  it('does nothing when no fee was paid (exempt lead, or never paid)', async () => {
+    const { service, refundsCreate } = setup(null);
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('no_fee');
+    expect(refundsCreate).not.toHaveBeenCalled();
+  });
+
+  it('refunds once, however many times the bill is closed or binned', async () => {
+    const { service, refundsCreate } = setup();
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('already_refunded');
+    expect(refundsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds the payment from Stripe when the fee row doesn't have it", async () => {
+    const { service, refundsCreate, retrieve } = setup(paidFee({ paymentIntentId: undefined }));
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
+    expect(retrieve).toHaveBeenCalledWith('cs_paid');
+    expect(refundsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ payment_intent: 'pi_looked_up' }),
+      expect.anything(),
+    );
+  });
+
+  it('a refunded fee no longer pays for the bill: sharing it again costs a new fee', async () => {
+    const { service, store } = setup();
+    await service.refundIfNobodyJoined(leadOnly);
+    expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+      amountPence: 300,
+    });
+    await expect(service.startCheckout({ caller: LEAD, billId: BILL_ID })).resolves.toMatchObject({
+      amountPence: 300,
+    });
+
+    // Stripe resending the refunded payment's webhook doesn't bring it back…
+    const event = (id: string) =>
+      ({
+        type: 'checkout.session.completed',
+        created: 1_793_478_000,
+        data: {
+          object: {
+            id,
+            payment_status: 'paid',
+            payment_intent: `pi_${id}`,
+            amount_total: 300,
+            metadata: { billId: BILL_ID, userId: LEAD.userId },
+          },
+        },
+      }) as unknown as Stripe.Event;
+    expect(await service.handleEvent(event('cs_paid'))).toBe('duplicate');
+    expect(store.rows.get(BILL_ID)?.refundedAt).toBeDefined();
+
+    // …but a new payment is recorded, and can itself be refunded.
+    expect(await service.handleEvent(event('cs_new'))).toBe('applied');
+    expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'paid',
+    });
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
   });
 });

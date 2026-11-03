@@ -152,7 +152,7 @@ test('parse errors say what went wrong', async ({ browser }) => {
   await expect(lead.getByText('CredentialsProviderError. Check the API terminal, then try again.')).toBeVisible();
 });
 
-test('leave while the bill is read: Bills shows it, then opens it when it’s ready', async ({ browser }) => {
+test('leave while the bill is read: Bills shows it, and coming back returns to the questions', async ({ browser }) => {
   const api = new FakeApi();
   api.holdReads = true;
   const lead = await diner(browser, api, users.lead, '/');
@@ -169,6 +169,10 @@ test('leave while the bill is read: Bills shows it, then opens it when it’s re
   api.holdReads = false;
   await expect(lead.getByRole('link', { name: /Bill read/ })).toBeVisible({ timeout: 10_000 });
   await lead.getByRole('link', { name: /Bill read/ }).click();
+  // #135: back to the reading page (how many, where), then Review bill.
+  await expect(lead.getByRole('heading', { name: 'Bill read' })).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByRole('heading', { name: 'How many of you?' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Review bill' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
 });
 

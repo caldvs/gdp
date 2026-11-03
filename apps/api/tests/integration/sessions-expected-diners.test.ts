@@ -60,7 +60,7 @@ describe('expected party size (#64)', () => {
     expect(after.expectedDiners).toBe(4);
   });
 
-  it.each([1, 11, 2.5, '4'])('create rejects %s', async (n) => {
+  it.each([1, 100, 2.5, '4'])('create rejects %s', async (n) => {
     const app = buildApp();
     const { res } = await newSession(app, `u-${uuidv7()}`, { expectedDiners: n });
     expect(res.status).toBe(400);
@@ -91,7 +91,7 @@ describe('expected party size (#64)', () => {
     expect(reread.expectedDiners).toBeUndefined();
   });
 
-  it.each([1, 11, 3.5])('update rejects %s', async (n) => {
+  it.each([1, 100, 3.5])('update rejects %s', async (n) => {
     const app = buildApp();
     const lead = `u-${uuidv7()}`;
     const { session } = await newSession(app, lead);

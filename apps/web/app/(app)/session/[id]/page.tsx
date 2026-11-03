@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSession } from '@gdp/core/api/hooks/useSession';
-import { Button, Centre, Notice, Spinner } from '@/components/ui';
+import type { SessionSummary } from '@gdp/core/api/hooks/useMySessions';
+import { BackLink, BillSkeleton, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
+import { billTitle } from '@/components/PageTransition';
 import { ledger } from '@gdp/core/lib/ledger';
 import { GuestPick, GuestTable, owedFor } from './guest';
 import { Ended, LeadSetup, LeadSettled, LeadTable } from './lead';
@@ -19,7 +22,7 @@ export default function SessionPage() {
   // #121: a guest who has paid is back to picking after "I had something else".
   const [more, setMore] = useState(false);
 
-  if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Centre><Spinner /></Centre>;
+  if (session.isPending || (session.isSuccess && bill.isPending) || me.isPending) return <Loading id={id} />;
   if (session.isError || bill.isError) {
     return (
       <Centre>
@@ -48,4 +51,38 @@ export default function SessionPage() {
   return picking
     ? <GuestPick s={s} b={b} meUserId={meId} {...(sent ? { onBack: () => setMore(false) } : {})} />
     : <GuestTable s={s} b={b} meUserId={meId} onMore={() => setMore(true)} />;
+}
+
+/**
+ * While the bill loads, show its name as the heading if the bills list has
+ * it, so the name can glide there from the list (components/PageTransition).
+ * Only where the loaded view's heading will be that name too.
+ */
+function Loading({ id }: { id: string }) {
+  const summary = useCachedSummary(id);
+  const name = summary?.venue?.name;
+  if (!summary || !name || !headedByVenue(summary)) return <Centre><Spinner /></Centre>;
+  return (
+    <Page sub>
+      <BackLink href="/">Bills</BackLink>
+      <Title vt={billTitle(id)} title={name} />
+      <BillSkeleton />
+    </Page>
+  );
+}
+
+function useCachedSummary(id: string): SessionSummary | undefined {
+  const qc = useQueryClient();
+  for (const [, data] of qc.getQueriesData<{ sessions: SessionSummary[] }>({ queryKey: ['my-sessions'] })) {
+    const s = data?.sessions.find((x) => x.sessionId === id);
+    if (s) return s;
+  }
+  return undefined;
+}
+
+// Guests still picking get "What did you have?"; deleted bills say so.
+function headedByVenue(s: SessionSummary): boolean {
+  if (s.status === 'abandoned') return false;
+  if (s.role === 'lead') return true;
+  return !(s.status === 'claiming' && s.myPaymentStatus !== 'succeeded');
 }

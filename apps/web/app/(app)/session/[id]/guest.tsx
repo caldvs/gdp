@@ -4,7 +4,7 @@
  * The guest's side: tick what you had (Pick), then see where things
  * stand until the lead closes the bill (GuestTable). Pay lives in ./pay.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
@@ -15,6 +15,7 @@ import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Dialog, Notice, Page, Row, Section, TickIcon, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
+import { billTitle } from '@/components/PageTransition';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -311,9 +312,9 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
           busy={addShare.isPending || setWays.isPending}
           error={setWays.error ? shareError(setWays.error) : undefined}
           onChange={(ways) => setSplitting({ ...splitting, ways })}
-          onCancel={() => { setSplitting(null); setWays.reset(); }}
+          onCancel={() => { startTransition(() => setSplitting(null)); setWays.reset(); }}
           onOk={() => {
-            const done = () => setSplitting(null);
+            const done = () => startTransition(() => setSplitting(null));
             if (splitting.share) setWays.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
             else addShare.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
           }}
@@ -418,7 +419,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />
         {l?.settled ? (
           <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(l.confirmedPence)}`}>You’re all settled.</Notice>

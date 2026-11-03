@@ -46,7 +46,8 @@ const MENU = [
   { href: '/payout-account', label: 'Bank details' },
 ] as const;
 
-function Menu({ email, onClose }: { email?: string; onClose: () => void }) {
+/** Fades in on open and out on close (X or Escape). A link closes it at once: the page transition takes over. */
+function Menu({ email, closing, onClose, onClosed }: { email?: string; closing: boolean; onClose: () => void; onClosed: () => void }) {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const signOut = useSignOut();
@@ -57,13 +58,26 @@ function Menu({ email, onClose }: { email?: string; onClose: () => void }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+  // Backstop for the fade-out's animationend (it can be skipped).
+  useEffect(() => {
+    if (!closing) return;
+    const t = setTimeout(onClosed, 300);
+    return () => clearTimeout(t);
+  }, [closing, onClosed]);
 
   return (
-    <div className="menu" id="main-menu" role="dialog" aria-modal="true" aria-label="Menu">
+    <div
+      className={closing ? 'menu menu--out' : 'menu'}
+      id="main-menu"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Menu"
+      onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) onClosed(); }}
+    >
       <Header onMenu={onClose} menuOpen />
       <nav className="menu__nav" aria-label="Main">
         {MENU.map((m, i) => m === null ? <div key={i} className="menu__div" /> : (
-          <Link key={m.href} ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClose}>
+          <Link key={m.href} ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClosed}>
             {m.label}
           </Link>
         ))}
@@ -83,8 +97,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const me = useMe();
   const router = useRouter();
   const pathname = usePathname() ?? '/';
-  const [menu, setMenu] = useState(false);
-  useEffect(() => setMenu(false), [pathname]);
+  const [menu, setMenu] = useState<'closed' | 'open' | 'closing'>('closed');
+  useEffect(() => setMenu('closed'), [pathname]);
 
   // Idle sign-out: come back to where you were after signing in again.
   const goToSignIn = useCallback(() => {
@@ -108,7 +122,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace(from && from !== '/' ? `/sign-in?from=${encodeURIComponent(from)}` : '/sign-in');
   }, [unauthenticated, pathname, router]);
 
-  const close = useCallback(() => setMenu(false), []);
+  const close = useCallback(() => setMenu((m) => (m === 'open' ? 'closing' : m)), []);
+  const closed = useCallback(() => setMenu('closed'), []);
 
   let body: ReactNode = children;
   if (me.isPending || unauthenticated) body = <Centre><Spinner /></Centre>;
@@ -124,9 +139,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="app">
       <TestBar />
-      <Header onMenu={me.data ? () => setMenu(true) : undefined} />
+      <Header onMenu={me.data ? () => setMenu('open') : undefined} />
       {body}
-      {menu ? <Menu email={me.data?.email} onClose={close} /> : null}
+      {menu !== 'closed' ? <Menu email={me.data?.email} closing={menu === 'closing'} onClose={close} onClosed={closed} /> : null}
     </div>
   );
 }

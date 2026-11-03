@@ -36,6 +36,20 @@ describe('SesEmailSender', () => {
     expect(cmd.input.EmailTags).toEqual([{ Name: 'category', Value: 'otp' }]);
   });
 
+  it('sends from "Pay Me Back <address>" when a sender name is set', async () => {
+    const send = vi.fn<SendFn>(() => Promise.resolve({ MessageId: 'm-n' }));
+    const client = { send } as unknown as SESv2Client;
+    const sender = new SesEmailSender({
+      fromAddress: 'noreply@paymeback.dev',
+      fromName: 'Pay Me Back',
+      client,
+    });
+    await sender.send({ to: 'a@example.com', subject: 's', body: { text: 't', html: 'h' } });
+    expect(send.mock.calls[0]![0].input.FromEmailAddress).toBe(
+      '"Pay Me Back" <noreply@paymeback.dev>',
+    );
+  });
+
   it('omits EmailTags when no category supplied', async () => {
     const send = vi.fn<SendFn>(() => Promise.resolve({ MessageId: 'm-2' }));
     const client = { send } as unknown as SESv2Client;

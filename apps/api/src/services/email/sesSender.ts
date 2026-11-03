@@ -5,6 +5,8 @@ import { timed } from '../../logging/timed.js';
 
 export interface SesEmailSenderConfig {
   fromAddress: string;
+  /** Shown as the sender in inboxes: "Pay Me Back <noreply@paymeback.dev>". */
+  fromName?: string;
   region?: string;
   /**
    * Inject for tests. In production the constructor builds its own
@@ -24,7 +26,9 @@ export class SesEmailSender implements EmailSender {
 
   async send(input: SendEmailInput): Promise<void> {
     const cmd = new SendEmailCommand({
-      FromEmailAddress: this.config.fromAddress,
+      FromEmailAddress: this.config.fromName
+        ? `"${this.config.fromName.replace(/["\\]/g, '')}" <${this.config.fromAddress}>`
+        : this.config.fromAddress,
       Destination: { ToAddresses: [input.to] },
       Content: {
         Simple: {

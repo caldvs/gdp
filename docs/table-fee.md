@@ -39,7 +39,8 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 ## Before it takes real money
 
 - [ ] Live product *Table fee* with two one-time GBP prices, lookup keys `table_fee_2` (£2.00) and `table_fee_3` (£3.00). The sandbox has them.
-- [ ] Live keys, live webhook endpoint, live domain registration.
+- [ ] Live keys, live webhook endpoint, live domain registration (`paymeback.dev`; the sandbox has `paymeback.dev` and `test.paymeback.dev`).
+- [ ] At activation, Business details: public business name *Pay Me Back*, statement descriptor `PAYMEBACK.DEV` (what banks show). The sandbox can't set these until the account is activated.
 - [ ] One free bill a month per lead.
 - [ ] The server doesn't require the fee yet: `POST /v1/sessions/{id}/share` (the QR) should need a paid fee or the month's free bill. Everything before it (scan, check, edit, bank details) stays free.
 - [ ] Guests repay their share of the fee in what they owe, shown as "App fee".

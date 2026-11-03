@@ -26,6 +26,10 @@ async function open(page: Page, api: FakeApi, user: User | null, to: string) {
 const KNOWN: { rule: string; target: RegExp; why: string }[] = [];
 
 async function audit(page: Page) {
+  // Check the settled screen, not a sheet halfway through fading in.
+  await page.evaluate(() =>
+    Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => undefined))),
+  );
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .exclude('nextjs-portal')

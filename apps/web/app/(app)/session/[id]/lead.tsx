@@ -5,7 +5,7 @@
  * lead can take it, or cover the lot), and one way out: Close bill.
  * Everything updates on the session's poll.
  */
-import { useMemo, useState } from 'react';
+import { startTransition, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
@@ -19,6 +19,7 @@ import {
   ActionBar, AvatarStack, BackLink, Badge, Box, Button, Dialog, Notice, Page, Avatar, Row, Section, Stats, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
+import { billTitle } from '@/components/PageTransition';
 import { PickRow, SplitSheet, Stepper, itemStatuses, splitSub, useChangeFeed } from './guest';
 
 type Session = components['schemas']['Session'];
@@ -50,7 +51,7 @@ export function LeadSetup({ s, b }: { s: Session; b: Bill }) {
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title title={b.venue?.name ?? 'Your bill'} sub={`${b.items.length} ${b.items.length === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)} · not shared yet`} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${b.items.length} ${b.items.length === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)} · not shared yet`} />
         {share.isError ? <Notice tone="error">{share.error.message}</Notice> : null}
       </Page>
       <ActionBar>
@@ -215,7 +216,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />
         <Stats items={[
           { k: 'Bill', v: formatGBP(b.totalPence) },
@@ -279,9 +280,9 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           busy={addShare.isPending || setWays.isPending}
           error={setWays.error instanceof ApiError ? setWays.error.message : undefined}
           onChange={(ways) => setSplitting({ ...splitting, ways })}
-          onCancel={() => { setSplitting(null); setWays.reset(); }}
+          onCancel={() => { startTransition(() => setSplitting(null)); setWays.reset(); }}
           onOk={() => {
-            const done = () => setSplitting(null);
+            const done = () => startTransition(() => setSplitting(null));
             if (splitting.share) setWays.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
             else addShare.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
           }}
@@ -295,8 +296,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           error={setExpected.error?.message}
           canClear={s.expectedDiners !== undefined}
           onChange={setSizing}
-          onCancel={() => setSizing(null)}
-          onOk={(expectedDiners) => setExpected.mutate({ expectedDiners }, { onSuccess: () => setSizing(null) })}
+          onCancel={() => startTransition(() => setSizing(null))}
+          onOk={(expectedDiners) => setExpected.mutate({ expectedDiners }, { onSuccess: () => startTransition(() => setSizing(null)) })}
         />
       ) : null}
       {closing ? (
@@ -309,8 +310,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           ok="Close bill"
           busy={close.isPending}
           error={close.error?.message}
-          onOk={() => close.mutate(undefined, { onSuccess: () => setClosing(false) })}
-          onCancel={() => setClosing(false)}
+          onOk={() => close.mutate(undefined, { onSuccess: () => startTransition(() => setClosing(false)) })}
+          onCancel={() => startTransition(() => setClosing(false))}
         />
       ) : null}
       {binning ? (
@@ -322,7 +323,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           busy={abandon.isPending}
           error={abandon.error?.message}
           onOk={() => abandon.mutate(undefined, { onSuccess: () => router.replace('/') })}
-          onCancel={() => setBinning(false)}
+          onCancel={() => startTransition(() => setBinning(false))}
         />
       ) : null}
     </>
@@ -369,7 +370,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title title={b.venue?.name ?? 'Your bill'} sub="Bill closed" />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Bill closed" />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />
         {outstanding.length === 0
           ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>

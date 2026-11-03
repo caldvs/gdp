@@ -5,7 +5,8 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { ViewTransition, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -34,10 +35,11 @@ export function BackButton({ onClick, children }: { onClick: () => void; childre
   );
 }
 
-export function Title({ title, sub, aside }: { title: ReactNode; sub?: ReactNode; aside?: ReactNode }) {
+/** `vt` names the heading so same-named text on the last page glides into it. */
+export function Title({ title, sub, aside, vt }: { title: ReactNode; sub?: ReactNode; aside?: ReactNode; vt?: string }) {
   const body = (
     <div className="title">
-      <h1>{title}</h1>
+      <h1><Morph name={vt}>{title}</Morph></h1>
       {sub ? <p>{sub}</p> : null}
     </div>
   );
@@ -69,14 +71,16 @@ type RowProps = {
   muted?: boolean;
   chevron?: boolean;
   lead?: ReactNode;
+  /** Shared transition name for the title (see Title). */
+  vt?: string;
 };
 
-function RowInner({ title, sub, end, strong, chevron, lead }: RowProps) {
+function RowInner({ title, sub, end, strong, chevron, lead, vt }: RowProps) {
   return (
     <>
       {lead}
       <span className="row__main">
-        <span className={cx('row__title', strong && 'row__title--strong')}>{title}</span>
+        <span className={cx('row__title', strong && 'row__title--strong')}><Morph name={vt}>{title}</Morph></span>
         {sub ? <span className="row__sub">{sub}</span> : null}
       </span>
       {end !== undefined && end !== null ? <span className="row__end">{end}</span> : null}
@@ -144,12 +148,15 @@ export function Button({ href, replace, tone = 'primary', small, busy, grow, cla
   );
 }
 
-/** Fixed bottom bar for a screen's main action(s), within thumb reach. */
+/** Fixed bottom bar for a screen's main action(s), within thumb reach.
+ * Named so it stays put between pages while its buttons cross-fade. */
 export function ActionBar({ children, stack }: { children: ReactNode; stack?: boolean }) {
   return (
-    <div className="actionbar">
-      <div className={cx('actionbar__in', stack && 'actionbar__in--stack')}>{children}</div>
-    </div>
+    <ViewTransition name="actionbar" share="bar" enter="bar" exit="bar" default="none">
+      <div className="actionbar">
+        <div className={cx('actionbar__in', stack && 'actionbar__in--stack')}>{children}</div>
+      </div>
+    </ViewTransition>
   );
 }
 
@@ -198,16 +205,22 @@ export function Diners({ people, hostId, meId }: { people: { userId: string; dis
 
 /* ---------- Dialog ---------- */
 
-/** A modal panel: bottom sheet on phones, centred box on wider screens. */
+/** A modal panel: bottom sheet on phones, centred box on wider screens.
+ * It rises in on mount; it drops away if the caller closes it inside
+ * startTransition. */
 export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string }) {
   return (
     <>
-      <div className="dialog-overlay" onClick={onClose} aria-hidden />
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-        <h2 id={id} className="dialog__t">{title}</h2>
-        {children}
-        <div className="dialog__actions">{actions}</div>
-      </div>
+      <ViewTransition exit="scrim-out" default="none">
+        <div className="dialog-overlay" onClick={onClose} aria-hidden />
+      </ViewTransition>
+      <ViewTransition exit="sheet-out" default="none">
+        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+          <h2 id={id} className="dialog__t">{title}</h2>
+          {children}
+          <div className="dialog__actions">{actions}</div>
+        </div>
+      </ViewTransition>
     </>
   );
 }

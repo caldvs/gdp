@@ -200,6 +200,36 @@ jobs:
             apps/web/e2e/*-snapshots/
           retention-days: 7
 
+  sast:
+    name: sast • codeql (${{ matrix.language }})
+    # Static analysis on every PR and push to main, whatever changed. Findings
+    # appear as code scanning alerts and annotations on the PR; the job only
+    # fails if the analysis itself breaks.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - '**/node_modules'
+              - '**/coverage'
+              - 'packages/core/src/api/schema.d.ts'
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
   coverage:
     name: coverage
     needs: [changes, api-coverage, core]
@@ -318,7 +348,7 @@ jobs:
 
   gate:
     name: gate
-    needs: [changes, tooling, api, api-coverage, core, web, coverage]
+    needs: [changes, tooling, api, api-coverage, core, web, sast, coverage]
     if: always()
     runs-on: ubuntu-24.04
     steps:

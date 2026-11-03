@@ -8,7 +8,12 @@ import {
 import { FOOD_AND_DRINK, NEARBY_RADIUS_M } from '../services/venues/nearbyVenues.js';
 import Stripe from 'stripe';
 import { env } from '../config/env.js';
-import type { FeeLookupKey } from '../services/billing/tableFee.js';
+import {
+  createTableFeeService,
+  type FeeLookupKey,
+  type TableFee,
+  type TableFeeStore,
+} from '../services/billing/tableFee.js';
 
 /**
  * Checks that the deployed Lambda can actually use what it depends on:
@@ -95,6 +100,84 @@ const stripeCheck: Check = {
       return `${k} ${p.currency.toUpperCase()} ${((p.unit_amount ?? 0) / 100).toFixed(2)}`;
     });
     return `${key.includes('_live_') ? 'live' : 'test'} mode · ${amounts.join(', ')}`;
+  },
+};
+
+/**
+ * Smoke test for the Refunds page's promise, against real Stripe: a £2
+ * sandbox payment (Stripe's `pm_card_visa` test card), refunded by the same
+ * code that refunds a bill nobody joined. Proves the key can refund and that
+ * Stripe accepts exactly what we send. The fee row is kept in memory, so the
+ * table isn't touched. Test mode only: in live mode it would be real money.
+ */
+export async function refundRoundTrip(stripe: Stripe): Promise<string> {
+  const smokeId = `smoke-${Date.now()}`;
+  const payment = await stripe.paymentIntents.create({
+    amount: 200,
+    currency: 'gbp',
+    payment_method: 'pm_card_visa',
+    // Card only: nothing that would need a redirect to confirm.
+    automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+    confirm: true,
+    description: 'Deploy smoke test: table fee refund',
+    metadata: { billId: smokeId, smoke: 'refund' },
+  });
+  if (payment.status !== 'succeeded') {
+    throw new Error(`test payment ${payment.id} is ${payment.status}, not succeeded`);
+  }
+
+  const rows = new Map<string, TableFee>();
+  rows.set(smokeId, {
+    billId: smokeId,
+    userId: smokeId,
+    checkoutSessionId: `cs_${smokeId}`,
+    paymentIntentId: payment.id,
+    amountPence: 200,
+    paidAt: new Date().toISOString(),
+  });
+  const store: TableFeeStore = {
+    get: (billId) => Promise.resolve(rows.get(billId) ?? null),
+    putIfAbsent: () => Promise.resolve('duplicate'),
+    markRefunded: (billId, refund) => {
+      const fee = rows.get(billId);
+      if (!fee || fee.refundedAt) return Promise.resolve('duplicate');
+      rows.set(billId, { ...fee, ...refund });
+      return Promise.resolve('recorded');
+    },
+  };
+  const fees = createTableFeeService({
+    stripe,
+    store,
+    getBill: () => Promise.resolve(null),
+    appBaseUrl: env.APP_BASE_URL,
+  });
+  const session = {
+    sessionId: smokeId,
+    billId: smokeId,
+    creatorUserId: smokeId,
+    participants: [{ userId: smokeId }],
+  };
+  const outcome = await fees.refundIfNobodyJoined(session);
+  if (outcome !== 'refunded') throw new Error(`refund outcome was ${outcome}, not refunded`);
+  const refundId = rows.get(smokeId)?.refundId;
+  if (!refundId) throw new Error('refund not recorded on the fee row');
+
+  const refund = await stripe.refunds.retrieve(refundId);
+  if (refund.status !== 'succeeded' && refund.status !== 'pending') {
+    throw new Error(`refund ${refund.id} is ${refund.status ?? 'unknown'}`);
+  }
+  if (refund.amount !== 200) throw new Error(`refund ${refund.id} is ${refund.amount}p, not 200p`);
+  return `paid ${payment.id} £2.00, refunded ${refund.id} (${refund.status})`;
+}
+
+const refundCheck: Check = {
+  name: 'Stripe refund (nobody joined)',
+  required: true,
+  run: async () => {
+    const key = env.STRIPE_SECRET_KEY;
+    if (!key) throw skip('Stripe not enabled (no STRIPE_SECRET_KEY)');
+    if (!key.includes('_test_')) throw skip('live key: refunds are only smoke-tested in test mode');
+    return refundRoundTrip(new Stripe(key, { timeout: TIMEOUT_MS, maxNetworkRetries: 0 }));
   },
 };
 
@@ -238,6 +321,7 @@ const nearbyCheck: Check = {
 
 export const CHECKS: readonly Check[] = [
   stripeCheck,
+  refundCheck,
   bedrockCheck,
   venueCheck,
   nearbyCheck,

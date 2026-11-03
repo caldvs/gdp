@@ -137,7 +137,11 @@ The workflow runs two checks once `cdk deploy` finishes:
   the docs, over HTTPS.
 - **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
-  and IAM role, that the Stripe key works and both fee prices exist, Bedrock
+  and IAM role, that the Stripe key works and both fee prices exist, that a
+  refund goes through (test mode only: a £2 `pm_card_visa` payment refunded by
+  the same code that refunds a bill nobody joined, so each dev deploy leaves one
+  paid-and-refunded £2 in the Stripe sandbox, described *Deploy smoke test*;
+  skipped with a live key), Bedrock
   answers, Amazon Location can look up a UK place, and the SES sender is
   verified (and whether SES is still in the sandbox). Stripe, Bedrock and SES
   failing fail the run; Amazon Location only warns, because a failed lookup

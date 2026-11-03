@@ -16,7 +16,7 @@ docs/          Architecture diagrams, decisions, deploy guide, designs
 ## How it works
 
 1. The **lead** photographs the bill. The API reads it (Claude Sonnet on Amazon Bedrock), looks up the restaurant's address (Amazon Location Service), and the lead checks the items.
-2. The lead enters their bank details, pays the **table fee** (£2, or £3 over £100, via Stripe; skipped when Stripe isn't configured), and gets a QR code and join code. The bank details stay in their browser and travel to guests in the link's `#p=` fragment ([ADR-0002](docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
+2. The lead enters their bank details, pays the **platform fee** (£2, or £3 over £100, via Stripe; skipped when Stripe isn't configured), and gets a QR code and join code. The bank details stay in their browser and travel to guests in the link's `#p=` fragment ([ADR-0002](docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
 3. **Guests** join, tick what they had or split shared items ([ADR-0006](docs/decisions.md#adr-0006-splits-by-ways)), and see their share including service.
 4. Guests pay the lead by bank transfer (tap-to-copy details, Monzo/Revolut links) and tap _I've paid_. The app never holds money.
 5. The **lead** confirms payments, takes any leftover items, and closes the bill. Only the lead can close it. Closing emails every diner their bill report.
@@ -40,7 +40,7 @@ Bill reading uses Bedrock even locally: set `BEDROCK_MODEL_ID` and `AWS_PROFILE=
 
 | Command                                    |                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev:local`                        | API + web (web pointed at the local API) + Stripe webhook forwarding, so the table fee completes locally. Needs the [Stripe CLI](https://stripe.com/docs/stripe-cli) logged in; without it, payments are off and everything else still runs. `DEV_NO_STRIPE=1` skips the forwarder. |
+| `npm run dev:local`                        | API + web (web pointed at the local API) + Stripe webhook forwarding, so the platform fee completes locally. Needs the [Stripe CLI](https://stripe.com/docs/stripe-cli) logged in; without it, payments are off and everything else still runs. `DEV_NO_STRIPE=1` skips the forwarder. |
 | `npm run dev` / `npm run dev:api`          | Web only / API only                                                                                                                                                                                                                                                                 |
 | `npm run typecheck`                        | All workspaces (the pre-commit hook runs it)                                                                                                                                                                                                                                        |
 | `npm test`                                 | Unit tests (`packages/core`, `apps/api`)                                                                                                                                                                                                                                            |
@@ -57,7 +57,7 @@ An API contract change and the matching client change go in the same commit, sin
 - [docs/decisions.md](docs/decisions.md): product and technical decisions
 - [docs/deploy.md](docs/deploy.md): deploying the API (CDK) and web (Vercel)
 - [docs/email.md](docs/email.md): email through Amazon SES: the paymeback.dev sending domain, leaving the sandbox
-- [docs/table-fee.md](docs/table-fee.md): the Stripe table fee and what's left before it takes real money
+- [docs/table-fee.md](docs/table-fee.md): the Stripe platform fee and what's left before it takes real money
 - [docs/design](docs/design): designs not yet built
 - [apps/api/README.md](apps/api/README.md) and [apps/api/RUNBOOK.md](apps/api/RUNBOOK.md): the API and what to do when an alarm fires
 - [apps/web/README.md](apps/web/README.md): the web app and its tests

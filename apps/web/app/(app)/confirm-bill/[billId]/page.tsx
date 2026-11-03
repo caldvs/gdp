@@ -67,7 +67,7 @@ function CheckBill() {
   const amend = useAmendBill(billId ?? '');
   const createSession = useCreateSession();
   const payout = usePayoutAccount();
-  // The table fee is paid on the last step before the QR code. Null = no
+  // The platform fee is paid on the last step before the QR code. Null = no
   // fee here (Stripe not set up on the API or the web app).
   const fee = useTableFeeStatus(billId, { enabled: !!STRIPE_PUBLISHABLE_KEY && !isMidSession });
 
@@ -313,7 +313,7 @@ function CheckBill() {
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
           <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null ? `Pay ${formatGBP(feeDue)} fee & get QR code` : 'Continue'}
+            {feeDue !== null ? `Pay ${formatGBP(feeDue)} platform fee & get QR code` : 'Continue'}
           </Button>
         )}
       </ActionBar>

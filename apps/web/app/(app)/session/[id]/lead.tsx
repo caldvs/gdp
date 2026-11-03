@@ -304,7 +304,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <Confirm
           title="Close the bill?"
           body={[
-            unclaimedPence > 0 ? `${formatGBP(unclaimedPence)} not claimed goes on you.` : null,
+            unclaimedPence > 0 ? `Nobody claimed ${formatGBP(unclaimedPence)}. It goes on you.` : null,
             toCome > 0 ? `${formatGBP(toCome)} still to collect. People can still pay.` : null,
           ].filter(Boolean).join(' ') || 'Everyone has paid.'}
           ok="Close bill"
@@ -366,6 +366,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   const outstanding = guests.filter((p) => !isPaid(s, b, p));
   const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
   const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p), 0));
+  const unclaimed = itemStatuses(s, b, s.creatorUserId).filter((x) => x.left > 0);
   return (
     <>
       <Page sub>
@@ -379,6 +380,13 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
           <Section title="People">
             <Box>{guests.map((p) => (
               <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
+            ))}</Box>
+          </Section>
+        ) : null}
+        {unclaimed.length > 0 ? (
+          <Section title="Nobody claimed these">
+            <Box>{unclaimed.map(({ item, left }) => (
+              <Row key={item.itemId} title={left > 1 ? `${item.name} × ${left}` : item.name} end={formatGBP(item.unitPricePence * left)} />
             ))}</Box>
           </Section>
         ) : null}

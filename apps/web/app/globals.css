@@ -209,7 +209,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .fee-sum { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 16px 24px; }
 .fee-sum b { font-size: 40px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* Table fee: waiting for the payment, then the QR code. */
+/* Platform fee: waiting for the payment, then the QR code. */
 .pay-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 36px 20px 28px; text-align: center; }
 .pay-wait__mark { position: relative; width: 72px; height: 72px; margin-bottom: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent-tint); color: var(--accent); font-size: 30px; font-weight: 700; transition: background .3s, color .3s; }
 .pay-wait__mark svg { width: 30px; height: 30px; }

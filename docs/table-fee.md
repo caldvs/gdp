@@ -1,4 +1,4 @@
-# Table fee
+# Platform fee
 
 The lead pays £2 (£3 when the bill is over £100) before getting the QR code, in Stripe's embedded form (`ui_mode: "form"`): Apple Pay, Google Pay or card. Card details never leave Stripe's iframe.
 
@@ -38,7 +38,7 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 
 ## Before it takes real money
 
-- [ ] Live product *Table fee* with two one-time GBP prices, lookup keys `table_fee_2` (£2.00) and `table_fee_3` (£3.00). The sandbox has them.
+- [ ] Live product *Platform fee* (the sandbox product is still named *Table fee*; rename it) with two one-time GBP prices, lookup keys `table_fee_2` (£2.00) and `table_fee_3` (£3.00). The sandbox has them.
 - [ ] Live keys, live webhook endpoint, live domain registration (`paymeback.dev`; the sandbox has `paymeback.dev` and `test.paymeback.dev`).
 - [ ] At activation, Business details: public business name *Pay Me Back*, statement descriptor `PAYMEBACK.DEV` (what banks show). The sandbox can't set these until the account is activated.
 - [ ] One free bill a month per lead.

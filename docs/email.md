@@ -6,7 +6,7 @@ How the app sends email, what's set up in AWS and DNS, and what's left. Dev and 
 
 Only two kinds of email, both because a user asked for them:
 
-- **Sign-in links** (`POST /v1/auth/email/start`). Limited per address: one every 30 seconds, at most 5 in 15 minutes (`RATE_LIMITED`, 429; `src/storage/signInLinkStore.ts`).
+- **Sign-in codes** (`POST /v1/auth/email/start`: 6 digits, in the subject). Limited per address: one every 30 seconds, at most 5 in 15 minutes (`RATE_LIMITED`, 429; `src/storage/signInCodeStore.ts`).
 - **Bill reports**: when someone taps *Email me*, and to everyone when the lead closes the bill (`src/services/sessions/reportService.ts`).
 
 No marketing or bulk email. The sender is `src/services/email/` (SES v2 when deployed, printed to the console locally).

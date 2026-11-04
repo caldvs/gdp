@@ -7,7 +7,7 @@ import { peekJoinFragment } from '@/lib/joinFragment';
 import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button, Page, Title } from '@/components/ui';
-import { EmailLinkFlow, readPending, SignInScreen } from '@/components/EmailSignIn';
+import { EmailCodeFlow, readPending, SignInScreen } from '@/components/EmailSignIn';
 
 /**
  * The front door. Signed-out visitors see what the app does; Sign in and
@@ -42,7 +42,7 @@ function Landing() {
   const router = useRouter();
   const from = useSearchParams().get('from');
 
-  // A link sent from this tab is still being waited on: back to that.
+  // A code sent from this tab is still being waited on: back to that.
   useEffect(() => {
     if (!invite && !from && readPending()) router.replace('/sign-in/email');
   }, [invite, from, router]);
@@ -52,7 +52,7 @@ function Landing() {
     return (
       <Page>
         <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
-        <EmailLinkFlow cta="Continue" />
+        <EmailCodeFlow cta="Continue" />
       </Page>
     );
   }

@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
   // client. The test bar is never shown on Production (lib/config.ts).
   env: { NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || '' },
   // CSP, no framing, no referrer (#150). packages/core/src/lib/securityHeaders.ts.
+  // Sign-in links (before 6-digit codes) land on the sign-in screen.
+  async redirects() {
+    return [{ source: '/sign-in/verify', destination: '/sign-in/email', permanent: false }];
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders(process.env) }];
   },

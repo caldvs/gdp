@@ -111,7 +111,7 @@ ul.plain strong { color: var(--ink); }
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 2322" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in link, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 2322" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -174,18 +174,18 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="444">  (bank details stay on device, ADR-0002)</text>
 <rect class="node" x="30" y="506" width="320" height="178" rx="10"/>
 <rect class="band band-id" x="30" y="506" width="6" height="178" rx="3"/>
-<text class="t-title" x="48" y="533">Sign-in link</text>
+<text class="t-title" x="48" y="533">Sign-in code</text>
 <rect class="chip-ttl" x="286.4" y="519" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="533" text-anchor="middle">25 min</text>
+<text class="t-chip" x="311.2" y="533" text-anchor="middle">20 min</text>
 <text class="t-keylab" x="48" y="558">pk</text>
-<text class="t-key" x="104" y="558">SIGNIN#{linkId}</text>
+<text class="t-key" x="104" y="558">SIGNIN#{id}</text>
 <text class="t-keylab" x="48" y="580">sk</text>
 <text class="t-key" x="104" y="580">same as pk</text>
 <line class="rule" x1="48" y1="594" x2="332" y2="594"/>
-<text class="t-attr" x="48" y="612">email, linkHash, requestHash, code (#138)</text>
-<text class="t-attr" x="48" y="630">status pending → approved | denied → claimed</text>
-<text class="t-attr" x="48" y="648">  (conditional; claimed again for 5 min)</text>
-<text class="t-attr" x="48" y="666">expiresAt (15 min), claimBy</text>
+<text class="t-attr" x="48" y="612">email, requestHash, codeHash (6 digits, salted)</text>
+<text class="t-attr" x="48" y="630">status pending → used; attempts ≤ 5 (ADD)</text>
+<text class="t-attr" x="48" y="648">  (right code again for 5 min after use)</text>
+<text class="t-attr" x="48" y="666">expiresAt (15 min)</text>
 <rect class="node" x="30" y="728" width="320" height="178" rx="10"/>
 <rect class="band band-id" x="30" y="728" width="6" height="178" rx="3"/>
 <text class="t-title" x="48" y="755">Rate limits</text>

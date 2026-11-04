@@ -73,7 +73,7 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 ### ses-reputation
 
-Prod only (`gdp-ses-bounce-rate`, `gdp-ses-complaint-rate`): the account's SES bounce rate is over 4% or its complaint rate over 0.08%. SES reviews accounts at 5% / 0.1% and can pause sending, which stops sign-in links everywhere (dev and prod share the account). Check SES → Reputation metrics and the sign-in logs (`signin.rate_limited`, many sends to random addresses suggests someone spraying `/email/start`). The per-IP and global sign-in limits (#146) are the first line of defence.
+Prod only (`gdp-ses-bounce-rate`, `gdp-ses-complaint-rate`): the account's SES bounce rate is over 4% or its complaint rate over 0.08%. SES reviews accounts at 5% / 0.1% and can pause sending, which stops sign-in codes everywhere (dev and prod share the account). Check SES → Reputation metrics and the sign-in logs (`signin.rate_limited`, many sends to random addresses suggests someone spraying `/email/start`). The per-IP and global sign-in limits (#146) are the first line of defence.
 
 ## Common problems
 

@@ -1,112 +1,92 @@
 /**
- * The emailed link, opened the way most people open it on a laptop: in a
- * new tab of the same browser. The tab that asked must end up signed in
- * whatever order its polls land in.
- *
- * 4 Nov 2026, paymeback.dev: the link tab was confirmed and closed, the
- * asking tab polled twice on refocus (0.5 s apart), the first poll
- * collected the session and the second was told `expired`, and the page
- * said "Link expired" though the sign-in had worked.
+ * Sign in with the 6-digit code from the email, typed (or filled in by the
+ * phone) in the same tab that asked. Nothing opens a new tab, so where the
+ * person was going (a join link's `#p=` included) is never lost.
  */
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { FakeApi, SIGN_IN_CODE, SIGN_IN_LINK_TOKEN, users } from './fakeApi';
+import { expect, test, type Page } from '@playwright/test';
+import { FakeApi, SIGN_IN_CODE, users } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
-
-async function askForLink(page: Page) {
-  await page.goto('/sign-in/email');
+async function askForCode(page: Page, path = '/sign-in/email') {
+  await page.goto(path);
   await page.getByLabel('Email').fill('sam@example.com');
   await page.locator('form:has(#email) button[type="submit"]').click();
-  await expect(page.getByText('Check your email')).toBeVisible();
-  await expect(page.getByTestId('sign-in-code')).toHaveText(SIGN_IN_CODE);
+  await expect(page.getByLabel('Code sent to sam@example.com')).toBeFocused();
 }
 
-/** Click the email's button: a new tab in the same browser, Yes, close it. */
-async function openLinkInNewTab(ctx: BrowserContext) {
-  const linkTab = await ctx.newPage();
-  await linkTab.goto(`/sign-in/verify#t=${SIGN_IN_LINK_TOKEN}`);
-  await expect(linkTab.getByRole('heading', { name: `Signing in the tab showing ${SIGN_IN_CODE}?` })).toBeVisible();
-  await linkTab.getByRole('button', { name: 'Yes' }).click();
-  await expect(linkTab.getByRole('heading', { name: 'Signed in' })).toBeVisible();
-  await linkTab.close();
-}
-
-/** Back to the asking tab: it regains focus, which fires an extra poll. */
-async function backTo(page: Page) {
-  await page.bringToFront();
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-    window.dispatchEvent(new Event('focus'));
-  });
-}
-
-async function expectSignedInAtHome(page: Page) {
-  await expect(page).not.toHaveURL(/\/sign-in/, POLL);
-  await expect(page.getByText('Link expired')).toHaveCount(0);
-}
-
-test('link opened in a new tab of the same browser: the asking tab signs in', async ({ browser }) => {
+async function newPage(browser: import('@playwright/test').Browser) {
   const api = new FakeApi();
   const ctx = await browser.newContext();
   await api.attach(ctx, users.sam, { signedIn: false, atTable: false });
-  const asker = await ctx.newPage();
-  await askForLink(asker);
-  await openLinkInNewTab(ctx);
-  await backTo(asker);
-  await expectSignedInAtHome(asker);
-  // Polled again after collecting, and wasn't talked out of it.
-  await asker.waitForTimeout(2500);
-  await expect(asker.getByText('Link expired')).toHaveCount(0);
+  return { api, ctx, page: await ctx.newPage() };
+}
+
+test('the code typed digit by digit signs in as soon as it is whole', async ({ browser }) => {
+  const { api, ctx, page } = await newPage(browser);
+  await askForCode(page);
+  await page.getByLabel(/Code sent to/).pressSequentially(SIGN_IN_CODE);
+  await expect(page).not.toHaveURL(/\/sign-in/);
+  expect(api.signIn).toBe('used');
   await ctx.close();
 });
 
-test('a late `expired` after `signedIn` never undoes the sign-in', async ({ browser }) => {
-  // The server as it was before the fix: the session once, then expired.
-  const api = new FakeApi();
-  const ctx = await browser.newContext();
-  await api.attach(ctx, users.sam, { signedIn: false, atTable: false });
-  let collected = 0;
-  await ctx.route('**/v1/auth/email/requests', async (route) => {
-    if (api.signIn === 'pending') return route.fulfill({ json: { status: 'pending' } });
-    // Answer slowly so the next poll overlaps, the way a refocus does.
-    await new Promise((r) => setTimeout(r, 300));
-    if (collected++ === 0) return route.fulfill({ json: { status: 'signedIn', token: 'test-token', user: users.sam } });
-    return route.fulfill({ json: { status: 'expired' } });
-  });
-  const asker = await ctx.newPage();
-  await askForLink(asker);
-  await openLinkInNewTab(ctx);
-  await backTo(asker);
-  await backTo(asker);
-  await expectSignedInAtHome(asker);
+test('a code filled in at once (pasted, or from the phone) signs in', async ({ browser }) => {
+  const { ctx, page } = await newPage(browser);
+  await askForCode(page);
+  // Spaces and dashes from a paste are ignored.
+  await page.getByLabel(/Code sent to/).fill(`${SIGN_IN_CODE.slice(0, 3)} ${SIGN_IN_CODE.slice(3)}`);
+  await expect(page).not.toHaveURL(/\/sign-in/);
   await ctx.close();
 });
 
-test('`expired` while another tab of this browser signed in: carry on signed in', async ({ browser }) => {
-  // Even if the asking tab never gets its own session, the link tab's
-  // sign-in is shared by the whole browser.
-  const api = new FakeApi();
-  const ctx = await browser.newContext();
-  await api.attach(ctx, users.sam, { signedIn: false, atTable: false });
-  await ctx.route('**/v1/auth/email/requests', (route) =>
-    route.fulfill({ json: { status: api.signIn === 'pending' ? 'pending' : 'expired' } }),
-  );
-  const asker = await ctx.newPage();
-  await askForLink(asker);
-  await openLinkInNewTab(ctx);
-  await backTo(asker);
-  await expectSignedInAtHome(asker);
+test('a wrong code says how many tries are left, and the right one still works', async ({ browser }) => {
+  const { ctx, page } = await newPage(browser);
+  await askForCode(page);
+  const box = page.getByLabel(/Code sent to/);
+  await box.fill('000000');
+  await expect(page.getByText('Wrong code. 4 tries left.')).toBeVisible();
+  await expect(box).toHaveValue('');
+  await box.fill(SIGN_IN_CODE);
+  await expect(page).not.toHaveURL(/\/sign-in/);
   await ctx.close();
 });
 
-test('a genuinely expired request still says so and lets you send a new link', async ({ browser }) => {
-  const api = new FakeApi();
-  const ctx = await browser.newContext();
-  await api.attach(ctx, users.sam, { signedIn: false, atTable: false });
-  const asker = await ctx.newPage();
-  await askForLink(asker);
-  await ctx.route('**/v1/auth/email/requests', (route) => route.fulfill({ json: { status: 'expired' } }));
-  await expect(asker.getByText('Link expired. Send a new one.')).toBeVisible(POLL);
-  await expect(asker.getByLabel('Email')).toBeVisible();
+test('a used-up code says so and sends a new one', async ({ browser }) => {
+  const { api, ctx, page } = await newPage(browser);
+  await askForCode(page);
+  api.codeTries = 1;
+  await page.getByLabel(/Code sent to/).fill('000000');
+  await expect(page.getByText('Code expired. Send a new one.')).toBeVisible();
+  await expect(page.getByLabel(/Code sent to/)).toBeDisabled();
+  // The resend wait from the first send still applies.
+  await expect(page.getByRole('button', { name: /Resend in/ })).toBeDisabled();
+  await ctx.close();
+});
+
+test('Continue with a short code asks for all 6 digits', async ({ browser }) => {
+  const { api, ctx, page } = await newPage(browser);
+  await askForCode(page);
+  await page.getByLabel(/Code sent to/).fill('123');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByText('Enter the 6-digit code.')).toBeVisible();
+  expect(api.requests.filter((r) => r.path === '/v1/auth/email/verify')).toHaveLength(0);
+  await ctx.close();
+});
+
+test('the code step survives a reload, and Different email goes back', async ({ browser }) => {
+  const { ctx, page } = await newPage(browser);
+  await askForCode(page);
+  await page.reload();
+  await expect(page.getByLabel('Code sent to sam@example.com')).toBeVisible();
+  await page.getByRole('button', { name: 'Different email' }).click();
+  await page.reload();
+  await expect(page.getByLabel('Email')).toBeVisible();
+  await ctx.close();
+});
+
+test('an old sign-in link goes to the sign-in screen', async ({ browser }) => {
+  const { ctx, page } = await newPage(browser);
+  await page.goto('/sign-in/verify#t=old.token');
+  await expect(page).toHaveURL(/\/sign-in\/email/);
+  await expect(page.getByLabel('Email')).toBeVisible();
   await ctx.close();
 });

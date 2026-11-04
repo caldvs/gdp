@@ -11,7 +11,7 @@ info:
     - **All money is integer pence (GBP).** No floats anywhere on the wire.
     - **All identifiers are UUIDv7** unless documented otherwise.
     - **Timestamps are RFC 3339** strings.
-    - **Auth** uses session JWTs issued by `POST /v1/auth/email/link` (the emailed sign-in link) or `POST /v1/auth/email/requests` (the tab that asked). Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
+    - **Auth** uses session JWTs issued by `POST /v1/auth/email/verify` (the emailed 6-digit code). Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
     - **Errors** use a single envelope (`ErrorResponse`). `error.code` is the stable identifier; `error.message` is human-safe.
     - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body returns `409 IDEMPOTENCY_CONFLICT`.
     - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
@@ -98,30 +98,24 @@ paths:
       tags: [identity]
       operationId: startEmailSignIn
       security: []
-      summary: Email a one-time sign-in link
+      summary: Email a 6-digit sign-in code
       description: |
-        Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
-        token is in the fragment, so it never reaches a server log. It works
-        once and expires in 15 minutes. The link points at the calling
-        origin only when it is exactly one of the server's listed bases
-        (dev: test.paymeback.dev, localhost), otherwise at `APP_BASE_URL`;
-        prod always uses `APP_BASE_URL`. At most one link every 30 seconds
-        and 5 every 15 minutes per address (counted without `+tags` or Gmail
-        dots), 20 an hour per IP address, and 1000 an hour in all (429
-        otherwise).
+        Emails a 6-digit code. The subject leads with it ("123456 is your
+        Pay Me Back code"), so it shows in the phone's notification and can
+        be typed without opening the email. It works once, for 15 minutes,
+        and only with the `requestId` returned here: the tab that asked
+        keeps that secret and sends it with the code to
+        `POST /v1/auth/email/verify`. Only hashes of both are stored.
 
-        Returns `requestId`, a secret the asking tab keeps and passes to
-        `POST /v1/auth/email/requests` until the link has been opened, and
-        `code`, a two-digit number the asking tab shows. The link's page
-        shows the same number and asks the person to confirm it before
-        signing anyone in, so a request someone else started can't be
-        completed by accident.
+        At most one code every 30 seconds and 5 every 15 minutes per
+        address (counted without `+tags` or Gmail dots), 20 an hour per IP
+        address, and 1000 an hour in all (429 otherwise).
 
         The response is the same whether or not the address has an
         account, so addresses can't be enumerated. Email delivery failures
         (e.g. SES bounce) also return `200` and are logged server-side.
 
-        An address on `TABLE_FEE_EXEMPT_EMAILS` gets no link: the response
+        An address on `TABLE_FEE_EXEMPT_EMAILS` gets no code: the response
         carries `token` and `user` instead of `requestId`, and the caller is
         signed in.
       requestBody:
@@ -135,7 +129,7 @@ paths:
                 email: { type: string, format: email, maxLength: 254 }
       responses:
         '200':
-          description: Link sent (or treated as sent).
+          description: Code sent (or treated as sent).
           content:
             application/json:
               schema:
@@ -146,10 +140,6 @@ paths:
                   requestId:
                     type: string
                     description: Everyone but exempt addresses. Secret; keep it in the tab that asked.
-                  code:
-                    type: string
-                    pattern: '^[0-9]{2}$'
-                    description: Everyone but exempt addresses. The number the asking tab shows; not a secret.
                   token: { type: string, description: 'Exempt addresses only: the session JWT.' }
                   user:
                     type: object
@@ -162,7 +152,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '429':
           description: |
-            `RATE_LIMITED`: a link was sent to this address less than 30
+            `RATE_LIMITED`: a code was sent to this address less than 30
             seconds ago, 5 have been sent in the last 15 minutes, 20 this
             hour from this IP address, or 1000 this hour in all.
             `details.retryAfterSeconds` says when to try again.
@@ -170,161 +160,44 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/auth/email/link/code:
+  /v1/auth/email/verify:
     post:
       tags: [identity]
-      operationId: getEmailSignInLinkCode
+      operationId: verifyEmailSignInCode
       security: []
-      summary: The number an emailed link's request shows
+      summary: Sign in with the emailed code
       description: |
-        Called by the tab the link opened, before anything else: returns
-        the two-digit number the tab that asked is showing, for the person
-        to check. Changes nothing. A used, denied, expired, wrong or
-        unknown token is `401 AUTH_INVALID`.
+        The tab that asked sends its `requestId` and the code the person
+        typed. `signedIn` with a session JWT (good for 30 days) for the
+        right code; the account for that email is found or made. `wrong`
+        with `attemptsLeft` otherwise: a request allows 5 tries, right or
+        wrong. `expired` once the code is used up, past 15 minutes, or the
+        `requestId` isn't one we gave out: ask for a new code.
+
+        The right code can be entered again by the same tab for 5 minutes
+        after it's first used (a phone's autofill and a tap can send it
+        twice), and keeps answering `signedIn`. POST so the secret stays
+        out of logs.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [token]
-              properties:
-                token: { type: string, maxLength: 200 }
-      responses:
-        '200':
-          description: The number.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [code]
-                properties:
-                  code: { type: string, pattern: '^[0-9]{2}$' }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401':
-          description: The link was used already, expired, or isn't one we sent (`AUTH_INVALID`).
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
-  /v1/auth/email/link/deny:
-    post:
-      tags: [identity]
-      operationId: denyEmailSignInLink
-      security: []
-      summary: Refuse an emailed link whose number isn't yours
-      description: |
-        The person says the number isn't the one on their screen, so
-        someone else asked: the request can no longer sign anyone in, and
-        the tab that asked sees `expired`. Always `200 {ok: true}`, even for
-        a used or unknown link.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token]
-              properties:
-                token: { type: string, maxLength: 200 }
-      responses:
-        '200':
-          description: Done.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok]
-                properties:
-                  ok: { type: boolean, const: true }
-        '400': { $ref: '#/components/responses/BadRequest' }
-
-  /v1/auth/email/link:
-    post:
-      tags: [identity]
-      operationId: openEmailSignInLink
-      security: []
-      summary: Sign in with the token from an emailed link
-      description: |
-        Called by the tab the link opened, once the person has confirmed
-        the number (`code`) matches the one the asking tab shows. Looks up
-        (or creates) the account for the link's email and mints a session
-        JWT. Also marks the request approved, so the tab that asked signs
-        in too.
-
-        Works once, within 15 minutes, and only with the request's number.
-        Any failure (used, denied, expired, wrong or unknown token, wrong
-        number) is `401 AUTH_INVALID`, so they can't be told apart.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token, code]
-              properties:
-                token: { type: string, maxLength: 200 }
-                code: { type: string, pattern: '^[0-9]{2}$' }
-      responses:
-        '200':
-          description: Signed in. Token is good for 30 days.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [token, user]
-                properties:
-                  token:
-                    type: string
-                    description: Session JWT — pass on every subsequent request.
-                  user:
-                    type: object
-                    required: [userId, email, displayName]
-                    properties:
-                      userId: { type: string, format: uuid }
-                      email: { type: string, format: email }
-                      displayName: { type: string }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401':
-          description: The link was used already, expired, or isn't one we sent (`AUTH_INVALID`).
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
-  /v1/auth/email/requests:
-    post:
-      tags: [identity]
-      operationId: getEmailSignInRequest
-      security: []
-      summary: Check whether the emailed link has been opened yet
-      description: |
-        The tab that asked polls this (every 2 seconds) with the
-        `requestId` from `/email/start`. `pending` until the link is
-        opened; then `signedIn`, with this tab's own session JWT, on
-        every poll for 5 minutes after the first (polls overlap and
-        answers get lost, so a second poll must not undo a sign-in);
-        `expired` for a denied, timed-out, wrong or unknown request. Only
-        the `requestId` can collect the session, so the link alone can't
-        sign in someone else's tab. POST so the secret stays out of logs.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [requestId]
+              required: [requestId, code]
               properties:
                 requestId: { type: string, maxLength: 200 }
+                code: { type: string, pattern: '^[0-9]{6}$' }
       responses:
         '200':
-          description: Where the request is.
+          description: What the code came to.
           content:
             application/json:
               schema:
                 type: object
                 required: [status]
                 properties:
-                  status: { type: string, enum: [pending, signedIn, expired] }
+                  status: { type: string, enum: [signedIn, wrong, expired] }
                   token: { type: string, description: '`signedIn` only: the session JWT.' }
                   user:
                     type: object
@@ -334,6 +207,10 @@ paths:
                       userId: { type: string, format: uuid }
                       email: { type: string, format: email }
                       displayName: { type: string }
+                  attemptsLeft:
+                    type: integer
+                    minimum: 1
+                    description: '`wrong` only: tries left on this code.'
         '400': { $ref: '#/components/responses/BadRequest' }
 
   /v1/auth/email/test-sign-in:
@@ -1569,7 +1446,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Session JWT minted by a sign-in link (`/v1/auth/email/link` or `/v1/auth/email/requests`). Verified server-side on every request.
+      description: Session JWT minted by `/v1/auth/email/verify` (the emailed code). Verified server-side on every request.
 
   parameters:
     BillId:

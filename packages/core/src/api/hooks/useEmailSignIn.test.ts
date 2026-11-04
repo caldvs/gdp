@@ -3,7 +3,7 @@ import { createElement, act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// The answers the server gives, one per poll, in order.
+// The answers the server gives, one per call, in order.
 const answers: unknown[] = [];
 const calls: string[] = [];
 vi.mock('../index', async (orig) => ({
@@ -14,96 +14,62 @@ vi.mock('../index', async (orig) => ({
   }),
 }));
 
-const { useSignInRequest } = await import('./useEmailSignIn');
+const { useVerifyEmailCode } = await import('./useEmailSignIn');
 const { getStoredToken, clearToken } = await import('../auth');
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const user = { userId: 'u1', email: 'sam@example.com', displayName: 'sam' };
-let seen: (string | undefined)[] = [];
 let root: Root;
 let qc: QueryClient;
-let refetch: () => Promise<unknown>;
+let verify: ReturnType<typeof useVerifyEmailCode>;
 
-function Probe({ requestId }: { requestId: string | null }) {
-  const q = useSignInRequest(requestId);
-  refetch = q.refetch;
-  seen.push(q.data?.status);
+function Probe() {
+  verify = useVerifyEmailCode();
   return null;
 }
 
-async function mount(requestId: string | null) {
+async function mount() {
   qc = new QueryClient();
   root = createRoot(document.createElement('div'));
   await act(async () => {
-    root.render(createElement(QueryClientProvider, { client: qc }, createElement(Probe, { requestId })));
+    root.render(createElement(QueryClientProvider, { client: qc }, createElement(Probe)));
   });
 }
 
-const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+const enter = (code: string) =>
+  act(async () => verify.mutateAsync({ requestId: 'req.1', code }));
 
 beforeEach(async () => {
   answers.length = 0;
   calls.length = 0;
-  seen = [];
   await clearToken();
+  await mount();
 });
 afterEach(() => {
   act(() => root.unmount());
   qc.clear();
 });
 
-describe('useSignInRequest', () => {
-  it('waits while pending', async () => {
-    answers.push({ status: 'pending' });
-    await mount('req.1');
-    await flush();
-    expect(seen.at(-1)).toBe('pending');
-    expect(await getStoredToken()).toBeNull();
-  });
-
-  it('signedIn keeps the session and stops polling', async () => {
+describe('useVerifyEmailCode', () => {
+  it('signedIn keeps the session and sets who is signed in', async () => {
     answers.push({ status: 'signedIn', token: 't1', user });
-    await mount('req.1');
-    await flush();
-    await flush();
-    expect(seen.at(-1)).toBe('signedIn');
+    const res = await enter('123456');
+    expect(res.status).toBe('signedIn');
+    expect(calls).toEqual(['/v1/auth/email/verify']);
     expect(await getStoredToken()).toBe('t1');
-    const n = calls.length;
-    await act(async () => { await refetch(); });
-    await flush();
-    // A disabled query doesn't poll on its own; and the hook still says signed in.
-    expect(seen.at(-1)).toBe('signedIn');
-    expect(calls.length - n).toBeLessThanOrEqual(1);
+    expect(qc.getQueryData(['me'])).toEqual(user);
   });
 
-  // 4 Nov 2026: a second, overlapping poll answered `expired` after the
-  // first had signed the tab in, and the page said "Link expired".
-  it('a later `expired` never replaces `signedIn`', async () => {
-    answers.push({ status: 'signedIn', token: 't1', user }, { status: 'expired' });
-    await mount('req.1');
-    await flush();
-    await flush();
-    expect(seen.at(-1)).toBe('signedIn');
-    await act(async () => { await refetch(); });
-    await flush();
-    expect(seen.at(-1)).toBe('signedIn');
-    expect(seen).not.toContain('expired');
-    expect(await getStoredToken()).toBe('t1');
-  });
-
-  it('expired before any sign-in is expired', async () => {
-    answers.push({ status: 'expired' });
-    await mount('req.1');
-    await flush();
-    expect(seen.at(-1)).toBe('expired');
+  it('a wrong code keeps nothing and says how many tries are left', async () => {
+    answers.push({ status: 'wrong', attemptsLeft: 3 });
+    expect(await enter('000000')).toEqual({ status: 'wrong', attemptsLeft: 3 });
     expect(await getStoredToken()).toBeNull();
   });
 
-  it('does nothing without a requestId', async () => {
-    await mount(null);
-    await flush();
-    expect(calls).toEqual([]);
-    expect(seen.at(-1)).toBeUndefined();
+  it('expired keeps nothing', async () => {
+    answers.push({ status: 'expired' });
+    expect(await enter('000000')).toEqual({ status: 'expired' });
+    expect(await getStoredToken()).toBeNull();
   });
 });

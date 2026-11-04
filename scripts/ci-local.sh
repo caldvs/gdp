@@ -29,7 +29,14 @@ until mkdir "$lock" 2>/dev/null; do
   sleep 15
 done
 echo "$PWD pid $$" > "$lock/owner"
-trap 'rm -rf "$lock"' EXIT
+cleanup() {
+  # Visual baselines are CI's: never leave snapshots a local run wrote.
+  git checkout -- apps/web/e2e/*-snapshots 2>/dev/null || true
+  git clean -fdq -- apps/web/e2e/*-snapshots 2>/dev/null || true
+  [ -f apps/web/.env.local.ci-local-aside ] && mv -f apps/web/.env.local.ci-local-aside apps/web/.env.local
+  rm -rf "$lock"
+}
+trap cleanup EXIT
 
 # Path filter, as in ci.yml's `changes` job.
 api=$all core=$all web=$all
@@ -94,7 +101,6 @@ if [ "$web" = true ]; then
   envfile=apps/web/.env.local
   if [ -f "$envfile" ]; then
     mv "$envfile" "$envfile.ci-local-aside"
-    trap 'mv -f "$envfile.ci-local-aside" "$envfile" 2>/dev/null; rm -rf "$lock"' EXIT
   fi
   ( for v in $(env | grep -oE '^NEXT_PUBLIC_[A-Z_]+'); do unset "$v"; done
     step npm run build -w apps/web )
@@ -104,8 +110,6 @@ if [ "$web" = true ]; then
   e2e_args=()
   [ "$(uname -s)" = Linux ] || e2e_args=(--ignore-snapshots)
   step npm run e2e -w apps/web -- "${e2e_args[@]}"
-  git checkout -- apps/web/e2e/*-snapshots 2>/dev/null || true
-  git clean -fdq -- apps/web/e2e/*-snapshots 2>/dev/null || true
 fi
 
 echo; echo "✓ ci-local passed: $(git rev-parse --short HEAD)"

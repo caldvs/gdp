@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { Analytics } from '@vercel/analytics/next';
 import { DEMO_MODE } from '@gdp/core/lib/demoMode';
+import { SafeAnalytics } from '@/components/SafeAnalytics';
 import { Providers } from './providers';
 import './globals.css';
 
@@ -25,7 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en-GB" className={jakarta.variable}>
       <body>
         <Providers>{children}</Providers>
-        <Analytics />
+        <SafeAnalytics />
       </body>
     </html>
   );

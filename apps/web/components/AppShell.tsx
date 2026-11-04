@@ -112,9 +112,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!unauthenticated) return;
-    // A join link's #p= fragment carries the lead's bank details. It must
-    // never go to a server, and the redirect below would drop it, so park
-    // it in this tab's sessionStorage for the join screen to pick up.
+    // A join link's #p= fragment carries the lead's bank details. It's
+    // normally parked on load (lib/secretFragment.ts); this catches one
+    // that arrived later, since the redirect below would drop it.
     if (pathname.startsWith('/join/') && window.location.hash) {
       stashJoinFragment(window.location.hash);
     }

@@ -43,6 +43,15 @@ test('a join link survives the sign-in redirect without leaking the bank details
   expect(await page.evaluate(() => sessionStorage.getItem('gdp.pendingJoinFragment'))).toBe('#p=secret-payload');
 });
 
+test('a join link leaves the address bar before /me answers (#147)', async ({ page }) => {
+  // /me never answers, so the shell keeps waiting and the join screen never mounts.
+  await page.route('**/v1/me', () => {});
+  await page.goto('/join/ABC123#p=secret-payload');
+  await expect(page).toHaveURL(/\/join\/ABC123$/);
+  expect(await page.evaluate(() => window.location.hash)).toBe('');
+  expect(await page.evaluate(() => sessionStorage.getItem('gdp.pendingJoinFragment'))).toBe('#p=secret-payload');
+});
+
 test('email step validates before calling the API', async ({ page }) => {
   await unauthenticated(page);
   await noDevSignIn(page);

@@ -460,7 +460,7 @@ export interface paths {
          * Join a bill with just a name, no account
          * @description Guests never sign in (#183). Seats a new guest at the table and returns a
          *     session token that works for this one session only (its own session, the
-         *     bill it's pinned to, its payments, and `GET /v1/me`; anything else is 404).
+         *     bill it's pinned to, its payments, and `GET /v1/me`; anything else is 401 `AUTH_MISSING`).
          *     At most 20 per IP address an hour, and 60 per table an hour.
          */
         post: operations["guestJoin"];

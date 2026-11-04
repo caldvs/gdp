@@ -36,7 +36,7 @@ _Last updated 4 Nov 2026._
 
 ## Next up
 
-**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up, Terms, Refunds and landing pricing (#164), the £1 hold at the QR, released when nobody joins (#165), guests paying it back by what they ordered (#166), taking their part from the hold at close (#167), and a daily sweep (EventBridge → the API Lambda, `{ gdpHoldSweep: true }`) that takes it before a hold lapses on a bill left open (#168). Next: credit packs (#169), then Stripe Dashboard tidy-up (#170). Prod has no Stripe key yet, so none of this charges anyone live.
+**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up, Terms, Refunds and landing pricing (#164), the £1 hold at the QR, released when nobody joins (#165), guests paying it back by what they ordered (#166), taking their part from the hold at close (#167), and a daily sweep (EventBridge → the API Lambda, `{ gdpHoldSweep: true }`) that takes it before a hold lapses on a bill left open (#168). Credit packs, 10 for £5 (#169), are built: `/credits`, spent after the free credit and before the hold. Left: Stripe Dashboard tidy-up (#170). Prod has no Stripe key yet, so none of this charges anyone live.
 
 **Redesign** (board: the "Pay Me Back redesign" artifact, #127–#133): all six parts built.
 

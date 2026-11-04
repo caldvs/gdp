@@ -22,6 +22,15 @@ export default function RefundsPage() {
       <section>
         <h2>When we take nothing</h2>
         <p>If nobody joins the bill, or you delete it, we release the hold: nothing is taken.</p>
+        <p>A credit spent on a bill nobody joined is given back.</p>
+      </section>
+
+      <section>
+        <h2>Credits</h2>
+        <p>
+          Credits are yours as soon as you pay, so the 14-day cancellation period doesn’t apply and they can’t be
+          refunded. They never expire.
+        </p>
       </section>
 
       <section>

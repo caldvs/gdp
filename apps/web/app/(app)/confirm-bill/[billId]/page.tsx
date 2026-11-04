@@ -102,8 +102,11 @@ function CheckBill() {
   const totalPence = subtotalPence + servicePence + taxPence;
   // No credit: a £1 hold on the lead's card (#165). Nothing is taken now.
   const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
-  // This month's free bill: sharing spends it (#128).
-  const credit = fee.data?.status === 'free';
+  // This month's free bill, or a bought credit (#169): sharing spends it.
+  const credit = fee.data?.status === 'free' || fee.data?.status === 'credit';
+  const creditsLeft = fee.data && 'boughtCredits' in fee.data
+    ? (fee.data.status === 'free' ? 1 : 0) + (fee.data.boughtCredits ?? 0)
+    : 1;
 
   const isDirty = useMemo(() => {
     const b = bill.data;
@@ -186,7 +189,7 @@ function CheckBill() {
     try {
       const created = await createSession.mutateAsync({ billId });
       await shareSession(created.sessionId);
-      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' ? 'credit' : '1'}`);
+      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' || status === 'credit' ? 'credit' : '1'}`);
     } catch (err) {
       // The server asks for the fee (the credit went on another bill meanwhile).
       if (isFeeRequired(err)) { router.push(`/table-fee/${billId}`); return; }
@@ -313,7 +316,7 @@ function CheckBill() {
         {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
       </Page>
-      <ActionBar note={isMidSession ? undefined : credit ? '1 credit left · you get 1 free each month' : feeDue !== null ? 'Nothing taken now · your guests pay it back' : undefined}>
+      <ActionBar note={isMidSession ? undefined : credit ? `${creditsLeft} ${creditsLeft === 1 ? 'credit' : 'credits'} left · 1 free each month` : feeDue !== null ? 'Nothing taken now · your guests pay it back' : undefined}>
         {isMidSession ? (
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (

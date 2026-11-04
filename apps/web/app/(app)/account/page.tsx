@@ -42,9 +42,10 @@ export default function AccountPage() {
           <Box>
             <Row
               title="Credits"
-              sub={billing.data.creditsLeft === 0 ? `Next one ${creditDate(billing.data.nextCreditOn)}` : undefined}
-              end={<Badge tone={billing.data.creditsLeft > 0 ? 'ok' : 'plain'}>{billing.data.creditsLeft} left</Badge>}
+              sub={billing.data.creditsLeft === 0 ? `Free one ${creditDate(billing.data.nextCreditOn)}` : '1 free each month'}
+              end={<Badge tone={billing.data.creditsLeft + billing.data.boughtCredits > 0 ? 'ok' : 'plain'}>{billing.data.creditsLeft + billing.data.boughtCredits} left</Badge>}
             />
+            <RowLink href="/credits" title="Buy 10 credits" sub="Bills free for everyone" end={formatGBP(500)} />
             <Row
               title="Fees paid"
               sub={billing.data.refundedPence > 0 ? `${formatGBP(billing.data.refundedPence)} refunded` : undefined}

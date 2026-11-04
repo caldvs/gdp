@@ -1423,11 +1423,12 @@ paths:
     post:
       tags: [billing]
       operationId: startTableFeeCheckout
-      summary: Start paying the table fee for a bill
+      summary: Start the £1 hold for a bill
       description: |
-        The lead pays a flat fee to share a bill: £2, or £3 when the bill total is over £100.
-        Creates a Stripe Checkout Session for the embedded form (`ui_mode: form`) and returns
-        its client secret. The payment is recorded only by the Stripe webhook.
+        Without a credit, sharing a bill puts a £1 hold on the lead's card (#165): authorised
+        now, and at close the guests' part is taken and the rest released. Creates a Stripe
+        Checkout Session (manual capture) for the embedded form (`ui_mode: form`) and returns
+        its client secret. The hold is recorded by the Stripe webhook.
       requestBody:
         required: true
         content:
@@ -1479,6 +1480,54 @@ paths:
               schema: { $ref: '#/components/schemas/TableFeeStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/billing/credit-packs:
+    post:
+      tags: [billing]
+      operationId: startCreditPack
+      summary: Start buying a credit pack
+      description: |
+        10 credits for £5 (#169). They never expire and can't be refunded. Each one shares a bill
+        free for everyone. Creates a Stripe Checkout Session for the embedded form and returns its
+        client secret; the credits are added by the Stripe webhook.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartCreditPackRequest' }
+      responses:
+        '200':
+          description: Client secret for the embedded form
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditPackCheckout' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '502':
+          description: Stripe error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/billing/credit-packs/{checkoutSessionId}:
+    parameters:
+      - in: path
+        name: checkoutSessionId
+        required: true
+        schema: { type: string }
+    get:
+      tags: [billing]
+      operationId: getCreditPackStatus
+      summary: Whether a credit pack's payment has been recorded
+      description: |
+        Checks Stripe directly when the webhook is late, and records the pack if that Checkout
+        Session is the caller's and paid.
+      responses:
+        '200':
+          description: Recorded or not, and the credits left
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreditPackStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/billing/me:
     get:
@@ -1583,7 +1632,28 @@ components:
         client_secret:
           type: string
           description: Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`.
-        amountPence: { type: integer, enum: [200, 300] }
+        amountPence: { type: integer, description: The hold, £1 }
+    StartCreditPackRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        returnTo:
+          type: string
+          maxLength: 200
+          description: A page on the site to go back to once the credits are added.
+    CreditPackCheckout:
+      type: object
+      required: [client_secret, amountPence, credits]
+      properties:
+        client_secret: { type: string }
+        amountPence: { type: integer }
+        credits: { type: integer }
+    CreditPackStatus:
+      type: object
+      required: [recorded, boughtCredits]
+      properties:
+        recorded: { type: boolean }
+        boughtCredits: { type: integer, description: Bought credits not yet spent }
     TableFeeStatus:
       type: object
       required: [billId, status, amountPence]
@@ -1591,7 +1661,7 @@ components:
         billId: { type: string, format: uuid }
         status:
           type: string
-          enum: [held, paid, unpaid, waived, free]
+          enum: [held, paid, unpaid, waived, free, credit]
           description: |
             `held`: a £1 hold is on the lead's card for this bill (#165); nothing
             is taken until close. `unpaid`: no hold or credit yet; `amountPence`
@@ -1599,9 +1669,13 @@ components:
             holds.
             `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
             `free`: the lead has this month's credit, which sharing spends.
+            `credit`: no free credit, but a bought one (#169), which sharing spends.
         amountPence: { type: integer }
         paidAt: { type: string, format: date-time }
         heldAt: { type: string, format: date-time }
+        boughtCredits:
+          type: integer
+          description: Bought credits not yet spent (#169).
         creditsLeft:
           type: integer
           enum: [0, 1]
@@ -1612,11 +1686,23 @@ components:
           description: The 1st of next month, when the next credit comes (on `free` and `unpaid`).
     BillingSummary:
       type: object
-      required: [creditsLeft, nextCreditOn, paidPence, refundedPence, fees, credits]
+      required:
+        [creditsLeft, nextCreditOn, boughtCredits, packs, paidPence, refundedPence, fees, credits]
       properties:
         creditsLeft: { type: integer, enum: [0, 1] }
+        boughtCredits: { type: integer, description: Bought credits not yet spent (#169) }
+        packs:
+          type: array
+          items:
+            type: object
+            required: [amountPence, credits, boughtAt]
+            properties:
+              amountPence: { type: integer }
+              credits: { type: integer }
+              boughtAt: { type: string, format: date-time }
         nextCreditOn: { type: string, format: date }
-        paidPence: { type: integer, description: 'Every fee paid, refunded ones included' }
+        paidPence:
+          { type: integer, description: 'Every fee and credit pack paid, refunded ones included' }
         refundedPence: { type: integer }
         fees:
           type: array

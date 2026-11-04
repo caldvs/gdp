@@ -168,8 +168,10 @@ export interface paths {
          * Check whether the emailed link has been opened yet
          * @description The tab that asked polls this (every 2 seconds) with the
          *     `requestId` from `/email/start`. `pending` until the link is
-         *     opened; then `signedIn` once, with this tab's own session JWT;
-         *     `expired` for a used, timed-out, wrong or unknown request. Only
+         *     opened; then `signedIn`, with this tab's own session JWT, on
+         *     every poll for 5 minutes after the first (polls overlap and
+         *     answers get lost, so a second poll must not undo a sign-in);
+         *     `expired` for a denied, timed-out, wrong or unknown request. Only
          *     the `requestId` can collect the session, so the link alone can't
          *     sign in someone else's tab. POST so the secret stays out of logs.
          */

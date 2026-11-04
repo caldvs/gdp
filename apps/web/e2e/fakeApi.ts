@@ -238,7 +238,8 @@ export class FakeApi {
     if (path === '/v1/auth/email/requests') {
       if ((body().requestId as string) !== SIGN_IN_REQUEST) return json({ status: 'expired' });
       if (this.signIn === 'pending') return json({ status: 'pending' });
-      if (this.signIn !== 'approved') return json({ status: 'expired' });
+      // Like the API: collecting again (overlapping polls) is still signed in.
+      if (this.signIn !== 'approved' && this.signIn !== 'claimed') return json({ status: 'expired' });
       this.signIn = 'claimed';
       return json({ status: 'signedIn', token: 'test-token', user });
     }

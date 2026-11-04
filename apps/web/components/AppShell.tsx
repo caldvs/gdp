@@ -12,7 +12,7 @@ import { Button, Centre, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
 import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
-export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void; menuOpen?: boolean; wide?: boolean; /** The front door: a Sign in link to its card. */ signIn?: boolean }) {
+export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void; menuOpen?: boolean; wide?: boolean; /** The front door: How it works, Pricing and Sign in. */ signIn?: boolean }) {
   return (
     <header className="hdr">
       <div className={wide ? 'hdr__in hdr__in--wide' : 'hdr__in'}>
@@ -24,7 +24,7 @@ export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void
           <nav className="hdr__nav" aria-label="Front door">
             <a href="#how" className="hdr__nav-link">How it works</a>
             <a href="#pricing" className="hdr__nav-link">Pricing</a>
-            <a href="#sign-in" className="hdr__link">Sign in</a>
+            <Link href="/sign-in/email" className="hdr__link">Sign in</Link>
           </nav>
         ) : null}
         {onMenu ? (

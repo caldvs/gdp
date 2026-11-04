@@ -626,7 +626,11 @@ class GdpBackendStack extends cdk.Stack {
       ]),
     );
 
-    new cdk.CfnOutput(this, 'ApiUrlOutput', { value: httpApi.apiEndpoint });
+    // The API's URL: its custom domain when it has one (the execute-api URL
+    // is switched off then), else the execute-api URL.
+    new cdk.CfnOutput(this, 'ApiUrlOutput', {
+      value: domainName ? `https://${apiDomain}` : httpApi.apiEndpoint,
+    });
     new cdk.CfnOutput(this, 'ApiFunctionNameOutput', { value: fn.functionName });
     new cdk.CfnOutput(this, 'TableNameOutput', { value: table.tableName });
     new cdk.CfnOutput(this, 'BillsBucketOutput', { value: billsBucket.bucketName });

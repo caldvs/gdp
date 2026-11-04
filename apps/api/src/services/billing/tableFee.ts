@@ -15,6 +15,31 @@ export const HOLD_PENCE = 100;
 /** Stripe's smallest GBP charge: a guests' part under it isn't taken (#167). */
 export const STRIPE_MIN_PENCE = 30;
 
+/** A credit pack (#169): 10 credits for £5. They never expire and can't be refunded. */
+export const PACK_CREDITS = 10;
+export const PACK_PENCE = 500;
+
+/** A credit pack bought through Stripe. */
+export interface CreditPack {
+  checkoutSessionId: string;
+  credits: number;
+  amountPence: number;
+  boughtAt: string;
+}
+
+/**
+ * Credits the lead has bought (#169): a balance plus a record of every pack
+ * bought, credit spent and credit given back. Absent: no credit packs.
+ */
+export interface BoughtCreditStore {
+  balance(userId: string): Promise<number>;
+  /** Adds a pack's credits, once per Checkout Session. */
+  addPack(userId: string, pack: CreditPack): Promise<'recorded' | 'duplicate'>;
+  /** Gives back the credit spent on this session (nobody joined), once. `duplicate` if none was spent. */
+  giveBack(userId: string, sessionId: string, at: string): Promise<'recorded' | 'duplicate'>;
+  packs(userId: string): Promise<CreditPack[]>;
+}
+
 export { parseEmailList } from '../../config/exemptEmails.js';
 
 export interface TableFee {
@@ -83,6 +108,8 @@ export type ShareEntitlement =
    */
   | { kind: 'fee'; billId: string; sessionId: string; holdPence?: number; heldAt?: string }
   | { kind: 'credit'; credit: MonthlyCredit }
+  /** One of the lead's bought credits (#169), spent in the share's transaction. */
+  | { kind: 'bought'; userId: string; billId: string; sessionId: string; at: string }
   | { kind: 'waived' };
 
 /** The calendar month (`yyyy-mm`) of an instant, in UK time. */
@@ -198,6 +225,39 @@ export const checkoutSessionParams = (input: {
   ...(input.email ? { customer_email: input.email } : {}),
 });
 
+/** Checkout Session for a credit pack, in the same embedded form as the hold. */
+export const creditPackParams = (input: {
+  userId: string;
+  email?: string;
+  returnUrl: string;
+}): Stripe.Checkout.SessionCreateParams => ({
+  // fixed_by_ui (Checkout Studio)
+  ui_mode: 'form',
+  billing_address_collection: 'auto',
+  phone_number_collection: { enabled: false },
+  automatic_tax: { enabled: false },
+  submit_type: 'auto',
+  name_collection: { individual: { enabled: true, optional: true } },
+  integration_identifier: 'custom_embedded_web_0001',
+  // ours
+  mode: 'payment',
+  line_items: [
+    {
+      price_data: {
+        currency: 'gbp',
+        unit_amount: PACK_PENCE,
+        product_data: { name: `${PACK_CREDITS} credits` },
+      },
+      quantity: 1,
+    },
+  ],
+  return_url: input.returnUrl,
+  client_reference_id: input.userId,
+  metadata: { userId: input.userId, kind: 'credits' },
+  payment_intent_data: { metadata: { userId: input.userId, kind: 'credits' } },
+  ...(input.email ? { customer_email: input.email } : {}),
+});
+
 export interface TableFeeServiceDeps {
   stripe: Stripe;
   store: TableFeeStore;
@@ -207,6 +267,8 @@ export interface TableFeeServiceDeps {
   exemptEmails?: ReadonlySet<string>;
   /** The free bill each month. Absent: every share pays. */
   credits?: CreditStore;
+  /** Credit packs (#169). Absent: none to buy or spend. */
+  bought?: BoughtCreditStore;
   now?: () => Date;
 }
 
@@ -219,12 +281,20 @@ export interface CreditInfo {
 export type TableFeeStatus =
   | { billId: string; status: 'paid'; amountPence: number; paidAt: string }
   | { billId: string; status: 'held'; amountPence: number; heldAt: string }
-  | ({ billId: string; status: 'unpaid'; amountPence: number } & Partial<CreditInfo>)
+  | ({ billId: string; status: 'unpaid'; amountPence: number } & Partial<CreditInfo> & Bought)
   | { billId: string; status: 'waived'; amountPence: 0 }
-  | ({ billId: string; status: 'free'; amountPence: 0 } & CreditInfo);
+  | ({ billId: string; status: 'free'; amountPence: 0 } & CreditInfo & Bought)
+  /** No free credit this month, but a bought one (#169): sharing spends it. */
+  | ({ billId: string; status: 'credit'; amountPence: 0 } & CreditInfo & Bought);
+
+/** How many credits the lead has bought and not spent (#169). */
+type Bought = { boughtCredits?: number };
 
 /** The lead's account: credits this month and the fees they've paid. */
 export interface BillingSummary extends CreditInfo {
+  /** Bought credits not yet spent (#169). */
+  boughtCredits: number;
+  packs: Array<{ amountPence: number; credits: number; boughtAt: string }>;
   paidPence: number;
   refundedPence: number;
   fees: Array<{
@@ -306,11 +376,21 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
   ): Promise<'recorded' | 'duplicate' | 'ignored'> => {
     const billId = session.metadata?.billId;
     const userId = session.metadata?.userId;
-    if (!billId || !userId) return 'ignored';
+    if (!userId || (!billId && session.metadata?.kind !== 'credits')) return 'ignored';
     const paymentIntentId =
       typeof session.payment_intent === 'string'
         ? session.payment_intent
         : session.payment_intent?.id;
+    if (session.metadata?.kind === 'credits') {
+      if (session.payment_status !== 'paid' || !deps.bought) return 'ignored';
+      return deps.bought.addPack(userId, {
+        checkoutSessionId: session.id,
+        credits: PACK_CREDITS,
+        amountPence: session.amount_total ?? PACK_PENCE,
+        boughtAt: paidAt,
+      });
+    }
+    if (!billId) return 'ignored';
     if (session.metadata?.kind === 'hold') {
       // A hold's Checkout Session completes unpaid: the PaymentIntent says
       // whether the card was authorised.
@@ -401,13 +481,29 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       return { month, status: { billId: bill.billId, status: 'waived', amountPence: 0 } };
     }
     const amountPence = HOLD_PENCE;
+    const boughtCredits = deps.bought ? await deps.bought.balance(input.caller.userId) : 0;
+    const bought = deps.bought ? { boughtCredits } : {};
     if (!deps.credits) {
-      return { month, status: { billId: bill.billId, status: 'unpaid', amountPence } };
+      return {
+        month,
+        status:
+          boughtCredits > 0
+            ? {
+                billId: bill.billId,
+                status: 'credit',
+                amountPence: 0,
+                creditsLeft: 0,
+                nextCreditOn: nextCreditOn(month),
+                ...bought,
+              }
+            : { billId: bill.billId, status: 'unpaid', amountPence, ...bought },
+      };
     }
     const credit = await deps.credits.get(input.caller.userId, month);
     const next = nextCreditOn(month);
     const free =
       !credit || !!credit.returnedAt || (!!input.sessionId && credit.sessionId === input.sessionId);
+    // The month's free credit first, then a bought one, then the hold.
     return {
       month,
       status: free
@@ -417,14 +513,25 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
             amountPence: 0,
             creditsLeft: 1,
             nextCreditOn: next,
+            ...bought,
           }
-        : {
-            billId: bill.billId,
-            status: 'unpaid',
-            amountPence,
-            creditsLeft: 0,
-            nextCreditOn: next,
-          },
+        : boughtCredits > 0
+          ? {
+              billId: bill.billId,
+              status: 'credit',
+              amountPence: 0,
+              creditsLeft: 0,
+              nextCreditOn: next,
+              ...bought,
+            }
+          : {
+              billId: bill.billId,
+              status: 'unpaid',
+              amountPence,
+              creditsLeft: 0,
+              nextCreditOn: next,
+              ...bought,
+            },
     };
   };
 
@@ -467,6 +574,73 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       }
     },
 
+    /** Starts the embedded checkout for a credit pack (#169) and returns the form's client secret. */
+    async startCreditPack(input: { caller: VerifiedCaller; returnTo?: string }) {
+      if (!deps.bought) throw new AppError('NOT_FOUND', 'Credit packs are not available');
+      const back =
+        input.returnTo &&
+        /^\/[A-Za-z0-9/_?=&%.-]*$/.test(input.returnTo) &&
+        !input.returnTo.startsWith('//')
+          ? `&returnTo=${encodeURIComponent(input.returnTo)}`
+          : '';
+      try {
+        const session = await timed('stripe', 'checkout.sessions.create', () =>
+          deps.stripe.checkout.sessions.create(
+            creditPackParams({
+              userId: input.caller.userId,
+              ...(input.caller.email ? { email: input.caller.email } : {}),
+              returnUrl: `${deps.appBaseUrl}/credits?session_id={CHECKOUT_SESSION_ID}${back}`,
+            }),
+          ),
+        );
+        if (!session.client_secret) {
+          throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');
+        }
+        return {
+          clientSecret: session.client_secret,
+          amountPence: PACK_PENCE,
+          credits: PACK_CREDITS,
+        };
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+        const e = err as { type?: string; message?: string };
+        if (e.type?.startsWith('Stripe')) {
+          baseLogger.error({ event: 'credit_pack.stripe_error', type: e.type, err }, e.message);
+          throw new AppError('PAYMENT_PROVIDER_ERROR', 'Couldn’t start the payment. Try again.');
+        }
+        throw err;
+      }
+    },
+
+    /**
+     * Whether a credit pack's Checkout Session has been recorded. If the
+     * webhook hasn't landed, asks Stripe and records it when it's the
+     * caller's and paid.
+     */
+    async creditPackStatus(input: { caller: VerifiedCaller; checkoutSessionId: string }) {
+      if (!deps.bought) throw new AppError('NOT_FOUND', 'Credit packs are not available');
+      let recorded = (await deps.bought.packs(input.caller.userId)).some(
+        (p) => p.checkoutSessionId === input.checkoutSessionId,
+      );
+      if (!recorded) {
+        try {
+          const session = await timed('stripe', 'checkout.sessions.retrieve', () =>
+            deps.stripe.checkout.sessions.retrieve(input.checkoutSessionId),
+          );
+          if (
+            session.metadata?.kind === 'credits' &&
+            session.metadata?.userId === input.caller.userId &&
+            (await recordPaid(session, new Date().toISOString())) !== 'ignored'
+          ) {
+            recorded = true;
+          }
+        } catch {
+          // Unknown or foreign id: keep waiting for the webhook.
+        }
+      }
+      return { recorded, boughtCredits: await deps.bought.balance(input.caller.userId) };
+    },
+
     async status(input: {
       caller: VerifiedCaller;
       billId: string;
@@ -504,6 +678,15 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         return { kind: 'fee', billId: input.billId, sessionId: input.sessionId };
       }
       if (status.status === 'waived') return { kind: 'waived' };
+      if (status.status === 'credit') {
+        return {
+          kind: 'bought',
+          userId: input.caller.userId,
+          billId: input.billId,
+          sessionId: input.sessionId,
+          at: now().toISOString(),
+        };
+      }
       if (status.status === 'free') {
         return {
           kind: 'credit',
@@ -538,14 +721,24 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         ...(f.capturedAt ? { capturedPence: f.capturedPence ?? 0, capturedAt: f.capturedAt } : {}),
         ...(f.refundedAt ? { refundedAt: f.refundedAt } : {}),
       }));
+      const packs = deps.bought ? await deps.bought.packs(caller.userId) : [];
+      const packsPence = packs.reduce((acc, p) => acc + p.amountPence, 0);
       return {
+        boughtCredits: deps.bought ? await deps.bought.balance(caller.userId) : 0,
+        packs: packs.map((p) => ({
+          amountPence: p.amountPence,
+          credits: p.credits,
+          boughtAt: p.boughtAt,
+        })),
         creditsLeft: deps.credits && (!current || current.returnedAt) ? 1 : 0,
         nextCreditOn: nextCreditOn(month),
         // A hold is only paid for what was taken from it at close (#167).
-        paidPence: fees.reduce(
-          (acc, f) => acc + (f.kind === 'hold' ? (f.capturedPence ?? 0) : f.amountPence),
-          0,
-        ),
+        paidPence:
+          packsPence +
+          fees.reduce(
+            (acc, f) => acc + (f.kind === 'hold' ? (f.capturedPence ?? 0) : f.amountPence),
+            0,
+          ),
         refundedPence: fees.reduce((acc, f) => acc + (f.refundedAt ? f.amountPence : 0), 0),
         fees,
         credits: history.credits.map((c) => ({
@@ -581,6 +774,15 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
               now().toISOString(),
             )) === 'recorded';
         }
+      }
+      // A bought credit spent on it comes back too (#169).
+      if (deps.bought) {
+        creditReturned =
+          (await deps.bought.giveBack(
+            session.creatorUserId,
+            session.sessionId,
+            now().toISOString(),
+          )) === 'recorded' || creditReturned;
       }
       const fee = await deps.store.get(session.billId);
       // Only the fee that paid for this session: one spent on an earlier

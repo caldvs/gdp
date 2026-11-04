@@ -45,12 +45,14 @@ import { baseLogger } from './logging/logger.js';
 import Stripe from 'stripe';
 import {
   createTableFeeService,
+  type BoughtCreditStore,
   type CreditStore,
   type TableFeeStore,
 } from './services/billing/tableFee.js';
 import { parseEmailList } from './config/exemptEmails.js';
 import {
   creditStore as defaultCreditStore,
+  boughtCreditStore as defaultBoughtCreditStore,
   holdIndex,
   tableFeeStore as defaultTableFeeStore,
 } from './storage/tableFeeStore.js';
@@ -94,6 +96,8 @@ export interface AppDeps {
   tableFeeStore?: TableFeeStore;
   /** The free monthly bill. Omit for DynamoDB; `null` turns credits off (every share pays). */
   creditStore?: CreditStore | null;
+  /** Credit packs (#169); null turns them off. */
+  boughtCreditStore?: BoughtCreditStore | null;
   /** Clock for the monthly credit, for tests. */
   now?: () => Date;
   /** How a background bill read is started. Omit: a self-invoke on Lambda, in-process elsewhere. */
@@ -225,6 +229,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         stripe,
         store: deps.tableFeeStore ?? defaultTableFeeStore,
         ...(deps.creditStore === null ? {} : { credits: deps.creditStore ?? defaultCreditStore }),
+        ...(deps.boughtCreditStore === null
+          ? {}
+          : { bought: deps.boughtCreditStore ?? defaultBoughtCreditStore }),
         ...(deps.now ? { now: deps.now } : {}),
         getBill: (billId) => billStore.getLatest(billId),
         appBaseUrl: env.APP_BASE_URL,
@@ -285,6 +292,7 @@ export const runHoldSweepNow = async (): Promise<HoldSweepReport | { skipped: st
     stripe: new Stripe(env.STRIPE_SECRET_KEY),
     store: defaultTableFeeStore,
     credits: defaultCreditStore,
+    bought: defaultBoughtCreditStore,
     getBill: (billId) => billStore.getLatest(billId),
     appBaseUrl: env.APP_BASE_URL,
   });

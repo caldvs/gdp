@@ -77,7 +77,7 @@ export default function SharePage() {
         {feePaid ? (
           <Notice tone="ok" title={feePaid.kind === 'hold' ? `${formatGBP(feePaid.amountPence)} hold · nothing taken now` : `${formatGBP(feePaid.amountPence)} platform fee paid`} />
         ) : fresh === 'credit' && billing.data ? (
-          <Notice><b>1 credit spent</b> · next credit {creditDate(billing.data.nextCreditOn)}</Notice>
+          <Notice><b>1 credit spent</b> · {billing.data.boughtCredits > 0 ? `${billing.data.boughtCredits + billing.data.creditsLeft} left` : `next credit ${creditDate(billing.data.nextCreditOn)}`}</Notice>
         ) : null}
         {!code ? (
           <Notice>{s.status === 'settled' ? 'This bill is closed.' : 'No code yet. Give it a moment.'}</Notice>

@@ -1,41 +1,16 @@
 'use client';
 
 import { use, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { loadStripe, type StripeCheckoutFormConfirmEvent } from '@stripe/stripe-js';
-import { CheckoutForm, CheckoutFormProvider, useCheckoutForm } from '@stripe/react-stripe-js/checkout';
 import { ApiError } from '@gdp/core/api';
 import { shareSession, useCreateSession } from '@gdp/core/api/hooks/useSession';
 import { creditDate, useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
-import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
+import { StripeForm, sessionIdOf, stripePromise } from '@/components/StripeForm';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ActionBar, BackLink, Box, Button, Centre, Notice, Page, QrIcon, Row, Spinner, TickIcon, Title } from '@/components/ui';
 
-// loadStripe fetches Stripe.js from js.stripe.com (never bundled), as PCI requires.
-const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
-
-// Configured in Checkout Studio.
-const appearance = {
-  theme: 'stripe',
-  labels: 'auto',
-  inputs: 'spaced',
-  variables: {
-    borderRadius: '4px',
-    colorBackground: '#ffffff',
-    colorDanger: '#df1b41',
-    colorPrimary: '#d42a55',
-    colorSuccess: '#00c853',
-    colorText: '#222222',
-    fontFamily: 'default',
-    fontSizeBase: '16px',
-    spacingUnit: '4px',
-  },
-} as const;
-
 const pounds = (pence: number) => `£${pence % 100 === 0 ? pence / 100 : (pence / 100).toFixed(2)}`;
-
-/** A Checkout Session's client secret is `<session id>_secret_<…>`. */
-const sessionIdOf = (clientSecret: string) => clientSecret.split('_secret_')[0] ?? null;
 
 /** How long to wait for the payment to land before offering a retry. */
 const WAIT_MS = 30_000;
@@ -58,7 +33,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
   // A hold, an exempt lead or this month's credit are as good as paid.
   const s = status.data?.status;
-  const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free';
+  const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free' || s === 'credit';
 
   useEffect(() => {
     if (!confirmed || paid || slow) return;
@@ -72,7 +47,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   useEffect(() => {
     if (!paid || started.current) return;
     started.current = true;
-    const next = s === 'held' || s === 'paid' ? 'fee' : s === 'free' ? 'credit' : '1';
+    const next = s === 'held' || s === 'paid' ? 'fee' : s === 'free' || s === 'credit' ? 'credit' : '1';
     const shareAndGo = async (sessionId: string) => {
       await shareSession(sessionId, checkoutSessionId);
       router.replace(`/session/${sessionId}/share?new=${next}`);
@@ -178,6 +153,9 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
           : 'Then your QR code'}
       />
       <Box><Row title="Platform fee hold" end={formatGBP(status.data.amountPence)} /></Box>
+      <p className="small muted">
+        Or <Link href={`/credits?returnTo=${encodeURIComponent(`/confirm-bill/${billId}`)}`}>buy 10 credits for £5</Link>: bills free for everyone.
+      </p>
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {
@@ -207,43 +185,13 @@ function FeeForm({ billId, onConfirmed }: { billId: string; onConfirmed: (checko
   }
 
   return (
-    <CheckoutFormProvider stripe={stripePromise} options={{ clientSecret: clientSecret.current, appearance }}>
-      <Form
-        onConfirmed={() => {
-          void clientSecret.current?.then((secret) => onConfirmed(sessionIdOf(secret)));
-        }}
-      />
-    </CheckoutFormProvider>
-  );
-}
-
-function Form({ onConfirmed }: { onConfirmed: () => void }) {
-  const state = useCheckoutForm();
-  const [error, setError] = useState<string | null>(null);
-
-  if (state.type === 'error') {
-    return <Notice tone="error" title="Couldn’t load the payment form.">{state.error.message}</Notice>;
-  }
-
-  const onConfirm = async (event: StripeCheckoutFormConfirmEvent) => {
-    if (state.type !== 'success') return;
-    setError(null);
-    try {
-      // Cards and wallets finish here; only redirect-based methods leave the page.
-      const result = await state.checkout.confirm({ formConfirmEvent: event, redirect: 'if_required' });
-      if (result.type === 'success') onConfirmed();
-    } catch (err) {
-      // The form shows its own messages for declines; this is for anything else.
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    }
-  };
-
-  return (
-    <>
-      <CheckoutForm options={{ layout: 'expanded' }} onConfirm={onConfirm} />
-      {error ? <Notice tone="error" title="Payment didn’t go through.">{error}</Notice> : null}
-      <p className="muted small" style={{ textAlign: 'center' }}>Nothing taken now · Your guests pay it back · Released if nobody joins</p>
-    </>
+    <StripeForm
+      clientSecret={clientSecret.current}
+      onConfirmed={() => {
+        void clientSecret.current?.then((secret) => onConfirmed(sessionIdOf(secret)));
+      }}
+      note="Nothing taken now · Your guests pay it back · Released if nobody joins"
+    />
   );
 }
 

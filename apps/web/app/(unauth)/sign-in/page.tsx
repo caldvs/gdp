@@ -94,6 +94,7 @@ function Landing() {
           <ul className="home__key">
             <li><span className="home__key-mark" aria-hidden="true"><Ring width={44} height={30} /></span><span><b>Free</b> · your first bill each month</span></li>
             <li><span className="home__key-mark"><span className="home__fee">£1</span></span><span>every bill after that</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£5</span></span><span>10 credits: bills free for everyone</span></li>
             <li><span className="home__key-mark" aria-hidden="true"><span className="home__dot" /></span><span>a new free bill on the 1st</span></li>
           </ul>
         </div>

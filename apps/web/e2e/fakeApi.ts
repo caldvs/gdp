@@ -142,9 +142,10 @@ export class FakeApi {
     let sub = p.claimedItemIds.reduce((a, id) => a + unit(id), 0);
     for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil((unit(sh.itemId) * (sh.units ?? 1)) / sh.ways);
     const b = this.bill;
-    // #166: a guest's part of the hold, by what they ordered.
-    const fee = userId !== 'u-lead' && this.platformFeePence && sub > 0 ? Math.floor((this.platformFeePence * sub) / b.subtotalPence) : 0;
-    return Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0))) + fee;
+    const before = Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0)));
+    // On a hold, a guest rounds up to the next whole pound.
+    const fee = userId !== 'u-lead' && this.platformFeePence && before > 0 ? (100 - (before % 100)) % 100 : 0;
+    return before + fee;
   }
 
   /**

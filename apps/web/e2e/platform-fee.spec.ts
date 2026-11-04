@@ -16,31 +16,31 @@ async function at(browser: Browser, api: FakeApi, user: User): Promise<Page> {
   return page;
 }
 
-test('guests pay their part of the £1 hold with their bill, by what they ordered', async ({ browser }) => {
-  // Items come to £104.00. Lasagne £17.25 → 16p of the £1; Calamari £22.50 → 21p.
+test('on a hold, guests round what they owe up to the next pound', async ({ browser }) => {
+  // Lasagne £17.25 → 75p round-up; Calamari £22.50 → 50p.
   const api = new FakeApi({ platformFeePence: 100 });
   const lead = await at(browser, api, users.lead);
   const sam = await at(browser, api, users.sam);
 
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
-  await expect(sam.getByText('Your total incl. fee')).toBeVisible();
-  await expect(sam.getByTestId('your-share')).toHaveText('£17.41');
+  await expect(sam.getByText('Your total incl. round-up')).toBeVisible();
+  await expect(sam.getByTestId('your-share')).toHaveText('£18.00');
 
-  // Tom joining and claiming doesn't change Sam's part.
+  // Tom joining and claiming doesn't change Sam's round-up.
   const tom = await at(browser, api, users.tom);
   await tom.getByRole('button', { name: 'Claim Calamari' }).click();
-  await expect(tom.getByTestId('your-share')).toHaveText('£22.71');
-  await expect(sam.getByTestId('your-share')).toHaveText('£17.41');
+  await expect(tom.getByTestId('your-share')).toHaveText('£23.00');
+  await expect(sam.getByTestId('your-share')).toHaveText('£18.00');
 
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£17.41');
+  await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£18.00');
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
   await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
-  await expect(sam.getByText('You’ve sent £17.41.')).toBeVisible(POLL);
-  await expect(sam.getByText('Platform fee')).toBeVisible();
-  await expect(sam.getByText('£0.16')).toBeVisible();
+  await expect(sam.getByText('You’ve sent £18.00.')).toBeVisible(POLL);
+  await expect(sam.getByText('Round-up', { exact: true })).toBeVisible();
+  await expect(sam.getByText('£0.75')).toBeVisible();
 
-  await expect(lead.getByText('Says they’ve paid £17.41')).toBeVisible(POLL);
+  await expect(lead.getByText('Says they’ve paid £18.00')).toBeVisible(POLL);
 });
 
 test('with no hold (a credit, or Stripe off) guests pay just their bill', async ({ browser }) => {
@@ -48,5 +48,5 @@ test('with no hold (a credit, or Stripe off) guests pay just their bill', async 
   const sam = await at(browser, api, users.sam);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await expect(sam.getByTestId('your-share')).toHaveText('£17.25');
-  await expect(sam.getByText('Your total incl. fee')).toHaveCount(0);
+  await expect(sam.getByText('Your total incl. round-up')).toHaveCount(0);
 });

@@ -23,7 +23,7 @@ export type PersonStatement = {
   items: StatementLine[];
   /** Service and tax on their items. */
   extrasPence: number;
-  /** Their part of the lead's platform fee hold (#166); 0 for the lead. */
+  /** Their round-up to the next whole pound on a hold; 0 for the lead. */
   feePence: number;
   totalPence: number;
 };
@@ -48,7 +48,7 @@ export type Statement = {
   unpaid: { name: string; pence: number }[];
   receivedPence: number;
   outstandingPence: number;
-  /** The guests' parts of the lead's platform fee hold (#166). */
+  /** The guests' round-ups on a hold. */
   feesPence: number;
   /** The lead paid the restaurant (and the platform fee); this is what comes back to them. */
   owedByGuestsPence: number;
@@ -214,7 +214,7 @@ export function statementText(
     out.push('', `${p.name} · ${statusText(p.status)}`);
     for (const i of p.items) out.push(line(i.label, i.pence));
     if (p.extrasPence > 0) out.push(line('Service', p.extrasPence));
-    if (p.feePence > 0) out.push(line('Platform fee', p.feePence));
+    if (p.feePence > 0) out.push(line('Round-up', p.feePence));
     out.push(line('Total', p.totalPence));
   }
   if (st.unclaimed.items.length > 0) {

@@ -60,7 +60,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const isGuest = useIsGuest();
   const subtotal = projectSubtotalPence(s, b, meUserId);
   const rate = billExtrasRate(b);
-  // Plus their part of the lead's platform fee hold (#166).
+  // Plus their round-up to the next whole pound.
   const fee = projectFeePence(s, b, meUserId);
   const owed = Math.round(subtotal * (1 + rate)) + fee;
   // #121: after paying, what's left to send is the difference.
@@ -100,9 +100,9 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   );
 }
 
-/** "Your total incl. service and fee" */
+/** "Your total incl. service and round-up" */
 export function totalLabel(service: boolean, fee: boolean): string {
-  const parts = [service ? 'service' : null, fee ? 'fee' : null].filter(Boolean);
+  const parts = [service ? 'service' : null, fee ? 'round-up' : null].filter(Boolean);
   return parts.length > 0 ? `Your total incl. ${parts.join(' and ')}` : 'Your total';
 }
 
@@ -163,7 +163,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
               })}
             </Box>
             <Totals>
-              {myFee > 0 ? <TotalLine tone="mute" k="Platform fee" v={formatGBP(myFee)} /> : null}
+              {myFee > 0 ? <TotalLine tone="mute" k="Round-up" v={formatGBP(myFee)} /> : null}
               <TotalLine tone="total" k={totalLabel(b.serviceChargePence > 0 || b.taxPence > 0, myFee > 0)} v={formatGBP(myOwed)} />
             </Totals>
           </Section>

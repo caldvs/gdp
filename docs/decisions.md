@@ -71,7 +71,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 
 ## Technical
 
-- **No pull requests** (decided 1 Nov 2026). Work is committed and pushed straight to `main` after running the checks locally (`CLAUDE.md`, *Pushing to main*). A red `gate` or failed deploy on main is fixed or reverted at once. The repo is public, so Actions minutes are free.
+- **No pull requests** (decided 1 Nov 2026). Work is committed and pushed straight to `main` after running the checks locally (`CLAUDE.md`, *Pushing to main*). A red `gate` or failed deploy on main is fixed or reverted at once. The repo is public, so Actions minutes are free. **No branch protection on `main`** (Callum, 4 Nov 2026): a team of one needs to be able to do anything; the *Protect main* ruleset was deleted.
 
 - **Money is integer pence, GBP only.**
 - **One DynamoDB table**, single-table design. Keys and access patterns: [architecture/data-model.html](architecture/data-model.html).

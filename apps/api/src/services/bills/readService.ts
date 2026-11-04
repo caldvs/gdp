@@ -30,6 +30,14 @@ export const STALE_READ_MS = 90_000;
 export const createReadRunner =
   (deps: { parser: BillParser; venueResolver: VenueResolver }) =>
   async (job: ReadJob): Promise<void> => {
+    const started = Date.now();
+    // One line per read with how long it took: the read-duration metric and
+    // alarm in infra/main.ts are built from it (#172).
+    const finished = (status: 'done' | 'failed', code?: string) =>
+      baseLogger.info(
+        { event: 'bill.read.finished', readId: job.readId, status, code, ms: Date.now() - started },
+        'Bill read finished',
+      );
     try {
       const bill = await parseService.parse({
         userId: job.userId,
@@ -41,6 +49,7 @@ export const createReadRunner =
         skipCache: job.skipCache,
       });
       await readStore.finish(job.readId, { status: 'done', billId: bill.billId });
+      finished('done');
     } catch (err) {
       const error =
         err instanceof AppError
@@ -57,6 +66,7 @@ export const createReadRunner =
               // credential locally) instead of blaming the photo.
               details: { errorName: (err as { name?: string } | null)?.name ?? 'Error' },
             };
+      finished('failed', error.code);
       if (!(err instanceof AppError)) {
         baseLogger.error(
           { event: 'bill.read.crashed', readId: job.readId, err },

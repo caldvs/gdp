@@ -26,7 +26,8 @@ import {
 // v4: venue.name holds only the printed trading name, with hints where to find it.
 // v5: discount lines; v6: line totals.
 // v7: finds the receipt, crops to it and reads a long one in overlapping parts.
-const VERSION = 'v7';
+// v8: a UK VAT line printed for information is not tax to add (#176).
+const VERSION = 'v8';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Sonnet by

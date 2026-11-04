@@ -4,7 +4,7 @@ import { venueFromPlace } from './locationVenueResolver.js';
 const bill = { name: 'Rudy’s Pizza', address: '9 Cotton Street, Manchester' };
 
 describe('venueFromPlace', () => {
-  it('takes a point of interest’s name, full address and coordinates', () => {
+  it('takes a point of interest’s full address and coordinates, keeping the bill’s name', () => {
     expect(
       venueFromPlace(
         {
@@ -18,11 +18,35 @@ describe('venueFromPlace', () => {
       ),
     ).toEqual({
       placeId: 'p1',
-      name: 'Rudy’s Neapolitan Pizza',
+      name: bill.name,
       address: '9 Cotton Street, Manchester, M4 5BF, United Kingdom',
       lat: 53.4848,
       lng: -2.2286,
     });
+  });
+
+  it('never names the venue after another business in the same building (#175)', () => {
+    const caravan = { name: 'Caravan', address: '6 Goods Yard Street, Manchester M3 3BG' };
+    expect(
+      venueFromPlace(
+        {
+          PlaceId: 'p3',
+          PlaceType: 'PointOfInterest',
+          Title: 'Greater Manchester Chamber Of Commerce',
+          Address: { Label: '6 Goods Yard Street, Manchester, M3 3BG, United Kingdom' },
+        },
+        caravan,
+      )?.name,
+    ).toBe('Caravan');
+  });
+
+  it('names the venue from a point of interest only when the bill has no name', () => {
+    expect(
+      venueFromPlace(
+        { PlaceId: 'p4', PlaceType: 'PointOfInterest', Title: 'Rudy’s', Address: {} },
+        { address: bill.address },
+      )?.name,
+    ).toBe('Rudy’s');
   });
 
   it('keeps the bill’s name when the match is an address', () => {

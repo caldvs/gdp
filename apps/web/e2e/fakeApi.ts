@@ -94,18 +94,21 @@ export class FakeApi {
   platformFeePence: number | undefined;
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
+  /** #107: a printed total the lines don't make (a misread price). */
+  private printedTotalPence: number | undefined;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
   private venue: { name: string; address?: string; placeId?: string } | undefined;
   /** #62: places GET /v1/venues/nearby returns (nearest first). */
   nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
-  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null; platformFeePence?: number } = {}) {
+  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; printedTotalPence?: number; venue?: { name: string; address?: string } | null; platformFeePence?: number } = {}) {
     this.items = opts.items ?? items;
     this.platformFeePence = opts.platformFeePence;
     const subtotal = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     this.serviceChargePence = Math.round(subtotal * (opts.serviceRate ?? 0));
     this.status = opts.status ?? 'claiming';
     this.noPrintedTotal = opts.noPrintedTotal ?? false;
+    this.printedTotalPence = opts.printedTotalPence;
     this.venue = opts.venue === null ? undefined : (opts.venue ?? { name: 'Gennaro', address: '12 King Street, Manchester' });
     this.participants = [
       { userId: 'u-lead', displayName: 'Callum Davies', claimedItemIds: opts.leadClaims ?? [this.items[0]!.itemId], sharedItemIds: [], payment: { status: 'self_paid' }, readyToLock: true },
@@ -118,7 +121,7 @@ export class FakeApi {
       billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
       // Matches the computed total by default, like a normal read; #65's
       // noPrintedTotal scenario is the cut-off-photo case.
-      ...(this.noPrintedTotal ? {} : { parsedTotalPence: subtotalPence + this.serviceChargePence }),
+      ...(this.noPrintedTotal ? {} : { parsedTotalPence: this.printedTotalPence ?? subtotalPence + this.serviceChargePence }),
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
       ...(this.venue ? { venue: this.venue } : {}),
       createdAt: '2026-10-31T12:00:00.000Z',

@@ -34,7 +34,9 @@ export default function JoinPage() {
       setState({ kind: 'error', message: 'No code provided' });
       return;
     }
-    const normalized = decodeURIComponent(code).toUpperCase();
+    // Old 6-letter codes were typed in any case; new tokens are case-sensitive (#182).
+    const raw = decodeURIComponent(code);
+    const normalized = /^[a-z0-9]{6}$/i.test(raw) ? raw.toUpperCase() : raw;
     let cancelled = false;
     (async () => {
       try {
@@ -56,7 +58,7 @@ export default function JoinPage() {
         setState({
           kind: 'error',
           message: e instanceof ApiError
-            ? e.code === 'NOT_FOUND' ? "We couldn't find a session with that code."
+            ? e.code === 'NOT_FOUND' ? "We couldn’t find that bill. Ask whoever paid to show their QR again."
               : e.code === 'SESSION_INVALID_STATE' && (e.details as { status?: string } | undefined)?.status === 'settled' ? 'This bill’s already closed. Ask the host if you still owe.'
               : e.message
             : (e as Error)?.message ?? 'Could not join',
@@ -69,10 +71,10 @@ export default function JoinPage() {
   return (
     <>
       <Page>
-        <Title title={state.kind === 'error' ? 'Couldn’t join' : 'Joining…'} sub={code ? `Code ${decodeURIComponent(code).toUpperCase()}` : undefined} />
+        <Title title={state.kind === 'error' ? 'Couldn’t join' : 'Joining…'} />
         {state.kind === 'error' ? <Notice tone="error">{state.message}</Notice> : <Spinner label="Joining" />}
       </Page>
-      {state.kind === 'error' ? <ActionBar><Button grow href="/join" replace>Try another code</Button></ActionBar> : null}
+      {state.kind === 'error' ? <ActionBar><Button grow href="/" replace>Back to Bills</Button></ActionBar> : null}
     </>
   );
 }

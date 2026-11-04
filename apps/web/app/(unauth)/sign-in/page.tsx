@@ -51,7 +51,7 @@ function Landing() {
     const first = invite.hostName?.split(' ')[0];
     return (
       <Page>
-        <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
+        <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub="Sign in with your email to pick what you had." />
         <EmailCodeFlow cta="Continue" />
       </Page>
     );

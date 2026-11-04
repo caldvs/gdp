@@ -23,7 +23,7 @@ const appearance = {
     borderRadius: '4px',
     colorBackground: '#ffffff',
     colorDanger: '#df1b41',
-    colorPrimary: '#d42a55',
+    colorPrimary: '#0a6fc2',
     colorSuccess: '#00c853',
     colorText: '#222222',
     fontFamily: 'default',

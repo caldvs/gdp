@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JOIN_CODE } from '../services/sessions/joinCode.js';
 import { VenueSchema } from './bills.js';
 
 export const SessionStatusSchema = z.enum(['setup', 'claiming', 'paying', 'settled', 'abandoned']);
@@ -140,10 +141,7 @@ export const SessionSchema = z.object({
   collectorUserId: z.string(),
   billId: z.string().uuid(),
   pinnedBillVersion: z.number().int().min(1),
-  joinCode: z
-    .string()
-    .regex(/^[A-HJ-NP-Z2-9]{6}$/)
-    .optional(),
+  joinCode: z.string().regex(JOIN_CODE).optional(),
   participants: z.array(ParticipantSchema),
   // Denormalised from the pinned bill at session-create time so the
   // frontend can render a venue strapline without a second round-trip.
@@ -208,7 +206,7 @@ export const UpdateSessionRequestSchema = z
 export type UpdateSessionRequest = z.infer<typeof UpdateSessionRequestSchema>;
 
 export const JoinByCodeRequestSchema = z.object({
-  code: z.string().regex(/^[A-HJ-NP-Z2-9]{6}$/),
+  code: z.string().regex(JOIN_CODE),
 });
 export type JoinByCodeRequest = z.infer<typeof JoinByCodeRequestSchema>;
 
@@ -239,10 +237,7 @@ export const SessionSummarySchema = z.object({
   collectorUserId: z.string(),
   billId: z.string().uuid(),
   pinnedBillVersion: z.number().int().min(1),
-  joinCode: z
-    .string()
-    .regex(/^[A-HJ-NP-Z2-9]{6}$/)
-    .optional(),
+  joinCode: z.string().regex(JOIN_CODE).optional(),
   venue: z.object({ name: z.string() }).optional(),
   createdAt: z.string().datetime(),
   role: z.enum(['lead', 'diner']),

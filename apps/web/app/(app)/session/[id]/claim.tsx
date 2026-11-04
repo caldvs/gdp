@@ -113,8 +113,8 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       if (kind === 'single') {
         // Where Claim was, so the row doesn't shift: tap again to put it back.
         return row(unit, (
-          <Button tone="secondary" small className="claim__btn claim__btn--on" disabled={busy} onClick={() => dropOne(item.itemId)} aria-label={`Yours. Remove ${item.name}`}>
-            <TickIcon size={16} />Yours
+          <Button tone="secondary" small className="claim__btn claim__btn--on" disabled={busy} onClick={() => dropOne(item.itemId)} aria-label={`Claimed. Remove ${item.name}`}>
+            <TickIcon size={16} />Claimed
           </Button>
         ));
       }

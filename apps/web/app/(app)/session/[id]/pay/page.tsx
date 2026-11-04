@@ -105,11 +105,12 @@ export default function PayPage() {
       <Page sub>
         {done ? <BackLink href="/">Bills</BackLink> : <BackLink href={`/session/${id}`}>Your items</BackLink>}
         <Title
-          title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst} ${formatGBP(amount)}`}
+          title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst}`}
           sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to confirm.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid. By bank transfer.` : 'By bank transfer. Tap a detail to copy it.'}
         />
         {done ? null : (
           <>
+            <div className="pay-total"><span>You pay {hostFirst}</span><b>{formatGBP(amount)}</b></div>
             {bd ? (
               <Box>
                 <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />

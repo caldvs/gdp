@@ -1918,7 +1918,7 @@ components:
         pinnedBillVersion: { type: integer, minimum: 1 }
         joinCode:
           type: string
-          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+          pattern: '^(?:[A-HJ-NP-Z2-9]{6}|[A-Za-z0-9_-]{22})$'
           description: Hidden during `setup`; visible to creator after `/share`; visible to participants after they join.
         participants:
           type: array
@@ -2024,7 +2024,7 @@ components:
         pinnedBillVersion: { type: integer, minimum: 1 }
         joinCode:
           type: string
-          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+          pattern: '^(?:[A-HJ-NP-Z2-9]{6}|[A-Za-z0-9_-]{22})$'
         venue:
           type: object
           required: [name]
@@ -2249,7 +2249,7 @@ components:
       properties:
         code:
           type: string
-          pattern: '^[A-HJ-NP-Z2-9]{6}$'
+          pattern: '^(?:[A-HJ-NP-Z2-9]{6}|[A-Za-z0-9_-]{22})$'
 
     ClaimsRequest:
       type: object

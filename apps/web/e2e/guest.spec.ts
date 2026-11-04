@@ -32,7 +32,8 @@ test('join link, signed out: the invite names the host, and the bank details in 
   await sam.goto(`/join/${CODE}#p=${fragment}`);
   await expect(sam).toHaveURL(new RegExp(`/sign-in\\?from=%2Fjoin%2F${CODE}$`));
   await expect(sam.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
-  await expect(sam.getByText(`Code ${CODE}`)).toBeVisible();
+  // #182: the join token is never shown.
+  await expect(sam.getByText(CODE)).toHaveCount(0);
 
   // Same tab throughout, so the join (and its fragment) carries on.
   await signInWithCode(sam);
@@ -79,17 +80,13 @@ test('the lead’s share page tells the session what its link’s details hash t
   for (const r of api.requests) expect(r.body ?? '').not.toContain(LEAD_BANK.accountNumber);
 });
 
-test('join by typed code: wrong code shows the error, right code joins', async ({ browser }) => {
+test('#182: Join a bill has nothing to type; it says to scan the QR', async ({ browser }) => {
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto('/join');
-  await sam.getByLabel('6-letter code').fill('ZZZZZZ');
-  await sam.getByRole('button', { name: 'Join' }).click();
-  await expect(sam.getByText('Can’t find that code').or(sam.getByText("Can't find that code"))).toBeVisible();
-
-  await sam.getByLabel('6-letter code').fill(CODE.toLowerCase());
-  await sam.getByRole('button', { name: 'Join' }).click();
-  await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
+  await expect(sam.getByRole('heading', { name: 'Join a bill' })).toBeVisible();
+  await expect(sam.getByText('Scan the QR code on the lead’s phone with your camera.')).toBeVisible();
+  await expect(sam.getByRole('textbox')).toHaveCount(0);
 });
 
 test('an expired link leaves the guest without bank details, with a way out', async ({ browser }) => {
@@ -147,7 +144,7 @@ test('guest table after the lead closes: what they paid, the tick, Done goes hom
   const { page: sam } = await ctxFor(browser, api, users.sam);
   const { page: lead } = await ctxFor(browser, api, users.lead);
   await sam.goto(`/session/${SID}`);
-  await expect(sam.getByText('Callum has your')).toBeVisible();
+  await expect(sam.getByText('Callum got your')).toBeVisible();
   await expect(sam.getByText('Callum closes the bill once everyone’s paid')).toBeVisible();
 
   await lead.goto(`/session/${SID}`);
@@ -168,8 +165,10 @@ test('a guest can pass the QR on, and see who’s at the table', async ({ browse
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('link', { name: 'QR code' }).click();
   await expect(sam.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
-  await expect(sam.getByText(CODE)).toBeVisible();
-  await expect(sam.getByText('Pass it on to anyone at Callum’s table.')).toBeVisible();
+  await expect(sam.getByText('Point a phone camera here')).toBeVisible();
+  await expect(sam.getByText(CODE)).toHaveCount(0);
+  await expect(sam.getByRole('button', { name: /copy link|share link/i })).toHaveCount(0);
+  await expect(sam.getByText('Show it to anyone at Callum’s table.')).toBeVisible();
   const table = sam.getByRole('list', { name: 'At the table' });
   await expect(table).toContainText('Callum');
   await expect(table).toContainText('You');

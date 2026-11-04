@@ -132,7 +132,7 @@ describe('POST /v1/sessions and /v1/sessions/:id/share', () => {
       participants: { userId: string; payment: { status: string } }[];
     };
     expect(after.status).toBe('claiming');
-    expect(after.joinCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(after.joinCode).toMatch(/^[A-Za-z0-9_-]{22}$/);
     const creatorPart = after.participants.find((p) => p.userId === creator);
     expect(creatorPart?.payment.status).toBe('self_paid');
   });

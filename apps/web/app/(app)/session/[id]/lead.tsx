@@ -117,7 +117,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${s.participants.length} ${s.participants.length === 1 ? 'person' : 'people'}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />} />
         <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
 
         {tab === 'mine' ? (

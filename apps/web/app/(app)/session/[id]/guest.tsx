@@ -12,7 +12,7 @@ import { ledger } from '@gdp/core/lib/ledger';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
-  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Row, Section, Title, TotalLine, Totals, firstName,
+  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Row, Section, Steps, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { billTitle } from '@/components/PageTransition';
@@ -133,11 +133,11 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
         <BackLink href="/">Bills</BackLink>
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
         {l?.settled ? (
-          <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(l.confirmedPence)}`}>You’re all settled.</Notice>
+          <PaidHero done host={hostFirst} pence={l.confirmedPence} />
         ) : mustPay ? (
           <Notice title={`You owe ${hostFirst} ${formatGBP(due)}${l && l.sentPence > 0 ? ' more' : ''}`} />
         ) : waitingPence > 0 ? (
-          <Notice tone="ok" title={`You’ve marked ${formatGBP(waitingPence)} as paid`}>{hostFirst} will confirm when it arrives.</Notice>
+          <PaidHero host={hostFirst} pence={waitingPence} />
         ) : null}
 
         {me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? (
@@ -186,12 +186,43 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
         {mustPay ? (
           <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(due)}</Button>
         ) : null}
+        {!mustPay && !l?.settled && waitingPence > 0 ? (
+          <Button tone="secondary" href={`/session/${s.sessionId}/pay`}>See {hostFirst}’s bank details</Button>
+        ) : null}
         {!closed && open.length > 0 && onMore ? (
-          <Button tone="secondary" onClick={onMore}>I had something else</Button>
-        ) : mustPay ? null : (
+          <Button tone={waitingPence > 0 && !mustPay ? 'text' : 'secondary'} onClick={onMore}>I had something else</Button>
+        ) : mustPay || (waitingPence > 0 && !l?.settled) ? null : (
           <Button tone={closed ? 'primary' : 'secondary'} href="/" replace>{closed ? 'Done' : 'Back to bills'}</Button>
         )}
       </ActionBar>
     </>
+  );
+}
+
+/**
+ * After *I've paid* (#184): the guest waits here until the lead confirms,
+ * then it turns to *All square*. The session polls while it's open (3–5s),
+ * so the change needs no reload.
+ */
+function PaidHero({ host, pence, done = false }: { host: string; pence: number; done?: boolean }) {
+  return (
+    <div className="paid-hero" role="status" aria-live="polite">
+      {done ? (
+        <span className="paid-hero__mark paid-hero__mark--ok" aria-hidden="true">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path className="paid-hero__tick" d="m5 12 5 5 9-10" /></svg>
+        </span>
+      ) : (
+        <span className="paid-hero__mark" aria-hidden="true"><span className="paid-hero__ripple" /><span className="paid-hero__ripple paid-hero__ripple--2" /><span className="paid-hero__coin">£</span></span>
+      )}
+      <h2 className="paid-hero__h">{done ? 'All square' : `Waiting for ${host}…`}</h2>
+      <p className="paid-hero__p">
+        {done ? <>{host} got your <b>{formatGBP(pence)}</b>. Nothing more to do.</> : <>You’ve sent <b>{formatGBP(pence)}</b>. {host} will confirm when it lands in their account.</>}
+      </p>
+      <Steps steps={[
+        { label: 'Picked your items', state: 'done' },
+        { label: `Sent ${formatGBP(pence)} to ${host}`, state: 'done' },
+        { label: done ? `${host} confirmed` : `${host} confirms`, state: done ? 'done' : 'busy' },
+      ]} />
+    </div>
   );
 }

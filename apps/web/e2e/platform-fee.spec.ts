@@ -33,9 +33,9 @@ test('guests pay their part of the £1 hold with their bill, by what they ordere
   await expect(sam.getByTestId('your-share')).toHaveText('£17.41');
 
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.getByRole('heading', { name: 'Pay Callum £17.41' })).toBeVisible();
+  await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£17.41');
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
-  await expect(sam.getByText('You’ve marked £17.41 as paid')).toBeVisible(POLL);
+  await expect(sam.getByText('You’ve sent £17.41.')).toBeVisible(POLL);
   await expect(sam.getByText('Platform fee')).toBeVisible();
   await expect(sam.getByText('£0.16')).toBeVisible();
 

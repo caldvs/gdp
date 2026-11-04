@@ -6,7 +6,7 @@
  * (while the read runs in the background), so the two look like one screen.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActionBar, Button, Page, Steps, Title, type StepState } from './ui';
+import { ActionBar, BillSkeleton, Button, Page, Title } from './ui';
 import type { ScanError } from './Scanner';
 
 /** Photo URLs by read id, so /reading/[id] can show the photo the scanner just took. */
@@ -36,12 +36,29 @@ export function Thumb({ uri }: { uri?: string }) {
     : <span className="skel reading-thumb" aria-hidden="true" />;
 }
 
-/** Seconds into a read at which the next stage is shown as under way (a read takes 5–20s). */
-const STAGE_AT = [0, 3_000, 10_000];
+/**
+ * What the read is doing, by time: it reports no progress of its own, and
+ * takes 5–20s (#174, #185). The last line stays up until the bill opens.
+ */
+const STATUS: [number, string][] = [
+  [0, 'Finding the items'],
+  [4_000, 'Reading the prices'],
+  [9_000, 'Adding it all up'],
+  [13_000, 'Long bill. Nearly there'],
+];
 
-/** Which reading stage is under way, `ms` after the read started. */
-export function readingStage(ms: number): number {
-  return STAGE_AT.filter((at) => ms >= at).length - 1;
+/** The status line `ms` into a read. */
+export function readingStatus(ms: number): string {
+  return STATUS.filter(([at]) => ms >= at).at(-1)![1];
+}
+
+/**
+ * How full the bar is `ms` into a read: eases towards 94% over about 15s
+ * and never claims 100% before the bill is back (#185).
+ */
+export function readingProgress(ms: number): number {
+  const f = Math.min(1, Math.max(0, ms / 15_000));
+  return Math.round(94 * (1 - Math.pow(1 - f, 1.8)));
 }
 
 /** Re-renders every half second, from `since` (or mount). */
@@ -56,11 +73,10 @@ function useElapsed(since?: number): number {
 }
 
 /**
- * Waiting (#174): the photo large, with a scan line moving over it, and the
- * stages ticking off underneath, so it's plain something is happening.
- * `preparing` is before the read starts (shrinking and uploading the photo).
- * The read gives no progress of its own, so its stages go by time and the
- * last one stays under way until the bill opens.
+ * Waiting (#174, #185): the photo with a scan line going over it, a status
+ * line and a bar that keep moving for up to 15s, and the bill as grey rows
+ * underneath. `preparing` is before the read starts (shrinking and
+ * uploading the photo).
  */
 export function ReadingWait({ photo, title, slow, actions, phase = 'reading', since }: {
   photo?: string;
@@ -68,27 +84,31 @@ export function ReadingWait({ photo, title, slow, actions, phase = 'reading', si
   slow: boolean;
   actions: ReactNode;
   phase?: 'preparing' | 'reading';
-  /** When the read started (ms), so coming back to it doesn't start the stages again. */
+  /** When the read started (ms), so coming back to it doesn't start again. */
   since?: number;
 }) {
   const elapsed = useElapsed(since);
-  const at = phase === 'preparing' ? -1 : readingStage(elapsed);
-  const labels = ['Photo', 'Finding the bill', 'Reading the items', 'Checking the total'];
-  const steps = labels.map((label, i) => ({
-    label,
-    state: (i - 1 < at ? 'done' : i - 1 === at ? 'busy' : 'todo') as StepState,
-  }));
+  const preparing = phase === 'preparing';
+  const status = preparing ? 'Sending your photo' : readingStatus(elapsed);
+  const pct = preparing ? 4 : readingProgress(elapsed);
   return (
     <>
       <Page>
-        <div role="status" aria-live="polite">
-          <Title title={title} sub={slow ? 'Long bill? Nearly there.' : undefined} />
+        <div className="reading-hero">
+          <div className="scan" aria-hidden="true">
+            {photo ? <img src={photo} alt="" className="scan__photo" /> : <ReceiptSketch />}
+            <span className="scan__line" />
+          </div>
+          <div className="reading-hero__text">
+            <h1 className="reading-hero__h">{title}</h1>
+            <p className="reading-hero__status" role="status" aria-live="polite"><span key={status} className="reading-hero__msg">{status}</span></p>
+          </div>
         </div>
-        <div className="scan" aria-hidden="true">
-          {photo ? <img src={photo} alt="" className="scan__photo" /> : <ReceiptSketch />}
-          <span className="scan__line" />
+        <div className="reading-bar" role="progressbar" aria-label="Reading the bill" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+          <span style={{ width: `${pct}%` }} />
         </div>
-        <div className="box"><Steps steps={steps} /></div>
+        <BillSkeleton rows={5} />
+        <p className="small muted reading-hint">{slow || elapsed > 7_000 ? 'Long bills can take up to 15 seconds.' : 'Usually a few seconds.'}</p>
       </Page>
       <ActionBar>{actions}</ActionBar>
     </>

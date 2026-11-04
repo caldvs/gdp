@@ -302,6 +302,8 @@ export const sessionStore = {
   async applyShareChange(input: {
     sessionId: string;
     participant?: Participant;
+    /** Others changed in the same step (a claim turned into a split, #130). */
+    others?: Participant[];
     itemId: string;
     settings: ShareSettings | null;
     expectedVersion: number | null;
@@ -343,6 +345,11 @@ export const sessionStore = {
           TableName: TABLE_NAME,
           Item: participantItem(input.sessionId, ttlAt, input.participant),
         },
+      });
+    }
+    for (const p of input.others ?? []) {
+      items.push({
+        Put: { TableName: TABLE_NAME, Item: participantItem(input.sessionId, ttlAt, p) },
       });
     }
     await ddb.send(new TransactWriteCommand({ TransactItems: items }));

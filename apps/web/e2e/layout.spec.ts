@@ -79,7 +79,7 @@ test.describe('tap targets', () => {
   test('pay: every control is big enough, and the action bar buttons are 52px', async ({ page }) => {
     const api = new FakeApi();
     await open(page, api, users.sam, `/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
-    await page.getByRole('button', { name: 'Tick Lasagne' }).click();
+    await page.getByRole('button', { name: 'Claim Lasagne' }).click();
     await page.getByRole('link', { name: 'Continue to payment' }).click();
     await expect(page.getByText('gdp-0193ab12')).toBeVisible();
     expect(await smallTargets(page)).toEqual([]);

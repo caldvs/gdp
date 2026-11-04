@@ -93,6 +93,8 @@ export function useSetClaims(sessionId: string) {
     },
     onError: (_e, _body, ctx) => {
       if (ctx?.previous) qc.setQueryData(['session', sessionId], ctx.previous);
+      // Someone else may have got there first: show who (#123).
+      void qc.invalidateQueries({ queryKey: ['session', sessionId] });
     },
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
@@ -123,6 +125,7 @@ export function useAddShare(sessionId: string) {
     },
     onError: (_e, _body, ctx) => {
       if (ctx?.previous) qc.setQueryData(['session', sessionId], ctx.previous);
+      void qc.invalidateQueries({ queryKey: ['session', sessionId] });
     },
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
@@ -201,7 +204,31 @@ function applyAddShare(session: Session, itemId: string, userId: string, ways?: 
       shares[idx] = { ...existing, userIds, ways: Math.max(existing.ways, userIds.length) };
     }
   } else {
-    shares.push({ itemId, userIds: [userId], ways: ways ?? 2, activity: [] });
+    // #130: splitting something someone else claimed makes their claim
+    // their spot in the split.
+    const claimer = session.participants.find(
+      (p) => p.userId !== userId && p.claimedItemIds.includes(itemId),
+    );
+    shares.push({
+      itemId,
+      userIds: claimer ? [claimer.userId, userId] : [userId],
+      ways: Math.max(ways ?? 2, 2),
+      activity: [],
+    });
+    if (claimer) {
+      session = {
+        ...session,
+        participants: session.participants.map((p) =>
+          p === claimer
+            ? {
+                ...p,
+                claimedItemIds: p.claimedItemIds.filter((id) => id !== itemId),
+                sharedItemIds: [...p.sharedItemIds, itemId],
+              }
+            : p,
+        ),
+      };
+    }
   }
   const participants = session.participants.map((p) =>
     p.userId === userId

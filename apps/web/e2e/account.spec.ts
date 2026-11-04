@@ -75,7 +75,7 @@ test('starting a payment fails once: Try again works and only one payment is ope
   const api = new FakeApi();
   const sam = await diner(browser, api, users.sam);
   await sam.goto(`/session/${SID}`);
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   api.faults.push({ kind: 'initiate-500', times: 1 });
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByRole('alert').filter({ hasText: /boom|Couldn|Our side/ }).or(sam.getByText('boom')).first()).toBeVisible();

@@ -272,6 +272,73 @@ describe('after paying (#121: top-ups)', () => {
   });
 });
 
+describe('splitting something someone else claimed (#130)', () => {
+  it('turns their claim into a 2-way split at once, and both owe half', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const [priya, tom] = t.guests as [string, string];
+    await claim(app, t.sessionId, priya, [t.wine.itemId, t.pizza.itemId]);
+    const res = await post(app, `/v1/sessions/${t.sessionId}/shares`, tom, {
+      itemId: t.wine.itemId,
+    });
+    expect(res.status).toBe(200);
+    const s = (await res.json()) as Omit<Session, 'shares'> & {
+      shares: { itemId: string; userIds: string[]; ways: number; activity: unknown[] }[];
+    };
+    expect(guestOf(s, priya).claimedItemIds).toEqual([t.pizza.itemId]);
+    expect(guestOf(s, priya).sharedItemIds).toEqual([t.wine.itemId]);
+    expect(guestOf(s, tom).sharedItemIds).toEqual([t.wine.itemId]);
+    const share = s.shares.find((x) => x.itemId === t.wine.itemId)!;
+    expect(share.ways).toBe(2);
+    expect([...share.userIds].sort()).toEqual([priya, tom].sort());
+    expect(share.activity).toEqual([
+      expect.objectContaining({ kind: 'split', byUserId: tom, fromUserId: priya, toWays: 2 }),
+    ]);
+    expect((await initiate(app, t.sessionId, tom)).amountPence).toBe(1200);
+    expect((await initiate(app, t.sessionId, priya)).amountPence).toBe(1450 + 1200);
+  });
+
+  it('a third person joins the split as one more way', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 3);
+    const [priya, tom, sam] = t.guests as [string, string, string];
+    await claim(app, t.sessionId, priya, [t.wine.itemId]);
+    await post(app, `/v1/sessions/${t.sessionId}/shares`, tom, { itemId: t.wine.itemId });
+    await post(app, `/v1/sessions/${t.sessionId}/shares`, sam, { itemId: t.wine.itemId });
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(s.shares?.find((x) => x.itemId === t.wine.itemId)?.ways).toBe(3);
+    expect((await initiate(app, t.sessionId, sam)).amountPence).toBe(800);
+  });
+
+  it('is refused once the person who claimed it has paid: what they paid never changes', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const [priya, tom] = t.guests as [string, string];
+    await claim(app, t.sessionId, priya, [t.wine.itemId]);
+    await payAndConfirm(app, t.sessionId, priya, t.lead);
+    const res = await post(app, `/v1/sessions/${t.sessionId}/shares`, tom, {
+      itemId: t.wine.itemId,
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('SHARE_PAID');
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(guestOf(s, priya).claimedItemIds).toEqual([t.wine.itemId]);
+    expect(s.shares ?? []).toEqual([]);
+  });
+
+  it('works on something the lead claimed', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, t.lead, [t.tiramisu.itemId]);
+    const res = await post(app, `/v1/sessions/${t.sessionId}/shares`, g, {
+      itemId: t.tiramisu.itemId,
+    });
+    expect(res.status).toBe(200);
+    expect((await initiate(app, t.sessionId, g)).amountPence).toBe(375);
+  });
+});
+
 describe('closing a bill', () => {
   it('releases it, so the lead can share it again', async () => {
     const app = buildApp();
@@ -487,6 +554,24 @@ describe('races', () => {
     const claimed = unitsClaimed(s, t.wine.itemId) > 0;
     const split = (s.shares ?? []).some((x) => x.itemId === t.wine.itemId && x.userIds.length > 0);
     expect(claimed && split).toBe(false);
+  });
+
+  it('two people splitting the same claimed item at once: both end up in it (#130)', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 3);
+    const [owner, a, b] = t.guests as [string, string, string];
+    await claim(app, t.sessionId, owner, [t.wine.itemId]);
+    const results = await Promise.all(
+      [a, b].map((u) =>
+        post(app, `/v1/sessions/${t.sessionId}/shares`, u, { itemId: t.wine.itemId }),
+      ),
+    );
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    const s = await getSession(app, t.sessionId, t.lead);
+    const share = s.shares?.find((x) => x.itemId === t.wine.itemId);
+    expect([...(share?.userIds ?? [])].sort()).toEqual([owner, a, b].sort());
+    expect(share?.ways).toBe(3);
+    expect(unitsClaimed(s, t.wine.itemId)).toBe(0);
   });
 
   it('six guests grabbing one pint each of six: all get one, never more than six', async () => {

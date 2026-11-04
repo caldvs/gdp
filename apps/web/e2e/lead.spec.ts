@@ -184,7 +184,7 @@ test('fixing the bill mid-session: a picking guest and a sent guest both see the
   const sam = await diner(browser, api, users.sam);
   const tom = await diner(browser, api, users.tom);
 
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
   await expect(sam.getByText('Callum will confirm')).toBeVisible();
@@ -227,8 +227,8 @@ test('closing with everything claimed and paid: the dialog says so and "your par
   sam.payment = { status: 'succeeded', paymentId: 'pay-u-sam', paidAt: '2026-10-31T12:30:00Z' };
   const lead = await diner(browser, api, users.lead);
 
-  await expect(lead.locator('.stat', { hasText: 'To collect' })).toContainText('£0.00');
-  await expect(lead.getByRole('heading', { name: 'Items · all claimed' })).toBeVisible();
+  await expect(lead.getByText('Paid', { exact: true })).toBeVisible();
+  await expect(lead.getByRole('button', { name: /^Not claimed/ })).toHaveCount(0);
   await lead.getByRole('button', { name: 'Close bill' }).click();
   await expect(lead.getByRole('dialog')).toContainText('Everyone has paid.');
   await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();

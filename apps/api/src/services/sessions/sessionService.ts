@@ -277,8 +277,11 @@ export const sessionService = {
    * Caller joins the splitter set for `itemId` (ADR-0006). Idempotent —
    * a no-op if already in the set. Returns the updated session.
    *
-   * v1 simplification: item must have `quantity === 1` and must not be
-   * in anyone's `claimedItemIds`. Either condition → 409.
+   * Only quantity-1 items can be split. If someone else has claimed the
+   * item (#130), splitting it turns their claim into a split between the
+   * two of them at once: they're told, not asked (decisions.md). Refused
+   * with SHARE_PAID if they've already paid, since what they paid can't
+   * change. The caller's own claim must be released first.
    */
   async addShare(input: {
     caller: VerifiedCaller;
@@ -305,15 +308,30 @@ export const sessionService = {
           { itemId: input.itemId, quantity: item.quantity },
         );
       }
-      const claimedByAnyone = session.participants.some((p) =>
-        p.claimedItemIds.includes(input.itemId),
-      );
-      if (claimedByAnyone) {
+      const claimer = session.participants.find((p) => p.claimedItemIds.includes(input.itemId));
+      if (claimer && claimer.userId === input.caller.userId) {
         throw new AppError(
           'CLAIM_SHARE_CONFLICT',
-          `"${item.name}" has been claimed; the claimer must release it before it can be shared`,
+          `You've claimed "${item.name}"; remove it before splitting it`,
           { itemId: input.itemId },
         );
+      }
+      if (claimer) {
+        if (anySharerPaid(session, [claimer.userId])) {
+          throw new AppError(
+            'SHARE_PAID',
+            `${claimer.displayName} has already paid for "${item.name}", so it can't be split`,
+            { itemId: input.itemId },
+          );
+        }
+        return splitClaimed({
+          session,
+          claimsVersion,
+          claimer,
+          caller: input.caller,
+          itemId: input.itemId,
+          ways: input.ways,
+        });
       }
 
       const target = session.participants.find((p) => p.userId === input.caller.userId);
@@ -781,6 +799,77 @@ function withSettings(
 ): Session {
   const others = (session.shareSettings ?? []).filter((st) => st.itemId !== next.itemId);
   return { ...session, shareSettings: 'deleted' in next ? others : [...others, next] };
+}
+
+/**
+ * #130: the caller splits an item someone else has claimed. The claimer's
+ * claim becomes their spot in a split with the caller (`ways`, default 2),
+ * in one transaction guarded by the claims version, so a claim or split
+ * landing in between makes it re-read.
+ */
+async function splitClaimed(input: {
+  session: Session;
+  claimsVersion: number;
+  claimer: Participant;
+  caller: VerifiedCaller;
+  itemId: string;
+  ways: number | undefined;
+}): Promise<Session> {
+  const { session, claimer, caller, itemId } = input;
+  const target = session.participants.find((p) => p.userId === caller.userId);
+  if (!target) throw new Error('Invariant: caller participant missing');
+  // Same as any claim change: it un-readies everyone but the lead.
+  const ready = (p: Participant): boolean =>
+    p.userId === session.creatorUserId ? p.readyToLock : false;
+  const i = claimer.claimedItemIds.indexOf(itemId);
+  const was: Participant = {
+    ...claimer,
+    claimedItemIds: claimer.claimedItemIds.filter((_, k) => k !== i),
+    sharedItemIds: [...claimer.sharedItemIds, itemId],
+    readyToLock: ready(claimer),
+  };
+  const updated: Participant = {
+    ...target,
+    sharedItemIds: [...target.sharedItemIds, itemId],
+    readyToLock: ready(target),
+  };
+  const existing = settingsOf(session, itemId);
+  const ways = Math.max(2, input.ways ?? 2);
+  const settings: ShareSettings = {
+    itemId,
+    ways,
+    version: (existing?.version ?? 0) + 1,
+    activity: [
+      {
+        kind: 'split',
+        byUserId: caller.userId,
+        fromUserId: claimer.userId,
+        at: new Date().toISOString(),
+        toWays: ways,
+      },
+    ],
+  };
+  await sessionStore.applyShareChange({
+    sessionId: session.sessionId,
+    participant: updated,
+    others: [was],
+    itemId,
+    settings,
+    expectedVersion: existing?.version ?? null,
+    expectedClaimsVersion: input.claimsVersion,
+  });
+  return projectForCaller(
+    withSettings(
+      {
+        ...session,
+        participants: session.participants.map((p) =>
+          p.userId === updated.userId ? updated : p.userId === was.userId ? was : p,
+        ),
+      },
+      settings,
+    ),
+    caller.userId,
+  );
 }
 
 /**

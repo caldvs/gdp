@@ -333,7 +333,7 @@ export class FakeApi {
       for (const it of this.items) {
         const mine = next.filter((id) => id === it.itemId).length;
         const others = this.participants.filter((p) => p.userId !== user.userId).reduce((a, p) => a + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
-        if (mine + others > it.quantity) return err('SESSION_INVALID_STATE', `Only ${it.quantity - others} of "${it.name}" left to claim`, 409);
+        if (mine + others > it.quantity) return err('SESSION_INVALID_STATE', `Only ${it.quantity - others} of "${it.name}" left to claim`, 409, { itemId: it.itemId });
       }
       const before = me.claimedItemIds;
       if (this.belowSent(user.userId, () => { me.claimedItemIds = next; }, () => { me.claimedItemIds = before; })) return paidFor();
@@ -352,7 +352,18 @@ export class FakeApi {
           existing.ways = Math.max(existing.ways, existing.userIds.length);
         }
       } else {
-        this.shares.push({ itemId, userIds: [user.userId], ways: ways ?? 2, activity: [] });
+        // #130: splitting something someone else claimed makes their claim
+        // their spot in the split, unless they've paid.
+        const claimer = this.participants.find((p) => p.userId !== user.userId && p.claimedItemIds.includes(itemId));
+        if (me.claimedItemIds.includes(itemId)) return err('CLAIM_SHARE_CONFLICT', 'You’ve claimed it; remove it before splitting it', 409, { itemId });
+        if (claimer && (claimer.payment.status === 'pending' || claimer.payment.status === 'succeeded')) {
+          return err('SHARE_PAID', 'They’ve already paid for it, so it can’t be split', 409, { itemId });
+        }
+        if (claimer) {
+          claimer.claimedItemIds = claimer.claimedItemIds.filter((id) => id !== itemId);
+          claimer.sharedItemIds.push(itemId);
+        }
+        this.shares.push({ itemId, userIds: claimer ? [claimer.userId, user.userId] : [user.userId], ways: Math.max(ways ?? 2, 2), activity: [] });
       }
       me.claimedItemIds = me.claimedItemIds.filter((id) => id !== itemId);
       if (!me.sharedItemIds.includes(itemId)) me.sharedItemIds.push(itemId);

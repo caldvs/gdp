@@ -40,7 +40,11 @@ const buildApp = (
 
 type App = ReturnType<typeof buildApp>;
 
-const payFee = (billId: string, userId: string, extra: { sessionId?: string } = {}) =>
+const payFee = (
+  billId: string,
+  userId: string,
+  extra: { sessionId?: string; kind?: 'hold'; amountPence?: number } = {},
+) =>
   tableFeeStore.putIfAbsent({
     billId,
     userId,
@@ -98,6 +102,27 @@ describe('share needs the platform fee (#139)', () => {
     const res = await share(app, sessionId, lead);
     expect(res.status).toBe(200);
     expect((await tableFeeStore.get(billId))?.sessionId).toBe(sessionId);
+  });
+
+  it('shares on a £1 hold, and the session carries the £1 the guests pay back (#165)', async () => {
+    const app = buildApp({ credits: false });
+    const lead = `c-${uuidv7()}`;
+    const { sessionId, billId } = await newSession(app, lead);
+    await payFee(billId, lead, { kind: 'hold', amountPence: 100 });
+    const res = await share(app, sessionId, lead);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { platformFeePence?: number }).platformFeePence).toBe(100);
+    const get = await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(lead) });
+    expect(((await get.json()) as { platformFeePence?: number }).platformFeePence).toBe(100);
+  });
+
+  it('a fee paid outright (before holds) asks the guests for nothing', async () => {
+    const app = buildApp({ credits: false });
+    const lead = `c-${uuidv7()}`;
+    const { sessionId, billId } = await newSession(app, lead);
+    await payFee(billId, lead);
+    const res = await share(app, sessionId, lead);
+    expect(((await res.json()) as { platformFeePence?: number }).platformFeePence).toBeUndefined();
   });
 
   it('shares for an exempt lead', async () => {

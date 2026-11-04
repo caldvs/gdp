@@ -52,6 +52,12 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
           'Credit returned: nobody joined',
         );
       }
+      if (outcome === 'released') {
+        baseLogger.info(
+          { event: 'table_fee.released', sessionId: session.sessionId, billId: session.billId },
+          'Hold released: nobody joined',
+        );
+      }
       if (outcome === 'refunded') {
         baseLogger.info(
           { event: 'table_fee.refunded', sessionId: session.sessionId, billId: session.billId },

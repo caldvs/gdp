@@ -10,14 +10,14 @@ import Stripe from 'stripe';
 import { env } from '../config/env.js';
 import {
   createTableFeeService,
-  type FeeLookupKey,
+  HOLD_PENCE,
   type TableFee,
   type TableFeeStore,
 } from '../services/billing/tableFee.js';
 
 /**
  * Checks that the deployed Lambda can actually use what it depends on:
- * Stripe keys and prices, Bedrock model access, the Amazon Location venue
+ * Stripe keys, Bedrock model access, the Amazon Location venue
  * lookup and the SES sender. These are the settings unit tests can't see, and
  * the ones that broke on the first real deploy.
  *
@@ -60,7 +60,6 @@ type Check = {
 };
 
 const TIMEOUT_MS = 15_000;
-const LOOKUP_KEYS: FeeLookupKey[] = ['table_fee_2', 'table_fee_3'];
 
 /**
  * Stripe keys must match the environment: test-mode keys everywhere except
@@ -87,43 +86,33 @@ const stripeCheck: Check = {
       throw new Error('STRIPE_WEBHOOK_SECRET is missing or is not a whsec_ secret');
     }
     const stripe = new Stripe(key, { timeout: TIMEOUT_MS, maxNetworkRetries: 0 });
-    const prices = await stripe.prices.list({ lookup_keys: LOOKUP_KEYS, active: true, limit: 10 });
-    const found = new Map(prices.data.map((p) => [p.lookup_key, p]));
-    const missing = LOOKUP_KEYS.filter((k) => !found.get(k));
-    if (missing.length) {
-      throw new Error(
-        `no active price with lookup key ${missing.join(', ')} in this Stripe account`,
-      );
-    }
-    const amounts = LOOKUP_KEYS.map((k) => {
-      const p = found.get(k)!;
-      return `${k} ${p.currency.toUpperCase()} ${((p.unit_amount ?? 0) / 100).toFixed(2)}`;
-    });
-    return `${key.includes('_live_') ? 'live' : 'test'} mode · ${amounts.join(', ')}`;
+    // Proves the key works. The hold's amount is set in code (no Dashboard prices).
+    await stripe.paymentIntents.list({ limit: 1 });
+    return `${key.includes('_live_') ? 'live' : 'test'} mode`;
   },
 };
 
 /**
- * Smoke test for the Refunds page's promise, against real Stripe: a £2
- * sandbox payment (Stripe's `pm_card_visa` test card), refunded by the same
- * code that refunds a bill nobody joined. Proves the key can refund and that
- * Stripe accepts exactly what we send. The fee row is kept in memory, so the
- * table isn't touched. Test mode only: in live mode it would be real money.
+ * Smoke test for the hold, against real Stripe: a £1 sandbox hold (Stripe's
+ * `pm_card_visa` test card), released by the same code that releases the
+ * hold on a bill nobody joined. Proves the key can place and cancel holds.
+ * The fee row is kept in memory, so the table isn't touched. Test mode only.
  */
-export async function refundRoundTrip(stripe: Stripe): Promise<string> {
+export async function holdRoundTrip(stripe: Stripe): Promise<string> {
   const smokeId = `smoke-${Date.now()}`;
-  const payment = await stripe.paymentIntents.create({
-    amount: 200,
+  const hold = await stripe.paymentIntents.create({
+    amount: HOLD_PENCE,
     currency: 'gbp',
+    capture_method: 'manual',
     payment_method: 'pm_card_visa',
     // Card only: nothing that would need a redirect to confirm.
     automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
     confirm: true,
-    description: 'Deploy smoke test: table fee refund',
-    metadata: { billId: smokeId, smoke: 'refund' },
+    description: 'Deploy smoke test: platform fee hold',
+    metadata: { billId: smokeId, smoke: 'hold' },
   });
-  if (payment.status !== 'succeeded') {
-    throw new Error(`test payment ${payment.id} is ${payment.status}, not succeeded`);
+  if (hold.status !== 'requires_capture') {
+    throw new Error(`test hold ${hold.id} is ${hold.status}, not requires_capture`);
   }
 
   const rows = new Map<string, TableFee>();
@@ -131,19 +120,21 @@ export async function refundRoundTrip(stripe: Stripe): Promise<string> {
     billId: smokeId,
     userId: smokeId,
     checkoutSessionId: `cs_${smokeId}`,
-    paymentIntentId: payment.id,
-    amountPence: 200,
+    paymentIntentId: hold.id,
+    kind: 'hold',
+    amountPence: HOLD_PENCE,
     paidAt: new Date().toISOString(),
   });
   const store: TableFeeStore = {
     get: (billId) => Promise.resolve(rows.get(billId) ?? null),
     putIfAbsent: () => Promise.resolve('duplicate'),
-    markRefunded: (billId, refund) => {
+    markReleased: (billId, releasedAt) => {
       const fee = rows.get(billId);
-      if (!fee || fee.refundedAt) return Promise.resolve('duplicate');
-      rows.set(billId, { ...fee, ...refund });
+      if (!fee || fee.releasedAt) return Promise.resolve('duplicate');
+      rows.set(billId, { ...fee, releasedAt });
       return Promise.resolve('recorded');
     },
+    markRefunded: () => Promise.resolve('duplicate'),
   };
   const fees = createTableFeeService({
     stripe,
@@ -158,26 +149,23 @@ export async function refundRoundTrip(stripe: Stripe): Promise<string> {
     participants: [{ userId: smokeId }],
   };
   const outcome = await fees.refundIfNobodyJoined(session);
-  if (outcome !== 'refunded') throw new Error(`refund outcome was ${outcome}, not refunded`);
-  const refundId = rows.get(smokeId)?.refundId;
-  if (!refundId) throw new Error('refund not recorded on the fee row');
+  if (outcome !== 'released') throw new Error(`release outcome was ${outcome}, not released`);
+  if (!rows.get(smokeId)?.releasedAt) throw new Error('release not recorded on the fee row');
 
-  const refund = await stripe.refunds.retrieve(refundId);
-  if (refund.status !== 'succeeded' && refund.status !== 'pending') {
-    throw new Error(`refund ${refund.id} is ${refund.status ?? 'unknown'}`);
-  }
-  if (refund.amount !== 200) throw new Error(`refund ${refund.id} is ${refund.amount}p, not 200p`);
-  return `paid ${payment.id} £2.00, refunded ${refund.id} (${refund.status})`;
+  const after = await stripe.paymentIntents.retrieve(hold.id);
+  if (after.status !== 'canceled')
+    throw new Error(`hold ${hold.id} is ${after.status}, not canceled`);
+  return `held ${hold.id} £1.00, released`;
 }
 
-const refundCheck: Check = {
-  name: 'Stripe refund (nobody joined)',
+const holdCheck: Check = {
+  name: 'Stripe hold (nobody joined)',
   required: true,
   run: async () => {
     const key = env.STRIPE_SECRET_KEY;
     if (!key) throw skip('Stripe not enabled (no STRIPE_SECRET_KEY)');
-    if (!key.includes('_test_')) throw skip('live key: refunds are only smoke-tested in test mode');
-    return refundRoundTrip(new Stripe(key, { timeout: TIMEOUT_MS, maxNetworkRetries: 0 }));
+    if (!key.includes('_test_')) throw skip('live key: holds are only smoke-tested in test mode');
+    return holdRoundTrip(new Stripe(key, { timeout: TIMEOUT_MS, maxNetworkRetries: 0 }));
   },
 };
 
@@ -321,7 +309,7 @@ const nearbyCheck: Check = {
 
 export const CHECKS: readonly Check[] = [
   stripeCheck,
-  refundCheck,
+  holdCheck,
   bedrockCheck,
   venueCheck,
   nearbyCheck,

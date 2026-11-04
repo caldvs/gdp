@@ -198,10 +198,16 @@ export const sessionService = {
     if (!creator) throw new Error('Invariant: creator missing from participants');
 
     const updatedCreator: Participant = { ...creator, payment: { status: 'self_paid' } };
-    const { participants: _, ...meta } = session;
-    const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'claiming' };
-
     const entitlement = input.entitle ? await input.entitle(session) : null;
+    const { participants: _, ...meta } = session;
+    const updatedMeta: Omit<Session, 'participants'> = {
+      ...meta,
+      status: 'claiming',
+      // A hold is paid back by the guests (#166); a credit costs them nothing.
+      ...(entitlement?.kind === 'fee' && entitlement.holdPence
+        ? { platformFeePence: entitlement.holdPence }
+        : {}),
+    };
     try {
       await sessionStore.applyShare({
         sessionMeta: updatedMeta,

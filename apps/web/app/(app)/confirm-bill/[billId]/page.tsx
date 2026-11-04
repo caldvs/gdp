@@ -100,9 +100,8 @@ function CheckBill() {
   const servicePence = parsePence(servicePounds);
   const taxPence = parsePence(taxPounds);
   const totalPence = subtotalPence + servicePence + taxPence;
-  // Follow the total on screen (£2, or £3 over £100) so the button is right
-  // while editing; the server sets the actual charge.
-  const feeDue = fee.data?.status === 'unpaid' ? (totalPence > 10_000 ? 300 : 200) : null;
+  // No credit: a £1 hold on the lead's card (#165). Nothing is taken now.
+  const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
   // This month's free bill: sharing spends it (#128).
   const credit = fee.data?.status === 'free';
 
@@ -314,12 +313,12 @@ function CheckBill() {
         {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
       </Page>
-      <ActionBar note={!isMidSession && credit ? '1 credit left · you get 1 free each month' : undefined}>
+      <ActionBar note={isMidSession ? undefined : credit ? '1 credit left · you get 1 free each month' : feeDue !== null ? 'Nothing taken now' : undefined}>
         {isMidSession ? (
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
           <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null ? `Pay ${formatGBP(feeDue)} platform fee & get QR code` : credit ? 'Spend 1 credit & get QR code' : 'Continue'}
+            {feeDue !== null ? `Hold ${formatGBP(feeDue)} & get QR code` : credit ? 'Spend 1 credit & get QR code' : 'Continue'}
           </Button>
         )}
       </ActionBar>

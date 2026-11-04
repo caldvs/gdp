@@ -50,7 +50,7 @@ export const tableFeeStore: TableFeeStore = {
     if (
       existing &&
       existing.checkoutSessionId !== fee.checkoutSessionId &&
-      (existing.refundedAt || existing.sessionId)
+      (existing.refundedAt || existing.releasedAt || existing.sessionId)
     ) {
       // Keep the old payment before the new one takes its place. Writing
       // it twice is harmless.
@@ -78,11 +78,30 @@ export const tableFeeStore: TableFeeStore = {
             GSI1SK: fee.paidAt,
             ...fee,
           },
-          // New; or a fresh payment replacing a refunded fee or one already
-          // spent on a share. A resent webhook for the same payment writes nothing.
+          // New; or a fresh payment replacing a refunded fee, a released
+          // hold, or one already spent on a share. A resent webhook for the
+          // same payment writes nothing.
           ConditionExpression:
-            'attribute_not_exists(pk) OR (checkoutSessionId <> :cs AND (attribute_exists(refundedAt) OR attribute_exists(sessionId)))',
+            'attribute_not_exists(pk) OR (checkoutSessionId <> :cs AND (attribute_exists(refundedAt) OR attribute_exists(releasedAt) OR attribute_exists(sessionId)))',
           ExpressionAttributeValues: { ':cs': fee.checkoutSessionId },
+        }),
+      );
+      return 'recorded';
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return 'duplicate';
+      throw err;
+    }
+  },
+
+  async markReleased(billId, releasedAt) {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: feePk(billId), sk: FEE_SK },
+          UpdateExpression: 'SET releasedAt = :at',
+          ConditionExpression: 'attribute_exists(pk) AND attribute_not_exists(releasedAt)',
+          ExpressionAttributeValues: { ':at': releasedAt },
         }),
       );
       return 'recorded';

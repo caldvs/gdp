@@ -1065,14 +1065,20 @@ export interface components {
             /** Format: uuid */
             billId: string;
             /**
-             * @description `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+             * @description `held`: a £1 hold is on the lead's card for this bill (#165); nothing
+             *     is taken until close. `unpaid`: no hold or credit yet; `amountPence`
+             *     is the hold sharing needs. `paid`: a fee paid outright, from before
+             *     holds.
+             *     `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
              *     `free`: the lead has this month's credit, which sharing spends.
              * @enum {string}
              */
-            status: "paid" | "unpaid" | "waived" | "free";
+            status: "held" | "paid" | "unpaid" | "waived" | "free";
             amountPence: number;
             /** Format: date-time */
             paidAt?: string;
+            /** Format: date-time */
+            heldAt?: string;
             /**
              * @description Credits left this month (on `free` and `unpaid`).
              * @enum {integer}
@@ -1103,6 +1109,13 @@ export interface components {
                 amountPence: number;
                 /** Format: date-time */
                 paidAt: string;
+                /**
+                 * @description A £1 hold, not counted in `paidPence` until it's taken at close.
+                 * @enum {string}
+                 */
+                kind?: "hold";
+                /** Format: date-time */
+                releasedAt?: string;
                 /** Format: date-time */
                 refundedAt?: string;
             }[];
@@ -1366,6 +1379,12 @@ export interface components {
              *     "3 of 4 joined"; never used in the money maths. Absent until set.
              */
             expectedDiners?: number;
+            /**
+             * @description The hold that paid for sharing this bill (#165). Guests pay it back
+             *     to the lead in proportion to what they ordered (#166). Absent when
+             *     a credit, an exempt lead or Stripe being off paid for it.
+             */
+            platformFeePence?: number;
             /**
              * @description The lead's fingerprint of the bank details in their join link (#151),
              *     set with `PUT /v1/sessions/{sessionId}/payout-check`. Absent until the

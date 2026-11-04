@@ -75,7 +75,7 @@ export default function SharePage() {
           <Notice title="No bank details yet.">Friends can join, but won’t see where to pay.</Notice>
         ) : null}
         {feePaid ? (
-          <Notice tone="ok" title={`${formatGBP(feePaid.amountPence)} platform fee paid`} />
+          <Notice tone="ok" title={feePaid.kind === 'hold' ? `${formatGBP(feePaid.amountPence)} hold · nothing taken now` : `${formatGBP(feePaid.amountPence)} platform fee paid`} />
         ) : fresh === 'credit' && billing.data ? (
           <Notice><b>1 credit spent</b> · next credit {creditDate(billing.data.nextCreditOn)}</Notice>
         ) : null}

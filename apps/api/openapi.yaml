@@ -1591,12 +1591,17 @@ components:
         billId: { type: string, format: uuid }
         status:
           type: string
-          enum: [paid, unpaid, waived, free]
+          enum: [held, paid, unpaid, waived, free]
           description: |
+            `held`: a £1 hold is on the lead's card for this bill (#165); nothing
+            is taken until close. `unpaid`: no hold or credit yet; `amountPence`
+            is the hold sharing needs. `paid`: a fee paid outright, from before
+            holds.
             `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
             `free`: the lead has this month's credit, which sharing spends.
         amountPence: { type: integer }
         paidAt: { type: string, format: date-time }
+        heldAt: { type: string, format: date-time }
         creditsLeft:
           type: integer
           enum: [0, 1]
@@ -1623,6 +1628,11 @@ components:
               sessionId: { type: string, format: uuid, description: The session this fee shared }
               amountPence: { type: integer }
               paidAt: { type: string, format: date-time }
+              kind:
+                type: string
+                enum: [hold]
+                description: A £1 hold, not counted in `paidPence` until it's taken at close.
+              releasedAt: { type: string, format: date-time }
               refundedAt: { type: string, format: date-time }
         credits:
           type: array
@@ -1947,6 +1957,13 @@ components:
           description: |
             How many people the lead said are eating, lead included. Shown as
             "3 of 4 joined"; never used in the money maths. Absent until set.
+        platformFeePence:
+          type: integer
+          minimum: 0
+          description: |
+            The hold that paid for sharing this bill (#165). Guests pay it back
+            to the lead in proportion to what they ordered (#166). Absent when
+            a credit, an exempt lead or Stripe being off paid for it.
         payoutCheck:
           type: string
           pattern: '^[0-9a-f]{64}$'

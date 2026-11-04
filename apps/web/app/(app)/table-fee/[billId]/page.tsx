@@ -41,8 +41,10 @@ const sessionIdOf = (clientSecret: string) => clientSecret.split('_secret_')[0] 
 const WAIT_MS = 30_000;
 
 /**
- * F3: the lead pays the platform fee in Stripe's embedded form, then goes back
- * to share the bill. Card details stay inside Stripe's iframe.
+ * F3: the lead puts a £1 hold on their card in Stripe's embedded form (#165),
+ * then goes back to share the bill. Nothing is taken now; at close the
+ * guests' part is taken and the rest released. Card details stay inside
+ * Stripe's iframe.
  */
 export default function TableFeePage({ params }: { params: Promise<{ billId: string }> }) {
   const { billId } = use(params);
@@ -54,8 +56,9 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   // Stop polling after WAIT_MS so a lost webhook can't spin forever.
   const [slow, setSlow] = useState(false);
   const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
-  // Waived (an exempt lead) or free (this month's credit) are as good as paid.
-  const paid = status.data?.status === 'paid' || status.data?.status === 'waived' || status.data?.status === 'free';
+  // A hold, an exempt lead or this month's credit are as good as paid.
+  const s = status.data?.status;
+  const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free';
 
   useEffect(() => {
     if (!confirmed || paid || slow) return;
@@ -69,7 +72,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   useEffect(() => {
     if (!paid || started.current) return;
     started.current = true;
-    const next = status.data?.status === 'paid' ? 'fee' : status.data?.status === 'free' ? 'credit' : '1';
+    const next = s === 'held' || s === 'paid' ? 'fee' : s === 'free' ? 'credit' : '1';
     const shareAndGo = async (sessionId: string) => {
       await shareSession(sessionId, checkoutSessionId);
       router.replace(`/session/${sessionId}/share?new=${next}`);
@@ -90,7 +93,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
         router.replace(`/session/${sessionId}`);
       }
     })();
-  }, [paid, billId, router, createSession, checkoutSessionId, status.data?.status]);
+  }, [paid, billId, router, createSession, checkoutSessionId, s]);
 
   const back = <BackLink href={`/confirm-bill/${billId}`}>Platform fee</BackLink>;
 
@@ -131,8 +134,8 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
           </div>
           <h1 className="pay-wait__title">
             {stage === 'qr'
-              ? status.data.status === 'paid' ? `${pounds(status.data.amountPence)} platform fee paid` : status.data.status === 'free' ? '1 credit spent' : 'No fee'
-              : stage === 'slow' ? 'Still checking' : `Paying ${pounds(status.data.amountPence)}`}
+              ? status.data.status === 'held' ? `${pounds(status.data.amountPence)} hold placed` : status.data.status === 'paid' ? `${pounds(status.data.amountPence)} platform fee paid` : status.data.status === 'free' ? '1 credit spent' : 'No fee'
+              : stage === 'slow' ? 'Still checking' : `Holding ${pounds(status.data.amountPence)}`}
           </h1>
           <p className="muted">
             {stage === 'qr'
@@ -174,7 +177,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
           ? `No credits left this month. Next one ${creditDate(status.data.nextCreditOn)}.`
           : 'Then your QR code'}
       />
-      <Box><Row title="Platform fee" end={formatGBP(status.data.amountPence)} /></Box>
+      <Box><Row title="Platform fee hold" end={formatGBP(status.data.amountPence)} /></Box>
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {
@@ -239,7 +242,7 @@ function Form({ onConfirmed }: { onConfirmed: () => void }) {
     <>
       <CheckoutForm options={{ layout: 'expanded' }} onConfirm={onConfirm} />
       {error ? <Notice tone="error" title="Payment didn’t go through.">{error}</Notice> : null}
-      <p className="muted small" style={{ textAlign: 'center' }}>Refunded if nobody joins · Apple Pay, Google Pay or card</p>
+      <p className="muted small" style={{ textAlign: 'center' }}>A hold, nothing taken now · Released if nobody joins</p>
     </>
   );
 }

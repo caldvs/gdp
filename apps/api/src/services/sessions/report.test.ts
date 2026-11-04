@@ -123,6 +123,28 @@ describe('buildReport', () => {
   });
 });
 
+describe('platform fee (#166)', () => {
+  it('adds each guest’s part of the hold to their total, and none to the lead’s', () => {
+    const s = { ...session('claiming'), platformFeePence: 100 };
+    const report = buildReport(s, bill, new Map());
+    for (const d of report.diners) {
+      const expected = d.isLead ? 0 : Math.floor((100 * d.itemsPence) / bill.subtotalPence);
+      expect(d.feePence).toBe(expected);
+      expect(d.totalPence).toBe(d.itemsPence + d.extrasPence + d.feePence);
+    }
+    const guest = report.diners.find((d) => !d.isLead && d.feePence > 0)!;
+    const email = renderReportEmail(report, guest.userId);
+    expect(email.text).toContain(`Platform fee  £${(guest.feePence / 100).toFixed(2)}`);
+    expect(email.html).toContain('Platform fee');
+  });
+
+  it('shows no fee line without a hold', () => {
+    const report = buildReport(session('claiming'), bill, new Map());
+    expect(report.diners.every((d) => d.feePence === 0)).toBe(true);
+    expect(renderReportEmail(report, 'b').text).not.toContain('Platform fee');
+  });
+});
+
 describe('renderReportEmail', () => {
   it('gives a guest only their own items', () => {
     const r = buildReport(session('settled'), bill, amounts);

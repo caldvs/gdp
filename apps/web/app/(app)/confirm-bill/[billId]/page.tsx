@@ -313,7 +313,7 @@ function CheckBill() {
         {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
       </Page>
-      <ActionBar note={isMidSession ? undefined : credit ? '1 credit left · you get 1 free each month' : feeDue !== null ? 'Nothing taken now' : undefined}>
+      <ActionBar note={isMidSession ? undefined : credit ? '1 credit left · you get 1 free each month' : feeDue !== null ? 'Nothing taken now · your guests pay it back' : undefined}>
         {isMidSession ? (
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (

@@ -1,4 +1,5 @@
 import { apportionByWeight, splitShare } from './allocation.js';
+import { feeSharePence } from '../payments/ledger.js';
 import type { Bill } from '../../types/bills.js';
 import type { Session, Participant } from '../../types/sessions.js';
 
@@ -30,6 +31,8 @@ export type DinerReport = {
   lines: ReportLine[];
   itemsPence: number;
   extrasPence: number;
+  /** Their part of the lead's platform fee hold (#166); 0 for the lead. */
+  feePence: number;
   totalPence: number;
   paid: PaidState;
 };
@@ -111,6 +114,10 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
   const diners: DinerReport[] = session.participants.map((p) => {
     const itemsPence = itemsByUser.get(p.userId) ?? 0;
     const extrasPence = extras.get(p.userId) ?? 0;
+    const feePence =
+      p.userId === session.creatorUserId
+        ? 0
+        : feeSharePence(session.platformFeePence ?? 0, itemsPence, bill.subtotalPence);
     return {
       userId: p.userId,
       displayName: p.displayName,
@@ -118,7 +125,8 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
       lines: linesByUser.get(p.userId) ?? [],
       itemsPence,
       extrasPence,
-      totalPence: itemsPence + extrasPence,
+      feePence,
+      totalPence: itemsPence + extrasPence + feePence,
       paid: paidState(p, session.creatorUserId, amounts),
     };
   });
@@ -222,6 +230,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       t.push(`  ${l.name}${l.detail ? ` (${l.detail})` : ''}  ${money(l.pence)}`);
     if (d.lines.length === 0) t.push('  Nothing yet');
     t.push(`  Service and tax  ${money(d.extrasPence)}`);
+    if (d.feePence > 0) t.push(`  Platform fee  ${money(d.feePence)}`);
     t.push(`  Total  ${money(d.totalPence)} · ${paidText(d, report.leadName, forLead)}`, '');
   }
   if (forLead && report.unclaimed.length > 0) {
@@ -256,6 +265,9 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px">` +
       lines +
       row('<span style="color:#6a6a6a">Service and tax</span>', money(d.extrasPence)) +
+      (d.feePence > 0
+        ? row('<span style="color:#6a6a6a">Platform fee</span>', money(d.feePence))
+        : '') +
       row(
         `<b>${money(d.totalPence)}</b>`,
         `<span style="color:${d.paid.kind === 'not_paid' ? '#9a6700' : '#1a7f37'}">${esc(paidText(d, report.leadName, forLead))}</span>`,

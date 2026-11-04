@@ -36,7 +36,7 @@ _Last updated 4 Nov 2026._
 
 ## Next up
 
-**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up (#164) and the £1 hold at the QR, released when nobody joins (#165). Next, in order: guests' share (#166), take it from the hold at close (#167), the expiry sweep (#168), credit packs (#169), Stripe Dashboard tidy-up (#170). Until #167, a hold on a bill people joined is neither taken nor released and lapses after about 7 days (test only: prod has no Stripe key).
+**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up (#164), the £1 hold at the QR, released when nobody joins (#165), and guests paying it back by what they ordered (#166). Next, in order: take it from the hold at close (#167), the expiry sweep (#168), credit packs (#169), Stripe Dashboard tidy-up (#170). Until #167, a hold on a bill people joined is neither taken nor released and lapses after about 7 days (test only: prod has no Stripe key).
 
 **Redesign** (board: the "Pay Me Back redesign" artifact, #127–#133): all six parts built.
 

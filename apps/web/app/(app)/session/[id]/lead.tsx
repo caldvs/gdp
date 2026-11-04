@@ -15,7 +15,7 @@ import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
-import { extrasRate, projectOwedPence, sharePence } from '@gdp/core/lib/owed';
+import { extrasRate, projectFeePence, projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
   ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowButton, RowLink, Section, TabPanel, Tabs, Title, TotalLine, Totals, firstName,
@@ -305,7 +305,8 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const outstanding = guests.filter((p) => !isPaid(s, b, p));
   const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
-  const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p), 0));
+  // The guests' platform fee is on top of the bill, so it isn't taken off the lead's part.
+  const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p) - projectFeePence(s, b, p.userId), 0));
   const unclaimed = itemStatuses(s, b, s.creatorUserId).filter((x) => x.left > 0);
   const spent = useSpent(s.sessionId);
   return (

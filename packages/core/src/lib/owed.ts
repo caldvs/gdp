@@ -44,6 +44,24 @@ export function extrasRate(bill: Bill): number {
   return bill.subtotalPence > 0 ? (bill.serviceChargePence + bill.taxPence) / bill.subtotalPence : 0;
 }
 
+/**
+ * A guest's part of the lead's £1 hold (#166): the hold times their share
+ * of the bill's items, rounded down. It's fixed by the bill, so it doesn't
+ * depend on who joins or pays first, and the guests' parts never add up to
+ * more than the hold. Mirrors feeSharePence in the API's ledger.ts.
+ */
+export function feeSharePence(holdPence: number, itemsPence: number, billSubtotalPence: number): number {
+  if (holdPence <= 0 || itemsPence <= 0 || billSubtotalPence <= 0) return 0;
+  return Math.floor((holdPence * Math.min(itemsPence, billSubtotalPence)) / billSubtotalPence);
+}
+
+/** The platform fee a diner pays back to the lead. The lead pays none. */
+export function projectFeePence(session: Session, bill: Bill, userId: string): number {
+  if (userId === session.creatorUserId) return 0;
+  return feeSharePence(session.platformFeePence ?? 0, projectSubtotalPence(session, bill, userId), bill.subtotalPence);
+}
+
+/** What a diner owes: their items, their part of service and tax, and their part of the platform fee. */
 export function projectOwedPence(session: Session, bill: Bill, userId: string): number {
-  return Math.round(projectSubtotalPence(session, bill, userId) * (1 + extrasRate(bill)));
+  return Math.round(projectSubtotalPence(session, bill, userId) * (1 + extrasRate(bill))) + projectFeePence(session, bill, userId);
 }

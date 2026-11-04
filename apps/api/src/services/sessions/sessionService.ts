@@ -16,6 +16,7 @@ import {
   type ClaimsRequest,
   type ShareActivity,
   type ShareSettings,
+  type SessionPreview,
 } from '../../types/sessions.js';
 
 export type { VerifiedCaller };
@@ -158,6 +159,50 @@ export const sessionService = {
     }
     await sessionStore.setPayoutCheck(session.sessionId, input.payoutCheck);
     return projectForCaller({ ...session, payoutCheck: input.payoutCheck }, input.caller.userId);
+  },
+
+  /**
+   * The landing page's view of a bill (#183), for whoever holds the QR:
+   * host, venue, total, how many items, who's in (first names). Nothing
+   * about bank details (ADR-0002).
+   */
+  async preview(input: { code: string }): Promise<SessionPreview> {
+    const resolved = await sessionStore.resolveJoinCode(input.code);
+    if (!resolved) throw new AppError('NOT_FOUND', 'Code not found');
+    const session = await sessionStore.get(resolved.sessionId);
+    if (!session || session.status === 'setup' || session.status === 'abandoned') {
+      throw new AppError('NOT_FOUND', 'Code not active');
+    }
+    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+    const first = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+    const host = session.participants.find((p) => p.userId === session.creatorUserId);
+    const others = session.participants.filter((p) => p.userId !== session.creatorUserId);
+    return {
+      sessionId: session.sessionId,
+      status: session.status,
+      hostName: first(host?.displayName ?? 'Your host'),
+      ...(bill.venue?.name ? { venueName: bill.venue.name } : {}),
+      createdAt: session.createdAt,
+      itemCount: bill.items.reduce((n, it) => n + it.quantity, 0),
+      totalPence: bill.totalPence,
+      people: [host, ...others].filter((p) => !!p).map((p) => first(p.displayName)),
+    };
+  },
+
+  /**
+   * A guest joins with just a name (#183): a new user for this one table,
+   * seated now. The route mints them a token that works for this session
+   * only.
+   */
+  async joinAsGuest(input: {
+    code: string;
+    name: string;
+  }): Promise<{ userId: string; session: Session }> {
+    const { sessionId } = await this.resolveByCode({ code: input.code });
+    const userId = `guest-${uuidv7()}`;
+    const session = await this.join({ caller: { userId, displayName: input.name }, sessionId });
+    return { userId, session };
   },
 
   async resolveByCode(input: { code: string }): Promise<{ sessionId: string }> {

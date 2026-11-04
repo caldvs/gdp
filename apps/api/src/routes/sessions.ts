@@ -10,6 +10,7 @@ import {
   SetShareWaysRequestSchema,
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
+  GuestJoinRequestSchema,
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
   SetPayoutCheckRequestSchema,
@@ -23,14 +24,24 @@ import type { Session } from '../types/sessions.js';
 import { baseLogger } from '../logging/logger.js';
 import { AppError } from '../errors/AppError.js';
 import { countInWindow } from '../storage/rateCounter.js';
+import { mintSessionToken } from '../services/auth/sessionToken.js';
+import { sourceIpOf } from './auth.js';
 
 // Looking up join codes (#151): 30 tries per user per 10 minutes, so
 // guessing six-character codes is slow. Plenty for mistyping a few.
 const CODE_LOOKUPS_PER_WINDOW = 30;
 const CODE_LOOKUP_WINDOW_SECONDS = 10 * 60;
 
+// Guests joining with a name (#183): per IP address, so one phone can't
+// fill a table with made-up people, and a cap per table.
+const GUEST_JOINS_PER_IP_HOUR = 20;
+const GUEST_JOINS_PER_SESSION_HOUR = 60;
+const PREVIEWS_PER_IP_WINDOW = 60;
+
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
+  /** Signs guests' session tokens (#183). Absent: guests can't join without signing in. */
+  jwtSecret?: Uint8Array;
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
   /** Gates sharing on the fee, and refunds it when nobody joined. Absent when Stripe is off. */
@@ -111,6 +122,55 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       return c.json(session, 201);
     },
   );
+
+  // The QR's landing page (#183): no sign-in, rate-limited per IP.
+  r.post('/preview', validJson(JoinByCodeRequestSchema), async (c) => {
+    const { code } = c.req.valid('json');
+    const ip = sourceIpOf(c.env) ?? 'unknown';
+    const allowed = await countInWindow(
+      `CODERATE#ip:${ip}`,
+      CODE_LOOKUP_WINDOW_SECONDS,
+      PREVIEWS_PER_IP_WINDOW,
+    );
+    if (!allowed.ok) {
+      throw new AppError('RATE_LIMITED', 'Too many tries. Wait a few minutes.', {
+        retryAfterSeconds: allowed.retryAfterSeconds,
+      });
+    }
+    return c.json(await sessionService.preview({ code }));
+  });
+
+  // Guests join with just a name, no account (#183). The token they get
+  // works for this one session (see guestMayCall).
+  r.post('/guest-join', validJson(GuestJoinRequestSchema), async (c) => {
+    if (!deps.jwtSecret) throw new AppError('INTERNAL_ERROR', 'Guest join not configured');
+    const { code, name } = c.req.valid('json');
+    const ip = sourceIpOf(c.env) ?? 'unknown';
+    const perIp = await countInWindow(`GUESTRATE#ip:${ip}`, 60 * 60, GUEST_JOINS_PER_IP_HOUR);
+    if (!perIp.ok) {
+      throw new AppError('RATE_LIMITED', 'Too many joins from here. Wait a while.', {
+        retryAfterSeconds: perIp.retryAfterSeconds,
+      });
+    }
+    const { sessionId } = await sessionService.resolveByCode({ code });
+    const perTable = await countInWindow(
+      `GUESTRATE#session:${sessionId}`,
+      60 * 60,
+      GUEST_JOINS_PER_SESSION_HOUR,
+    );
+    if (!perTable.ok) {
+      throw new AppError('RATE_LIMITED', 'This table is full for now.', {
+        retryAfterSeconds: perTable.retryAfterSeconds,
+      });
+    }
+    const { userId, session } = await sessionService.joinAsGuest({ code, name });
+    const token = await mintSessionToken(
+      { userId, email: '', name, guestSessionId: sessionId },
+      deps.jwtSecret,
+    );
+    baseLogger.info({ event: 'session.guest_joined', sessionId, userId }, 'Guest joined');
+    return c.json({ token, session }, 201);
+  });
 
   r.post(
     '/by-code',

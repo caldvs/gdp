@@ -24,6 +24,8 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
       displayName: c.var.userName ?? 'Unknown',
       ...(c.var.userEmail ? { email: c.var.userEmail } : {}),
       ...(c.var.userPicture ? { avatarUrl: c.var.userPicture } : {}),
+      // A guest (#183): the web app shows them only this bill.
+      ...(c.var.guestSessionId ? { guestSessionId: c.var.guestSessionId } : {}),
       ...(stored?.payoutAccount ? { payoutAccount: stored.payoutAccount } : {}),
     });
   });

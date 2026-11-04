@@ -15,6 +15,8 @@ test.use({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
 async function open(page: Page, api: FakeApi, user: User | null, to: string) {
   if (user) await api.attach(page.context(), user);
   else await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
+  // #183: the QR's landing page shows the bill before anyone signs in.
+  if (!user) await page.route('**/v1/sessions/preview', (r) => r.fulfill({ status: 200, json: { sessionId: SID, status: 'claiming', hostName: 'Callum', venueName: 'Gennaro', createdAt: '2026-10-31T12:00:00Z', itemCount: 8, totalPence: 13129, people: ['Callum', 'Priya', 'Sam'] } }));
   await page.goto(to);
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
 }

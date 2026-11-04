@@ -49,6 +49,7 @@ test('landing', async ({ page }) => {
 
 test('invite', async ({ page }) => {
   await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
+  await page.route('**/v1/sessions/preview', (r) => r.fulfill({ status: 200, json: { sessionId: SID, status: 'claiming', hostName: 'Callum', venueName: 'Gennaro', createdAt: '2026-10-31T12:00:00Z', itemCount: 8, totalPence: 13129, people: ['Callum', 'Priya', 'Sam'] } }));
   await page.goto(`/join/${CODE}#p=${fragmentFor()}`);
   await expect(page.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
   await expect(page).toHaveScreenshot('invite.png', shot);

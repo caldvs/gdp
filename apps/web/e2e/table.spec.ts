@@ -31,6 +31,7 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('Callum will confirm')).toBeVisible();
 
   // --- Lead: Sam says they've sent it. Confirm. The bill must stay open.

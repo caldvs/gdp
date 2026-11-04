@@ -24,19 +24,21 @@ async function signInWithCode(page: Page) {
   await page.getByLabel('Code sent to sam@example.com').fill(SIGN_IN_CODE);
 }
 
-test('join link, signed out: the invite names the host, and the bank details in the fragment never reach a server', async ({ browser }) => {
+test('#183: a guest scans the QR, sees the bill and joins with just a name; the bank details never reach a server', async ({ browser }) => {
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam, { signedIn: false });
   const fragment = fragmentFor();
 
   await sam.goto(`/join/${CODE}#p=${fragment}`);
-  await expect(sam).toHaveURL(new RegExp(`/sign-in\\?from=%2Fjoin%2F${CODE}$`));
+  // No sign-in: the landing page, on the join link itself.
   await expect(sam.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
+  await expect(sam).toHaveURL(new RegExp(`/join/${CODE}$`));
+  await expect(sam.getByText('Gennaro')).toBeVisible();
   // #182: the join token is never shown.
   await expect(sam.getByText(CODE)).toHaveCount(0);
 
-  // Same tab throughout, so the join (and its fragment) carries on.
-  await signInWithCode(sam);
+  await sam.getByLabel('Your name').fill('Sam');
+  await sam.getByRole('button', { name: 'Join the bill' }).click();
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();

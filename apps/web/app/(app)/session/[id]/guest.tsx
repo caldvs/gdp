@@ -6,6 +6,7 @@
  * (GuestTable). Pay lives in ./pay.
  */
 import { useMemo } from 'react';
+import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
@@ -46,6 +47,8 @@ export function ItemLine({ st }: { st: ItemStatus }) {
     : formatGBP(item.unitPricePence * (mine > 0 && !share ? mine : open ? left : item.quantity));
   return <Row title={name} sub={sub} end={price} muted={!open && mine === 0} lead={who.length > 0 ? <AvatarStack names={who} /> : undefined} />;
 }
+/** A guest who joined with just a name (#183): no Bills to go back to. */
+export const useIsGuest = () => !!useMe().data?.guestSessionId;
 export const owedFor = (s: Session, b: Bill, p: Participant) => p.owedPence ?? projectOwedPence(s, b, p.userId);
 
 /* ============================ pick ============================ */
@@ -54,6 +57,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const me = s.participants.find((p) => p.userId === meUserId);
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
+  const isGuest = useIsGuest();
   const subtotal = projectSubtotalPence(s, b, meUserId);
   const rate = billExtrasRate(b);
   // Plus their part of the lead's platform fee hold (#166).
@@ -70,7 +74,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
         {onBack ? (
           <BackButton onClick={onBack}>Your bill</BackButton>
         ) : (
-          <BackLink href="/">Bills</BackLink>
+          isGuest ? null : <BackLink href="/">Bills</BackLink>
         )}
         <Title title={paidSome ? 'What else did you have?' : 'What did you have?'} sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />} />
         <ClaimList s={s} b={b} meUserId={meUserId} />
@@ -115,6 +119,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   const me = s.participants.find((p) => p.userId === meUserId);
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
+  const isGuest = useIsGuest();
   const closed = s.status === 'settled';
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
   const open = statuses.filter((x) => x.left > 0);
@@ -130,7 +135,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   return (
     <>
       <Page sub>
-        <BackLink href="/">Bills</BackLink>
+        {isGuest ? null : <BackLink href="/">Bills</BackLink>}
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
         {l?.settled ? (
           <PaidHero done host={hostFirst} pence={l.confirmedPence} />
@@ -191,7 +196,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
         ) : null}
         {!closed && open.length > 0 && onMore ? (
           <Button tone={waitingPence > 0 && !mustPay ? 'text' : 'secondary'} onClick={onMore}>I had something else</Button>
-        ) : mustPay || (waitingPence > 0 && !l?.settled) ? null : (
+        ) : mustPay || (waitingPence > 0 && !l?.settled) || isGuest ? null : (
           <Button tone={closed ? 'primary' : 'secondary'} href="/" replace>{closed ? 'Done' : 'Back to bills'}</Button>
         )}
       </ActionBar>

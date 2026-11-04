@@ -30,13 +30,11 @@ test('a redirect to sign in asks for the email straight away', async ({ page }) 
   await expect(page.getByLabel('Email')).toBeVisible();
 });
 
-test('a join link survives the sign-in redirect without leaking the bank details', async ({ page }) => {
+test('#183: a join link opens without signing in, and the bank details leave the address bar', async ({ page }) => {
   await unauthenticated(page);
   await page.goto('/join/ABC123#p=secret-payload');
-  await expect(page).toHaveURL(/\/sign-in\?from=%2Fjoin%2FABC123$/);
-  // The #p= fragment is parked in this tab's sessionStorage, never in a URL.
+  await expect(page).toHaveURL(/\/join\/ABC123$/);
   expect(page.url()).not.toContain('secret-payload');
-  expect(await page.evaluate(() => sessionStorage.getItem('gdp.pendingJoinFragment'))).toBe('#p=secret-payload');
 });
 
 test('a join link leaves the address bar before /me answers (#147)', async ({ page }) => {

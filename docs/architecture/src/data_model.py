@@ -57,7 +57,7 @@ y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), 
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
 y = place(0, y, 'Sign-in code', 'id', '20 min', [('pk', 'SIGNIN#{id}'), ('sk', 'same as pk')], ['email, requestHash, codeHash (6 digits, salted)', 'status pending → used; attempts ≤ 5 (ADD)', '  (right code again for 5 min after use)', 'expiresAt (15 min)']) + GAP
-y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#user:{id}'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min', '(conditional add; key drops +tags, Gmail dots)']) + GAP
+y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#… | GUESTRATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 
@@ -109,7 +109,7 @@ for (nm, sk, lines), h in zip(rows, ih):
     yy += h + 10
 P['Session'] = (sx, sy, CW, sh)
 y = sy + sh + GAP
-y = place(2, y, 'Join code', 'sess', '30 days', [('pk', 'JCODE#{code}'), ('sk', 'same as pk')], ['sessionId', 'create-if-absent (collision check)']) + GAP
+y = place(2, y, 'Join code', 'sess', '30 days', [('pk', 'JCODE#{token}'), ('sk', 'same as pk')], ['sessionId', '22-char QR token (old: 6 letters)', 'create-if-absent (collision check)']) + GAP
 col3_end = y
 
 # ---- Column 4: payments + indexes

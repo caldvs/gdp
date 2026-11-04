@@ -12,6 +12,11 @@ export interface SessionTokenClaims {
   name?: string;
   /** The user's token version when minted (#155); signing out everywhere bumps it. */
   tokenVersion?: number;
+  /**
+   * A guest's token (#183): they joined one bill with just a name, and the
+   * token works for that session only.
+   */
+  guestSessionId?: string;
 }
 
 /**
@@ -29,6 +34,7 @@ export async function mintSessionToken(
     email: claims.email,
     ...(claims.name ? { name: claims.name } : {}),
     tv: claims.tokenVersion ?? 0,
+    ...(claims.guestSessionId ? { gsid: claims.guestSessionId } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.userId)
@@ -45,6 +51,8 @@ export interface VerifiedSessionToken {
   name?: string;
   /** 0 for tokens minted before versions existed. */
   tokenVersion: number;
+  /** Set on a guest's token: the one session it works for (#183). */
+  guestSessionId?: string;
 }
 
 /**
@@ -55,7 +63,9 @@ export async function verifySessionToken(
   token: string,
   secret: Uint8Array,
 ): Promise<VerifiedSessionToken> {
-  let result: { payload: { sub?: string; email?: unknown; name?: unknown; tv?: unknown } };
+  let result: {
+    payload: { sub?: string; email?: unknown; name?: unknown; tv?: unknown; gsid?: unknown };
+  };
   try {
     result = await jwtVerify(token, secret, {
       issuer: ISSUER,
@@ -68,7 +78,7 @@ export async function verifySessionToken(
     throw new AppError('AUTH_INVALID', 'Token verification failed');
   }
 
-  const { sub, email, name, tv } = result.payload;
+  const { sub, email, name, tv, gsid } = result.payload;
   if (!sub || typeof email !== 'string') {
     throw new AppError('AUTH_INVALID', 'Token missing required claims');
   }
@@ -77,5 +87,6 @@ export async function verifySessionToken(
     email,
     ...(typeof name === 'string' ? { name } : {}),
     tokenVersion: typeof tv === 'number' ? tv : 0,
+    ...(typeof gsid === 'string' ? { guestSessionId: gsid } : {}),
   };
 }

@@ -47,7 +47,7 @@ const MENU = [
 ] as const;
 
 /** Fades in on open and out on close (X or Escape). A link closes it at once: the page transition takes over. */
-function Menu({ email, closing, onClose, onClosed }: { email?: string; closing: boolean; onClose: () => void; onClosed: () => void }) {
+function Menu({ email, guest, closing, onClose, onClosed }: { email?: string; /** A guest (#183): their bill and nothing else. */ guest?: { sessionId: string; name: string }; closing: boolean; onClose: () => void; onClosed: () => void }) {
   const router = useRouter();
   const pathname = usePathname() ?? '/';
   const signOut = useSignOut();
@@ -76,7 +76,11 @@ function Menu({ email, closing, onClose, onClosed }: { email?: string; closing: 
     >
       <Header onMenu={onClose} menuOpen />
       <nav className="menu__nav" aria-label="Main">
-        {MENU.map((m, i) => m === null ? <div key={i} className="menu__div" /> : (
+        {guest ? (
+          <Link ref={first} href={`/session/${guest.sessionId}`} className="menu__item" aria-current={pathname.startsWith(`/session/${guest.sessionId}`) ? 'page' : undefined} onClick={onClosed}>
+            This bill
+          </Link>
+        ) : MENU.map((m, i) => m === null ? <div key={i} className="menu__div" /> : (
           <Link key={m.href} ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClosed}>
             {m.label}
           </Link>
@@ -84,8 +88,12 @@ function Menu({ email, closing, onClose, onClosed }: { email?: string; closing: 
       </nav>
       <div className="menu__foot">
         <div className="menu__foot-in">
-          <span className="small muted">{email}</span>
-          <Button tone="text" small onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
+          {guest ? <span className="small muted">You joined as {guest.name}</span> : (
+            <>
+              <span className="small muted">{email}</span>
+              <Button tone="text" small onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -105,13 +113,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     const from = window.location.pathname + window.location.search;
     router.replace(from && from !== '/' ? `/sign-in?from=${encodeURIComponent(from)}` : '/sign-in');
   }, [router]);
-  useIdleSignOut(!!me.data, goToSignIn);
+  // Guests (#183) never sign in, so they're never signed out for being idle.
+  const guestSessionId = me.data?.guestSessionId;
+  useIdleSignOut(!!me.data && !guestSessionId, goToSignIn);
 
   const status = me.error instanceof ApiError ? me.error.status : 0;
   const unauthenticated = me.isError && (status === 401 || status === 403);
+  // The QR's landing page works without signing in: guests join with a name there.
+  const publicPath = pathname.startsWith('/join/');
+
+  // A guest's token works for their own bill only: anywhere else goes back to it.
+  useEffect(() => {
+    if (!guestSessionId || publicPath || pathname.startsWith(`/session/${guestSessionId}`)) return;
+    router.replace(`/session/${guestSessionId}`);
+  }, [guestSessionId, publicPath, pathname, router]);
 
   useEffect(() => {
-    if (!unauthenticated) return;
+    if (!unauthenticated || publicPath) return;
     // A join link's #p= fragment carries the lead's bank details. It's
     // normally parked on load (lib/secretFragment.ts); this catches one
     // that arrived later, since the redirect below would drop it.
@@ -120,13 +138,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
     const from = pathname + window.location.search;
     router.replace(from && from !== '/' ? `/sign-in?from=${encodeURIComponent(from)}` : '/sign-in');
-  }, [unauthenticated, pathname, router]);
+  }, [unauthenticated, publicPath, pathname, router]);
 
   const close = useCallback(() => setMenu((m) => (m === 'open' ? 'closing' : m)), []);
   const closed = useCallback(() => setMenu('closed'), []);
 
   let body: ReactNode = children;
-  if (me.isPending || unauthenticated) body = <Centre><Spinner /></Centre>;
+  if (unauthenticated && publicPath) body = children;
+  else if (me.isPending || unauthenticated) body = <Centre><Spinner /></Centre>;
   else if (me.isError) {
     body = (
       <Centre>
@@ -141,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <TestBar />
       <Header onMenu={me.data ? () => setMenu('open') : undefined} />
       {body}
-      {menu !== 'closed' ? <Menu email={me.data?.email} closing={menu === 'closing'} onClose={close} onClosed={closed} /> : null}
+      {menu !== 'closed' ? <Menu email={me.data?.email} guest={guestSessionId ? { sessionId: guestSessionId, name: me.data?.displayName ?? 'Guest' } : undefined} closing={menu === 'closing'} onClose={close} onClosed={closed} /> : null}
     </div>
   );
 }

@@ -40,7 +40,7 @@ _Last updated 4 Nov 2026 (late evening)._
 
 **Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up, Terms, Refunds and landing pricing (#164), the £1 hold at the QR, released when nobody joins (#165), guests paying it back by what they ordered (#166), taking their part from the hold at close (#167), and a daily sweep (EventBridge → the API Lambda, `{ gdpHoldSweep: true }`) that takes it before a hold lapses on a bill left open (#168). Credit packs, 10 for £5 (#169), are built: `/credits`, spent after the free credit and before the hold. The old *Table fee* product and its £2/£3 prices are archived in the Stripe sandbox (#170); the £1 and £5 are set in code. Prod has no Stripe key yet, so none of this charges anyone live.
 
-**Sky redesign** (#179; board: the "Pay Me Back redesign" artifact, C1 Sky section): built #180 (look), #181 (action bar in the flow), #182 (QR-only joining: no code shown or typed, no Copy link / Share, a 22-character token in the QR; old 6-letter codes still resolve), #184 (*You pay Callum* band on the pay page; after *I've paid* the guest waits on *Waiting for Callum…* until it turns to *All square*), #185 (the reading screen). Left: #183, guests join with just a name, no sign-in (API work).
+**Sky redesign** (#179; board: the "Pay Me Back redesign" artifact, C1 Sky section): built #180 (look), #181 (action bar in the flow), #182 (QR-only joining: no code shown or typed, no Copy link / Share, a 22-character token in the QR; old 6-letter codes still resolve), #184 (*You pay Callum* band on the pay page; after *I've paid* the guest waits on *Waiting for Callum…* until it turns to *All square*), #185 (the reading screen). #183: guests join with just a name and never sign in (landing page from the QR, a token for that one bill; see decisions). Not built: a guest becoming an account and keeping the bill.
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: done bar Stripe live (#79) and the first Release. `paymeback.dev` serves Production and `test.paymeback.dev` the test Preview; `api.paymeback.dev` / `api.test.paymeback.dev` are the APIs (Vercel Production's `NEXT_PUBLIC_API_BASE_URL` now points at `api.paymeback.dev`, from the next Release). SES sends from `noreply@paymeback.dev`; prod alarms on SES bounce and complaint rates.
 
@@ -66,7 +66,7 @@ _Last updated 4 Nov 2026 (late evening)._
 
 ## Decided, not built
 
-- Accounts optional: guests join with just a name (needs API work).
+- A guest turning into an account and keeping their bill (*Keep a record of this bill* still goes to the lead's sign-in).
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
 

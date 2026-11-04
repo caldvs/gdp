@@ -9,5 +9,7 @@ declare module 'hono' {
     userEmail?: string;
     userName?: string;
     userPicture?: string;
+    /** Set for a guest (#183): the one session they may use. */
+    guestSessionId?: string;
   }
 }

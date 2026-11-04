@@ -2,6 +2,22 @@ import type { MiddlewareHandler } from 'hono';
 import { AppError } from '../errors/AppError.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 
+/**
+ * What a guest's token may call (#183): their own session and what hangs
+ * off it (claims, splits, payments, the bill it's pinned to), and /v1/me.
+ * The routes still check they're at the table; this keeps a guest token
+ * from reaching anything else (other bills, scanning, billing, history).
+ */
+export function guestMayCall(method: string, path: string, sessionId: string): boolean {
+  if (path === '/v1/me') return method === 'GET';
+  if (path === `/v1/sessions/${sessionId}` || path.startsWith(`/v1/sessions/${sessionId}/`))
+    return true;
+  if (/^\/v1\/bills\/[^/]+(\/image-url)?$/.test(path)) return method === 'GET';
+  if (/^\/v1\/payments\/[^/]+$/.test(path)) return method === 'GET';
+  if (/^\/v1\/payments\/[^/]+\/mark-paid$/.test(path)) return method === 'POST';
+  return false;
+}
+
 export const requireAuth =
   (verifier?: IdTokenVerifier): MiddlewareHandler =>
   async (c, next) => {
@@ -29,6 +45,13 @@ export const requireAuth =
     c.set('userEmail', identity.email);
     c.set('userName', identity.name);
     c.set('userPicture', identity.picture);
+    if (identity.guestSessionId) {
+      c.set('guestSessionId', identity.guestSessionId);
+      if (!guestMayCall(c.req.method, c.req.path, identity.guestSessionId)) {
+        // AUTH_MISSING, not AUTH_INVALID: the guest stays signed in to their bill.
+        throw new AppError('AUTH_MISSING', 'Sign in to do that');
+      }
+    }
 
     await next();
   };

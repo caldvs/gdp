@@ -4,6 +4,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
@@ -361,6 +362,26 @@ export const sessionStore = {
           ttlAt: ttlEpochSeconds(),
           ...metaOnly(meta),
         },
+      }),
+    );
+  },
+
+  /**
+   * Set (or with null, remove) the lead's expected party size on the META
+   * row. A targeted update, so it can't overwrite anything else in the row.
+   */
+  async setExpectedDiners(sessionId: string, expectedDiners: number | null): Promise<void> {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: sessionPk(sessionId), sk: META_SK },
+        ConditionExpression: 'attribute_exists(pk)',
+        ...(expectedDiners === null
+          ? { UpdateExpression: 'REMOVE expectedDiners' }
+          : {
+              UpdateExpression: 'SET expectedDiners = :n',
+              ExpressionAttributeValues: { ':n': expectedDiners },
+            }),
       }),
     );
   },

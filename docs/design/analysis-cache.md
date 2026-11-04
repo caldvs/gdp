@@ -174,4 +174,4 @@ e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on t
 - `apps/api/src/storage/sessionStore.ts` — `getBillLock`, `deleteBillLock`
 - `apps/api/src/services/sessions/sessionService.ts` — `close`, `abandon`
 - `packages/core/src/api/hooks/useUploadAndParse.ts`, `apps/web/app/(app)/page.tsx` — client handling of `duplicate`
-- `packages/core/src/lib/image.ts` — client re-encode (max 1600 px JPEG); the hash is of these processed bytes, so the same source photo on the same browser hashes the same, but not necessarily across browsers.
+- `packages/core/src/lib/image.ts` — client re-encode (max 3200 px long side, JPEG under 5 MB); the hash is of these processed bytes, so the same source photo on the same browser hashes the same, but not necessarily across browsers.

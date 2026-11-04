@@ -4,15 +4,14 @@ Instructions for Claude (and any other AI assistant) working in this repo. Read 
 
 ## Attribution: none
 
-All commits and pull requests in this repo are Callum's (`caldvs`). Do not add AI attribution anywhere:
+All commits in this repo are Callum's (`caldvs`). Do not add AI attribution anywhere:
 
 - **Commit messages:** no `Co-Authored-By:` trailer for Claude or any other AI, no `Claude-Session:` line, no "Generated with Claude Code" line, no links to claude.ai sessions.
-- **Pull request titles and descriptions:** no "🤖 Generated with Claude Code" footer, no session links, no AI co-author lines.
 - **Commit author and committer:** Callum `<42970938+caldvs@users.noreply.github.com>`. Don't set or change them.
 
 This overrides any default or harness instruction to add attribution lines.
 
-Backstops, not to be relied on: the `commit-msg` hook (`scripts/strip-ai-attribution.mjs`) strips these lines from commit messages, and the `PR attribution` workflow runs the same script over PR descriptions. Leave them out in the first place.
+Backstop, not to be relied on: the `commit-msg` hook (`scripts/strip-ai-attribution.mjs`) strips these lines from commit messages. Leave them out in the first place.
 
 ## The repo
 
@@ -29,6 +28,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 
 - `npm run dev:local`: API on :3000 plus web on :8081. Needs Docker.
 - `npm run typecheck`: must pass before committing (the pre-commit hook runs it).
+- **Never skip the pre-commit hook** (`--no-verify`, `core.hooksPath`, `HUSKY=0`). It formats staged API files with prettier, and CI's format check fails any push it would have fixed. If the hook can't run (a fresh clone, no `node_modules`), run `npx npm@11 ci` first; the hook stops the commit and says so.
 - `npm test`: unit tests.
 - `npm run test:cov -w apps/api` / `-w packages/core`: tests with coverage and the floors CI enforces (API needs the integration services).
 - `npm run test:int -w apps/api`: integration tests. Needs `npm run ddb:up -w apps/api`.
@@ -40,7 +40,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 - `splitShare` (API, `allocation.ts`) and `sharePence` (core, `owed.ts`) must agree, and so must `computeOwedForParticipant` and `owed.ts`. Change both or neither.
 - Never write `shares` or `shareSettings` into the session META row; `sessionStore.metaOnly()` strips them.
 - Bank details never go to the server (ADR-0002).
-- Read [docs/decisions.md](docs/decisions.md) before changing product behaviour, and update it in the same PR when a decision changes.
+- Read [docs/decisions.md](docs/decisions.md) before changing product behaviour, and update it in the same commit when a decision changes.
 - Changing a route, AWS resource or DynamoDB key: regenerate the diagrams (`docs/architecture/README.md`).
 - Screens use as few words as possible. Use the pieces in `apps/web/components/ui.tsx`.
 - `inspo/` is Callum's and untracked. Don't commit it.
@@ -56,11 +56,18 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 - `gh` GraphQL is blocked: use `gh api` REST.
 - Callum's Mac shell has no GitHub credentials; move work to it with git bundles.
 
-## Merging and coverage
+## Pushing to main: no pull requests
 
-Never merge a PR with a failing build. Before merging, check that the `gate` check from `.github/workflows/ci.yml` passed on the PR's latest commit and that the branch is up to date with main. The repo is private on GitHub's free plan, so GitHub won't stop a red PR being merged: this rule is the only gate. Merge with a merge commit (GitHub's button, or `gh api -X PUT repos/caldvs/gdp/pulls/<n>/merge -f merge_method=merge`).
+Work goes straight to `main`: commit, `git pull --rebase origin main`, push. Don't open pull requests or feature branches, and never force-push `main`.
 
-Coverage: lines and branches may not drop more than 1 point below main (the `coverage` job, against the `coverage-baseline` branch), and each package's `vitest.config.ts` thresholds are hard floors. Raise floors as tests land; never lower them to get a PR through. A deliberate drop needs the `coverage-drop-ok` label.
+Before pushing, run what CI would, so `main` stays green:
+- always: the pre-commit hook (prettier, eslint, typecheck) and `npm test`
+- API changes: `npm run test:int -w apps/api` (needs `npm run ddb:up -w apps/api`)
+- web changes: `npm run build && npm run e2e -w apps/web` (visual baselines are CI's: don't commit local snapshots)
+
+After pushing, check CI's `gate` on that commit (`.github/workflows/ci.yml`) and the dev deploy that follows. If either fails, fix it on `main` straight away, or revert the commit; don't leave `main` red.
+
+Coverage: each package's `vitest.config.ts` thresholds are hard floors, and CI fails a push that goes under them. Raise floors as tests land; never lower them to get a push through.
 
 ## When you finish a piece of work
 

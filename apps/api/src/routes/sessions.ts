@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
+import { validJson } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
 import { callerOf } from '../context/caller.js';
@@ -13,26 +13,54 @@ import {
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
   SetReadyRequestSchema,
+  UpdateSessionRequestSchema,
 } from '../types/sessions.js';
 import type { IdTokenVerifier } from '../services/auth.js';
-import type { PaymentProvider } from '../services/payments/provider.js';
 import type { ReportService } from '../services/sessions/reportService.js';
+import type { TableFeeService } from '../services/billing/tableFee.js';
+import type { Session } from '../types/sessions.js';
+import { baseLogger } from '../logging/logger.js';
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
-  /** null = manual mode; no provider call on initiate. */
-  paymentProvider: PaymentProvider | null;
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
+  /** Refunds the table fee when nobody joined. Absent when Stripe is off. */
+  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined'>;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   const r = new Hono();
 
+  // Closing or binning the bill always succeeds for the lead; a refund
+  // that fails is logged for a manual one (the Refunds page's "ask us").
+  const refundIfNobodyJoined = async (session: Session) => {
+    if (!deps.tableFees) return;
+    try {
+      const outcome = await deps.tableFees.refundIfNobodyJoined(session);
+      if (outcome === 'refunded') {
+        baseLogger.info(
+          { event: 'table_fee.refunded', sessionId: session.sessionId, billId: session.billId },
+          'Table fee refunded: nobody joined',
+        );
+      }
+    } catch (err) {
+      baseLogger.error(
+        {
+          event: 'table_fee.refund_failed',
+          sessionId: session.sessionId,
+          billId: session.billId,
+          err,
+        },
+        'Table fee refund failed',
+      );
+    }
+  };
+
   r.post(
     '/',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', CreateSessionRequestSchema),
+    validJson(CreateSessionRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const body = c.req.valid('json');
@@ -40,6 +68,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         caller,
         billId: body.billId,
         billVersion: body.billVersion,
+        expectedDiners: body.expectedDiners,
       });
       return c.json(session, 201);
     },
@@ -48,7 +77,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/by-code',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', JoinByCodeRequestSchema),
+    validJson(JoinByCodeRequestSchema),
     async (c) => {
       const { code } = c.req.valid('json');
       const result = await sessionService.resolveByCode({ code });
@@ -62,6 +91,19 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const session = await sessionService.get({ caller, sessionId });
     return c.json(session);
   });
+
+  r.patch(
+    '/:sessionId',
+    requireAuth(deps.idTokenVerifier),
+    validJson(UpdateSessionRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const { expectedDiners } = c.req.valid('json');
+      const session = await sessionService.setExpectedDiners({ caller, sessionId, expectedDiners });
+      return c.json(session);
+    },
+  );
 
   r.post('/:sessionId/share', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
@@ -80,7 +122,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/claims',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', ClaimsRequestSchema),
+    validJson(ClaimsRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -93,7 +135,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/shares',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', AddShareRequestSchema),
+    validJson(AddShareRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -106,7 +148,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.put(
     '/:sessionId/shares/:itemId',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', SetShareWaysRequestSchema),
+    validJson(SetShareWaysRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -128,7 +170,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   r.post(
     '/:sessionId/ready',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', SetReadyRequestSchema),
+    validJson(SetReadyRequestSchema),
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
@@ -168,6 +210,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       sessionId,
       ...(reports ? { onClosed: (id: string) => reports.emailEveryone(id) } : {}),
     });
+    await refundIfNobodyJoined(session);
     return c.json(session);
   });
 
@@ -187,6 +230,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');
     const session = await sessionService.abandon({ caller, sessionId });
+    await refundIfNobodyJoined(session);
     return c.json(session);
   });
 
@@ -203,7 +247,6 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         caller,
         sessionId,
         idempotencyKey,
-        provider: deps.paymentProvider,
         logger: c.var.logger,
       });
       return c.json({ payment: result.payment, instructions: result.instructions }, 201);

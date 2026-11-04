@@ -13,7 +13,7 @@ export default function PrivacyPage() {
 
       <section>
         <p>
-          {LEGAL.operator} runs Group Dine Pay and is responsible for your data under UK data protection law. Contact{' '}
+          {LEGAL.operator} runs Pay Me Back and is responsible for your data under UK data protection law. Contact{' '}
           <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a> with any question or request.
         </p>
       </section>
@@ -22,7 +22,7 @@ export default function PrivacyPage() {
         <h2>What we collect</h2>
         <ul>
           <li>
-            <strong>Your email address</strong>, if you sign in, so we can send you a sign-in code.
+            <strong>Your email address</strong>, if you sign in, so we can send you a sign-in link.
           </li>
           <li>
             <strong>Your name</strong>, so the table knows who has picked and paid.

@@ -1,0 +1,56 @@
+/* Page transitions: fade and rise between pages, and a bill's name
+   gliding into its heading. Built on React's <ViewTransition>
+   (components/PageTransition.tsx); browsers without the View Transitions
+   API just swap pages instantly. Menu and sheets animate here too. */
+
+.vt-page { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.vt-text { display: inline-block; }
+
+/* Clicks pass through to the live page while a transition runs. */
+::view-transition { pointer-events: none; }
+
+/* A page leaving fades out fast; the next fades in and settles up 8px. */
+::view-transition-old(.page-out) { animation: 100ms ease-out both vt-fade-out; }
+::view-transition-new(.page-in) { animation: 260ms cubic-bezier(.2, .8, .2, 1) 60ms both vt-rise; }
+
+/* A bill's name moving between the list and the bill's heading. */
+::view-transition-group(.morph) { animation-duration: 340ms; animation-timing-function: cubic-bezier(.3, .7, .2, 1); }
+::view-transition-old(.morph), ::view-transition-new(.morph) { animation-duration: 340ms; }
+
+/* The action bar stays put; only its buttons cross-fade. */
+::view-transition-group(.bar) { animation-duration: 200ms; }
+::view-transition-old(.bar) { animation: 100ms ease-out both vt-fade-out; }
+::view-transition-new(.bar) { animation: 160ms ease-out 60ms both vt-fade-in; }
+
+/* Sheets closing: the backdrop fades, the sheet drops away. */
+::view-transition-old(.scrim-out) { animation: 200ms ease-out both vt-fade-out; }
+::view-transition-old(.sheet-out) { animation: 220ms cubic-bezier(.4, 0, 1, 1) both vt-drop; }
+
+/* Opening: menu fades in, sheets rise from the bottom over a fading backdrop. */
+.menu { animation: vt-fade-in 160ms ease-out; }
+.menu__nav { animation: vt-rise-sm 240ms cubic-bezier(.2, .8, .2, 1) 40ms both; }
+.menu--out { animation: vt-fade-out 140ms ease-out forwards; pointer-events: none; }
+.dialog-overlay { animation: vt-fade-in 200ms ease-out; }
+.dialog { animation: vt-sheet-up 300ms cubic-bezier(.2, .8, .2, 1); }
+@media (min-width: 600px) {
+  .dialog { animation-name: vt-dialog-in; }
+  ::view-transition-old(.sheet-out) { animation: 140ms ease-out both vt-fade-out; }
+}
+
+@keyframes vt-fade-in { from { opacity: 0; } }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes vt-rise-sm { from { opacity: 0; transform: translateY(6px); } }
+@keyframes vt-drop { to { transform: translateY(100%); } }
+@keyframes vt-sheet-up { from { transform: translateY(100%); } }
+@keyframes vt-dialog-in { from { opacity: 0; transform: translateY(calc(-50% + 12px)); } }
+
+/* Reduced motion: nothing moves. Pages and sheets take a quick 120ms fade. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*) { animation-duration: 0s !important; }
+  ::view-transition-old(.morph), ::view-transition-new(.morph) { animation-duration: 0s; }
+  ::view-transition-old(.page-out), ::view-transition-old(.sheet-out), ::view-transition-old(.bar) { animation: 120ms ease-out both vt-fade-out; }
+  ::view-transition-new(.page-in), ::view-transition-new(.bar) { animation: 120ms ease-out both vt-fade-in; }
+  .menu__nav { animation: none; }
+  .dialog { animation: vt-fade-in 120ms ease-out; }
+}

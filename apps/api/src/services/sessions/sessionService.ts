@@ -4,6 +4,7 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
+import { computeOwedForParticipant, paymentsOf, sentPence } from '../payments/ledger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import {
   SHARE_ACTIVITY_KEEP,
@@ -24,6 +25,7 @@ export const sessionService = {
     caller: VerifiedCaller;
     billId: string;
     billVersion?: number;
+    expectedDiners?: number;
   }): Promise<Session> {
     const bill =
       input.billVersion !== undefined
@@ -56,6 +58,7 @@ export const sessionService = {
       joinCode: generateJoinCode(),
       participants: [creatorParticipant],
       ...(bill.venue ? { venue: bill.venue } : {}),
+      ...(input.expectedDiners !== undefined ? { expectedDiners: input.expectedDiners } : {}),
       createdAt: new Date().toISOString(),
     };
 
@@ -106,6 +109,31 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
     return projectForCaller(session, input.caller.userId);
+  },
+
+  /**
+   * The lead changes how many people are eating (#64), or clears it with
+   * null. Lead only, and only while the bill is live.
+   */
+  async setExpectedDiners(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    expectedDiners: number | null;
+  }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    if (session.creatorUserId !== input.caller.userId) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
+    if (session.status === 'settled' || session.status === 'abandoned') {
+      throw new AppError('SESSION_INVALID_STATE', 'This bill is closed');
+    }
+    await sessionStore.setExpectedDiners(session.sessionId, input.expectedDiners);
+    const { expectedDiners: _old, ...rest } = session;
+    return projectForCaller(
+      input.expectedDiners === null ? rest : { ...rest, expectedDiners: input.expectedDiners },
+      input.caller.userId,
+    );
   },
 
   async resolveByCode(input: { code: string }): Promise<{ sessionId: string }> {
@@ -351,6 +379,8 @@ export const sessionService = {
         sharedItemIds: target.sharedItemIds.filter((id) => id !== input.itemId),
         readyToLock: isCreator ? target.readyToLock : false,
       };
+      const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+      if (bill) assertNotBelowSent(bill, session, target, updated);
       const sharers = sharersOf(session, input.itemId);
       const existing = settingsOf(session, input.itemId);
       // Leaving keeps the number of ways (the spot reopens). The last one
@@ -707,6 +737,32 @@ function withSettings(
   return { ...session, shareSettings: 'deleted' in next ? others : [...others, next] };
 }
 
+/**
+ * #121: once a guest has sent money, their claims can't drop below it, so
+ * nobody is ever owed money back. Adding more is fine (they top up).
+ */
+function assertNotBelowSent(
+  bill: Parameters<typeof computeOwedForParticipant>[0],
+  session: Session,
+  before: Participant,
+  after: Participant,
+): void {
+  if (before.userId === session.creatorUserId) return;
+  const sent = sentPence(paymentsOf(before, computeOwedForParticipant(bill, session, before)));
+  if (sent === 0) return;
+  const afterSession = {
+    ...session,
+    participants: session.participants.map((p) => (p.userId === after.userId ? after : p)),
+  };
+  const owed = computeOwedForParticipant(bill, afterSession, after);
+  if (owed < sent) {
+    throw new AppError('ALREADY_PAID_FOR', 'You’ve already paid for that', {
+      sentPence: sent,
+      owedPence: owed,
+    });
+  }
+}
+
 function anySharerPaid(session: Session, sharers: readonly string[]): boolean {
   return session.participants.some(
     (p) =>
@@ -807,6 +863,7 @@ async function setClaimsOnce(input: {
     claimedItemIds: claims,
     readyToLock: isCreator ? target.readyToLock : false,
   };
+  assertNotBelowSent(bill, session, target, updated);
   await sessionStore.putClaimsGuarded(session.sessionId, updated, claimsVersion);
 
   return projectForCaller(

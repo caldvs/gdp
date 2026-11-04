@@ -1,23 +1,23 @@
 openapi: 3.1.0
 info:
-  title: Group Dine Pay API
+  title: Pay Me Back API
   version: 0.1.0
   summary: Group restaurant bill splitting and Open Banking settlement.
   description: |
-    Backend for the Group Dine Pay mobile app.
+    Backend for the Pay Me Back web app.
 
     ## Conventions
 
     - **All money is integer pence (GBP).** No floats anywhere on the wire.
     - **All identifiers are UUIDv7** unless documented otherwise.
     - **Timestamps are RFC 3339** strings.
-    - **Auth** uses session JWTs issued by `POST /v1/auth/email/verify` after a successful email OTP. Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
+    - **Auth** uses session JWTs issued by `POST /v1/auth/email/link` (the emailed sign-in link) or `POST /v1/auth/email/requests` (the tab that asked). Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
     - **Errors** use a single envelope (`ErrorResponse`). `error.code` is the stable identifier; `error.message` is human-safe.
     - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body returns `409 IDEMPOTENCY_CONFLICT`.
     - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
 
   contact:
-    name: Group Dine Pay
+    name: Pay Me Back
   license:
     name: Proprietary
 
@@ -35,14 +35,16 @@ tags:
     description: The authenticated caller
   - name: bills
     description: Photographing, parsing, retrieving, and amending bills
+  - name: venues
+    description: Places near the lead, for naming where a bill is from
   - name: sessions
     description: Group dining sessions, the join flow, and claim management
   - name: payments
-    description: Open Banking payments from participants to the collector
+    description: Guests paying the lead by bank transfer, confirmed by the lead
   - name: billing
-    description: The lead's table fee, paid to Group Dine Pay through Stripe
+    description: The lead's table fee, paid to Pay Me Back through Stripe
   - name: webhooks
-    description: Server-to-server callbacks from payment providers
+    description: Server-to-server callbacks (Stripe)
   - name: ops
     description: Health and readiness probes
 
@@ -94,18 +96,27 @@ paths:
   /v1/auth/email/start:
     post:
       tags: [identity]
-      operationId: startEmailOtp
+      operationId: startEmailSignIn
       security: []
-      summary: Request a one-time sign-in code for an email
+      summary: Email a one-time sign-in link
       description: |
-        Generates a 6-digit code, stores its hash, and emails the plaintext
-        code to the supplied address. The code expires in 10 minutes and
-        allows up to 5 verification attempts.
+        Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
+        token is in the fragment, so it never reaches a server log. It works
+        once and expires in 15 minutes. The link points at the calling
+        origin when it's on the allow-list (test.paymeback.dev, previews),
+        otherwise at `APP_BASE_URL`. At most one link every 30 seconds and
+        5 every 15 minutes per address (429 otherwise).
 
-        Response is uniform regardless of whether the email belongs to an
-        existing user — this prevents address enumeration. Email delivery
-        failures (e.g. SES bounce) also return `200` and are logged
-        server-side.
+        Returns `requestId`, a secret the asking tab keeps and passes to
+        `POST /v1/auth/email/requests` until the link has been opened.
+
+        The response is the same whether or not the address has an
+        account, so addresses can't be enumerated. Email delivery failures
+        (e.g. SES bounce) also return `200` and are logged server-side.
+
+        An address on `TABLE_FEE_EXEMPT_EMAILS` gets no link: the response
+        carries `token` and `user` instead of `requestId`, and the caller is
+        signed in.
       requestBody:
         required: true
         content:
@@ -117,7 +128,7 @@ paths:
                 email: { type: string, format: email, maxLength: 254 }
       responses:
         '200':
-          description: Code dispatched (or treated as dispatched).
+          description: Link sent (or treated as sent).
           content:
             application/json:
               schema:
@@ -125,37 +136,53 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean, const: true }
+                  requestId:
+                    type: string
+                    description: Everyone but exempt addresses. Secret; keep it in the tab that asked.
+                  token: { type: string, description: 'Exempt addresses only: the session JWT.' }
+                  user:
+                    type: object
+                    description: Exempt addresses only.
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string }
+                      email: { type: string }
+                      displayName: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '429':
+          description: |
+            `RATE_LIMITED`: a link was sent to this address less than 30
+            seconds ago, or 5 have been sent in the last 15 minutes.
+            `details.retryAfterSeconds` says when to try again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/auth/email/verify:
+  /v1/auth/email/link:
     post:
       tags: [identity]
-      operationId: verifyEmailOtp
+      operationId: openEmailSignInLink
       security: []
-      summary: Exchange a valid OTP for a session JWT
+      summary: Sign in with the token from an emailed link
       description: |
-        Verifies a 6-digit code against the most recent OTP issued for the
-        email. On success: looks up (or creates) an opaque userId, persists
-        the user profile if new, and mints a session JWT. The JWT is
-        carried in `Authorization: Bearer ...` on every subsequent request.
+        Called by the tab the link opened. Looks up (or creates) the
+        account for the link's email and mints a session JWT. Also marks
+        the request approved, so the tab that asked signs in too.
 
-        On failure (wrong code, expired, used, no OTP, too many attempts)
-        returns `401 AUTH_INVALID` uniformly so failure modes don't leak.
+        Works once, within 15 minutes. Any failure (used, expired, wrong
+        or unknown token) is `401 AUTH_INVALID`, so they can't be told apart.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, code]
+              required: [token]
               properties:
-                email: { type: string, format: email, maxLength: 254 }
-                code:
-                  type: string
-                  pattern: '^[0-9]{6}$'
+                token: { type: string, maxLength: 200 }
       responses:
         '200':
-          description: Verified. Token is good for 30 days.
+          description: Signed in. Token is good for 30 days.
           content:
             application/json:
               schema:
@@ -174,13 +201,53 @@ paths:
                       displayName: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401':
-          description: |
-            Code didn't match, expired, was already used, or the attempt
-            cap was hit. Response is `AUTH_INVALID` in every failure mode
-            so callers can't distinguish them.
+          description: The link was used already, expired, or isn't one we sent (`AUTH_INVALID`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/email/requests:
+    post:
+      tags: [identity]
+      operationId: getEmailSignInRequest
+      security: []
+      summary: Check whether the emailed link has been opened yet
+      description: |
+        The tab that asked polls this (every 2 seconds) with the
+        `requestId` from `/email/start`. `pending` until the link is
+        opened; then `signedIn` once, with this tab's own session JWT;
+        `expired` for a used, timed-out, wrong or unknown request. Only
+        the `requestId` can collect the session, so the link alone can't
+        sign in someone else's tab. POST so the secret stays out of logs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId]
+              properties:
+                requestId: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Where the request is.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [pending, signedIn, expired] }
+                  token: { type: string, description: '`signedIn` only: the session JWT.' }
+                  user:
+                    type: object
+                    description: '`signedIn` only.'
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      email: { type: string, format: email }
+                      displayName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
 
   /v1/auth/email/test-sign-in:
     post:
@@ -204,7 +271,7 @@ paths:
                 email: { type: string, format: email, maxLength: 254 }
       responses:
         '200':
-          description: Signed in. Same shape as `verifyEmailOtp`.
+          description: Signed in. Same shape as `openEmailSignInLink`.
           content:
             application/json:
               schema:
@@ -344,7 +411,7 @@ paths:
       summary: Parse a previously uploaded image into a structured bill
       description: |
         Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-        (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+        (Claude Sonnet on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
         the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
         Idempotent via `Idempotency-Key`.
       parameters:
@@ -523,6 +590,42 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/venues/nearby:
+    get:
+      tags: [venues]
+      operationId: nearbyVenues
+      summary: Food and drink places near a position
+      description: |
+        Up to 5 food and drink places within about 300 m, nearest first, from
+        Amazon Location. Results are cached by the position rounded to 3
+        decimal places; the caller's own position is never stored and is
+        logged rounded at most. An empty list when nothing is near, when the
+        search fails, or locally (no venue lookup).
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, minimum: -90, maximum: 90 }
+        - name: lng
+          in: query
+          required: true
+          schema: { type: number, minimum: -180, maximum: 180 }
+      responses:
+        '200':
+          description: Nearby places, nearest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [venues]
+                properties:
+                  venues:
+                    type: array
+                    maxItems: 5
+                    items: { $ref: '#/components/schemas/NearbyVenue' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/sessions:
     post:
       tags: [sessions]
@@ -601,6 +704,33 @@ paths:
               schema: { $ref: '#/components/schemas/Session' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [sessions]
+      operationId: updateSession
+      summary: Change how many people the lead expects at the table
+      description: |
+        Lead only. Sets `expectedDiners` (lead included), or clears it with
+        `null`. Allowed until the bill is closed or deleted. Display only:
+        it never changes what anyone owes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSessionRequest' }
+      responses:
+        '200':
+          description: Session with the new value
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The bill is closed or deleted (`SESSION_INVALID_STATE`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/sessions/{sessionId}/share:
     parameters:
@@ -614,9 +744,8 @@ paths:
         `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
         (subsequent calls to `/by-code` will resolve it).
 
-        Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
-        those live device-local and reach guests via the join QR. The previous
-        `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
+        Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
+        reach guests via the join QR.
       responses:
         '200':
           description: Session, now in `claiming` with the join code visible
@@ -1003,12 +1132,12 @@ paths:
       description: |
         The current user must be a participant in the session, the session must be in `paying`, and the
         participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
-        record with a TrueLayer redirect URL the client should open to complete the authentication.
+        record and the details the guest pays with from their own banking app.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
         '201':
-          description: Payment created and authorized with TrueLayer
+          description: Payment created
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InitiatePaymentResponse' }
@@ -1022,11 +1151,6 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Session not in `paying`, or payment status not unpaid/failed
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '502':
-          description: TrueLayer error
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1062,13 +1186,9 @@ paths:
       operationId: confirmManualPayment
       summary: Collector confirms a manual payment was received
       description: |
-        Manual mode only. The collector marks a guest payment as `succeeded` after seeing
-        the funds arrive in their bank account. Idempotent — confirming a payment already
-        in `succeeded` returns the same payment unchanged. When this is the last unpaid
-        guest, the session transitions to `settled` automatically.
-
-        Rejected for `provider != manual` payments (those advance via webhook from
-        TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+        The collector marks a guest payment as `succeeded` after seeing the funds arrive in
+        their bank account. Idempotent — confirming a payment already in `succeeded` returns
+        the same payment unchanged.
       responses:
         '200':
           description: Payment, now in `succeeded`
@@ -1082,7 +1202,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '409':
-          description: Payment is non-manual, or in a state that can't be confirmed
+          description: Payment is in a state that can't be confirmed
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1099,9 +1219,6 @@ paths:
         **Does not advance payment status** — only the lead's `/confirm` does that. This claim
         exists purely as a UX signal: the lead's session view can flag pending payments where
         the payer says they've already paid, so the lead knows which ones to confirm next.
-
-        Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
-        payments advance via webhook from TL, not via the payer self-claiming).
       responses:
         '200':
           description: Payment with `payerClaimedPaidAt` set
@@ -1143,7 +1260,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: The fee for this bill is already paid (`TABLE_FEE_PAID`)
+          description: The fee for this bill is already paid (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1163,6 +1280,15 @@ paths:
       tags: [billing]
       operationId: getTableFeeStatus
       summary: Whether the table fee for a bill is paid
+      description: |
+        With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
+        Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
+      parameters:
+        - in: query
+          name: session_id
+          required: false
+          description: The Checkout Session the page just confirmed (`cs_…`).
+          schema: { type: string }
       responses:
         '200':
           description: Fee status
@@ -1191,53 +1317,13 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /webhooks/truelayer:
-    post:
-      tags: [webhooks]
-      operationId: truelayerWebhook
-      summary: TrueLayer payment-status webhook
-      description: |
-        Provider-to-server callback. Authentication is via TrueLayer's `Tl-Signature` header
-        (request signing scheme) verified using TrueLayer's public JWKS. The body is provider-defined;
-        we resolve `providerPaymentId` to our `paymentId` via GSI2 and apply the state transition.
-
-        Returns `200` for accepted updates (idempotent), `401` for invalid signature, `404` if the
-        provider payment id cannot be resolved.
-      security: []
-      parameters:
-        - in: header
-          name: Tl-Signature
-          required: true
-          schema: { type: string }
-          description: TrueLayer JWS detached signature of the raw body
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              description: Provider-defined; passed through to verification then state machine.
-      responses:
-        '200':
-          description: Update accepted
-        '401':
-          description: Signature verification failed
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '404':
-          description: providerPaymentId not found
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Session JWT minted by `POST /v1/auth/email/verify`. Verified server-side on every request.
+      description: Session JWT minted by a sign-in link (`/v1/auth/email/link` or `/v1/auth/email/requests`). Verified server-side on every request.
 
   parameters:
     BillId:
@@ -1308,7 +1394,10 @@ components:
       required: [billId, status, amountPence]
       properties:
         billId: { type: string, format: uuid }
-        status: { type: string, enum: [paid, unpaid] }
+        status:
+          type: string
+          enum: [paid, unpaid, waived]
+          description: "`waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due."
         amountPence: { type: integer }
         paidAt: { type: string, format: date-time }
     ErrorResponse:
@@ -1338,6 +1427,7 @@ components:
                 - PARTICIPANTS_NOT_READY
                 - CLAIM_SHARE_CONFLICT
                 - ITEM_NOT_SHAREABLE
+                - ALREADY_PAID_FOR
                 - SHARE_WAYS_TOO_LOW
                 - SHARE_PAID
                 - SHARE_CONFLICT
@@ -1346,8 +1436,8 @@ components:
                 - PARSE_TIMEOUT
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
-                - PAYOUT_ACCOUNT_REQUIRED
                 - TABLE_FEE_PAID
+                - TABLE_FEE_WAIVED
                 - INTERNAL_ERROR
             message: { type: string, description: Human-safe explanation }
             requestId: { type: string, description: Server request ID; cross-reference in support }
@@ -1480,7 +1570,7 @@ components:
           required: [imageHash, parser, parserVersion, parsedAt]
           properties:
             imageHash: { type: string, description: SHA-256 hex of resized image bytes }
-            parser: { type: string, example: eu.anthropic.claude-haiku-4-5-20251001-v1:0 }
+            parser: { type: string, example: eu.anthropic.claude-sonnet-4-6 }
             parserVersion: { type: string, example: v1 }
             parsedAt: { type: string, format: date-time }
             uploadId:
@@ -1494,6 +1584,17 @@ components:
     SessionStatus:
       type: string
       enum: [setup, claiming, paying, settled, abandoned]
+
+    ParticipantPaymentEntry:
+      type: object
+      required: [paymentId, amountPence, status]
+      properties:
+        paymentId: { type: string, format: uuid }
+        amountPence: { type: integer, minimum: 0 }
+        status: { type: string, enum: [pending, succeeded, failed] }
+        payerClaimedPaidAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time }
+        reason: { type: string }
 
     ParticipantPayment:
       oneOf:
@@ -1556,6 +1657,17 @@ components:
           format: int64
           description: Computed at lock-claims; absent before then
         payment: { $ref: '#/components/schemas/ParticipantPayment' }
+        payments:
+          type: array
+          description: |
+            `payment` above is the latest state across these: in flight if
+            any payment is, else paid if any was. "Paid" doesn't mean nothing
+            more is owed; compare the sent payments with what's owed now.
+            Every payment this guest has made to the lead, oldest first (#121:
+            a guest who claims more after paying tops up the difference). A
+            `pending` payment without `payerClaimedPaidAt` was opened but not
+            sent yet. Absent on sessions from before top-ups.
+          items: { $ref: '#/components/schemas/ParticipantPaymentEntry' }
         readyToLock:
           type: boolean
           description: |
@@ -1591,6 +1703,13 @@ components:
             frontend can render a venue strapline without a second round-trip.
             Optional — predates this field on old sessions, and not every bill
             has a venue the reader could extract.
+        expectedDiners:
+          type: integer
+          minimum: 2
+          maximum: 99
+          description: |
+            How many people the lead said are eating, lead included. Shown as
+            "3 of 4 joined"; never used in the money maths. Absent until set.
         shares:
           type: array
           description: |
@@ -1681,7 +1800,7 @@ components:
 
     PaymentStatus:
       type: string
-      enum: [pending, authorized, succeeded, failed, refunded]
+      enum: [pending, succeeded, failed]
 
     Payment:
       type: object
@@ -1693,7 +1812,6 @@ components:
           collectorUserId,
           amountPence,
           currency,
-          provider,
           status,
           createdAt,
         ]
@@ -1704,8 +1822,6 @@ components:
         collectorUserId: { type: string }
         amountPence: { type: integer, format: int64, minimum: 0 }
         currency: { type: string, enum: [GBP] }
-        provider: { type: string, enum: [truelayer, manual] }
-        providerPaymentId: { type: string }
         status: { $ref: '#/components/schemas/PaymentStatus' }
         idempotencyKey: { type: string, format: uuid }
         events:
@@ -1718,7 +1834,7 @@ components:
               at: { type: string, format: date-time }
               from: { $ref: '#/components/schemas/PaymentStatus' }
               to: { $ref: '#/components/schemas/PaymentStatus' }
-              source: { type: string, enum: [api, webhook, system] }
+              source: { type: string, enum: [api, system] }
               note: { type: string }
         createdAt: { type: string, format: date-time }
         payerClaimedPaidAt:
@@ -1746,6 +1862,11 @@ components:
         mimeType:
           type: string
           enum: [image/jpeg, image/png, image/webp]
+        skipCache:
+          type: boolean
+          description: >-
+            Local API only (ignored elsewhere): don't return an earlier bill for this photo,
+            so it's uploaded and read again.
 
     UploadSlot:
       type: object
@@ -1773,6 +1894,11 @@ components:
       required: [uploadId]
       properties:
         uploadId: { type: string, format: uuid }
+        skipCache:
+          type: boolean
+          description: >-
+            Local API only (ignored elsewhere): read the photo with the model again even if it was
+            read before. The new bill replaces the old one as this photo's bill.
 
     BillRead:
       type: object
@@ -1815,6 +1941,30 @@ components:
               course: { type: string, enum: [starter, main, side, dessert] }
         taxPence: { type: integer, format: int64, minimum: 0 }
         serviceChargePence: { type: integer, format: int64, minimum: 0 }
+        venue:
+          type: object
+          required: [name]
+          description: Set to override the parsed venue; absent keeps whatever the bill has.
+          properties:
+            name: { type: string, minLength: 1, maxLength: 80 }
+            placeId: { type: string }
+            address: { type: string }
+
+    NearbyVenue:
+      type: object
+      required: [placeId, name, distanceM]
+      properties:
+        placeId: { type: string, description: Amazon Location place ID }
+        name: { type: string }
+        address:
+          {
+            type: string,
+            description: 'Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom"',
+          }
+        distanceM:
+          type: integer
+          minimum: 0
+          description: Metres from the position asked about
 
     CreateSessionRequest:
       type: object
@@ -1825,6 +1975,22 @@ components:
           type: integer
           minimum: 1
           description: Defaults to the latest version of the bill at session-create time
+        expectedDiners:
+          type: integer
+          minimum: 2
+          maximum: 99
+          description: How many people are eating, lead included. Optional.
+
+    UpdateSessionRequest:
+      type: object
+      required: [expectedDiners]
+      additionalProperties: false
+      properties:
+        expectedDiners:
+          type: [integer, 'null']
+          minimum: 2
+          maximum: 99
+          description: How many people are eating, lead included; `null` clears it.
 
     JoinByCodeRequest:
       type: object
@@ -1852,26 +2018,11 @@ components:
 
     PaymentInstructions:
       description: |
-        Discriminated union telling the client how to actually complete the payment.
-        - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
-        - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
-          the guest pays via their own banking app, then the lead confirms receipt
-          via `POST /v1/payments/{paymentId}/confirm`.
-      oneOf:
-        - $ref: '#/components/schemas/RedirectInstructions'
+        How the guest pays: the bank details and reference to use in their own banking app,
+        plus optional Monzo/Revolut links. The lead then confirms receipt via
+        `POST /v1/payments/{paymentId}/confirm`.
+      allOf:
         - $ref: '#/components/schemas/ManualTransferInstructions'
-      discriminator:
-        propertyName: type
-        mapping:
-          redirect: '#/components/schemas/RedirectInstructions'
-          manual_transfer: '#/components/schemas/ManualTransferInstructions'
-
-    RedirectInstructions:
-      type: object
-      required: [type, url]
-      properties:
-        type: { type: string, enum: [redirect] }
-        url: { type: string, format: uri }
 
     ManualTransferInstructions:
       type: object

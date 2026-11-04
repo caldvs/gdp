@@ -21,10 +21,41 @@ the checks below fail a deploy or build that crosses rows.
 | ----- | --------------------------- | ----------------------------------- | ------- | ------------------ |
 | local | `next dev` :8081            | Hono :3000, DynamoDB Local, MinIO   | Sandbox | —                  |
 | CI    | `next start` + `FakeApi`    | Docker integration tests            | —       | —                  |
-| dev   | Vercel Preview (`web-nqib`) | `GdpBackendDev`                     | Sandbox | `dev`              |
-| prod  | Vercel Production           | `GdpBackendProd` (not yet deployed) | Live    | `prod` (not yet)   |
+| dev   | Vercel Preview, `test.paymeback.dev` | `GdpBackendDev`, `api.test.paymeback.dev` | Sandbox | `dev`  |
+| prod  | Vercel Production, `paymeback.dev`   | `GdpBackendProd`, `api.paymeback.dev`     | Live    | `prod` |
 
-Until prod exists, Vercel Production also runs as `dev` against the dev API.
+Vercel Production has no Stripe key until Stripe goes live (#79), so it shows no platform fee.
+
+## Domains
+
+`paymeback.dev` was bought on Vercel, and its DNS lives there (no Route 53). Diagrams of how it fits together: [architecture/domains.md](architecture/domains.md).
+
+| Name | Points at |
+| --- | --- |
+| `paymeback.dev` | Vercel Production |
+| `www.paymeback.dev` | 308 to `paymeback.dev` |
+| `test.paymeback.dev` | Vercel Preview, branch `preview` (push to it to put something there); its builds call `api.test.paymeback.dev` |
+| `api.paymeback.dev` | `GdpBackendProd` (custom domain on API Gateway; CNAME to `d-pujffkifc1…`) |
+| `api.test.paymeback.dev` | `GdpBackendDev` (CNAME to `d-b8lxm0scy5…`) |
+
+**API domains (once per environment).** CDK can't validate a certificate in
+Vercel DNS, so this part is by hand:
+
+1. ACM (eu-west-2) → Request a public certificate for `api.test.paymeback.dev`
+   (or `api.paymeback.dev`), DNS validation.
+2. Vercel → Domains → `paymeback.dev` → DNS: add the CNAME ACM shows (name
+   without the `.paymeback.dev` suffix). Wait for *Issued*.
+3. GitHub environment (`dev` or `prod`) → variables `API_DOMAIN` and
+   `API_CERT_ARN`. Redeploy the API.
+4. Vercel DNS: CNAME `api.test` (or `api`) → the deploy's
+   `ApiDomainTargetOutput` (`d-….execute-api.eu-west-2.amazonaws.com`).
+5. Point `NEXT_PUBLIC_API_BASE_URL` (Vercel) and the Stripe webhook at the new
+   name.
+
+**CORS.** The API and the bills bucket accept only the origins in
+`apps/api/src/config/allowedOrigins.ts`: for prod, `paymeback.dev` and
+`web-nqib.vercel.app`; for dev, `test.paymeback.dev`, preview URLs and
+`localhost:8081`. Local runs (no `ALLOWED_ORIGINS`) allow any origin.
 
 Dev and prod share one AWS account (eu-west-2). Every resource is named per
 environment (`gdp-dev`, `gdp-prod`, …) and each Lambda can only read its own
@@ -43,7 +74,8 @@ run summary. Then:
    reviewer (Callum), deployment branches `main` only, and variables
    `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
    `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
-   Stripe live is ready.
+   Stripe live is ready. Optional secret `TABLE_FEE_EXEMPT_EMAILS`: emails that
+   never pay the platform fee and sign in with no code (docs/table-fee.md).
 2. In eu-west-2: the SSM parameter `/gdp-prod/ses-from-email` (the same
    verified sender as dev works; it's one account) and the secret
    `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM
@@ -102,10 +134,16 @@ step 1 from your Mac.
 The workflow runs two checks once `cdk deploy` finishes:
 
 - **Smoke test** (`scripts/smoke.ts`): health, readiness, the auth gate and
-  the docs, over HTTPS.
+  the docs, over HTTPS, through the stack's custom domain
+  (`ApiDomainUrlOutput`: `api.paymeback.dev`, `api.test.paymeback.dev`) when it
+  has one, so a broken DNS record or certificate fails the deploy.
 - **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
-  and IAM role, that the Stripe key works and both fee prices exist, Bedrock
+  and IAM role, that the Stripe key works and both fee prices exist, that a
+  refund goes through (test mode only: a £2 `pm_card_visa` payment refunded by
+  the same code that refunds a bill nobody joined, so each dev deploy leaves one
+  paid-and-refunded £2 in the Stripe sandbox, described *Deploy smoke test*;
+  skipped with a live key), Bedrock
   answers, Amazon Location can look up a UK place, and the SES sender is
   verified (and whether SES is still in the sandbox). Stripe, Bedrock and SES
   failing fail the run; Amazon Location only warns, because a failed lookup
@@ -134,8 +172,26 @@ One-off, in the Vercel dashboard:
 
    The build fails if these don't match (see Environments above).
 
-4. Deploy. Every push to `main` then deploys production; every PR gets a
-   preview URL.
+4. **Settings → Tokens:** create a token and add it to the repo as the
+   `VERCEL_TOKEN` Actions secret.
+
+Pushes don't deploy: Hobby allows 100 deployments a day and every push
+counts, so `apps/web/vercel.json` switches Git deploys off for every branch
+except `preview` (`test.paymeback.dev`). `.github/workflows/web-deploy.yml`
+deploys instead:
+
+- **Production:** every hour, main is deployed if the web app (or
+  `packages/core`, or the lockfile) changed since the last production deploy,
+  which the `web-prod` tag marks. To ship now: Actions → Web Deploy → Run
+  workflow.
+- **Web waits for the prod API** (#80). Production talks to `GdpBackendProd`,
+  which only deploys by hand (Actions → API Deploy → prod) and then marks its
+  commit with the `api-prod` tag. If `apps/api/src` or `openapi.yaml` changed
+  between `api-prod` and main, the hourly run leaves the live site as it is
+  and says why in its summary. Deploy the API to prod; the web app follows on
+  the next hour (or run Web Deploy by hand).
+- **PR previews:** add the `preview` label. Each push to the PR then deploys a
+  preview and comments its URL.
 
 `NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back
 to the page's own origin, which is right on Vercel.
@@ -143,11 +199,12 @@ to the page's own origin, which is right on Vercel.
 ## After the first deploy
 
 - **SES sandbox.** New SES accounts only send to verified addresses, so
-  guests can't receive sign-in codes. Request production access (SES console
-  → Account dashboard), or verify each tester's address meanwhile.
+  guests can't receive sign-in links. `paymeback.dev` is verified and
+  production access was requested on 2 Nov 2026: see [email.md](email.md)
+  for the setup, the status and what to do once it's approved.
 - **Alerts.** Subscribe to the alarm topic (see `apps/api/RUNBOOK.md`).
-- **Bedrock model access.** Enable Claude Haiku 4.5 in the Bedrock console
+- **Bedrock model access.** Enable Claude Sonnet 4.6 in the Bedrock console
   (eu-west-2), or no bill can be read.
-- **Table fee.** Stripe setup is in [table-fee.md](table-fee.md).
+- **Platform fee.** Stripe setup is in [table-fee.md](table-fee.md).
 - **Real-device check.** Scan a real bill on a phone against the deployed
   API.

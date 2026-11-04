@@ -16,13 +16,26 @@ type Payment =
   | { status: 'pending'; paymentId: string; payerClaimedPaidAt?: string }
   | { status: 'succeeded'; paymentId: string; paidAt: string }
   | { status: 'failed'; paymentId: string; reason: string };
-type Participant = { userId: string; displayName: string; claimedItemIds: string[]; sharedItemIds: string[]; payment: Payment; readyToLock: boolean };
+type Entry = { paymentId: string; amountPence: number; status: 'pending' | 'succeeded' | 'failed'; payerClaimedPaidAt?: string; paidAt?: string };
+type Participant = { userId: string; displayName: string; claimedItemIds: string[]; sharedItemIds: string[]; payment: Payment; payments?: Entry[]; readyToLock: boolean };
+
+/** #121: the participant's `payment` is the latest state across their payments. */
+function aggregate(entries: Entry[]): Payment {
+  const pending = [...entries].reverse().find((e) => e.status === 'pending');
+  if (pending) return { status: 'pending', paymentId: pending.paymentId, ...(pending.payerClaimedPaidAt ? { payerClaimedPaidAt: pending.payerClaimedPaidAt } : {}) };
+  const paid = [...entries].reverse().find((e) => e.status === 'succeeded');
+  if (paid) return { status: 'succeeded', paymentId: paid.paymentId, paidAt: paid.paidAt! };
+  return { status: 'unpaid' };
+}
 type Share = { itemId: string; userIds: string[]; ways: number; activity: unknown[] };
 type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string };
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
+/** What the fake /email/start hands the asking tab, and the token in the emailed link. */
+export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
+export const SIGN_IN_LINK_TOKEN = 'link.emailed-secret';
 export const LEAD_BANK = { accountHolderName: 'Callum Davies', sortCode: '040668', accountNumber: '00079660' };
 
 export const item = (n: number, name: string, unitPricePence: number, quantity = 1): Item => ({
@@ -40,7 +53,7 @@ export const users = {
 export type Fault =
   | { kind: 'session-get-500'; times: number }
   | { kind: 'initiate-500'; times: number }
-  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT'; message: string; details?: Record<string, unknown> };
+  | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT' | 'INTERNAL_ERROR'; message: string; details?: Record<string, unknown> };
 
 export class FakeApi {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';
@@ -60,16 +73,28 @@ export class FakeApi {
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in through the OTP flow (and so pass /v1/me). */
   private signedIn = new Set<string>();
+  /** The emailed sign-in link: sent, opened, then collected by the tab that asked. */
+  signIn: 'none' | 'pending' | 'approved' | 'claimed' = 'none';
   /** Sessions listed on /v1/me/sessions (the home tray and History). */
   mySessions: Record<string, unknown>[] = [];
   private seq = 0;
   pinnedBillVersion = 1;
+  /** #64: how many the lead said are eating. */
+  expectedDiners: number | undefined;
+  /** #65: the photo's printed total wasn't read (cut-off, usually). */
+  private noPrintedTotal: boolean;
+  /** #63: the venue the parser found, or the lead's own choice once amended. */
+  private venue: { name: string; address?: string; placeId?: string } | undefined;
+  /** #62: places GET /v1/venues/nearby returns (nearest first). */
+  nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
-  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[] } = {}) {
+  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null } = {}) {
     this.items = opts.items ?? items;
     const subtotal = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     this.serviceChargePence = Math.round(subtotal * (opts.serviceRate ?? 0));
     this.status = opts.status ?? 'claiming';
+    this.noPrintedTotal = opts.noPrintedTotal ?? false;
+    this.venue = opts.venue === null ? undefined : (opts.venue ?? { name: 'Gennaro', address: '12 King Street, Manchester' });
     this.participants = [
       { userId: 'u-lead', displayName: 'Callum Davies', claimedItemIds: opts.leadClaims ?? [this.items[0]!.itemId], sharedItemIds: [], payment: { status: 'self_paid' }, readyToLock: true },
     ];
@@ -79,8 +104,12 @@ export class FakeApi {
     const subtotalPence = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     return {
       billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
+      // Matches the computed total by default, like a normal read; #65's
+      // noPrintedTotal scenario is the cut-off-photo case.
+      ...(this.noPrintedTotal ? {} : { parsedTotalPence: subtotalPence + this.serviceChargePence }),
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
-      venue: { name: 'Gennaro', address: '12 King Street, Manchester' }, createdAt: '2026-10-31T12:00:00.000Z',
+      ...(this.venue ? { venue: this.venue } : {}),
+      createdAt: '2026-10-31T12:00:00.000Z',
     };
   }
 
@@ -88,6 +117,7 @@ export class FakeApi {
     return {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
+      ...(this.expectedDiners !== undefined ? { expectedDiners: this.expectedDiners } : {}),
     };
   }
 
@@ -99,6 +129,38 @@ export class FakeApi {
     for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil(unit(sh.itemId) / sh.ways);
     const b = this.bill;
     return Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0)));
+  }
+
+  /**
+   * A guest's payments. Tests that set the old single `payment` directly
+   * read like sessions from before #121: that one payment, for what they owe.
+   */
+  entries(p: Participant): Entry[] {
+    if (p.payments && p.payments.length > 0) return p.payments;
+    const pay = p.payment;
+    if (pay.status === 'pending' || pay.status === 'succeeded') {
+      p.payments = [{
+        paymentId: pay.paymentId, amountPence: this.owed(p.userId), status: pay.status,
+        ...(pay.status === 'pending' && pay.payerClaimedPaidAt ? { payerClaimedPaidAt: pay.payerClaimedPaidAt } : {}),
+        ...(pay.status === 'succeeded' ? { paidAt: pay.paidAt } : {}),
+      }];
+      return p.payments;
+    }
+    return [];
+  }
+
+  /** What a guest has sent: confirmed, or said they've sent (#121). */
+  sent(userId: string): number {
+    const p = this.participants.find((x) => x.userId === userId);
+    return (p ? this.entries(p) : []).reduce((a, e) => (e.status === 'succeeded' || (e.status === 'pending' && e.payerClaimedPaidAt) ? a + e.amountPence : a), 0);
+  }
+
+  /** Like the API: a change that would drop a guest below what they've sent is refused. */
+  private belowSent(userId: string, change: () => void, undo: () => void): boolean {
+    const sent = this.sent(userId);
+    change();
+    if (userId !== 'u-lead' && sent > 0 && this.owed(userId) < sent) { undo(); return true; }
+    return false;
   }
 
   private me(userId: string) {
@@ -145,11 +207,18 @@ export class FakeApi {
 
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
-    if (path === '/v1/auth/email/start') return json({ ok: true });
-    if (path === '/v1/auth/email/verify') {
-      if ((body().code as string) !== '123456') return err('AUTH_INVALID', 'That code didn’t work', 401);
-      this.signedIn.add(user.userId); this.join(user);
+    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; return json({ ok: true, requestId: SIGN_IN_REQUEST }); }
+    if (path === '/v1/auth/email/link') {
+      if ((body().token as string) !== SIGN_IN_LINK_TOKEN || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
+      this.signIn = 'approved'; this.signedIn.add(user.userId); this.join(user);
       return json({ token: 'test-token', user });
+    }
+    if (path === '/v1/auth/email/requests') {
+      if ((body().requestId as string) !== SIGN_IN_REQUEST) return json({ status: 'expired' });
+      if (this.signIn === 'pending') return json({ status: 'pending' });
+      if (this.signIn !== 'approved') return json({ status: 'expired' });
+      this.signIn = 'claimed';
+      return json({ status: 'signedIn', token: 'test-token', user });
     }
     if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
@@ -180,16 +249,23 @@ export class FakeApi {
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);
     if (path === `/v1/bills/${BID}/amend`) {
-      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number };
+      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; venue?: { name: string; placeId?: string; address?: string } };
       this.items = b.items.map((it) => ({ itemId: it.itemId ?? `00000000-0000-4000-8000-${String(900 + ++this.seq).padStart(12, '0')}`, name: it.name, unitPricePence: it.unitPricePence, quantity: it.quantity, category: it.category }));
       this.serviceChargePence = b.serviceChargePence;
+      if (b.venue) this.venue = b.venue;
       this.pinnedBillVersion += 1;
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
 
     // ---- sessions
-    if (path === '/v1/sessions' && method === 'POST') { this.status = 'setup'; return json(this.session(), 201); }
+    if (path === '/v1/venues/nearby' && method === 'GET') return json({ venues: this.nearby });
+    if (path === '/v1/sessions' && method === 'POST') {
+      this.status = 'setup';
+      const n = body().expectedDiners as number | undefined;
+      this.expectedDiners = n;
+      return json(this.session(), 201);
+    }
     if (path === '/v1/sessions/by-code') return (body().code as string) === CODE ? json({ sessionId: SID }) : err('NOT_FOUND', 'No session with that code', 404);
     if (path === `/v1/sessions/${SID}/share`) { this.status = 'claiming'; return json(this.session()); }
     if (path === `/v1/sessions/${SID}/join`) {
@@ -203,6 +279,13 @@ export class FakeApi {
     }
     if (path === `/v1/sessions/${SID}` && method === 'GET') {
       if (this.takeFault('session-get-500')) return err('INTERNAL_ERROR', 'boom', 500);
+      return json(this.session());
+    }
+    if (path === `/v1/sessions/${SID}` && method === 'PATCH') {
+      if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      const n = body().expectedDiners as number | null;
+      if (n !== null && (!Number.isInteger(n) || n < 2 || n > 10)) return err('INVALID_INPUT', 'Validation failed', 400);
+      this.expectedDiners = n ?? undefined;
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/abandon`) { this.status = 'abandoned'; return json(this.session()); }
@@ -220,25 +303,28 @@ export class FakeApi {
 
     const me = this.me(user.userId);
     if (!me) return err('SESSION_NOT_FOUND', 'Session not found', 404);
-    const frozen = me.payment.status === 'succeeded' || (me.payment.status === 'pending' && !!me.payment.payerClaimedPaidAt);
+    const paidFor = () => err('ALREADY_PAID_FOR', 'You’ve already paid for that', 409);
 
     if (path === `/v1/sessions/${SID}/claims` && method === 'POST') {
       if (this.status !== 'claiming') return err('SESSION_INVALID_STATE', 'Claims cannot be modified in this state', 409);
-      if (frozen) return err('SESSION_INVALID_STATE', 'You’ve already paid; ask the host to change this', 409);
       const next = body().claimedItemIds as string[];
       for (const it of this.items) {
         const mine = next.filter((id) => id === it.itemId).length;
         const others = this.participants.filter((p) => p.userId !== user.userId).reduce((a, p) => a + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
         if (mine + others > it.quantity) return err('SESSION_INVALID_STATE', `Only ${it.quantity - others} of "${it.name}" left to claim`, 409);
       }
-      me.claimedItemIds = next;
+      const before = me.claimedItemIds;
+      if (this.belowSent(user.userId, () => { me.claimedItemIds = next; }, () => { me.claimedItemIds = before; })) return paidFor();
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/shares` && method === 'POST') {
-      if (frozen) return err('SESSION_INVALID_STATE', 'You’ve already paid', 409);
       const { itemId, ways } = body() as { itemId: string; ways?: number };
       const existing = this.shares.find((s) => s.itemId === itemId);
       if (existing) {
+        const full = existing.userIds.length >= existing.ways;
+        if (!existing.userIds.includes(user.userId) && full && existing.userIds.some((u) => this.sent(u) > 0)) {
+          return err('SHARE_PAID', 'Someone in this split has paid, so it can’t be split more ways', 409, { itemId });
+        }
         if (!existing.userIds.includes(user.userId)) {
           existing.userIds.push(user.userId);
           existing.ways = Math.max(existing.ways, existing.userIds.length);
@@ -254,8 +340,11 @@ export class FakeApi {
     if (shareMatch && method === 'DELETE') {
       const itemId = shareMatch[1]!;
       const sh = this.shares.find((s) => s.itemId === itemId);
-      if (sh) sh.userIds = sh.userIds.filter((id) => id !== user.userId);
-      me.sharedItemIds = me.sharedItemIds.filter((id) => id !== itemId);
+      const beforeIds = sh ? [...sh.userIds] : [];
+      const beforeShared = [...me.sharedItemIds];
+      const leave = () => { if (sh) sh.userIds = sh.userIds.filter((id) => id !== user.userId); me.sharedItemIds = me.sharedItemIds.filter((id) => id !== itemId); };
+      const undo = () => { if (sh) sh.userIds = beforeIds; me.sharedItemIds = beforeShared; };
+      if (this.belowSent(user.userId, leave, undo)) return paidFor();
       return json(this.session());
     }
     if (shareMatch && method === 'PUT') {
@@ -269,24 +358,36 @@ export class FakeApi {
     // ---- payments
     if (path === `/v1/sessions/${SID}/payments` && method === 'POST') {
       if (this.takeFault('initiate-500')) return err('INTERNAL_ERROR', 'boom', 500);
-      if (me.payment.status === 'pending') return err('SESSION_INVALID_STATE', 'Payment already in flight', 409);
-      const paymentId = `pay-${user.userId}`;
-      me.payment = { status: 'pending', paymentId };
-      const amountPence = this.owed(user.userId);
+      // #121: pay what's owed now less what's been sent; reuse an unsent
+      // payment for the same amount, else replace it.
+      const entries = this.entries(me);
+      const sent = this.sent(user.userId);
+      const amountPence = this.owed(user.userId) - sent;
+      if (amountPence <= 0) return err('SESSION_INVALID_STATE', sent > 0 ? 'Nothing more to pay' : 'Nothing claimed yet', 409);
+      const draft = [...entries].reverse().find((e) => e.status === 'pending' && !e.payerClaimedPaidAt);
+      let entry = draft && draft.amountPence === amountPence ? draft : undefined;
+      if (!entry) {
+        if (draft) draft.status = 'failed';
+        entry = { paymentId: `00000000-0000-4000-9000-${String(++this.seq).padStart(12, '0')}`, amountPence, status: 'pending' };
+        me.payments = [...entries.filter((e) => e !== draft), entry];
+      }
+      me.payment = aggregate(me.payments ?? []);
       return json({
-        payment: { paymentId, sessionId: SID, payerUserId: user.userId, amountPence, status: 'pending' },
+        payment: { paymentId: entry.paymentId, sessionId: SID, payerUserId: user.userId, amountPence, status: 'pending' },
         instructions: { type: 'manual_transfer', reference: 'gdp-0193ab12', amountPence, links: {}, bankDetails: LEAD_BANK },
       }, 201);
     }
     const payMatch = path.match(/^\/v1\/payments\/([^/]+)\/(mark-paid|confirm)$/);
     if (payMatch) {
       const [, paymentId, action] = payMatch;
-      const payer = this.participants.find((p) => (p.payment.status === 'pending' || p.payment.status === 'succeeded') && p.payment.paymentId === paymentId);
-      if (!payer) return err('PAYMENT_NOT_FOUND', 'no', 404);
-      if (action === 'mark-paid' && payer.payment.status === 'pending') payer.payment = { ...payer.payment, payerClaimedPaidAt: new Date().toISOString() };
-      if (action === 'confirm') payer.payment = { status: 'succeeded', paymentId: paymentId!, paidAt: new Date().toISOString() };
+      const payer = this.participants.find((p) => this.entries(p).some((e) => e.paymentId === paymentId));
+      const entry = payer?.payments?.find((e) => e.paymentId === paymentId);
+      if (!payer || !entry) return err('PAYMENT_NOT_FOUND', 'no', 404);
+      if (action === 'mark-paid' && entry.status === 'pending') entry.payerClaimedPaidAt ??= new Date().toISOString();
+      if (action === 'confirm') { entry.status = 'succeeded'; entry.paidAt = new Date().toISOString(); }
+      payer.payment = aggregate(payer.payments!);
       // Deliberately no auto-settle: only the lead's close ends the bill.
-      return json({ paymentId, sessionId: SID, payerUserId: payer.userId, amountPence: this.owed(payer.userId), status: payer.payment.status });
+      return json({ paymentId, sessionId: SID, payerUserId: payer.userId, amountPence: entry.amountPence, status: entry.status });
     }
     return err('NOT_FOUND', `unhandled ${method} ${path}`, 404);
   }

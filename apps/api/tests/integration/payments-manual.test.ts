@@ -16,7 +16,6 @@ const buildApp = () =>
   createApp({
     idTokenVerifier: fakeVerifier,
     billParser: new FixtureBillParser(sampleParsedBill),
-    paymentProvider: null, // explicit manual mode
   });
 
 // The HTTP PUT is deprecated and no-ops per ADR-0002. Tests that
@@ -51,7 +50,7 @@ describe('manual payment mode — initiate returns bank details + optional links
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
-      payment: { provider: string; status: string };
+      payment: { status: string };
       instructions: {
         type: string;
         bankDetails: { sortCode: string; accountNumber: string; accountHolderName: string };
@@ -60,7 +59,6 @@ describe('manual payment mode — initiate returns bank details + optional links
         links: { monzo?: string; revolut?: string };
       };
     };
-    expect(body.payment.provider).toBe('manual');
     expect(body.payment.status).toBe('pending');
     expect(body.instructions.type).toBe('manual_transfer');
     expect(body.instructions.bankDetails.sortCode).toBe('040668');

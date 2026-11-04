@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Group Dine Pay Data Model</title>
+<title>Pay Me Back Data Model</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
@@ -106,12 +106,12 @@ ul.plain strong { color: var(--ink); }
 <body>
 <div class="wrap">
   <header>
-    <h1>Group Dine Pay data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>15</b> item types</span><span><b>2</b> GSIs</span><span><b>8</b> expiring types</span></div>
+    <h1>Pay Me Back data model</h1>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>17</b> item types</span><span><b>1</b> GSI</span><span><b>10</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 1150" role="img" aria-label="DynamoDB single-table design for Group Dine Pay: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions and GSI2 finding a payment by provider id.">
+    <svg viewBox="0 0 1520 1336" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in link, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -171,30 +171,43 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="390">createdAt, updatedAt</text>
 <text class="t-attr" x="48" y="408">payoutAccount: legacy, no longer written</text>
 <text class="t-attr" x="48" y="426">  (bank details stay on device, ADR-0002)</text>
-<rect class="node" x="30" y="488" width="320" height="160" rx="10"/>
-<rect class="band band-id" x="30" y="488" width="6" height="160" rx="3"/>
-<text class="t-title" x="48" y="515">Sign-in code</text>
+<rect class="node" x="30" y="488" width="320" height="178" rx="10"/>
+<rect class="band band-id" x="30" y="488" width="6" height="178" rx="3"/>
+<text class="t-title" x="48" y="515">Sign-in link</text>
 <rect class="chip-ttl" x="286.4" y="501" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="515" text-anchor="middle">10 min</text>
+<text class="t-chip" x="311.2" y="515" text-anchor="middle">25 min</text>
 <text class="t-keylab" x="48" y="540">pk</text>
-<text class="t-key" x="104" y="540">OTP#email:{email}</text>
+<text class="t-key" x="104" y="540">SIGNIN#{linkId}</text>
 <text class="t-keylab" x="48" y="562">sk</text>
 <text class="t-key" x="104" y="562">same as pk</text>
 <line class="rule" x1="48" y1="576" x2="332" y2="576"/>
-<text class="t-attr" x="48" y="594">codeHash</text>
-<text class="t-attr" x="48" y="612">attempts (conditional increment)</text>
-<text class="t-attr" x="48" y="630">ttlAt, also checked on read</text>
-<rect class="node" x="30" y="692" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="692" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="719">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="705" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="719" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="744">pk</text>
-<text class="t-key" x="104" y="744">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="766">sk</text>
-<text class="t-key" x="104" y="766">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="780" x2="332" y2="780"/>
-<text class="t-attr" x="48" y="798">stored status + response body</text>
+<text class="t-attr" x="48" y="594">email, linkHash, requestHash</text>
+<text class="t-attr" x="48" y="612">status pending → approved → claimed</text>
+<text class="t-attr" x="48" y="630">  (conditional updates: each once)</text>
+<text class="t-attr" x="48" y="648">expiresAt (15 min), claimBy</text>
+<rect class="node" x="30" y="710" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="710" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="737">Link sending limit</text>
+<rect class="chip-ttl" x="286.4" y="723" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="737" text-anchor="middle">15 min</text>
+<text class="t-keylab" x="48" y="762">pk</text>
+<text class="t-key" x="104" y="762">SIGNINRATE#email:{email}</text>
+<text class="t-keylab" x="48" y="784">sk</text>
+<text class="t-key" x="104" y="784">W#{15-min window} | LAST</text>
+<line class="rule" x1="48" y1="798" x2="332" y2="798"/>
+<text class="t-attr" x="48" y="816">sends (at most 5, conditional add)</text>
+<text class="t-attr" x="48" y="834">sentAt: one link per 30 s</text>
+<rect class="node" x="30" y="896" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="896" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="923">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="909" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="923" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="948">pk</text>
+<text class="t-key" x="104" y="948">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="970">sk</text>
+<text class="t-key" x="104" y="970">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="984" x2="332" y2="984"/>
+<text class="t-attr" x="48" y="1002">stored status + response body</text>
 <rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -237,7 +250,7 @@ ul.plain strong { color: var(--ink); }
 <text class="t-keylab" x="428" y="656">sk</text>
 <text class="t-key" x="484" y="656">FEE</text>
 <line class="rule" x1="428" y1="670" x2="712" y2="670"/>
-<text class="t-attr" x="428" y="688">Stripe checkout state, amount</text>
+<text class="t-attr" x="428" y="688">Stripe checkout state, amount, refund</text>
 <text class="t-attr" x="428" y="706">kept as a tax record</text>
 <rect class="node" x="410" y="768" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="768" width="6" height="142" rx="3"/>
@@ -253,16 +266,28 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="428" y="892">source = amazon-location</text>
 <rect class="node" x="410" y="954" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="954" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="981">Bill read</text>
-<rect class="chip-ttl" x="673.0" y="967" width="43.0" height="20" rx="10"/>
-<text class="t-chip" x="694.5" y="981" text-anchor="middle">1 day</text>
+<text class="t-title" x="428" y="981">Nearby places</text>
+<rect class="chip-ttl" x="659.8" y="967" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="687.9" y="981" text-anchor="middle">30 days</text>
 <text class="t-keylab" x="428" y="1006">pk</text>
-<text class="t-key" x="484" y="1006">READ#{readId}</text>
+<text class="t-key" x="484" y="1006">NEARQ#{lat|lng to 3 dp}</text>
 <text class="t-keylab" x="428" y="1028">sk</text>
-<text class="t-key" x="484" y="1028">READ</text>
+<text class="t-key" x="484" y="1028">same as pk</text>
 <line class="rule" x1="428" y1="1042" x2="712" y2="1042"/>
-<text class="t-attr" x="428" y="1060">userId, uploadId, status reading|done|failed</text>
-<text class="t-attr" x="428" y="1078">billId when done, error when failed</text>
+<text class="t-attr" x="428" y="1060">places [{ placeId, name, address, lat, lng }]</text>
+<text class="t-attr" x="428" y="1078">rounded cell only; never who asked</text>
+<rect class="node" x="410" y="1140" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="1140" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="1167">Bill read</text>
+<rect class="chip-ttl" x="673.0" y="1153" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="694.5" y="1167" text-anchor="middle">1 day</text>
+<text class="t-keylab" x="428" y="1192">pk</text>
+<text class="t-key" x="484" y="1192">READ#{readId}</text>
+<text class="t-keylab" x="428" y="1214">sk</text>
+<text class="t-key" x="484" y="1214">READ</text>
+<line class="rule" x1="428" y1="1228" x2="712" y2="1228"/>
+<text class="t-attr" x="428" y="1246">userId, uploadId, status reading|done|failed</text>
+<text class="t-attr" x="428" y="1264">billId when done, error when failed</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>
@@ -288,13 +313,13 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="369">META</text>
 <text class="t-attr" x="816" y="388">status, creatorUserId, collectorUserId</text>
 <text class="t-attr" x="816" y="406">billId, pinnedBillVersion</text>
-<text class="t-attr" x="816" y="424">joinCode, venue</text>
+<text class="t-attr" x="816" y="424">joinCode, venue, expectedDiners</text>
 <rect class="inner" x="804" y="448" width="292" height="106" rx="7"/>
 <text class="t-keylab" x="816" y="467">sk</text>
 <text class="t-key" x="842" y="467">PART#{userId}</text>
 <text class="t-attr" x="816" y="486">displayName, claimedItemIds[]</text>
 <text class="t-attr" x="816" y="504">sharedItemIds[], owedPence, readyToLock</text>
-<text class="t-attr" x="816" y="522">payment { status, paymentId, paidAt }</text>
+<text class="t-attr" x="816" y="522">payment { status, paymentId } + payments[] (#121)</text>
 <text class="t-gsi" x="816" y="540">GSI1PK USER#{userId} · GSI1SK sessionId</text>
 <rect class="inner" x="804" y="564" width="292" height="70" rx="7"/>
 <text class="t-keylab" x="816" y="583">sk</text>
@@ -318,7 +343,7 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="808" y1="852" x2="1092" y2="852"/>
 <text class="t-attr" x="808" y="870">sessionId</text>
 <text class="t-attr" x="808" y="888">create-if-absent (collision check)</text>
-<rect class="node gsi" x="1170" y="80" width="320" height="250" rx="10"/>
+<rect class="node gsi" x="1170" y="80" width="320" height="165" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>
 <text class="t-inner" x="1188" y="160">GSI1</text>
@@ -326,13 +351,8 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="1188" y="179">Only on participant rows: USER#{userId}</text>
 <text class="t-attr" x="1188" y="197">→ sessionId. UUIDv7 ids sort by time,</text>
 <text class="t-attr" x="1188" y="215">so reverse order = newest first.</text>
-<text class="t-inner" x="1188" y="245">GSI2</text>
-<text class="t-key" x="1244" y="245">GSI2PK</text>
-<text class="t-attr" x="1188" y="264">Only on payment rows:</text>
-<text class="t-attr" x="1188" y="282">PROVPAY#{providerPaymentId}</text>
-<text class="t-attr" x="1188" y="300">finds a payment from a webhook.</text>
-<rect class="node" x="1170" y="408" width="320" height="236" rx="10"/>
-<rect class="band band-pay" x="1170" y="408" width="6" height="236" rx="3"/>
+<rect class="node" x="1170" y="408" width="320" height="196" rx="10"/>
+<rect class="band band-pay" x="1170" y="408" width="6" height="196" rx="3"/>
 <text class="t-title" x="1188" y="435">Payment</text>
 <rect class="chip-none" x="1426.4" y="421" width="49.599999999999994" height="20" rx="10"/>
 <text class="t-chip" x="1451.2" y="435" text-anchor="middle">No TTL</text>
@@ -340,15 +360,12 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="1244" y="460">PAY#{paymentId}</text>
 <text class="t-keylab" x="1188" y="482">sk</text>
 <text class="t-key" x="1244" y="482">same as pk</text>
-<text class="t-keylab" x="1188" y="504">GSI2</text>
-<text class="t-key" x="1244" y="504">PROVPAY#{providerPaymentId}</text>
-<line class="rule" x1="1188" y1="518" x2="1472" y2="518"/>
-<text class="t-attr" x="1188" y="536">sessionId, payerUserId, collectorUserId</text>
-<text class="t-attr" x="1188" y="554">amountPence, currency GBP</text>
-<text class="t-attr" x="1188" y="572">provider (truelayer · mock · manual)</text>
-<text class="t-attr" x="1188" y="590">status, idempotencyKey</text>
-<text class="t-attr" x="1188" y="608">events[] { at, from, to, source }</text>
-<text class="t-attr" x="1188" y="626">createdAt, payerClaimedPaidAt</text>
+<line class="rule" x1="1188" y1="496" x2="1472" y2="496"/>
+<text class="t-attr" x="1188" y="514">sessionId, payerUserId, collectorUserId</text>
+<text class="t-attr" x="1188" y="532">amountPence, currency GBP</text>
+<text class="t-attr" x="1188" y="550">status, idempotencyKey</text>
+<text class="t-attr" x="1188" y="568">events[] { at, from, to, source }</text>
+<text class="t-attr" x="1188" y="586">createdAt, payerClaimedPaidAt</text>
     </svg>
   </div>
 
@@ -368,7 +385,7 @@ ul.plain strong { color: var(--ink); }
         <table>
           <thead><tr><th>Need</th><th>Key condition</th><th>Op</th></tr></thead>
           <tbody>
-            <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>OTP#email:{e}</code></td><td class="op">Get</td></tr>
+            <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>SIGNIN#{id}</code></td><td class="op">Get, conditional Update</td></tr>
             <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
             <tr><td>Background read</td><td><code>READ#{id}</code></td><td class="op">Get</td></tr>
@@ -379,7 +396,6 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
-            <tr><td>Payment from webhook</td><td>GSI2 <code>GSI2PK = PROVPAY#{providerId}</code></td><td class="op">Query</td></tr>
             <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
             <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
             <tr><td>Replay a request</td><td><code>IDMP#{user}#{endpoint}</code> / <code>KEY#{key}</code></td><td class="op">Get</td></tr>

@@ -28,6 +28,13 @@ export default tseslint.config(
     },
   },
   {
+    // CLI scripts: printing is their job.
+    files: ['scripts/**'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['**/*.test.ts', 'tests/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unused-expressions': 'off',
@@ -42,8 +49,6 @@ export default tseslint.config(
       '*.config.js',
       '*.config.ts',
       'eslint.config.js',
-      // One-off TrueLayer signing helper; not part of the TS project.
-      'scripts/_sign-ad-hoc.mjs',
     ],
   },
 );

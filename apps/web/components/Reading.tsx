@@ -30,7 +30,7 @@ export function useSlow(ms: number, since?: number): boolean {
   return slow;
 }
 
-function Thumb({ uri }: { uri?: string }) {
+export function Thumb({ uri }: { uri?: string }) {
   return uri
     ? <img src={uri} alt="Your bill" className="reading-thumb" />
     : <span className="skel reading-thumb" aria-hidden="true" />;

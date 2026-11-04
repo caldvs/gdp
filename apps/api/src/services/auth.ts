@@ -12,10 +12,10 @@ export interface VerifiedIdentity {
 export type IdTokenVerifier = (token: string) => Promise<VerifiedIdentity>;
 
 /**
- * Verify a session JWT minted by the email-OTP flow.
+ * Verify a session JWT minted by the email sign-in link flow.
  *
  * The verifier is intentionally simple — all the auth work happens at
- * /v1/auth/email/verify, which mints the token after a successful OTP.
+ * /v1/auth/email/link and /v1/auth/email/requests, which mint it once a sign-in link is opened.
  * Every subsequent request just decodes the JWT here, validates the
  * signature + expiry, and trusts the embedded claims.
  */

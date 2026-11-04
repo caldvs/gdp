@@ -67,15 +67,18 @@ function CheckBill() {
   const amend = useAmendBill(billId ?? '');
   const createSession = useCreateSession();
   const payout = usePayoutAccount();
-  // The table fee is paid on the last step before the QR code. Null = no
+  // The platform fee is paid on the last step before the QR code. Null = no
   // fee here (Stripe not set up on the API or the web app).
   const fee = useTableFeeStatus(billId, { enabled: !!STRIPE_PUBLISHABLE_KEY && !isMidSession });
 
   const [items, setItems] = useState<DraftItem[]>([]);
   const [servicePounds, setServicePounds] = useState('0.00');
   const [taxPounds, setTaxPounds] = useState('0.00');
+  const [venueName, setVenueName] = useState('');
+  // A place the lead picked while the bill was read (#61): its ID and
+  // address go with the name, as long as the name isn't changed.
   const [hydrated, setHydrated] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax'
+  const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
 
   useEffect(() => {
@@ -90,6 +93,7 @@ function CheckBill() {
     setItems(b.items.map(fromBillItem));
     setServicePounds(pounds(b.serviceChargePence));
     setTaxPounds(pounds(b.taxPence));
+    setVenueName(b.venue?.name ?? '');
   };
 
   const subtotalPence = useMemo(() => items.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0), [items]);
@@ -104,12 +108,13 @@ function CheckBill() {
     const b = bill.data;
     if (!b) return false;
     if (b.items.length !== items.length || b.serviceChargePence !== servicePence || b.taxPence !== taxPence) return true;
+    if (venueName.trim() && venueName.trim() !== (b.venue?.name ?? '')) return true;
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
         parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
-  }, [bill.data, items, servicePence, taxPence]);
+  }, [bill.data, items, servicePence, taxPence, venueName]);
 
   // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
@@ -148,6 +153,11 @@ function CheckBill() {
     })),
     taxPence,
     serviceChargePence: servicePence,
+    ...(venueName.trim()
+      ? {
+          venue: { name: venueName.trim() },
+        }
+      : {}),
   });
 
   const saveDraft = async (): Promise<boolean> => {
@@ -198,16 +208,49 @@ function CheckBill() {
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
+  // #136: nothing on the photo names the place: none is shown, or asked.
+  const noVenue = !b.venue?.name;
+  const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
-    : [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+    : (
+      <>
+        {restOfSub}
+        {noVenue ? null : (
+          <>
+            {' · '}
+            <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
+          </>
+        )}
+        {/* Where the venue is: the full address when the lookup matched it,
+            else what the bill printed. Lets the lead catch a wrong branch. */}
+        {b.venue?.address && (venueName.trim() || b.venue.name) === b.venue.name ? <span className="title__addr small">{b.venue.address}</span> : null}
+      </>
+    );
+  // No printed total to check against (a cut-off photo, usually). Only
+  // before sharing: once guests are claiming, retaking the photo would
+  // throw their claims away.
+  const noTotal = !isMidSession && items.length > 0 && printed === undefined;
   const servicePct = subtotalPence > 0 && servicePence > 0 ? ` ${Math.round((servicePence / subtotalPence) * 1000) / 10}%` : '';
 
   return (
     <>
       <Page sub>
         {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
-        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={sub} />
+        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={editing === 'venue' ? undefined : sub} />
+
+        {editing === 'venue' ? (
+          <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />
+        ) : null}
+
+        {noTotal ? (
+          <Notice tone="warn" title="No total on the photo">
+            Bottom cut off? We can&rsquo;t check the sum.{' '}
+            <button type="button" className="link-btn" onClick={() => router.push('/capture')}>
+              Retake photo
+            </button>
+          </Notice>
+        ) : null}
 
         <Box>
           {items.map((it) =>
@@ -226,7 +269,7 @@ function CheckBill() {
                 key={it.draftId}
                 onClick={() => startEditing(it)}
                 disabled={busy || (editing !== null)}
-                label={`Edit ${it.name || 'item'}`}
+                action="Edit"
                 title={it.quantity > 1 ? `${it.name || 'Item'} × ${it.quantity}` : it.name || 'Item'}
                 sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined}
                 end={formatGBP(parsePence(it.unitPricePounds) * it.quantity)}
@@ -270,7 +313,7 @@ function CheckBill() {
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
           <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null ? `Pay ${formatGBP(feeDue)} fee & get QR code` : 'Continue'}
+            {feeDue !== null ? `Pay ${formatGBP(feeDue)} platform fee & get QR code` : 'Continue'}
           </Button>
         )}
       </ActionBar>
@@ -315,6 +358,28 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
         <span style={{ flex: 1 }} />
         <Button tone="secondary" small onClick={onCancel}>Cancel</Button>
         <Button small onClick={onDone}>Done</Button>
+      </div>
+    </div>
+  );
+}
+
+function VenueEditor({ value, onChange, onDone }: { value: string; onChange: (v: string) => void; onDone: () => void }) {
+  return (
+    <div className="editor" style={{ borderRadius: 'var(--radius)' }}>
+      <div className="editor__row">
+        <div className="field" style={{ flex: 1 }}>
+          <label htmlFor="venue-name">Venue</label>
+          <input
+            id="venue-name"
+            className="input"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Where was this?"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); onDone(); } }}
+          />
+        </div>
+        <Button onClick={onDone}>Done</Button>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import {
   GetCommand,
   PutCommand,
-  QueryCommand,
   TransactWriteCommand,
   UpdateCommand,
   type TransactWriteCommandInput,
@@ -15,14 +14,22 @@ const SESSION_TTL_DAYS = 30;
 const paymentPk = (paymentId: string) => `PAY#${paymentId}`;
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const partSk = (userId: string) => `PART#${userId}`;
-const provIdx = (providerPaymentId: string) => `PROVPAY#${providerPaymentId}`;
 const userIdx = (userId: string) => `USER#${userId}`;
 
 const ttlEpochSeconds = (): number =>
   Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
 
+// Rows written before TrueLayer was removed also carry GSI2PK, provider
+// and providerPaymentId; drop them so every payment reads the same.
 const stripKeys = (item: Record<string, unknown>): Record<string, unknown> => {
-  const { pk: _pk, sk: _sk, GSI2PK: _gsi, ...rest } = item;
+  const {
+    pk: _pk,
+    sk: _sk,
+    GSI2PK: _gsi,
+    provider: _provider,
+    providerPaymentId: _providerPaymentId,
+    ...rest
+  } = item;
   return rest;
 };
 
@@ -34,7 +41,6 @@ export const paymentStore = {
         Item: {
           pk: paymentPk(payment.paymentId),
           sk: paymentPk(payment.paymentId),
-          GSI2PK: provIdx(payment.providerPaymentId),
           ...payment,
         },
       }),
@@ -52,24 +58,9 @@ export const paymentStore = {
     return stripKeys(result.Item) as Payment;
   },
 
-  async findByProviderPaymentId(providerPaymentId: string): Promise<Payment | null> {
-    const result = await ddb.send(
-      new QueryCommand({
-        TableName: TABLE_NAME,
-        IndexName: 'GSI2',
-        KeyConditionExpression: 'GSI2PK = :pk',
-        ExpressionAttributeValues: { ':pk': provIdx(providerPaymentId) },
-        Limit: 1,
-      }),
-    );
-    if (!result.Items || result.Items.length === 0) return null;
-    return stripKeys(result.Items[0]!) as Payment;
-  },
-
   /**
    * Atomically update a payment's status and the matching participant row.
-   * Used both at initiate-time (pending → registered) and on every webhook
-   * event so the two views can never disagree.
+   * Used at initiate and on confirm so the two views can never disagree.
    */
   async applyUpdate(input: { payment: Payment; participant: Participant }): Promise<void> {
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
@@ -79,7 +70,6 @@ export const paymentStore = {
           Item: {
             pk: paymentPk(input.payment.paymentId),
             sk: paymentPk(input.payment.paymentId),
-            GSI2PK: provIdx(input.payment.providerPaymentId),
             ...input.payment,
           },
         },
@@ -122,41 +112,5 @@ export const paymentStore = {
       }),
     );
     return stripKeys(res.Attributes ?? {}) as Payment;
-  },
-
-  /**
-   * Mirror the canonical claim timestamp onto the participant's payment
-   * subdocument. Conditioned on the participant still being in `pending`
-   * status — if they've moved to succeeded/failed since, the mirror is a
-   * no-op (the row is the truth, not the mirror).
-   */
-  async setParticipantPayerClaimedPaidAt(input: {
-    sessionId: string;
-    userId: string;
-    ts: string;
-  }): Promise<void> {
-    try {
-      await ddb.send(
-        new UpdateCommand({
-          TableName: TABLE_NAME,
-          Key: { pk: sessionPk(input.sessionId), sk: partSk(input.userId) },
-          UpdateExpression:
-            'SET payment.payerClaimedPaidAt = if_not_exists(payment.payerClaimedPaidAt, :ts)',
-          ConditionExpression: 'payment.#st = :pending',
-          ExpressionAttributeNames: { '#st': 'status' },
-          ExpressionAttributeValues: { ':ts': input.ts, ':pending': 'pending' },
-        }),
-      );
-    } catch (err) {
-      // ConditionalCheckFailedException = participant moved past pending; that's fine.
-      if (
-        err instanceof Error &&
-        (err.name === 'ConditionalCheckFailedException' ||
-          (err as { name?: string }).name === 'ConditionalCheckFailedException')
-      ) {
-        return;
-      }
-      throw err;
-    }
   },
 };

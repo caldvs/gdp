@@ -47,6 +47,9 @@ export const amendService = {
     const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
     const totalPence =
       subtotalPence + input.amendment.taxPence + input.amendment.serviceChargePence;
+    // A venue the lead chose beats whatever the parser found; sending
+    // nothing keeps the bill's current venue (parsed or previously set).
+    const venueOverride = input.amendment.venue;
 
     const newVersion: Bill = BillSchema.parse({
       ...current,
@@ -58,6 +61,7 @@ export const amendService = {
       serviceChargePence: input.amendment.serviceChargePence,
       totalPence,
       createdAt: new Date().toISOString(),
+      ...(venueOverride ? { venue: venueOverride } : {}),
     });
 
     if (!session) {
@@ -113,7 +117,13 @@ export const amendService = {
     ].filter((id) => !newItemIds.has(id));
 
     const { participants: _droppedParticipants, ...sessionMeta } = session;
-    const updatedMeta = { ...sessionMeta, pinnedBillVersion: newVersion.versionNumber };
+    const updatedMeta = {
+      ...sessionMeta,
+      pinnedBillVersion: newVersion.versionNumber,
+      // Session's venue is denormalised from the bill (sessionService.ts);
+      // keep it in step when the lead changes it mid-session.
+      ...(venueOverride ? { venue: venueOverride } : {}),
+    };
 
     await billStore.applyAmendWithSession({
       bill: newVersion,

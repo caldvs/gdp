@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { configureApi, registerQueryClient } from '@gdp/core/api';
+import { retryUnlessClientError } from '@gdp/core/api/retry';
 import { API_BASE_URL } from '@/lib/config';
 import { DemoBanner } from '@/components/DemoBanner';
 
@@ -12,7 +13,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
     const qc = new QueryClient({
       defaultOptions: {
-        queries: { retry: 2, staleTime: 30_000, refetchOnWindowFocus: true },
+        queries: { retry: retryUnlessClientError, staleTime: 30_000, refetchOnWindowFocus: true },
       },
     });
     registerQueryClient(qc);

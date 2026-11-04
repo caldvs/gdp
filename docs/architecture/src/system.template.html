@@ -1,4 +1,4 @@
-<title>Group Dine Pay Architecture</title>
+<title>Pay Me Back Architecture</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
@@ -71,7 +71,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 .t-ep { font: 400 11.5px var(--mono); fill: var(--ink); }
 .t-warn { font: 700 12.5px var(--body); fill: var(--warn); }
 .m { font-weight: 600; font-size: 10.5px; }
-.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put { fill: var(--put); } .m-delete { fill: var(--del); }
+.m-get { fill: var(--get); } .m-post { fill: var(--post); } .m-put, .m-patch { fill: var(--put); } .m-delete { fill: var(--del); }
 .edge path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
 .edge.dashed path { stroke-dasharray: 6 5; }
 .edge.fail path { stroke: var(--warn); }
@@ -91,12 +91,12 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 
 <div class="wrap">
   <header>
-    <h1>Group Dine Pay architecture</h1>
-    <div class="stats"><span><b>34</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>3</b> third parties</span></div>
+    <h1>Pay Me Back architecture</h1>
+    <div class="stats"><span><b>%%EPS%%</b> endpoints</span><span><b>%%GROUPS%%</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 %%VBH%%" role="img" aria-label="Group Dine Pay system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 34 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill parser), Secrets Manager and CloudWatch, and calls Gemini as a fallback parser, Google Places, TrueLayer and Stripe, which send webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 %%VBH%%" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves %%EPS%% endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -109,8 +109,8 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
     <span><i></i>Runtime call</span>
     <span><i class="d"></i>Deploy-time</span>
     <span><i class="x"></i>Outside AWS or the app</span>
-    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="r">DELETE</code></span>
+    <span><code class="g">GET</code> <code class="p">POST</code> <code class="u">PUT</code> <code class="u">PATCH</code> <code class="r">DELETE</code></span>
   </div>
 
-  <p class="foot">Built from <code>apps/api/openapi.yaml</code>, <code>apps/api/infra/main.ts</code> and <code>apps/api/src</code> on main. Locally, <code>npm run dev:local</code> runs the same Hono app on Node with DynamoDB Local and MinIO in Docker, a console email sender and the mock payment provider.</p>
+  <p class="foot">Built from <code>apps/api/openapi.yaml</code>, <code>apps/api/infra/main.ts</code> and <code>apps/api/src</code> on main. Locally, <code>npm run dev:local</code> runs the same Hono app on Node with DynamoDB Local and MinIO in Docker and a console email sender.</p>
 </div>

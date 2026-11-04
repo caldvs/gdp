@@ -5,7 +5,8 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { ViewTransition, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -24,10 +25,21 @@ export function BackLink({ href, children }: { href: string; children: ReactNode
   );
 }
 
-export function Title({ title, sub, aside }: { title: ReactNode; sub?: ReactNode; aside?: ReactNode }) {
+/** BackLink for going back within a page (no URL change). */
+export function BackButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="back back--btn" onClick={onClick}>
+      <ChevronLeft />
+      {children}
+    </button>
+  );
+}
+
+/** `vt` names the heading so same-named text on the last page glides into it. */
+export function Title({ title, sub, aside, vt }: { title: ReactNode; sub?: ReactNode; aside?: ReactNode; vt?: string }) {
   const body = (
     <div className="title">
-      <h1>{title}</h1>
+      <h1><Morph name={vt}>{title}</Morph></h1>
       {sub ? <p>{sub}</p> : null}
     </div>
   );
@@ -59,14 +71,16 @@ type RowProps = {
   muted?: boolean;
   chevron?: boolean;
   lead?: ReactNode;
+  /** Shared transition name for the title (see Title). */
+  vt?: string;
 };
 
-function RowInner({ title, sub, end, strong, chevron, lead }: RowProps) {
+function RowInner({ title, sub, end, strong, chevron, lead, vt }: RowProps) {
   return (
     <>
       {lead}
       <span className="row__main">
-        <span className={cx('row__title', strong && 'row__title--strong')}>{title}</span>
+        <span className={cx('row__title', strong && 'row__title--strong')}><Morph name={vt}>{title}</Morph></span>
         {sub ? <span className="row__sub">{sub}</span> : null}
       </span>
       {end !== undefined && end !== null ? <span className="row__end">{end}</span> : null}
@@ -85,9 +99,11 @@ export function RowLink({ href, ...p }: RowProps & { href: string }) {
   return <Link href={href} className={rowClass(p)}><RowInner chevron {...p} /></Link>;
 }
 
-export function RowButton({ onClick, label, disabled, ...p }: RowProps & { onClick: () => void; label?: string; disabled?: boolean }) {
+/** `action` ("Edit") is read out before the visible text, so the name still contains what's on screen. */
+export function RowButton({ onClick, label, action, disabled, ...p }: RowProps & { onClick: () => void; label?: string; action?: string; disabled?: boolean }) {
   return (
     <button type="button" className={rowClass(p)} onClick={onClick} aria-label={label} disabled={disabled}>
+      {action ? <span className="vh">{action} </span> : null}
       <RowInner {...p} />
     </button>
   );
@@ -132,12 +148,15 @@ export function Button({ href, replace, tone = 'primary', small, busy, grow, cla
   );
 }
 
-/** Fixed bottom bar for a screen's main action(s), within thumb reach. */
+/** Fixed bottom bar for a screen's main action(s), within thumb reach.
+ * Named so it stays put between pages while its buttons cross-fade. */
 export function ActionBar({ children, stack }: { children: ReactNode; stack?: boolean }) {
   return (
-    <div className="actionbar">
-      <div className={cx('actionbar__in', stack && 'actionbar__in--stack')}>{children}</div>
-    </div>
+    <ViewTransition name="actionbar" share="bar" enter="bar" exit="bar" default="none">
+      <div className="actionbar">
+        <div className={cx('actionbar__in', stack && 'actionbar__in--stack')}>{children}</div>
+      </div>
+    </ViewTransition>
   );
 }
 
@@ -145,8 +164,26 @@ export function ActionBar({ children, stack }: { children: ReactNode; stack?: bo
 
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
 
-export function Avatar({ name, you }: { name: string; you?: boolean }) {
-  return <span className={cx('avatar', you && 'avatar--you')} aria-hidden>{initials(name)}</span>;
+export function Avatar({ name, you, sm }: { name: string; you?: boolean; sm?: boolean }) {
+  return <span className={cx('avatar', you && 'avatar--you', sm && 'avatar--sm')} aria-hidden>{initials(name)}</span>;
+}
+
+/**
+ * Who has an item, as initials instead of names — reads faster, and scales
+ * to several claimants without crowding the row. The names themselves stay
+ * for screen readers (visually hidden): avatars alone aren't accessible.
+ */
+export function AvatarStack({ names, max = 4 }: { names: string[]; max?: number }) {
+  if (names.length === 0) return null;
+  const shown = names.slice(0, max);
+  const extra = names.length - shown.length;
+  return (
+    <span className="avatar-stack">
+      <span className="vh">{names.join(', ')}</span>
+      {shown.map((n, i) => <Avatar key={i} name={n} sm you={n === 'you' || n === 'You'} />)}
+      {extra > 0 ? <span className="avatar avatar--sm avatar--more" aria-hidden>+{extra}</span> : null}
+    </span>
+  );
 }
 
 /** Who's at the table: an initial and first name each, in the order they joined. */
@@ -168,26 +205,32 @@ export function Diners({ people, hostId, meId }: { people: { userId: string; dis
 
 /* ---------- Dialog ---------- */
 
-/** A modal panel: bottom sheet on phones, centred box on wider screens. */
+/** A modal panel: bottom sheet on phones, centred box on wider screens.
+ * It rises in on mount; it drops away if the caller closes it inside
+ * startTransition. */
 export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string }) {
   return (
     <>
-      <div className="dialog-overlay" onClick={onClose} aria-hidden />
-      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-        <h2 id={id} className="dialog__t">{title}</h2>
-        {children}
-        <div className="dialog__actions">{actions}</div>
-      </div>
+      <ViewTransition exit="scrim-out" default="none">
+        <div className="dialog-overlay" onClick={onClose} aria-hidden />
+      </ViewTransition>
+      <ViewTransition exit="sheet-out" default="none">
+        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+          <h2 id={id} className="dialog__t">{title}</h2>
+          {children}
+          <div className="dialog__actions">{actions}</div>
+        </div>
+      </ViewTransition>
     </>
   );
 }
 
 /* ---------- Feedback ---------- */
 
-export function Notice({ title, children, tone = 'info' }: { title?: ReactNode; children?: ReactNode; tone?: 'info' | 'ok' | 'error' }) {
+export function Notice({ title, children, tone = 'info' }: { title?: ReactNode; children?: ReactNode; tone?: 'info' | 'ok' | 'warn' | 'error' }) {
   return (
-    <div className={cx('notice', `notice--${tone}`)} role={tone === 'error' ? 'alert' : tone === 'ok' ? 'status' : undefined}>
-      {tone === 'ok' ? <TickIcon /> : null}
+    <div className={cx('notice', `notice--${tone}`)} role={tone === 'error' ? 'alert' : tone === 'ok' || tone === 'warn' ? 'status' : undefined}>
+      {tone === 'ok' ? <TickIcon /> : tone === 'warn' ? <WarnIcon /> : null}
       <div>
         {title ? <b>{title}</b> : null}
         {children}
@@ -260,6 +303,9 @@ export const MenuIcon = () => <I d="M4 7h16M4 12h16M4 17h16" size={28} />;
 export const CloseIcon = () => <I d="M6 6l12 12M18 6 6 18" size={28} />;
 export const PlusIcon = () => <I d="M12 5v14M5 12h14" size={18} w={2.2} />;
 export const TickIcon = ({ size = 22 }: { size?: number }) => <I d="m5 12 5 5 9-10" size={size} w={2.5} />;
+export const WarnIcon = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
+);
 export const CopyIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
 );
@@ -273,6 +319,7 @@ export const ShareIcon = () => <I d="M12 3v12M7 8l5-5 5 5M5 14v5a1 1 0 0 0 1 1h1
 export const QrIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 14v7h-7" /></svg>
 );
+
 
 /* ---------- Helpers ---------- */
 

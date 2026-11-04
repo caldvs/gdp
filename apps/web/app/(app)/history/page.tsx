@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useMySessions, type SessionSummary } from '@gdp/core/api/hooks/useMySessions';
 import { formatGBP } from '@gdp/core/lib/money';
+import { billTitle } from '@/components/PageTransition';
 import { BackLink, Badge, Box, Notice, Page, RowLink, Spinner, Title, formatWhen } from '@/components/ui';
 
 type Filter = 'all' | 'hosted' | 'joined';
@@ -35,6 +36,7 @@ export default function HistoryPage() {
             <RowLink
               key={s.sessionId}
               href={`/session/${s.sessionId}`}
+              vt={billTitle(s.sessionId)}
               tall
               title={s.venue?.name ?? (s.role === 'lead' ? 'Your bill' : 'A bill you joined')}
               sub={`${formatWhen(s.createdAt)} · ${s.role === 'lead' ? 'hosted' : 'joined'}${s.status === 'abandoned' ? ' · deleted' : ''}`}

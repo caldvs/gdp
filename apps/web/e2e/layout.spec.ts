@@ -23,11 +23,7 @@ async function open(page: Page, api: FakeApi, user: User, to: string) {
  * one changes a visual baseline, so it waits for the next baseline refresh;
  * remove the entry with the fix.
  */
-const KNOWN_SMALL = new Set([
-  // Review bill: the inline "change" buttons on the service and tax lines are 32px.
-  'button "Change service charge"',
-  'button "Change tax"',
-]);
+const KNOWN_SMALL = new Set<string>([]);
 
 /** Visible interactive elements shorter than MIN_TAP, described for the failure message. */
 async function smallTargets(page: Page): Promise<string[]> {
@@ -98,6 +94,7 @@ test("the lead's bank details never reach a server", async ({ page }) => {
   const api = new FakeApi({ status: 'setup' });
   await open(page, api, users.lead, '/');
   await page.locator('input[capture]').setInputFiles(PHOTO);
+  await page.getByRole('button', { name: 'Use photo' }).click();
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);

@@ -11,13 +11,16 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import type { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tableSchema } from './tableSchema.js';
 import { GithubDeployStack, deployRoleName } from './githubDeploy.js';
+import { CostReportStack } from './costReport.js';
+import { ALLOWED_ORIGINS } from '../src/config/allowedOrigins.js';
 
-// apps/api lives inside the Group Dine Pay monorepo; the npm lockfile is
+// apps/api lives inside the Pay Me Back monorepo; the npm lockfile is
 // at the repo root, which is what NodejsFunction treats as the project.
 const API_DIR = fileURLToPath(new URL('..', import.meta.url));
 const REPO_ROOT = path.resolve(API_DIR, '../..');
@@ -33,6 +36,8 @@ class GdpBackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GdpStackProps) {
     super(scope, id, props);
     const { envName } = props;
+    // Browser origins for the API and the bills bucket (src/config/allowedOrigins.ts).
+    const allowedOrigins = ALLOWED_ORIGINS[envName];
 
     cdk.Tags.of(this).add('project', 'gdp-backend');
     cdk.Tags.of(this).add('env', envName);
@@ -64,12 +69,11 @@ class GdpBackendStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
-      // Browser clients PUT directly to presigned URLs from a different
-      // origin (e.g. http://localhost:8081 in dev). Without CORS the
-      // preflight fails. Permissive in dev — tighten origins before prod.
+      // Browser clients PUT directly to presigned URLs from the web app's
+      // origin. Same list as the API's CORS.
       cors: [
         {
-          allowedOrigins: ['*'],
+          allowedOrigins,
           allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],
@@ -112,33 +116,6 @@ class GdpBackendStack extends cdk.Stack {
     const secretSources: Record<string, string> = {
       SESSION_JWT_SECRET: `gdp-${envName}/session-jwt-secret`,
     };
-    // TrueLayer (pay-by-bank) is off: PAYMENT_PROVIDER is `manual`. Its
-    // settings are only used with TRUELAYER_ENABLED=true (a GitHub
-    // environment variable, or `-c truelayer=true` locally), so a new
-    // environment doesn't need placeholder TrueLayer secrets to deploy.
-    const trueLayerEnabled =
-      process.env.TRUELAYER_ENABLED === 'true' || this.node.tryGetContext('truelayer') === 'true';
-    const trueLayerEnv: Record<string, string> = trueLayerEnabled
-      ? {
-          TRUELAYER_CLIENT_ID: ssm.StringParameter.valueForStringParameter(
-            this,
-            `/gdp-${envName}/truelayer-client-id`,
-          ),
-          TRUELAYER_SIGNING_KID: ssm.StringParameter.valueForStringParameter(
-            this,
-            `/gdp-${envName}/truelayer-signing-kid`,
-          ),
-          TRUELAYER_ENVIRONMENT: 'sandbox',
-        }
-      : {};
-    if (trueLayerEnabled) {
-      Object.assign(secretSources, {
-        TRUELAYER_CLIENT_SECRET: `gdp-${envName}/truelayer-client-secret`,
-        TRUELAYER_WEBHOOK_SECRET: `gdp-${envName}/truelayer-webhook-secret`,
-        TRUELAYER_SIGNING_PRIVATE_KEY_PEM: `gdp-${envName}/truelayer-signing-private-key`,
-      });
-    }
-
     // Stripe (the lead's table fee) is off until its secrets exist. Turn it on with
     // STRIPE_ENABLED=true (a GitHub environment variable the deploy
     // workflow passes through, or `-c stripe=true` locally) once
@@ -156,12 +133,12 @@ class GdpBackendStack extends cdk.Stack {
       });
     }
 
-    // The bill reader: Claude Haiku on Bedrock through the EU cross-region
+    // The bill reader: Claude Sonnet 4.6 on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Override with
     // `-c bedrockModelId=…`.
     const bedrockModelId =
       (this.node.tryGetContext('bedrockModelId') as string | undefined) ??
-      'eu.anthropic.claude-haiku-4-5-20251001-v1:0';
+      'eu.anthropic.claude-sonnet-4-6';
 
     const apiLogs = new logs.LogGroup(this, 'ApiHandlerLogs', {
       retention: envName === 'prod' ? logs.RetentionDays.SIX_MONTHS : logs.RetentionDays.ONE_MONTH,
@@ -199,13 +176,11 @@ class GdpBackendStack extends cdk.Stack {
         VENUE_LOOKUP: 'amazon-location',
         SES_FROM_EMAIL: sesFromEmail,
 
-        ...trueLayerEnv,
-        // `manual` = guests pay the lead via their own banking app (Monzo/
-        // Revolut deep links if available, raw sort+account otherwise),
-        // lead confirms receipt manually. Free of TrueLayer fees. Switch
-        // to `truelayer` once TL Live commercial onboarding is in place.
-        PAYMENT_PROVIDER: 'manual',
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
+        // Leads who never pay the table fee: a comma list from the GitHub
+        // environment (secret or variable TABLE_FEE_EXEMPT_EMAILS).
+        TABLE_FEE_EXEMPT_EMAILS: process.env.TABLE_FEE_EXEMPT_EMAILS ?? '',
+        ALLOWED_ORIGINS: allowedOrigins.join(','),
       },
       bundling: {
         format: nodejs.OutputFormat.ESM,
@@ -283,11 +258,12 @@ class GdpBackendStack extends cdk.Stack {
     );
     billsBucket.grantReadWrite(fn);
 
-    // Venue lookup (src/services/bills/locationVenueResolver.ts): Amazon
-    // Location Service Places, which has no resources of its own.
+    // Venue lookup (src/services/bills/locationVenueResolver.ts) and nearby
+    // places (src/services/venues/nearbyVenues.ts): Amazon Location Service
+    // Places, which has no resources of its own.
     fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['geo-places:SearchText'],
+        actions: ['geo-places:SearchText', 'geo-places:SearchNearby'],
         resources: [`arn:aws:geo-places:${this.region}::provider/default`],
       }),
     );
@@ -332,17 +308,31 @@ class GdpBackendStack extends cdk.Stack {
       iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), { mutable: true }),
     );
 
+    // Custom API domain (api.paymeback.dev / api.test.paymeback.dev). DNS is
+    // on Vercel, so the ACM certificate is requested and validated by hand and
+    // its ARN comes from the GitHub environment (API_DOMAIN, API_CERT_ARN).
+    // Without both, the API stays on its execute-api URL only.
+    const apiDomain =
+      process.env.API_DOMAIN || (this.node.tryGetContext('apiDomain') as string | undefined);
+    const apiCertArn =
+      process.env.API_CERT_ARN || (this.node.tryGetContext('apiCertArn') as string | undefined);
+    const domainName =
+      apiDomain && apiCertArn
+        ? new apigw.DomainName(this, 'ApiDomain', {
+            domainName: apiDomain,
+            certificate: acm.Certificate.fromCertificateArn(this, 'ApiCert', apiCertArn),
+          })
+        : undefined;
+
     const httpApi = new apigw.HttpApi(this, 'HttpApi', {
       apiName: `gdp-${envName}`,
       defaultIntegration: new integrations.HttpLambdaIntegration('LambdaIntegration', fn),
+      ...(domainName ? { defaultDomainMapping: { domainName } } : {}),
     });
-
-    // The TrueLayer return URL has to match what's registered in the Console.
-    // We resolve it from the API endpoint so a stack re-create still produces
-    // a coherent value in the Lambda env — but the Console-side URL must be
-    // updated by hand if the API endpoint ever changes.
-    if (trueLayerEnabled) {
-      fn.addEnvironment('TRUELAYER_RETURN_URI', `${httpApi.apiEndpoint}/v1/payments/return`);
+    if (domainName) {
+      // The CNAME to add in Vercel DNS: <api name> → this value.
+      new cdk.CfnOutput(this, 'ApiDomainTargetOutput', { value: domainName.regionalDomainName });
+      new cdk.CfnOutput(this, 'ApiDomainUrlOutput', { value: `https://${apiDomain}` });
     }
 
     // ---------------- Observability: alarms ----------------
@@ -353,7 +343,7 @@ class GdpBackendStack extends cdk.Stack {
     // control. See RUNBOOK.md for the one-click subscription steps.
     const alertTopic = new sns.Topic(this, 'AlertTopic', {
       topicName: `gdp-${envName}-alerts`,
-      displayName: `Group Dine Pay (${envName}) alerts`,
+      displayName: `Pay Me Back (${envName}) alerts`,
     });
 
     const snsAction = new cwActions.SnsAction(alertTopic);
@@ -603,7 +593,7 @@ class GdpBackendStack extends cdk.Stack {
       ]),
       logsWidget('Emails, sign-in and payments', 12, 8, [
         'fields @timestamp, level, event, msg, path, status, requestId',
-        'filter event like /^(email|report|otp|auth)\\./ or path like /webhooks|billing|payments/',
+        'filter event like /^(email|report|signin|auth)\\./ or path like /webhooks|billing|payments/',
         'sort @timestamp desc',
         'limit 100',
       ]),
@@ -669,4 +659,14 @@ new GithubDeployStack(app, 'GdpGithubDeployProd', {
   repo: 'caldvs/gdp',
   repoWithIds: 'caldvs@42970938/gdp@1440859247',
   existingProviderArn,
+});
+
+// Daily AWS cost email to Callum (the whole account: dev and prod share it).
+// Addresses live in SSM so they stay out of this public repo.
+new CostReportStack(app, 'GdpCostReport', {
+  env: { region },
+  toParameter: '/gdp/cost-report-to',
+  fromParameter: '/gdp-dev/ses-from-email',
+  apiDir: API_DIR,
+  repoRoot: REPO_ROOT,
 });

@@ -90,11 +90,10 @@ function Landing() {
       <section id="pricing" className="home__pricing" aria-labelledby="price-h">
         <div className="home__pricing-text">
           <h2 id="price-h" className="home__h2">One free bill a month</h2>
-          <p className="home__sub">The person who pays covers a small fee. Friends pay it back in what they owe.</p>
+          <p className="home__sub">After that, £1 a bill. Your friends pay it back, so it costs you nothing.</p>
           <ul className="home__key">
             <li><span className="home__key-mark" aria-hidden="true"><Ring width={44} height={30} /></span><span><b>Free</b> · your first bill each month</span></li>
-            <li><span className="home__key-mark"><span className="home__fee">£2</span></span><span>every bill after that</span></li>
-            <li><span className="home__key-mark"><span className="home__fee">£3</span></span><span>when the bill is over £100</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£1</span></span><span>every bill after that</span></li>
             <li><span className="home__key-mark" aria-hidden="true"><span className="home__dot" /></span><span>a new free bill on the 1st</span></li>
           </ul>
         </div>
@@ -188,7 +187,7 @@ function ExampleBill() {
 
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-type Meal = 'std' | 'big';
+type Meal = 'std';
 
 /** The hand-drawn circle round the free bill. */
 function Ring({ width, height, className }: { width: number; height: number; className?: string }) {
@@ -201,13 +200,13 @@ function Ring({ width, height, className }: { width: number; height: number; cla
 
 /**
  * This month as a calendar with three made-up meals: the first is circled
- * as free, the rest show their fee. Tapping a day adds a meal, again makes
- * it a bill over £100, and again takes it away. The page is prerendered,
+ * as free, the rest show their £1. Tapping a day adds a meal, and again
+ * takes it away. The page is prerendered,
  * so the month is only filled in once it's in the visitor's browser.
  */
 function ExampleMonth() {
   const [month, setMonth] = useState<{ y: number; m: number } | null>(null);
-  const [meals, setMeals] = useState<Record<number, Meal>>({ 6: 'std', 14: 'std', 21: 'big' });
+  const [meals, setMeals] = useState<Record<number, Meal>>({ 6: 'std', 14: 'std', 21: 'std' });
   useEffect(() => {
     const now = new Date();
     setMonth({ y: now.getFullYear(), m: now.getMonth() });
@@ -215,12 +214,11 @@ function ExampleMonth() {
 
   const days = Object.keys(meals).map(Number).sort((a, b) => a - b);
   const first = days[0];
-  const fees = days.reduce((sum, d) => sum + (d === first ? 0 : meals[d] === 'big' ? 3 : 2), 0);
-  const summary = days.length === 0 ? 'No bills yet' : days.length === 1 ? '1 bill · free' : `${days.length} bills · £${fees} in fees`;
+  const fees = days.length > 1 ? days.length - 1 : 0;
+  const summary = days.length === 0 ? 'No bills yet' : days.length === 1 ? '1 bill · free' : `${days.length} bills · £${fees}, paid back by friends`;
   const cycle = (d: number) => setMeals((prev) => {
     const next = { ...prev };
     if (!prev[d]) next[d] = 'std';
-    else if (prev[d] === 'std') next[d] = 'big';
     else delete next[d];
     return next;
   });
@@ -252,7 +250,7 @@ function ExampleMonth() {
           }
           const meal = meals[c.n];
           const free = !!meal && c.n === first;
-          const fee = meal === 'big' ? '£3' : '£2';
+          const fee = '£1';
           return (
             <button key={i} type="button" className={meal ? 'home__cal-cell home__cal-day home__cal-day--meal' : 'home__cal-cell home__cal-day'} onClick={() => cycle(c.n)} aria-pressed={!!meal}>
               {free ? <Ring width={50} height={50} className="home__cal-ring" /> : null}

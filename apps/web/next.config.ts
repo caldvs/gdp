@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import { buildEnvProblems } from '../../packages/core/src/lib/buildEnv';
+import { securityHeaders } from '../../packages/core/src/lib/securityHeaders';
 
 // Fail the build rather than ship one that talks to the wrong API or takes
 // the wrong kind of Stripe money. See packages/core/src/lib/buildEnv.ts.
@@ -15,6 +16,10 @@ const nextConfig: NextConfig = {
   // Vercel's environment (production | preview | development), for the
   // client. The test bar is never shown on Production (lib/config.ts).
   env: { NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || '' },
+  // CSP, no framing, no referrer (#150). packages/core/src/lib/securityHeaders.ts.
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders(process.env) }];
+  },
 };
 
 export default nextConfig;

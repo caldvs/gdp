@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
 import './context/types.js';
 import { env } from './config/env.js';
 import { originMatcher, parseOrigins, SIGN_IN_LINK_BASES } from './config/allowedOrigins.js';
@@ -147,6 +148,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     deps.idTokenVerifier ?? (env.SESSION_JWT_SECRET ? defaultIdTokenVerifier() : undefined);
   app.use('*', requestId());
   app.use('*', requestLogger());
+  // nosniff, no framing, no referrer, HSTS and friends (#150). The web app
+  // calls from another origin, so CORP is left to CORS to decide.
+  app.use('*', secureHeaders({ xFrameOptions: 'DENY', crossOriginResourcePolicy: false }));
 
   // CORS: only the web app's own origins (ALLOWED_ORIGINS, set per stage by
   // CDK). Unset (local) allows any origin.

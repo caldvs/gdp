@@ -76,3 +76,15 @@ describe('CORS', () => {
     });
   });
 });
+
+describe('security headers (#150)', () => {
+  it('sends nosniff, DENY framing, no referrer and HSTS, alongside CORS', async () => {
+    const res = await app.request('/healthz', { headers: { Origin: 'http://localhost:8081' } });
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('strict-transport-security')).toContain('max-age=');
+    expect(res.headers.get('cross-origin-resource-policy')).toBeNull();
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+});

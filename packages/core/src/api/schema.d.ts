@@ -1276,6 +1276,12 @@ export interface components {
              * @enum {string}
              */
             course?: "starter" | "main" | "side" | "dessert";
+            /**
+             * @description The reader's note on a line it couldn't read clearly ("price faded"). The app asks the
+             *     lead to confirm these lines before Review bill. Absent on clear lines, and cleared by
+             *     any amend.
+             */
+            unsure?: string;
         };
         Bill: {
             /** Format: uuid */

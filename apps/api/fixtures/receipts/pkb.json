@@ -1,0 +1,28 @@
+{
+  "venue": "PKB - Angel Gardens",
+  "totalPence": 3938,
+  "servicePence": 358,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Americano",
+      "quantity": 2,
+      "lineTotalPence": 700
+    },
+    {
+      "name": "Cappuccino",
+      "quantity": 2,
+      "lineTotalPence": 780
+    },
+    {
+      "name": "Avocado Toast",
+      "quantity": 1,
+      "lineTotalPence": 900
+    },
+    {
+      "name": "Feta, Eggs &",
+      "quantity": 1,
+      "lineTotalPence": 1200
+    }
+  ]
+}

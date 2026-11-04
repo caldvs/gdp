@@ -1,20 +1,12 @@
 import { GeoPlacesClient, SearchTextCommand } from '@aws-sdk/client-geo-places';
 import type { Venue } from '../../types/bills.js';
-import type { VenueResolver } from './venueResolver.js';
+import { sameVenueName, type VenueResolver } from './venueResolver.js';
 import { cacheKey, venueCacheStore } from '../../storage/venueCacheStore.js';
 import type { Logger } from '../../logging/logger.js';
 import { timed } from '../../logging/timed.js';
 
 /** Great Britain and Northern Ireland: [west, south, east, north]. */
 const UK_BOUNDS = [-8.65, 49.86, 1.77, 60.86];
-
-/** Matches precise enough to name a restaurant's location. */
-const PRECISE = new Set([
-  'PointOfInterest',
-  'PointAddress',
-  'InterpolatedAddress',
-  'SecondaryAddress',
-]);
 
 /** One SearchText result, as much of it as we use. */
 export type PlaceResult = {
@@ -48,22 +40,24 @@ export const amazonLocationSearch = (region: string): PlaceSearch => {
   };
 };
 
-/** A result as a Venue, or undefined when it's too vague to trust. */
+/**
+ * A result as a Venue, only when it's the place printed on the bill: a point
+ * of interest with exactly the bill's name. Anything else (another business
+ * in the same building, #175; a near-miss name; a bare address) is ignored
+ * and the bill keeps what's printed on it. A bill with no name gets nothing
+ * from the lookup: the lead is asked instead.
+ */
 export function venueFromPlace(
   place: PlaceResult | undefined,
   input: { name?: string; address?: string },
 ): Venue | undefined {
-  if (!place?.PlaceId || !place.PlaceType || !PRECISE.has(place.PlaceType)) return undefined;
+  if (!place?.PlaceId || place.PlaceType !== 'PointOfInterest') return undefined;
+  if (!input.name || !place.Title || !sameVenueName(place.Title, input.name)) return undefined;
   const [lng, lat] = place.Position ?? [];
-  // The name printed on the bill always wins. A building holds many
-  // businesses, and the top point of interest at a restaurant's address can
-  // be another one (Caravan, 6 Goods Yard Street, came back as the Chamber of
-  // Commerce, #175). The lookup only names the venue when the bill doesn't.
-  const name = input.name ?? (place.PlaceType === 'PointOfInterest' ? place.Title : undefined);
   const address = place.Address?.Label ?? input.address;
   return {
     placeId: place.PlaceId,
-    ...(name ? { name } : {}),
+    name: input.name,
     ...(address ? { address } : {}),
     ...(typeof lat === 'number' && typeof lng === 'number' ? { lat, lng } : {}),
   };
@@ -82,16 +76,17 @@ export class AmazonLocationVenueResolver implements VenueResolver {
   ) {}
 
   async resolve(input: { name?: string; address?: string }): Promise<Venue | undefined> {
+    // Only a printed name can be matched; with none, the bill keeps its address.
+    if (!input.name) return fromBill(input);
     const query = [input.name, input.address].filter(Boolean).join(', ').trim();
-    if (!query) return undefined;
 
     const key = cacheKey(input);
     const cached = await venueCacheStore.get(key).catch((err: unknown) => {
       this.logger?.warn({ err, key }, 'venue cache get failed; treating as miss');
       return null;
     });
-    // Older cached answers may carry a looked-up name: the bill's still wins.
-    if (cached) return cached.venue ? withBillName(cached.venue, input) : fromBill(input);
+    // Rows from before exact matching (no `exact`) may hold another place: look again.
+    if (cached?.exact) return cached.venue ?? fromBill(input);
 
     let found: Venue | undefined;
     try {
@@ -102,15 +97,11 @@ export class AmazonLocationVenueResolver implements VenueResolver {
       return fromBill(input);
     }
 
-    await venueCacheStore.put(key, { venue: found ?? null }).catch((err: unknown) => {
+    await venueCacheStore.put(key, { venue: found ?? null, exact: true }).catch((err: unknown) => {
       this.logger?.warn({ err, key }, 'venue cache put failed; cache miss next time');
     });
     return found ?? fromBill(input);
   }
-}
-
-function withBillName(venue: Venue, input: { name?: string }): Venue {
-  return input.name ? { ...venue, name: input.name } : venue;
 }
 
 function fromBill(input: { name?: string; address?: string }): Venue | undefined {

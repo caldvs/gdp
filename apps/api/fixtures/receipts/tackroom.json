@@ -1,0 +1,43 @@
+{
+  "venue": "The Tack Room",
+  "totalPence": 12453,
+  "servicePence": 342,
+  "taxPence": 711,
+  "items": [
+    {
+      "name": "BBQ Potato Chips",
+      "quantity": 1,
+      "lineTotalPence": 700
+    },
+    {
+      "name": "Diet Coke",
+      "quantity": 1,
+      "lineTotalPence": 300
+    },
+    {
+      "name": "Trillium Fort Point",
+      "quantity": 1,
+      "lineTotalPence": 1000
+    },
+    {
+      "name": "Fried Chicken Sandwich",
+      "quantity": 2,
+      "lineTotalPence": 3400
+    },
+    {
+      "name": "Famous Duck Grilled Cheese",
+      "quantity": 1,
+      "lineTotalPence": 2500
+    },
+    {
+      "name": "Mac & Cheese",
+      "quantity": 1,
+      "lineTotalPence": 1700
+    },
+    {
+      "name": "Burger of the moment",
+      "quantity": 1,
+      "lineTotalPence": 1800
+    }
+  ]
+}

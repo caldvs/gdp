@@ -22,3 +22,19 @@ export class NoopVenueResolver implements VenueResolver {
     });
   }
 }
+
+/**
+ * Whether two place names are the same name, the way a person reads them:
+ * case, apostrophes, spacing, punctuation and "&"/"and" aside. Nothing
+ * looser: "Rudy’s Pizza" is not "Rudy’s Neapolitan Pizza".
+ */
+export function sameVenueName(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/['’‘`]/g, '')
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  return norm(a) !== '' && norm(a) === norm(b);
+}

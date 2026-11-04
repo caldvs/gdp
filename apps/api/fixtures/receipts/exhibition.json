@@ -1,0 +1,53 @@
+{
+  "venue": "Exhibition",
+  "totalPence": 10588,
+  "servicePence": 963,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "150ML Aumerade",
+      "quantity": 1,
+      "lineTotalPence": 825
+    },
+    {
+      "name": "125 Liboll Spumante Rose",
+      "quantity": 2,
+      "lineTotalPence": 1300
+    },
+    {
+      "name": "Tenderstem Broccoli",
+      "quantity": 1,
+      "lineTotalPence": 1200
+    },
+    {
+      "name": "Grilled Peach Flatbread",
+      "quantity": 1,
+      "lineTotalPence": 1400
+    },
+    {
+      "name": "Panko Lamb Belly",
+      "quantity": 1,
+      "lineTotalPence": 900
+    },
+    {
+      "name": "Sweetcorn Fritters",
+      "quantity": 1,
+      "lineTotalPence": 400
+    },
+    {
+      "name": "Crab Bao",
+      "quantity": 1,
+      "lineTotalPence": 1000
+    },
+    {
+      "name": "Spiced Pork Neck",
+      "quantity": 1,
+      "lineTotalPence": 1900
+    },
+    {
+      "name": "BBQ Hispi Cabbage",
+      "quantity": 1,
+      "lineTotalPence": 700
+    }
+  ]
+}

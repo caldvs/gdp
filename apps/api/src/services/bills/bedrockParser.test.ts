@@ -171,6 +171,39 @@ describe('validateParsedBill', () => {
     expect(PROMPT).not.toContain('"unitPricePence"');
   });
 
+  it('finds the JSON when the model writes something before or after it', () => {
+    const json = JSON.stringify({
+      items: [{ name: 'Cobra', quantity: 1, lineTotalPence: 360, category: 'drink' }],
+      taxPence: 0,
+      serviceChargePence: 0,
+      currency: 'GBP',
+    });
+    const text = `I'll read both parts of the receipt together.\n\n${json}\n\nDone.`;
+    expect(validateParsedBill(text, 'Bedrock').items[0]?.name).toBe('Cobra');
+  });
+
+  it('keeps a short note on a line the reader is unsure of, and drops anything else', () => {
+    const text = JSON.stringify({
+      items: [
+        {
+          name: 'Diet Coke',
+          quantity: 3,
+          lineTotalPence: 825,
+          category: 'drink',
+          unsure: ' price faded ',
+        },
+        { name: 'Tricolore', quantity: 1, lineTotalPence: 675, category: 'food', unsure: null },
+      ],
+      taxPence: 0,
+      serviceChargePence: 0,
+      currency: 'GBP',
+    });
+    expect(validateParsedBill(text, 'Bedrock').items.map((i) => i.unsure)).toEqual([
+      'price faded',
+      undefined,
+    ]);
+  });
+
   it('names the reader in its errors', () => {
     expect(() => validateParsedBill('not json', 'Bedrock')).toThrow(/Bedrock returned non-JSON/);
   });

@@ -38,6 +38,14 @@ export const ParsedBillFromImageSchema = z.object({
               return r.success ? r.data : undefined;
             })
             .optional(),
+          // The reader's note on a line it couldn't read clearly ("price
+          // faded"). Anything that isn't a short note is dropped.
+          unsure: z
+            .unknown()
+            .transform((v) =>
+              typeof v === 'string' && v.trim() ? v.trim().slice(0, 60) : undefined,
+            )
+            .optional(),
         }),
       ),
     )

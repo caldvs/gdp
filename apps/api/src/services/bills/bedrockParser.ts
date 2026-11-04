@@ -27,7 +27,9 @@ import {
 // v5: discount lines; v6: line totals.
 // v7: finds the receipt, crops to it and reads a long one in overlapping parts.
 // v8: a UK VAT line printed for information is not tax to add (#176).
-const VERSION = 'v8';
+// v9: a dish priced on the line under a 0.00 line is one item; admin fees and
+// surcharges are service; an `unsure` note on lines it can't read clearly.
+const VERSION = 'v9';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Sonnet by

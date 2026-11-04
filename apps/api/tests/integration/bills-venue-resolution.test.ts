@@ -110,7 +110,7 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
 
   it('looks a venue up once, then serves it from a cache row with no TTL', async () => {
     const input = { name: `Test Kitchen ${uuidv7()}`, address: '1 Test Street' };
-    const search = counting(() => Promise.resolve(place));
+    const search = counting(() => Promise.resolve({ ...place, Title: input.name }));
     const resolver = new AmazonLocationVenueResolver(search);
     const first = await resolver.resolve(input);
     const second = await resolver.resolve(input);
@@ -125,7 +125,16 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
     expect(search.calls).toBe(1);
     const item = await row(input);
     expect(item?.source).toBe('amazon-location');
+    expect(item?.exact).toBe(true);
     expect(item?.ttlAt).toBeUndefined();
+  });
+
+  it('keeps just what’s printed when the place found has another name', async () => {
+    const input = { name: `Caravan ${uuidv7()}`, address: '6 Goods Yard Street' };
+    const search = counting(() =>
+      Promise.resolve({ ...place, Title: 'Greater Manchester Chamber Of Commerce' }),
+    );
+    expect(await new AmazonLocationVenueResolver(search).resolve(input)).toEqual(input);
   });
 
   it('caches "no precise match" so the same text isn’t looked up again', async () => {
@@ -147,7 +156,7 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
     expect(await row(input)).toBeUndefined();
   });
 
-  it('serves a cached row under the bill’s name, not the looked-up one (#175)', async () => {
+  it('looks again past a row from before exact matching (#175)', async () => {
     const input = { name: `Caravan ${uuidv7()}`, address: '6 Goods Yard Street' };
     const key = `VENUEQ#${cacheKey(input)}`;
     await ddb.send(
@@ -163,8 +172,8 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
     );
     const search = counting(() => Promise.resolve(place));
     const venue = await new AmazonLocationVenueResolver(search).resolve(input);
-    expect(venue).toEqual({ placeId: 'loc-2', name: input.name });
-    expect(search.calls).toBe(0);
+    expect(venue).toEqual(input);
+    expect(search.calls).toBe(1);
   });
 
   it('replaces an old Google Places row, dropping its TTL', async () => {
@@ -176,7 +185,7 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
         Item: { pk: key, sk: key, venue: { placeId: 'ChIJ-google' }, ttlAt: 2_000_000_000 },
       }),
     );
-    const search = counting(() => Promise.resolve(place));
+    const search = counting(() => Promise.resolve({ ...place, Title: input.name }));
     const venue = await new AmazonLocationVenueResolver(search).resolve(input);
     expect(venue?.placeId).toBe('loc-1');
     expect(search.calls).toBe(1);

@@ -11,6 +11,9 @@
  * `totalPence` (required) is the printed total including service and tax.
  * `lines` (optional) is the number of item lines on the bill.
  * `servicePence`, `taxPence` (optional) are checked when present.
+ * `venue` (optional) is the place's name as printed, or `null` for a bill
+ * that names none: the reader must give exactly that (ignoring case and
+ * punctuation), or no name at all.
  * `items` (optional) are the printed lines, after any discount is taken off
  * its item: `{ "name", "quantity", "lineTotalPence" }`. Each is matched to a
  * read line by name, and a wrong quantity or price is reported.
@@ -21,14 +24,21 @@
  *     npm run golden -w apps/api
  *   npm run golden -w apps/api -- pizza-express-4          # one receipt
  *
+ * Or through a deployed API (no AWS credentials needed: it signs in as a new
+ * `@test.invalid` account, so nothing is served from an earlier read):
+ *
+ *   npm run golden -w apps/api -- --api https://api.test.paymeback.dev
+ *
  * Exits non-zero if any receipt fails. Not part of CI: it costs real calls.
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { createBillParser } from '../src/services/bills/bedrockParser.js';
 import { readByOf } from '../src/services/bills/parser.js';
+import { sameVenueName } from '../src/services/bills/venueResolver.js';
 
 const DIR = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/receipts');
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -41,6 +51,7 @@ type Expected = {
   servicePence?: number;
   taxPence?: number;
   items?: ExpectedLine[];
+  venue?: string | null;
 };
 
 const words = (s: string) =>
@@ -120,9 +131,18 @@ export function checkReceipt(
     items: ReadLine[];
     serviceChargePence: number;
     taxPence: number;
+    venue?: { name?: string } | undefined;
   },
 ): string[] {
   const problems: string[] = [];
+  if (expected.venue !== undefined) {
+    const got = read.venue?.name;
+    if (expected.venue === null && got) problems.push(`venue "${got}", bill names none`);
+    if (expected.venue !== null && got && !sameVenueName(got, expected.venue)) {
+      problems.push(`venue "${got}", printed "${expected.venue}"`);
+    }
+    if (expected.venue !== null && !got) problems.push(`no venue, printed "${expected.venue}"`);
+  }
   const subtotal = read.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
   const total = subtotal + read.serviceChargePence + read.taxPence;
   if (total !== expected.totalPence) {
@@ -148,8 +168,79 @@ export function checkReceipt(
   return problems;
 }
 
+type Reader = {
+  label: string;
+  read: (bytes: Uint8Array, name: string) => Promise<Parameters<typeof checkReceipt>[1]>;
+};
+
+/** Reads through a deployed API's own upload → read flow, as a new test account. */
+async function apiReader(base: string): Promise<Reader> {
+  const call = async <T>(path: string, init: RequestInit & { token?: string } = {}): Promise<T> => {
+    const res = await fetch(`${base}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        ...(init.token && { authorization: `Bearer ${init.token}` }),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+    });
+    const body = (await res.json().catch(() => ({}))) as T & { error?: { code: string } };
+    if (!res.ok) throw new Error(`${path}: ${res.status} ${body.error?.code ?? ''}`);
+    return body;
+  };
+  const email = `golden-${Date.now()}@test.invalid`;
+  const { token } = await call<{ token: string }>('/v1/auth/email/test-sign-in', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+  type Bill = Parameters<typeof checkReceipt>[1] & { parsedFrom?: { parser?: string } };
+  return {
+    label: `${base} as ${email}`,
+    read: async (bytes) => {
+      const sha256 = createHash('sha256').update(bytes).digest('hex');
+      const slot = await call<{ status: string; uploadId?: string; url?: string; billId?: string }>(
+        '/v1/bills/uploads',
+        {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ sha256, sizeBytes: bytes.length, mimeType: 'image/jpeg' }),
+        },
+      );
+      let billId = slot.billId;
+      if (slot.status === 'new') {
+        const put = await fetch(slot.url!, {
+          method: 'PUT',
+          body: bytes,
+          headers: { 'content-type': 'image/jpeg' },
+        });
+        if (!put.ok) throw new Error(`upload: ${put.status}`);
+        let read = await call<{ readId: string; status: string; billId?: string; error?: unknown }>(
+          '/v1/bills/reads',
+          {
+            method: 'POST',
+            token,
+            headers: { 'idempotency-key': crypto.randomUUID() },
+            body: JSON.stringify({ uploadId: slot.uploadId }),
+          },
+        );
+        for (let i = 0; i < 60 && read.status !== 'done' && read.status !== 'failed'; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          read = await call(`/v1/bills/reads/${read.readId}`, { token });
+        }
+        if (read.status !== 'done')
+          throw new Error(`read ${read.status}: ${JSON.stringify(read.error)}`);
+        billId = read.billId;
+      }
+      return call<Bill>(`/v1/bills/${billId}`, { token });
+    },
+  };
+}
+
 async function main(): Promise<number> {
-  const only = new Set(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  const apiAt = args.indexOf('--api');
+  const api = apiAt >= 0 ? args.splice(apiAt, 2)[1] : undefined;
+  const only = new Set(args);
   const photos = existsSync(DIR)
     ? readdirSync(DIR)
         .filter((f) => IMAGE_EXT.has(extname(f).toLowerCase()))
@@ -161,11 +252,23 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  const parser = createBillParser({
-    bedrockModelId: process.env.BEDROCK_MODEL_ID,
-    region: process.env.AWS_REGION ?? 'eu-west-2',
-  });
-  console.log(`Reading ${photos.length} receipt(s) with ${parser.model} (${parser.version})\n`);
+  let reader: Reader;
+  if (api) {
+    reader = await apiReader(api.replace(/\/$/, ''));
+  } else {
+    const parser = createBillParser({
+      bedrockModelId: process.env.BEDROCK_MODEL_ID,
+      region: process.env.AWS_REGION ?? 'eu-west-2',
+    });
+    reader = {
+      label: `${parser.model} (${parser.version})`,
+      read: async (bytes, name) => {
+        const read = await parser.parse(bytes, `golden-${name}`);
+        return { ...read, by: readByOf(parser, read).model };
+      },
+    };
+  }
+  console.log(`Reading ${photos.length} receipt(s) with ${reader.label}\n`);
 
   let failed = 0;
   for (const photo of photos) {
@@ -178,12 +281,12 @@ async function main(): Promise<number> {
     const expected = JSON.parse(readFileSync(spec, 'utf8')) as Expected;
     const started = Date.now();
     try {
-      const read = await parser.parse(
-        new Uint8Array(readFileSync(join(DIR, photo))),
-        `golden-${name}`,
-      );
+      const read = await reader.read(new Uint8Array(readFileSync(join(DIR, photo))), name);
       const problems = checkReceipt(expected, read);
-      const by = readByOf(parser, read).model;
+      const by =
+        (read as { by?: string; parsedFrom?: { parser?: string } }).by ??
+        (read as { parsedFrom?: { parser?: string } }).parsedFrom?.parser ??
+        'api';
       const ms = Date.now() - started;
       if (problems.length === 0) {
         console.log(

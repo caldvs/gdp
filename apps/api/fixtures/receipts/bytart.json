@@ -1,0 +1,48 @@
+{
+  "venue": "Wild by Tart",
+  "totalPence": 6512,
+  "servicePence": 712,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Filtered Sparkling",
+      "quantity": 1,
+      "lineTotalPence": 150
+    },
+    {
+      "name": "Focaccia",
+      "quantity": 1,
+      "lineTotalPence": 450
+    },
+    {
+      "name": "Aubergine & Cashew satay",
+      "quantity": 2,
+      "lineTotalPence": 3600
+    },
+    {
+      "name": "Marquise cake",
+      "quantity": 1,
+      "lineTotalPence": 900
+    },
+    {
+      "name": "Cappuccino",
+      "quantity": 1,
+      "lineTotalPence": 250
+    },
+    {
+      "name": "Whole Milk",
+      "quantity": 2,
+      "lineTotalPence": 100
+    },
+    {
+      "name": "Flat white",
+      "quantity": 1,
+      "lineTotalPence": 250
+    },
+    {
+      "name": "#CookForUkraine",
+      "quantity": 1,
+      "lineTotalPence": 100
+    }
+  ]
+}

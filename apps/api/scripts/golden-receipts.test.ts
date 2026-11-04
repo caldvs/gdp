@@ -63,3 +63,26 @@ describe('golden line check', () => {
     ]);
   });
 });
+
+describe('checkReceipt: venue', () => {
+  const read = (name?: string) => ({
+    items: [{ name: 'Cobra', unitPricePence: 360, quantity: 1 }],
+    serviceChargePence: 0,
+    taxPence: 0,
+    ...(name ? { venue: { name } } : {}),
+  });
+  it('wants exactly the printed name, or none when the bill names none', () => {
+    expect(
+      checkReceipt({ totalPence: 360, venue: 'Pot Kettle Black' }, read('POT KETTLE BLACK')),
+    ).toEqual([]);
+    expect(
+      checkReceipt({ totalPence: 360, venue: 'PKB - Angel Gardens' }, read('Pot Kettle Black')),
+    ).toEqual(['venue "Pot Kettle Black", printed "PKB - Angel Gardens"']);
+    expect(checkReceipt({ totalPence: 360, venue: null }, read('Gusto'))).toEqual([
+      'venue "Gusto", bill names none',
+    ]);
+    expect(checkReceipt({ totalPence: 360, venue: 'Gusto' }, read())).toEqual([
+      'no venue, printed "Gusto"',
+    ]);
+  });
+});

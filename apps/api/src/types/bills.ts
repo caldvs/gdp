@@ -40,6 +40,10 @@ export const ParsedFromSchema = z.object({
   // Optional for forward-compat with bills parsed before this field existed.
   // Bills without it can't serve image-url; the endpoint returns IMAGE_UNAVAILABLE.
   uploadId: z.string().uuid().optional(),
+  // Whether this bill's read came from the parser or the analysis cache, and
+  // when that read was made. Optional: bills from before the cache lack them.
+  source: z.enum(['parser', 'cache']).optional(),
+  analysedAt: z.string().datetime().optional(),
 });
 export type ParsedFrom = z.infer<typeof ParsedFromSchema>;
 

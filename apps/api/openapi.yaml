@@ -1884,6 +1884,17 @@ components:
               type: string
               format: uuid
               description: Original upload identifier; absent on bills parsed before this field was retained.
+            source:
+              type: string
+              enum: [parser, cache]
+              description: |
+                Where this bill's read came from: the parser, or the analysis
+                cache (the same image read before by the same parser
+                fingerprint, by anyone). Absent on bills from before the cache.
+            analysedAt:
+              type: string
+              format: date-time
+              description: When the read this bill came from was made. Absent on bills from before the cache.
         venue: { $ref: '#/components/schemas/Venue' }
         previousVersionId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }

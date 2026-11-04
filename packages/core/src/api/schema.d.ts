@@ -1323,6 +1323,18 @@ export interface components {
                  * @description Original upload identifier; absent on bills parsed before this field was retained.
                  */
                 uploadId?: string;
+                /**
+                 * @description Where this bill's read came from: the parser, or the analysis
+                 *     cache (the same image read before by the same parser
+                 *     fingerprint, by anyone). Absent on bills from before the cache.
+                 * @enum {string}
+                 */
+                source?: "parser" | "cache";
+                /**
+                 * Format: date-time
+                 * @description When the read this bill came from was made. Absent on bills from before the cache.
+                 */
+                analysedAt?: string;
             };
             venue?: components["schemas"]["Venue"];
             /** Format: uuid */

@@ -179,7 +179,7 @@ text(C4X + 16, ddb_y + 28, 'DynamoDB', 't-title')
 text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
-for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
+for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
                    ('FEE# CREDIT(S)# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:

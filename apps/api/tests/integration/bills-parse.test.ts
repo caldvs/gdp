@@ -111,6 +111,7 @@ describe('POST /v1/bills/parse', () => {
     const parser = {
       model: 'eu.anthropic.claude-haiku',
       version: 'v3',
+      fingerprint: `eu.anthropic.claude-haiku:v3:${uuidv7()}`,
       parse: () =>
         Promise.resolve({ ...sampleParsedBill, readBy: { model: 'other-model', version: 'v9' } }),
     };

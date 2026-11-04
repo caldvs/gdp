@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ParsedBillFromImageSchema } from './parser.js';
+import { ParsedBillFromImageSchema, fingerprintOf, promptHash } from './parser.js';
 
 const base = { taxPence: 0, serviceChargePence: 0, currency: 'GBP' as const };
 const item = (extra: Record<string, unknown>) => ({
@@ -60,5 +60,14 @@ describe('bill prompt: venue name', () => {
     expect(PROMPT).toMatch(/venue\.name" is the restaurant/);
     expect(PROMPT).toMatch(/Never put anything else in venue\.name/);
     expect(PROMPT).not.toMatch(/explain in venue\.name/);
+  });
+});
+
+describe('parser fingerprint', () => {
+  it('is model:version and the first 8 hex of the prompts’ SHA-256', () => {
+    expect(promptHash('a')).toMatch(/^[0-9a-f]{8}$/);
+    expect(promptHash('a')).not.toBe(promptHash('b'));
+    expect(promptHash('a', 'b')).not.toBe(promptHash('a'));
+    expect(fingerprintOf('m', 'v2', 'a')).toBe(`m:v2:${promptHash('a')}`);
   });
 });

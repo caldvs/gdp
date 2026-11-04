@@ -56,7 +56,7 @@ npm run deploy:dev   # bundle check → cdk deploy GdpBackendDev → smoke test
 npm run smoke -- https://<api-url>   # smoke-test any deployed API
 ```
 
-`deploy:dev` uses the `gdp-dev` AWS profile and needs the secrets and parameters listed in `infra/main.ts`. CI deploys on every push to `main` once its role exists: see [`docs/deploy.md`](../../docs/deploy.md).
+`deploy:dev` uses the `gdp-dev` AWS profile and needs the secrets and parameters listed in `infra/main.ts`. Actions deploys dev hourly from the newest green `main` (Test Deploy) once its role exists: see [`docs/deploy.md`](../../docs/deploy.md).
 
 When an alarm fires: [`RUNBOOK.md`](RUNBOOK.md).
 

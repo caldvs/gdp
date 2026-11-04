@@ -1,7 +1,8 @@
 name: API Deploy
 
-# Push to main → deploy dev (test.paymeback.dev's API) automatically.
-# Manual dispatch → redeploy dev.
+# Test Deploy (test-deploy.yml) calls this hourly with `environment: dev` when
+# the newest green commit on main changed the API. Manual dispatch → redeploy
+# dev now.
 # Prod only deploys through the Release workflow (release.yml), which calls
 # this one with `environment: prod` (#124).
 #
@@ -16,9 +17,6 @@ name: API Deploy
 #      Limit both to the `main` branch, and add a required reviewer to `prod`.
 
 on:
-  push:
-    branches: [main]
-    paths: ["apps/api/**", "package-lock.json", ".github/workflows/api-*.yml"]
   workflow_dispatch:
     inputs:
       environment:

@@ -1,0 +1,151 @@
+name: Test Deploy
+
+# Every hour, put the newest green commit on main onto test: the dev API
+# (API Deploy, environment `dev`) and test.paymeback.dev (a Vercel Preview
+# build aliased to it). Pushes to main deploy nothing themselves; prod only
+# deploys through Release (release.yml).
+#
+# - Picks the newest commit on main whose CI `gate` passed (a commit still in
+#   CI waits for the next hour).
+# - Compares it with the `test-live` tag (what test runs now) and deploys only
+#   the parts that changed: the API for apps/api, the web app for apps/web or
+#   packages. Nothing new → nothing deploys, so a quiet hour costs nothing.
+# - Moves `test-live` once everything it deployed succeeded. A failure leaves
+#   the tag, so the next hour tries again; fix main.
+# - Run it by hand (Actions → Test Deploy → Run workflow) to deploy now;
+#   `force` redeploys both parts even if nothing changed.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Redeploy the API and web app even if nothing changed
+        type: boolean
+        default: false
+
+concurrency:
+  group: test-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pick:
+    name: pick a commit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      sha: ${{ steps.pick.outputs.sha }}
+      api: ${{ steps.pick.outputs.api }}
+      web: ${{ steps.pick.outputs.web }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Newest green commit, and what changed since test-live
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          sha=""
+          for c in $(git rev-list --first-parent -n 30 origin/main); do
+            ok=$(gh api "repos/$GITHUB_REPOSITORY/commits/$c/check-runs?check_name=gate&filter=latest" \
+              --jq '[.check_runs[] | select(.conclusion == "success")] | length')
+            if [ "$ok" != "0" ]; then sha=$c; break; fi
+          done
+          if [ -z "$sha" ]; then
+            echo "No green commit in main's last 30; nothing to deploy" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "api=false" >>"$GITHUB_OUTPUT"; echo "web=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          live=$(git rev-parse --verify -q "refs/tags/test-live^{commit}" || true)
+          api=false; web=false
+          if [ "$FORCE" = "true" ] || [ -z "$live" ]; then
+            api=true; web=true
+          elif [ "$live" != "$sha" ]; then
+            if ! git merge-base --is-ancestor "$live" "$sha"; then
+              # test runs something newer than the newest green commit (main
+              # went red since). Leave it.
+              echo "test-live (${live::7}) is ahead of ${sha::7}; nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "api=false" >>"$GITHUB_OUTPUT"; echo "web=false" >>"$GITHUB_OUTPUT"
+              exit 0
+            fi
+            changed=$(git diff --name-only "$live" "$sha")
+            grep -qE '^(apps/api/|package-lock\.json$|\.github/workflows/api-deploy\.yml$)' <<<"$changed" && api=true
+            grep -qE '^(apps/web/|packages/|package\.json$|package-lock\.json$|\.nvmrc$)' <<<"$changed" && web=true
+          fi
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+          echo "api=$api" >>"$GITHUB_OUTPUT"
+          echo "web=$web" >>"$GITHUB_OUTPUT"
+          echo "test: ${live:+${live::7} → }${sha::7} (API: $api, web: $web)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  api:
+    name: dev API
+    needs: pick
+    if: needs.pick.outputs.api == 'true'
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/api-deploy.yml
+    with:
+      environment: dev
+      ref: ${{ needs.pick.outputs.sha }}
+    secrets: inherit
+
+  web:
+    name: test.paymeback.dev
+    needs: pick
+    if: needs.pick.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_ORG_ID: team_q5vYiPRRAr17CPwZR2Dbhopi
+      VERCEL_PROJECT_ID: prj_1FsdXAkZbS0ikRFRXJXJ9BPKvDK9
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SHA: ${{ needs.pick.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.pick.outputs.sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Deploy a preview and point test.paymeback.dev at it
+        run: |
+          url=$(npx --yes vercel@64.7.0 deploy --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$SHA")
+          # `vercel alias` looks up the token's user, which this token can't;
+          # the REST API needs only the team.
+          host=${url#https://}
+          id=$(curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$host?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          curl -fsS -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H 'content-type: application/json' \
+            -d '{"alias":"test.paymeback.dev"}' \
+            "https://api.vercel.com/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID" | jq -r '.alias // .'
+          echo "test.paymeback.dev → $url (${SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  mark:
+    name: move test-live
+    needs: [pick, api, web]
+    # Something deployed and nothing failed (a part with no changes skips).
+    if: >-
+      always() && needs.pick.result == 'success'
+      && (needs.pick.outputs.api == 'true' || needs.pick.outputs.web == 'true')
+      && needs.api.result != 'failure' && needs.api.result != 'cancelled'
+      && needs.web.result != 'failure' && needs.web.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Tag what test now runs
+        env:
+          SHA: ${{ needs.pick.outputs.sha }}
+        run: |
+          git tag -f test-live "$SHA"
+          git push -f origin refs/tags/test-live

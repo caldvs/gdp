@@ -108,7 +108,7 @@ npm run deploy:dev -w apps/api   # validate → cdk deploy GdpBackendDev → smo
 Uses the `gdp-dev` AWS profile. The SSM parameters and Secrets Manager
 secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
 
-### Let CI deploy on every push to main (one-off)
+### Let Actions deploy dev (one-off)
 
 `.github/workflows/api-deploy.yml` deploys with GitHub OIDC. To give it a role:
 
@@ -183,11 +183,15 @@ Git pushes never deploy (`apps/web/vercel.json` switches Git deploys off):
 Hobby allows 100 deployments a day and every push counts. GitHub Actions
 deploys instead (#124):
 
-- **Test:** every push to main that touches the web app (`apps/web`,
-  `packages/core`, `package.json`, the lockfile) gets, once CI's `gate`
-  passes, a Vercel Preview build (Preview env vars: the dev API) aliased to
-  `test.paymeback.dev` (CI's `deploy test • web` job). API changes deploy
-  dev through API Deploy as before. So main is always what's on test.
+- **Test:** pushes to main deploy nothing. Every hour (at :17) **Test Deploy**
+  (`test-deploy.yml`) takes the newest commit on main whose `gate` passed,
+  compares it with the `test-live` tag (what test runs now) and deploys only
+  what changed: the dev API (API Deploy, `dev`) for `apps/api`, and for
+  `apps/web` or `packages` a Vercel Preview build (Preview env vars: the dev
+  API) aliased to `test.paymeback.dev`. Then it moves `test-live`. A quiet
+  hour deploys nothing, so test costs at most 24 Vercel deploys a day. Run it
+  by hand to deploy now (`force` redeploys both). If a deploy fails the tag
+  stays put and the next hour retries, so fix main.
 - **Live:** Actions → **Release** → Run workflow (optionally a commit on main;
   blank means latest). It refuses a commit whose `gate` didn't pass, deploys
   the prod API (`GdpBackendProd`; the `prod` environment's reviewer approves),

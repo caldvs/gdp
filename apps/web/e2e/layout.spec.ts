@@ -148,3 +148,31 @@ test('a table of ten: everyone claims, the shares add up, the lead closes', asyn
   await expect(lead.getByText('Bill closed')).toBeVisible({ timeout: 10_000 });
   await ctx.close();
 });
+
+test.describe('screen sizes', () => {
+  const unauth = (page: Page) =>
+    page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
+
+  for (const [w, h] of [[320, 568], [390, 844], [768, 1024]] as const) {
+    test(`landing at ${w}px: Scan a bill sits above the footer, and nothing scrolls sideways`, async ({ page }) => {
+      await page.setViewportSize({ width: w, height: h });
+      await unauth(page);
+      await page.goto('/sign-in');
+      const scan = page.getByRole('link', { name: 'Scan a bill' });
+      await expect(scan).toBeVisible();
+      const [cta, foot] = await Promise.all([scan.boundingBox(), page.locator('footer').boundingBox()]);
+      expect(cta!.y + cta!.height).toBeLessThanOrEqual(foot!.y);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+    });
+  }
+
+  test('desktop: the action bar sits under the content, not at the foot of the window', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const api = new FakeApi();
+    await open(page, api, users.sam, `/session/${SID}`);
+    const last = page.locator('.claim').last();
+    await expect(last).toBeVisible();
+    const [row, bar] = await Promise.all([last.boundingBox(), page.locator('.actionbar').boundingBox()]);
+    expect(bar!.y - (row!.y + row!.height)).toBeLessThan(120);
+  });
+});

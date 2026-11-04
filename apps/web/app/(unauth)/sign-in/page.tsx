@@ -100,15 +100,6 @@ function Landing() {
         <ExampleMonth />
       </section>
 
-      <footer className="home__foot">
-        <span>© Pay Me Back</span>
-        <nav aria-label="Legal">
-          <Link href="/terms">Terms</Link>
-          <Link href="/privacy">Privacy</Link>
-          <Link href="/refunds">Refunds</Link>
-        </nav>
-      </footer>
-
       <div className="actionbar home__bar">
         <div className="actionbar__in actionbar__in--stack">
           <p className="home__bar-note">First bill each month is free</p>
@@ -118,6 +109,15 @@ function Landing() {
           </div>
         </div>
       </div>
+      <footer className="home__foot">
+        <span>© Pay Me Back</span>
+        <nav aria-label="Legal">
+          <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/refunds">Refunds</Link>
+        </nav>
+      </footer>
+
     </main>
   );
 }

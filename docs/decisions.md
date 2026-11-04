@@ -56,12 +56,14 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Exempt accounts** (decided 1 Nov 2026; tightened 3–4 Nov, #137). Email addresses on `TABLE_FEE_EXEMPT_EMAILS` never pay the platform fee, and sign in with just their email, no link. The list is a GitHub environment **secret** only (a variable would be printed in public run logs), and prod's entry is a hard-to-guess address used only for testing live, not anyone's real email (Callum, 3 Nov 2026): knowing the address is what signs you in, so it's treated like a password. Bank details stay on the device either way.
-- **Platform fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Screens call it the *platform fee* (#128, 3 Nov 2026); code, routes, Stripe lookup keys and `TABLE_FEE_*` settings keep the old name.
-  - **One free bill a month per lead** (confirmed 1 Nov 2026, built 4 Nov 2026, #139), shown as a **credit**: "Spend 1 credit & get QR code", "1 credit left · you get 1 free each month", "1 credit spent · next credit 1 Dec", "No credits left this month"; the account shows "Credits · 1 left". Months are calendar months in UK time; the next credit comes on the 1st.
-  - After that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR.
-  - **The server enforces it** (#139): `/share` needs the bill's paid fee, an exempt lead or the month's credit, else 402 `TABLE_FEE_REQUIRED`. **One fee, one share**: a fee pays for the session it shared and no other, so sharing a bill again after closing it costs a new fee (or the credit). A paid fee is used before the credit.
-  - **Refund if nobody joins, at close or bin only** (#132, 4 Nov 2026): no time limit for now, as the safe default; Callum can revisit. A credit spent on a bill nobody joined is handed back the same way.
-  - Not built: guests repay the fee in what they owe. Until then no screen says they do ("recovered from your guests" and "Your guests pay this back" from the board are left out).
+- **Pricing** (decided 4 Nov 2026, #171; replaces the £2/£3 fee paid at the QR). Sharing a bill is free for the lead overall:
+  - **One free bill a month** for every lead, credit buyers included (built 4 Nov, #139). Months are calendar months in UK time; the next one comes on the 1st. Shown as a **credit**: "Spend 1 credit & get QR code", "1 credit left".
+  - **Credits:** 10 for £5 (#169). They never expire and can't be refunded; the checkout asks for consent to immediate supply. A credit makes the bill free for everyone. The free one is spent first.
+  - **No credit: a £1 hold** on the lead's card at the QR (#165). Nothing is taken then. Guests repay the £1 to the lead **in proportion to what they ordered**: `floor(100 × their total / bill total)` pence each (#166), so the amount doesn't depend on who joins or pays first, and couples on one phone pay for what they had. At close the platform takes what the guests owe, at most £1, from the hold and releases the rest (#167). If nobody joined, or the guests' part is under Stripe's 30p minimum, the hold is cancelled. A daily job takes the fee from holds on bills still open after 6 days, before the card's hold lapses (#168).
+  - Why: a per-head split charges whoever pays first more; a split by spend is fixed by the bill. A hold keeps the lead's upfront cost at nothing. Credits mean one Stripe fee for ten bills.
+  - Everything up to the QR stays free (scan, check and edit the bill, bank details). **The server enforces it** (#139): `/share` needs a hold, an exempt lead or a credit, else 402 `TABLE_FEE_REQUIRED`. **One hold, one share**: a hold pays for the session it shared and no other.
+  - Screens call it the *platform fee* (#128); code, routes and `TABLE_FEE_*` settings keep the old name.
+  - Built so far: the free monthly credit and the server check. The hold, guests' share, capture, sweep and credit packs follow #171's order.
 
   See [table-fee.md](table-fee.md).
 

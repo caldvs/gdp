@@ -5,8 +5,9 @@ import { ApiError } from '@gdp/core/api';
 import { clearToken, isTabSignedIn } from '@gdp/core/api/auth';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useTestAccountSignIn } from '@gdp/core/api/hooks/useEmailSignIn';
+import { savePayoutAccount } from '@gdp/core/lib/payoutAccount';
 import { getSkipReadCache, setSkipReadCache } from '@gdp/core/lib/skipReadCache';
-import { newGuestName, TEST_ACCOUNT_NAMES, testAccountEmail } from '@gdp/core/lib/testAccounts';
+import { newGuestName, TEST_ACCOUNT_NAMES, testAccountEmail, testPayoutAccount } from '@gdp/core/lib/testAccounts';
 import { TEST_TOOLS_ENABLED, WEB_APP_ENV } from '@/lib/config';
 import { Button } from './ui';
 
@@ -16,6 +17,7 @@ const TAB_ONLY_KEY = 'gdp.test.tabOnly';
  * Local and dev only: shows which account this tab is, and signs in as a
  * test account (@test.invalid, no code). "This tab" keeps the switch to
  * this tab, so the lead and a guest can sit side by side in one window.
+ * Named accounts arrive with made-up bank details and Monzo/Revolut handles.
  * Local only: "Skip bill cache" reads a photo with the model again even
  * if this account has read it before.
  *
@@ -59,6 +61,9 @@ function Bar({ startOpen, reload }: { startOpen: boolean; reload: boolean }) {
     setError(null);
     try {
       await signIn.mutateAsync({ email: testAccountEmail(name), tabOnly });
+      // Same scope as the sign-in: this tab only, or the whole browser.
+      const payout = testPayoutAccount(name);
+      if (payout) await savePayoutAccount(payout, { remember: !tabOnly });
       if (reload) window.location.reload();
       else setOpen(false);
     } catch (err) {

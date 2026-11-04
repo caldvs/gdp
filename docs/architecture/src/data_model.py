@@ -55,9 +55,9 @@ GAP = 44
 y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
-          ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
-y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash', 'status pending → approved → claimed', '  (conditional updates: each once)', 'expiresAt (15 min), claimBy']) + GAP
-y = place(0, y, 'Link sending limit', 'id', '15 min', [('pk', 'SIGNINRATE#email:{email}'), ('sk', 'W#{15-min window} | LAST')], ['sends (at most 5, conditional add)', 'sentAt: one link per 30 s']) + GAP
+          ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
+y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash, code (#138)', 'status pending → approved | denied → claimed', '  (conditional updates: each once)', 'expiresAt (15 min), claimBy']) + GAP
+y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#user:{id}'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 
@@ -82,7 +82,7 @@ y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('
 # Session item collection (custom)
 sx, sy = COLS[2], y
 rows = [
-    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners']),
+    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck']),
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mintSessionToken, verifySessionToken } from './sessionToken.js';
 import { AppError } from '../../errors/AppError.js';
+import { createSessionTokenVerifier } from '../auth.js';
 
 const secretA = new TextEncoder().encode('a'.repeat(32));
 const secretB = new TextEncoder().encode('b'.repeat(32));
@@ -67,5 +68,22 @@ describe('sessionToken', () => {
     const token = await mintSessionToken({ userId: 'u-1', email: 'a@b' }, secretA);
     const verified = await verifySessionToken(token, secretA);
     expect(verified.name).toBeUndefined();
+  });
+
+  it('carries the token version, 0 when minted without one (#155)', async () => {
+    const v2 = await mintSessionToken({ userId: 'u-1', email: 'a@b', tokenVersion: 2 }, secretA);
+    expect((await verifySessionToken(v2, secretA)).tokenVersion).toBe(2);
+    const v0 = await mintSessionToken({ userId: 'u-1', email: 'a@b' }, secretA);
+    expect((await verifySessionToken(v0, secretA)).tokenVersion).toBe(0);
+  });
+
+  it('the verifier refuses a token older than the user row says (#155)', async () => {
+    let current = 1;
+    const verify = createSessionTokenVerifier(secretA, () => Promise.resolve(current));
+    const v1 = await mintSessionToken({ userId: 'u-1', email: 'a@b', tokenVersion: 1 }, secretA);
+    await expect(verify(v1)).resolves.toMatchObject({ userId: 'u-1' });
+    current = 2;
+    await expect(verify(v1)).rejects.toMatchObject({ code: 'AUTH_INVALID' });
+    await expect(verify('')).rejects.toMatchObject({ code: 'AUTH_INVALID' });
   });
 });

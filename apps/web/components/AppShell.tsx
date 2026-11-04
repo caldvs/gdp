@@ -85,7 +85,7 @@ function Menu({ email, closing, onClose, onClosed }: { email?: string; closing: 
       <div className="menu__foot">
         <div className="menu__foot-in">
           <span className="small muted">{email}</span>
-          <Button tone="text" small onClick={() => { void signOut().then(() => router.replace('/sign-in')); }}>Sign out</Button>
+          <Button tone="text" small onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
         </div>
       </div>
     </div>

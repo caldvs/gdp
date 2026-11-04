@@ -52,12 +52,19 @@ export interface paths {
          * @description Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
          *     token is in the fragment, so it never reaches a server log. It works
          *     once and expires in 15 minutes. The link points at the calling
-         *     origin when it's on the allow-list (test.paymeback.dev, previews),
-         *     otherwise at `APP_BASE_URL`. At most one link every 30 seconds and
-         *     5 every 15 minutes per address (429 otherwise).
+         *     origin only when it is exactly one of the server's listed bases
+         *     (dev: test.paymeback.dev, localhost), otherwise at `APP_BASE_URL`;
+         *     prod always uses `APP_BASE_URL`. At most one link every 30 seconds
+         *     and 5 every 15 minutes per address (counted without `+tags` or Gmail
+         *     dots), 20 an hour per IP address, and 1000 an hour in all (429
+         *     otherwise).
          *
          *     Returns `requestId`, a secret the asking tab keeps and passes to
-         *     `POST /v1/auth/email/requests` until the link has been opened.
+         *     `POST /v1/auth/email/requests` until the link has been opened, and
+         *     `code`, a two-digit number the asking tab shows. The link's page
+         *     shows the same number and asks the person to confirm it before
+         *     signing anyone in, so a request someone else started can't be
+         *     completed by accident.
          *
          *     The response is the same whether or not the address has an
          *     account, so addresses can't be enumerated. Email delivery failures
@@ -68,6 +75,52 @@ export interface paths {
          *     signed in.
          */
         post: operations["startEmailSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/email/link/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The number an emailed link's request shows
+         * @description Called by the tab the link opened, before anything else: returns
+         *     the two-digit number the tab that asked is showing, for the person
+         *     to check. Changes nothing. A used, denied, expired, wrong or
+         *     unknown token is `401 AUTH_INVALID`.
+         */
+        post: operations["getEmailSignInLinkCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/email/link/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refuse an emailed link whose number isn't yours
+         * @description The person says the number isn't the one on their screen, so
+         *     someone else asked: the request can no longer sign anyone in, and
+         *     the tab that asked sees `expired`. Always `200 {ok: true}`, even for
+         *     a used or unknown link.
+         */
+        post: operations["denyEmailSignInLink"];
         delete?: never;
         options?: never;
         head?: never;
@@ -85,12 +138,15 @@ export interface paths {
         put?: never;
         /**
          * Sign in with the token from an emailed link
-         * @description Called by the tab the link opened. Looks up (or creates) the
-         *     account for the link's email and mints a session JWT. Also marks
-         *     the request approved, so the tab that asked signs in too.
+         * @description Called by the tab the link opened, once the person has confirmed
+         *     the number (`code`) matches the one the asking tab shows. Looks up
+         *     (or creates) the account for the link's email and mints a session
+         *     JWT. Also marks the request approved, so the tab that asked signs
+         *     in too.
          *
-         *     Works once, within 15 minutes. Any failure (used, expired, wrong
-         *     or unknown token) is `401 AUTH_INVALID`, so they can't be told apart.
+         *     Works once, within 15 minutes, and only with the request's number.
+         *     Any failure (used, denied, expired, wrong or unknown token, wrong
+         *     number) is `401 AUTH_INVALID`, so they can't be told apart.
          */
         post: operations["openEmailSignInLink"];
         delete?: never;
@@ -158,6 +214,28 @@ export interface paths {
         get: operations["getCurrentUser"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out everywhere
+         * @description Ends every session token this user holds, on every device: tokens
+         *     minted before this call get `401 AUTH_INVALID` from then on. The
+         *     web app's Sign out calls it.
+         */
+        post: operations["signOutEverywhere"];
         delete?: never;
         options?: never;
         head?: never;
@@ -433,6 +511,8 @@ export interface paths {
         /**
          * Resolve a 6-character join code to a session ID
          * @description Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
+         *     At most 30 lookups per user every 10 minutes (429 `RATE_LIMITED` with
+         *     `details.retryAfterSeconds`), so codes can't cheaply be guessed.
          */
         post: operations["resolveJoinCode"];
         delete?: never;
@@ -495,6 +575,33 @@ export interface paths {
          *     as the share. Otherwise `402 TABLE_FEE_REQUIRED`.
          */
         post: operations["shareSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/payout-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * The lead publishes a fingerprint of the bank details in their join link
+         * @description The lead's device sends `payoutCheck`, a PBKDF2 fingerprint of the bank
+         *     details it puts in the join link's `#p=` fragment, salted with the session
+         *     id. The details themselves never reach the server (ADR-0002). Guests' apps
+         *     recompute it from the link and warn when it doesn't match, so a re-posted
+         *     link with someone else's details is caught (#151). Lead only, until the
+         *     bill is closed.
+         */
+        put: operations["setSessionPayoutCheck"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1253,6 +1360,12 @@ export interface components {
              */
             expectedDiners?: number;
             /**
+             * @description The lead's fingerprint of the bank details in their join link (#151),
+             *     set with `PUT /v1/sessions/{sessionId}/payout-check`. Absent until the
+             *     lead's device sends one.
+             */
+            payoutCheck?: string;
+            /**
              * @description Computed view of share state per ADR-0006. One entry per item
              *     with at least one sharer; `userIds` is the splitter set. Server
              *     derives this from participants' `sharedItemIds` on every read.
@@ -1659,6 +1772,8 @@ export interface operations {
                         ok: true;
                         /** @description Everyone but exempt addresses. Secret; keep it in the tab that asked. */
                         requestId?: string;
+                        /** @description Everyone but exempt addresses. The number the asking tab shows; not a secret. */
+                        code?: string;
                         /** @description Exempt addresses only: the session JWT. */
                         token?: string;
                         /** @description Exempt addresses only. */
@@ -1673,7 +1788,8 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             /**
              * @description `RATE_LIMITED`: a link was sent to this address less than 30
-             *     seconds ago, or 5 have been sent in the last 15 minutes.
+             *     seconds ago, 5 have been sent in the last 15 minutes, 20 this
+             *     hour from this IP address, or 1000 this hour in all.
              *     `details.retryAfterSeconds` says when to try again.
              */
             429: {
@@ -1684,6 +1800,74 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    getEmailSignInLinkCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The number. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description The link was used already, expired, or isn't one we sent (`AUTH_INVALID`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    denyEmailSignInLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Done. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        ok: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     openEmailSignInLink: {
@@ -1697,6 +1881,7 @@ export interface operations {
             content: {
                 "application/json": {
                     token: string;
+                    code: string;
                 };
             };
         };
@@ -1834,6 +2019,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    signOutEverywhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out everywhere. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        ok: true;
+                    };
                 };
             };
             401: components["responses"]["Unauthorized"];
@@ -2256,6 +2465,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Too many codes tried (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     getSession: {
@@ -2368,6 +2586,46 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             /** @description Session is not in `setup` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setSessionPayoutCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    payoutCheck: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The session, with `payoutCheck`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill is closed (`SESSION_INVALID_STATE`). */
             409: {
                 headers: {
                     [name: string]: unknown;

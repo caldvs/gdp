@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ALLOWED_ORIGINS, originMatcher, parseOrigins } from './allowedOrigins.js';
+import {
+  ALLOWED_ORIGINS,
+  SIGN_IN_LINK_BASES,
+  originMatcher,
+  parseOrigins,
+  pickLinkBase,
+} from './allowedOrigins.js';
 
 describe('originMatcher', () => {
   const dev = originMatcher(ALLOWED_ORIGINS.dev);
@@ -15,6 +21,13 @@ describe('originMatcher', () => {
     expect(dev('https://web-nqib-du27dnobe-caldvs-projects.vercel.app')).toBe(true);
     expect(dev('https://evil.com/x-caldvs-projects.vercel.app')).toBe(false);
     expect(dev('https://-caldvs-projects.vercel.app')).toBe(false);
+    expect(dev('https://web-nqib--caldvs-projects.vercel.app')).toBe(false);
+  });
+
+  it('the preview wildcard is this project only, with no hyphens (#149)', () => {
+    expect(dev('https://evil-caldvs-projects.vercel.app')).toBe(false);
+    expect(dev('https://web-nqib-x-evil-caldvs-projects.vercel.app')).toBe(false);
+    expect(dev('https://web-nqib-git-main-caldvs-projects.vercel.app')).toBe(false);
   });
 
   it('refuses look-alikes and anything not listed', () => {
@@ -38,6 +51,28 @@ describe('originMatcher', () => {
 
   it('rejects a pattern with two wildcards', () => {
     expect(() => originMatcher(['https://*.*.dev'])).toThrow();
+  });
+});
+
+describe('pickLinkBase (#149)', () => {
+  it('uses the Origin only when it is exactly a listed base', () => {
+    const bases = SIGN_IN_LINK_BASES.dev;
+    const fallback = 'https://test.paymeback.dev';
+    expect(pickLinkBase('http://localhost:8081', bases, fallback)).toBe('http://localhost:8081');
+    expect(pickLinkBase('https://test.paymeback.dev', bases, fallback)).toBe(fallback);
+    expect(pickLinkBase('https://web-nqib-abc-caldvs-projects.vercel.app', bases, fallback)).toBe(
+      fallback,
+    );
+    expect(pickLinkBase('https://test.paymeback.dev.evil.com', bases, fallback)).toBe(fallback);
+    expect(pickLinkBase('https://TEST.paymeback.dev', bases, fallback)).toBe(fallback);
+    expect(pickLinkBase(undefined, bases, fallback)).toBe(fallback);
+  });
+
+  it('prod always uses APP_BASE_URL', () => {
+    expect(SIGN_IN_LINK_BASES.prod).toEqual([]);
+    expect(pickLinkBase('https://paymeback.dev', SIGN_IN_LINK_BASES.prod, 'https://x.dev')).toBe(
+      'https://x.dev',
+    );
   });
 });
 

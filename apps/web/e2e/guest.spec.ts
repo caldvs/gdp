@@ -4,8 +4,8 @@
  * after the lead closes.
  */
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { CODE, FakeApi, SID, SIGN_IN_LINK_TOKEN, items, users, type User } from './fakeApi';
-import { fragmentFor } from './fakeApi';
+import { CODE, FakeApi, SID, SIGN_IN_CODE, SIGN_IN_LINK_TOKEN, items, users, type User } from './fakeApi';
+import { fragmentFor, payoutCheckFor, LEAD_BANK } from './fakeApi';
 
 const POLL = { timeout: 10_000 };
 
@@ -26,8 +26,13 @@ async function signInWithLink(browser: Browser, api: FakeApi, page: Page) {
   await page.getByLabel('Email').fill('sam@example.com');
   await page.locator('form:has(#email) button[type="submit"]').click();
   await expect(page.getByText('Check your email')).toBeVisible();
+  // The asking tab shows a number; the link's page asks about it before signing anyone in (#138).
+  await expect(page.getByTestId('sign-in-code')).toHaveText(SIGN_IN_CODE);
   const { ctx: mailApp, page: linkTab } = await ctxFor(browser, api, users.sam, { signedIn: false });
   await linkTab.goto(`/sign-in/verify#t=${SIGN_IN_LINK_TOKEN}`);
+  await expect(linkTab.getByRole('heading', { name: `Signing in the tab showing ${SIGN_IN_CODE}?` })).toBeVisible();
+  expect(api.signIn).toBe('pending');
+  await linkTab.getByRole('button', { name: 'Yes' }).click();
   await expect(linkTab.getByRole('heading', { name: 'Signed in' })).toBeVisible();
   await expect(linkTab.getByText('Go back to your other tab.')).toBeVisible();
   // The token doesn't stay in the address bar or history.
@@ -61,6 +66,50 @@ test('join link, signed out: the invite names the host, and the bank details in 
     expect(r.body ?? '').not.toContain(fragment);
     expect(r.body ?? '').not.toContain('00079660');
   }
+});
+
+test('a sign-in someone else started: No at the link signs nobody in (#138)', async ({ browser }) => {
+  const api = new FakeApi();
+  const { page: asker } = await ctxFor(browser, api, users.sam, { signedIn: false });
+  await asker.goto('/sign-in/email');
+  await asker.getByLabel('Email').fill('sam@example.com');
+  await asker.locator('form:has(#email) button[type="submit"]').click();
+  await expect(asker.getByText('Check your email')).toBeVisible();
+  const { ctx: mailApp, page: linkTab } = await ctxFor(browser, api, users.sam, { signedIn: false });
+  await linkTab.goto(`/sign-in/verify#t=${SIGN_IN_LINK_TOKEN}`);
+  await linkTab.getByRole('button', { name: 'No' }).click();
+  await expect(linkTab.getByRole('heading', { name: 'Not signed in' })).toBeVisible();
+  expect(api.signIn).toBe('denied');
+  // The tab that asked never gets a session.
+  await expect(asker.getByText('Link expired. Send a new one.')).toBeVisible(POLL);
+  await mailApp.close();
+});
+
+test('a join link with someone else’s bank details is caught, and they’re never shown (#151)', async ({ browser }) => {
+  const api = new FakeApi();
+  api.payoutCheck = payoutCheckFor(LEAD_BANK);
+  const { page: sam } = await ctxFor(browser, api, users.sam);
+  // A re-posted link: the lead's code, but a different account in the fragment.
+  const real = JSON.parse(Buffer.from(fragmentFor(), 'base64url').toString()) as Record<string, unknown>;
+  const swapped = Buffer.from(JSON.stringify({ ...real, a: '12345678' })).toString('base64url');
+  await sam.goto(`/join/${CODE}#p=${swapped}`);
+  await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
+  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  await expect(sam.getByText('These aren’t Callum’s bank details.')).toBeVisible();
+  await expect(sam.getByText('12345678')).toHaveCount(0);
+});
+
+test('the lead’s share page tells the session what its link’s details hash to (#151)', async ({ browser }) => {
+  const api = new FakeApi();
+  const ctx = await browser.newContext();
+  await api.attach(ctx, users.lead);
+  await ctx.addInitScript((bank) => localStorage.setItem('gdp.payoutAccount', JSON.stringify(bank)), LEAD_BANK);
+  const lead = await ctx.newPage();
+  await lead.goto(`/session/${SID}/share`);
+  await expect.poll(() => api.payoutCheck, POLL).toBe(payoutCheckFor(LEAD_BANK));
+  // Never the details themselves.
+  for (const r of api.requests) expect(r.body ?? '').not.toContain(LEAD_BANK.accountNumber);
 });
 
 test('join by typed code: wrong code shows the error, right code joins', async ({ browser }) => {

@@ -99,11 +99,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Pay Me Back architecture</h1>
-    <div class="stats"><span><b>43</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
+    <div class="stats"><span><b>47</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1293" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 43 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1293" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 47 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -215,93 +215,97 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="588" y="385"><tspan class="m m-get">GET</tspan><tspan x="644">/docs</tspan></text>
 <text class="t-ep" x="588" y="403"><tspan class="m m-get">GET</tspan><tspan x="644">/swagger</tspan></text>
 <text class="t-ep" x="588" y="421"><tspan class="m m-get">GET</tspan><tspan x="644">/openapi.yaml</tspan></text>
-<rect class="inner" x="576" y="446" width="246" height="110" rx="7"/>
+<rect class="inner" x="576" y="446" width="246" height="146" rx="7"/>
 <text class="t-inner" x="588" y="467">Auth</text>
 <text class="t-base" x="810" y="467" text-anchor="end">/v1/auth/email</text>
 <text class="t-ep" x="588" y="487"><tspan class="m m-post">POST</tspan><tspan x="644">/start</tspan></text>
-<text class="t-ep" x="588" y="505"><tspan class="m m-post">POST</tspan><tspan x="644">/link</tspan></text>
-<text class="t-ep" x="588" y="523"><tspan class="m m-post">POST</tspan><tspan x="644">/requests</tspan></text>
-<text class="t-ep" x="588" y="541"><tspan class="m m-post">POST</tspan><tspan x="644">/test-sign-in</tspan></text>
-<rect class="inner" x="576" y="566" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="587">Me</text>
-<text class="t-base" x="810" y="587" text-anchor="end">/v1/me</text>
-<text class="t-ep" x="588" y="607"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="625"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
-<text class="t-ep" x="588" y="643"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
-<rect class="inner" x="576" y="668" width="246" height="164" rx="7"/>
-<text class="t-inner" x="588" y="689">Bills</text>
-<text class="t-base" x="810" y="689" text-anchor="end">/v1/bills</text>
-<text class="t-ep" x="588" y="709"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
-<text class="t-ep" x="588" y="727"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
-<text class="t-ep" x="588" y="745"><tspan class="m m-post">POST</tspan><tspan x="644">/reads</tspan></text>
-<text class="t-ep" x="588" y="763"><tspan class="m m-get">GET</tspan><tspan x="644">/reads/{readId}</tspan></text>
-<text class="t-ep" x="588" y="781"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<text class="t-ep" x="588" y="799"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
-<text class="t-ep" x="588" y="817"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
-<rect class="inner" x="576" y="842" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="863">Payments</text>
-<text class="t-base" x="810" y="863" text-anchor="end">/v1/payments</text>
-<text class="t-ep" x="588" y="883"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
-<text class="t-ep" x="588" y="901"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
-<text class="t-ep" x="588" y="919"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
-<rect class="inner" x="576" y="944" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="965">Billing</text>
-<text class="t-base" x="810" y="965" text-anchor="end">/v1/billing</text>
-<text class="t-ep" x="588" y="985"><tspan class="m m-post">POST</tspan><tspan x="644">/table-fee</tspan></text>
-<text class="t-ep" x="588" y="1003"><tspan class="m m-get">GET</tspan><tspan x="644">/table-fee/{billId}</tspan></text>
-<text class="t-ep" x="588" y="1021"><tspan class="m m-get">GET</tspan><tspan x="644">/me</tspan></text>
-<rect class="inner" x="576" y="1046" width="246" height="56" rx="7"/>
-<text class="t-inner" x="588" y="1067">Webhooks</text>
-<text class="t-base" x="810" y="1067" text-anchor="end">/webhooks</text>
-<text class="t-ep" x="588" y="1087"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
-<rect class="inner" x="834" y="308" width="230" height="326" rx="7"/>
+<text class="t-ep" x="588" y="505"><tspan class="m m-post">POST</tspan><tspan x="644">/link/code</tspan></text>
+<text class="t-ep" x="588" y="523"><tspan class="m m-post">POST</tspan><tspan x="644">/link</tspan></text>
+<text class="t-ep" x="588" y="541"><tspan class="m m-post">POST</tspan><tspan x="644">/link/deny</tspan></text>
+<text class="t-ep" x="588" y="559"><tspan class="m m-post">POST</tspan><tspan x="644">/requests</tspan></text>
+<text class="t-ep" x="588" y="577"><tspan class="m m-post">POST</tspan><tspan x="644">/test-sign-in</tspan></text>
+<rect class="inner" x="576" y="602" width="246" height="110" rx="7"/>
+<text class="t-inner" x="588" y="623">Me</text>
+<text class="t-base" x="810" y="623" text-anchor="end">/v1/me</text>
+<text class="t-ep" x="588" y="643"><tspan class="m m-get">GET</tspan><tspan x="644">/</tspan></text>
+<text class="t-ep" x="588" y="661"><tspan class="m m-post">POST</tspan><tspan x="644">/sign-out</tspan></text>
+<text class="t-ep" x="588" y="679"><tspan class="m m-put">PUT</tspan><tspan x="644">/payout-account</tspan></text>
+<text class="t-ep" x="588" y="697"><tspan class="m m-get">GET</tspan><tspan x="644">/sessions</tspan></text>
+<rect class="inner" x="576" y="722" width="246" height="164" rx="7"/>
+<text class="t-inner" x="588" y="743">Bills</text>
+<text class="t-base" x="810" y="743" text-anchor="end">/v1/bills</text>
+<text class="t-ep" x="588" y="763"><tspan class="m m-post">POST</tspan><tspan x="644">/uploads</tspan></text>
+<text class="t-ep" x="588" y="781"><tspan class="m m-post">POST</tspan><tspan x="644">/parse</tspan></text>
+<text class="t-ep" x="588" y="799"><tspan class="m m-post">POST</tspan><tspan x="644">/reads</tspan></text>
+<text class="t-ep" x="588" y="817"><tspan class="m m-get">GET</tspan><tspan x="644">/reads/{readId}</tspan></text>
+<text class="t-ep" x="588" y="835"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
+<text class="t-ep" x="588" y="853"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}/image-url</tspan></text>
+<text class="t-ep" x="588" y="871"><tspan class="m m-post">POST</tspan><tspan x="644">/{billId}/amend</tspan></text>
+<rect class="inner" x="576" y="896" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="917">Payments</text>
+<text class="t-base" x="810" y="917" text-anchor="end">/v1/payments</text>
+<text class="t-ep" x="588" y="937"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
+<text class="t-ep" x="588" y="955"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
+<text class="t-ep" x="588" y="973"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
+<rect class="inner" x="576" y="998" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="1019">Billing</text>
+<text class="t-base" x="810" y="1019" text-anchor="end">/v1/billing</text>
+<text class="t-ep" x="588" y="1039"><tspan class="m m-post">POST</tspan><tspan x="644">/table-fee</tspan></text>
+<text class="t-ep" x="588" y="1057"><tspan class="m m-get">GET</tspan><tspan x="644">/table-fee/{billId}</tspan></text>
+<text class="t-ep" x="588" y="1075"><tspan class="m m-get">GET</tspan><tspan x="644">/me</tspan></text>
+<rect class="inner" x="576" y="1100" width="246" height="56" rx="7"/>
+<text class="t-inner" x="588" y="1121">Webhooks</text>
+<text class="t-base" x="810" y="1121" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="1141"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<rect class="inner" x="834" y="308" width="230" height="344" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
 <text class="t-ep" x="846" y="349"><tspan class="m m-post">POST</tspan><tspan x="902">/</tspan></text>
 <text class="t-ep" x="846" y="367"><tspan class="m m-post">POST</tspan><tspan x="902">/by-code</tspan></text>
 <text class="t-ep" x="846" y="385"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}</tspan></text>
 <text class="t-ep" x="846" y="403"><tspan class="m m-patch">PATCH</tspan><tspan x="902">/{id}</tspan></text>
-<text class="t-ep" x="846" y="421"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/share</tspan></text>
-<text class="t-ep" x="846" y="439"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/join</tspan></text>
-<text class="t-ep" x="846" y="457"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/claims</tspan></text>
-<text class="t-ep" x="846" y="475"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/shares</tspan></text>
-<text class="t-ep" x="846" y="493"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
-<text class="t-ep" x="846" y="511"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
-<text class="t-ep" x="846" y="529"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/ready</tspan></text>
-<text class="t-ep" x="846" y="547"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
-<text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
-<text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
-<text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
-<text class="t-ep" x="846" y="619"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="644" width="230" height="56" rx="7"/>
-<text class="t-inner" x="846" y="665">Venues</text>
-<text class="t-base" x="1052" y="665" text-anchor="end">/v1/venues</text>
-<text class="t-ep" x="846" y="685"><tspan class="m m-get">GET</tspan><tspan x="902">/nearby</tspan></text>
-<rect class="inner" x="834" y="710" width="230" height="392" rx="7"/>
-<text class="t-inner" x="846" y="731">Services</text>
-<text class="t-base" x="1052" y="731" text-anchor="end">src/services</text>
-<text class="t-mono" x="846" y="754">auth</text>
-<text class="t-sub" x="846" y="771">emailOtp, sessionToken (JWT)</text>
-<text class="t-mono" x="846" y="794">bills</text>
-<text class="t-sub" x="846" y="811">upload, parse, amend, image</text>
-<text class="t-mono" x="846" y="834">bills</text>
-<text class="t-sub" x="846" y="851">parser, venueResolver</text>
-<text class="t-mono" x="846" y="874">sessions</text>
-<text class="t-sub" x="846" y="891">allocation, joinCode, report</text>
-<text class="t-mono" x="846" y="914">payments</text>
-<text class="t-sub" x="846" y="931">paymentService, ledger</text>
-<text class="t-mono" x="846" y="954">billing</text>
-<text class="t-sub" x="846" y="971">tableFee</text>
-<text class="t-mono" x="846" y="994">venues</text>
-<text class="t-sub" x="846" y="1011">nearbyVenues</text>
-<text class="t-mono" x="846" y="1034">email</text>
-<text class="t-sub" x="846" y="1051">sender (SES or console)</text>
-<text class="t-mono" x="846" y="1074">storage</text>
-<text class="t-sub" x="846" y="1091">one store per entity</text>
-<rect class="inner" x="576" y="1112" width="488" height="90" rx="7"/>
-<text class="t-inner" x="588" y="1134">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1156">Parser: Bedrock · fixture</text>
-<text class="t-mono" x="588" y="1174">Email: SES · console     Venue: Location · none</text>
+<text class="t-ep" x="846" y="421"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/payout-check</tspan></text>
+<text class="t-ep" x="846" y="439"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/share</tspan></text>
+<text class="t-ep" x="846" y="457"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/join</tspan></text>
+<text class="t-ep" x="846" y="475"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/claims</tspan></text>
+<text class="t-ep" x="846" y="493"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/shares</tspan></text>
+<text class="t-ep" x="846" y="511"><tspan class="m m-put">PUT</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="529"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/shares/{itemId}</tspan></text>
+<text class="t-ep" x="846" y="547"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/ready</tspan></text>
+<text class="t-ep" x="846" y="565"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
+<text class="t-ep" x="846" y="583"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
+<text class="t-ep" x="846" y="601"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
+<text class="t-ep" x="846" y="619"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
+<text class="t-ep" x="846" y="637"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
+<rect class="inner" x="834" y="662" width="230" height="56" rx="7"/>
+<text class="t-inner" x="846" y="683">Venues</text>
+<text class="t-base" x="1052" y="683" text-anchor="end">/v1/venues</text>
+<text class="t-ep" x="846" y="703"><tspan class="m m-get">GET</tspan><tspan x="902">/nearby</tspan></text>
+<rect class="inner" x="834" y="728" width="230" height="428" rx="7"/>
+<text class="t-inner" x="846" y="749">Services</text>
+<text class="t-base" x="1052" y="749" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="772">auth</text>
+<text class="t-sub" x="846" y="789">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="812">bills</text>
+<text class="t-sub" x="846" y="829">upload, parse, amend, image</text>
+<text class="t-mono" x="846" y="852">bills</text>
+<text class="t-sub" x="846" y="869">parser, venueResolver</text>
+<text class="t-mono" x="846" y="892">sessions</text>
+<text class="t-sub" x="846" y="909">allocation, joinCode, report</text>
+<text class="t-mono" x="846" y="932">payments</text>
+<text class="t-sub" x="846" y="949">paymentService, ledger</text>
+<text class="t-mono" x="846" y="972">billing</text>
+<text class="t-sub" x="846" y="989">tableFee</text>
+<text class="t-mono" x="846" y="1012">venues</text>
+<text class="t-sub" x="846" y="1029">nearbyVenues</text>
+<text class="t-mono" x="846" y="1052">email</text>
+<text class="t-sub" x="846" y="1069">sender (SES or console)</text>
+<text class="t-mono" x="846" y="1092">storage</text>
+<text class="t-sub" x="846" y="1109">one store per entity</text>
+<rect class="inner" x="576" y="1166" width="488" height="36" rx="7"/>
+<text class="t-inner" x="588" y="1188">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1210">Parser: Bedrock · fixture</text>
+<text class="t-mono" x="588" y="1228">Email: SES · console     Venue: Location · none</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>

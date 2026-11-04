@@ -386,6 +386,19 @@ export const sessionStore = {
     );
   },
 
+  /** The lead's fingerprint of the bank details in their join link (#151). */
+  async setPayoutCheck(sessionId: string, payoutCheck: string): Promise<void> {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: sessionPk(sessionId), sk: META_SK },
+        ConditionExpression: 'attribute_exists(pk)',
+        UpdateExpression: 'SET payoutCheck = :c',
+        ExpressionAttributeValues: { ':c': payoutCheck },
+      }),
+    );
+  },
+
   /**
    * Atomically transition setup → claiming: write the updated meta row
    * with status='claiming' AND the updated creator participant row

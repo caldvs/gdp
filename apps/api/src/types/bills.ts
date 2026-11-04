@@ -97,27 +97,39 @@ export const ParseRequestSchema = z.object({
 });
 export type ParseRequest = z.infer<typeof ParseRequestSchema>;
 
+// Bounds on what a lead can send (#155): far past any real bill, and they
+// keep a bill version well under DynamoDB's 400 KB item limit. Mirrored in
+// openapi.yaml.
+export const AMEND_LIMITS = {
+  items: 200,
+  nameLength: 200,
+  quantity: 999,
+  unitPricePence: 10_000_000, // £100,000
+  extraPence: 10_000_000, // tax or service
+} as const;
+
 export const AmendBillRequestSchema = z.object({
   items: z
     .array(
       z.object({
         itemId: z.string().uuid().optional(),
-        name: z.string().min(1),
-        unitPricePence: z.number().int().nonnegative(),
-        quantity: z.number().int().positive(),
+        name: z.string().min(1).max(AMEND_LIMITS.nameLength),
+        unitPricePence: z.number().int().nonnegative().max(AMEND_LIMITS.unitPricePence),
+        quantity: z.number().int().positive().max(AMEND_LIMITS.quantity),
         category: BillItemCategory,
         course: BillItemCourse.optional(),
       }),
     )
-    .min(1),
-  taxPence: z.number().int().nonnegative(),
-  serviceChargePence: z.number().int().nonnegative(),
+    .min(1)
+    .max(AMEND_LIMITS.items),
+  taxPence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
+  serviceChargePence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
   // Set to override the parsed venue. Absent keeps whatever the bill has.
   venue: z
     .object({
       name: z.string().min(1).max(80),
-      placeId: z.string().optional(),
-      address: z.string().optional(),
+      placeId: z.string().max(200).optional(),
+      address: z.string().max(300).optional(),
     })
     .optional(),
 });

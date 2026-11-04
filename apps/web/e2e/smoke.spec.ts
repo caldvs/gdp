@@ -99,7 +99,7 @@ test('a request that expires while waiting goes back to the email step', async (
 test('an expired or used sign-in link says so, with a way to send a new one', async ({ page }) => {
   await unauthenticated(page);
   let sent: unknown = null;
-  await page.route('**/v1/auth/email/link', (route) => {
+  await page.route('**/v1/auth/email/link/code', (route) => {
     sent = route.request().postDataJSON();
     return route.fulfill({ status: 401, json: { error: { code: 'AUTH_INVALID', message: 'Link expired' } } });
   });

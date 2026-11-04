@@ -10,6 +10,8 @@ export interface SessionTokenClaims {
   email: string;
   /** Display name, embedded so the verifier doesn't need a DB hit. */
   name?: string;
+  /** The user's token version when minted (#155); signing out everywhere bumps it. */
+  tokenVersion?: number;
 }
 
 /**
@@ -26,6 +28,7 @@ export async function mintSessionToken(
   return new SignJWT({
     email: claims.email,
     ...(claims.name ? { name: claims.name } : {}),
+    tv: claims.tokenVersion ?? 0,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(claims.userId)
@@ -40,6 +43,8 @@ export interface VerifiedSessionToken {
   userId: string;
   email: string;
   name?: string;
+  /** 0 for tokens minted before versions existed. */
+  tokenVersion: number;
 }
 
 /**
@@ -50,7 +55,7 @@ export async function verifySessionToken(
   token: string,
   secret: Uint8Array,
 ): Promise<VerifiedSessionToken> {
-  let result: { payload: { sub?: string; email?: unknown; name?: unknown } };
+  let result: { payload: { sub?: string; email?: unknown; name?: unknown; tv?: unknown } };
   try {
     result = await jwtVerify(token, secret, {
       issuer: ISSUER,
@@ -63,7 +68,7 @@ export async function verifySessionToken(
     throw new AppError('AUTH_INVALID', 'Token verification failed');
   }
 
-  const { sub, email, name } = result.payload;
+  const { sub, email, name, tv } = result.payload;
   if (!sub || typeof email !== 'string') {
     throw new AppError('AUTH_INVALID', 'Token missing required claims');
   }
@@ -71,5 +76,6 @@ export async function verifySessionToken(
     userId: sub,
     email,
     ...(typeof name === 'string' ? { name } : {}),
+    tokenVersion: typeof tv === 'number' ? tv : 0,
   };
 }

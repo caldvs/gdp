@@ -1,6 +1,7 @@
 import type Stripe from 'stripe';
 import { AppError } from '../../errors/AppError.js';
 import { timed } from '../../logging/timed.js';
+import { baseLogger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Bill } from '../../types/bills.js';
 
@@ -374,11 +375,12 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       } catch (err) {
         if (err instanceof AppError) throw err;
         // A Stripe error (bad key, test/live mix-up, missing price, a
-        // parameter this account doesn't support): show its message
-        // instead of "internal error", which says nothing.
+        // parameter this account doesn't support): a plain message for the
+        // client, Stripe's own in the logs only (#155).
         const e = err as { type?: string; message?: string };
         if (e.type?.startsWith('Stripe')) {
-          throw new AppError('PAYMENT_PROVIDER_ERROR', `Stripe: ${e.message ?? e.type}`);
+          baseLogger.error({ event: 'table_fee.stripe_error', type: e.type, err }, e.message);
+          throw new AppError('PAYMENT_PROVIDER_ERROR', 'Couldn’t start the payment. Try again.');
         }
         throw err;
       }

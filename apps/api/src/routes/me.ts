@@ -54,6 +54,15 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
     return c.json({ payoutAccount: parsed.data });
   });
 
+  // Sign out everywhere (#155): every session token this user holds, on
+  // any device, stops working. The web app's Sign out calls it.
+  r.post('/me/sign-out', requireAuth(verifier), async (c) => {
+    const { userId } = callerOf(c);
+    await userStore.bumpTokenVersion(userId);
+    c.var.logger.info({ event: 'auth.signed_out_everywhere', userId }, 'Signed out everywhere');
+    return c.json({ ok: true });
+  });
+
   r.get('/me/sessions', requireAuth(verifier), async (c) => {
     const { userId } = callerOf(c);
     const limitParam = c.req.query('limit');

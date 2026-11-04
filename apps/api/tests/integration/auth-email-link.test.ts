@@ -30,27 +30,50 @@ function extractLink(email: SendEmailInput): { url: string; token: string } {
   return { url: m[1]!, token: m[2]! };
 }
 
-function buildApp(opts: { allowedOrigins?: string } = {}) {
+function buildApp(opts: { linkBases?: string[] } = {}) {
   const sender = new CapturingEmailSender();
   const app = createApp({
     emailSender: sender,
     sessionJwtSecret: SECRET,
     idTokenVerifier: createSessionTokenVerifier(SECRET),
-    ...(opts.allowedOrigins !== undefined ? { allowedOrigins: opts.allowedOrigins } : {}),
+    ...(opts.linkBases !== undefined ? { linkBases: opts.linkBases } : {}),
   });
   return { app, sender };
 }
 
-const post = (app: App, path: string, body: unknown, headers: Record<string, string> = {}) =>
-  app.request(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+const post = (
+  app: App,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+  lambdaEnv?: unknown,
+) =>
+  app.request(
+    path,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    },
+    lambdaEnv,
+  );
 
-const start = (app: App, email: string, headers?: Record<string, string>) =>
-  post(app, '/v1/auth/email/start', { email }, headers);
-const openLink = (app: App, token: string) => post(app, '/v1/auth/email/link', { token });
+/** What API Gateway (HTTP API) hands the Lambda: the caller's IP. */
+const fromIp = (sourceIp: string) => ({ requestContext: { http: { sourceIp } } });
+
+const start = (app: App, email: string, headers?: Record<string, string>, lambdaEnv?: unknown) =>
+  post(app, '/v1/auth/email/start', { email }, headers, lambdaEnv);
+const linkCode = (app: App, token: string) => post(app, '/v1/auth/email/link/code', { token });
+const deny = (app: App, token: string) => post(app, '/v1/auth/email/link/deny', { token });
+/** Open the link and confirm the number, as the link's page does. */
+const openLink = async (app: App, token: string, code?: string) => {
+  let c = code;
+  if (c === undefined) {
+    const res = await linkCode(app, token);
+    c = res.status === 200 ? ((await res.json()) as { code: string }).code : '00';
+  }
+  return post(app, '/v1/auth/email/link', { token, code: c });
+};
 const poll = async (app: App, requestId: string): Promise<Status> =>
   (await (await post(app, '/v1/auth/email/requests', { requestId })).json()) as Status;
 
@@ -58,8 +81,8 @@ const poll = async (app: App, requestId: string): Promise<Status> =>
 async function begin(app: App, sender: CapturingEmailSender, email = uniqueEmail()) {
   const res = await start(app, email);
   expect(res.status).toBe(200);
-  const { requestId } = (await res.json()) as { requestId: string };
-  return { email, requestId, token: extractLink(sender.sent.at(-1)!).token };
+  const { requestId, code } = (await res.json()) as { requestId: string; code: string };
+  return { email, requestId, code, token: extractLink(sender.sent.at(-1)!).token };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -70,9 +93,13 @@ describe('POST /v1/auth/email/start', () => {
     const email = uniqueEmail();
     const res = await start(app, email);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: true; requestId: string };
+    const body = (await res.json()) as { ok: true; requestId: string; code: string };
     expect(body.ok).toBe(true);
     expect(body.requestId).toMatch(/^[\w-]{22}\.[\w-]{43}$/);
+    expect(body.code).toMatch(/^[1-9][0-9]$/);
+    // The email says what it signs in, and the number (#138).
+    expect(sender.sent[0]?.body.text).toContain('signs in the tab or device that asked');
+    expect(sender.sent[0]?.body.text).toContain(body.code);
     expect(sender.sent).toHaveLength(1);
     expect(sender.sent[0]?.to).toBe(email);
     const { url, token } = extractLink(sender.sent[0]!);
@@ -81,12 +108,16 @@ describe('POST /v1/auth/email/start', () => {
     expect(sender.sent[0]?.body.html).toContain(url);
   });
 
-  it('points the link at the calling origin when it is allowed, else APP_BASE_URL', async () => {
-    const { app, sender } = buildApp({ allowedOrigins: 'https://test.paymeback.dev' });
+  it('points the link at the calling origin only when it is exactly a listed base (#149)', async () => {
+    const { app, sender } = buildApp({ linkBases: ['https://test.paymeback.dev'] });
     await start(app, uniqueEmail(), { origin: 'https://test.paymeback.dev' });
     expect(extractLink(sender.sent[0]!).url).toMatch(/^https:\/\/test\.paymeback\.dev\/sign-in/);
     await start(app, uniqueEmail(), { origin: 'https://evil.example' });
     expect(extractLink(sender.sent[1]!).url).toMatch(/^http:\/\/localhost:8081\/sign-in/);
+    await start(app, uniqueEmail(), {
+      origin: 'https://web-nqib-x-evil-caldvs-projects.vercel.app',
+    });
+    expect(extractLink(sender.sent[2]!).url).toMatch(/^http:\/\/localhost:8081\/sign-in/);
   });
 
   it('still answers 200 with a requestId when the email fails to send', async () => {
@@ -252,6 +283,88 @@ describe('POST /v1/auth/email/start: sending limits (#76)', () => {
       /Too many links/,
     );
     expect(sender.sent).toHaveLength(5);
+    expect((await start(app, uniqueEmail())).status).toBe(200);
+  });
+});
+
+describe('number matching (#138)', () => {
+  it('the link page gets the number the asking tab shows, and asking spends nothing', async () => {
+    const { app, sender } = buildApp();
+    const { token, code, requestId } = await begin(app, sender);
+    const res = await linkCode(app, token);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ code });
+    expect((await linkCode(app, token)).status).toBe(200);
+    expect(await poll(app, requestId)).toEqual({ status: 'pending' });
+  });
+
+  it('the wrong number signs nobody in and leaves the link working', async () => {
+    const { app, sender } = buildApp();
+    const { token, code, requestId } = await begin(app, sender);
+    const wrong = code === '10' ? '11' : '10';
+    expect((await openLink(app, token, wrong)).status).toBe(401);
+    expect(await poll(app, requestId)).toEqual({ status: 'pending' });
+    expect((await openLink(app, token, code)).status).toBe(200);
+  });
+
+  it('a link without a number is refused', async () => {
+    const { app, sender } = buildApp();
+    const { token } = await begin(app, sender);
+    expect((await post(app, '/v1/auth/email/link', { token })).status).toBe(400);
+  });
+
+  it('No: the request can sign nobody in, and the asking tab sees expired', async () => {
+    const { app, sender } = buildApp();
+    const { token, code, requestId } = await begin(app, sender);
+    const res = await deny(app, token);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect((await openLink(app, token, code)).status).toBe(401);
+    expect((await linkCode(app, token)).status).toBe(401);
+    expect(await poll(app, requestId)).toEqual({ status: 'expired' });
+    // Denying junk or a used link is quietly fine.
+    expect((await deny(app, 'nonsense')).status).toBe(200);
+    expect((await deny(app, token)).status).toBe(200);
+  });
+
+  it('a used link has no number to show', async () => {
+    const { app, sender } = buildApp();
+    const { token } = await begin(app, sender);
+    expect((await openLink(app, token)).status).toBe(200);
+    expect((await linkCode(app, token)).status).toBe(401);
+    expect((await linkCode(app, 'nonsense')).status).toBe(401);
+  });
+});
+
+describe('POST /v1/auth/email/start: limits across addresses (#146)', () => {
+  it('+tags and Gmail dots share one address allowance', async () => {
+    const { app } = buildApp();
+    const name = `user${uuidv7().replace(/-/g, '')}`;
+    expect((await start(app, `${name}+1@gmail.com`)).status).toBe(200);
+    const dotted = `${name.slice(0, 4)}.${name.slice(4)}+2@googlemail.com`;
+    expect((await start(app, dotted)).status).toBe(429);
+  });
+
+  it('at most 20 links an hour from one IP address', async () => {
+    const { app } = buildApp();
+    const ip = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.7`;
+    // Start of an hour, so the window doesn't roll over mid-test.
+    const t0 = Math.ceil(Date.now() / 3_600_000) * 3_600_000 + 1_000;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(t0);
+    for (let i = 0; i < 20; i += 1) {
+      expect((await start(app, uniqueEmail(), {}, fromIp(ip))).status).toBe(200);
+    }
+    const refused = await start(app, uniqueEmail(), {}, fromIp(ip));
+    expect(refused.status).toBe(429);
+    const body = (await refused.json()) as {
+      error: { code: string; message: string; details: { retryAfterSeconds: number } };
+    };
+    expect(body.error.code).toBe('RATE_LIMITED');
+    expect(body.error.message).toMatch(/from here/);
+    expect(body.error.details.retryAfterSeconds).toBeGreaterThan(3500);
+    // Another IP, and no IP at all (local), are unaffected.
+    expect((await start(app, uniqueEmail(), {}, fromIp('10.0.0.1'))).status).toBe(200);
     expect((await start(app, uniqueEmail())).status).toBe(200);
   });
 });

@@ -12,6 +12,7 @@ import {
   CreateSessionRequestSchema,
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
+  SetPayoutCheckRequestSchema,
   SetReadyRequestSchema,
   UpdateSessionRequestSchema,
 } from '../types/sessions.js';
@@ -20,6 +21,13 @@ import type { ReportService } from '../services/sessions/reportService.js';
 import type { TableFeeService } from '../services/billing/tableFee.js';
 import type { Session } from '../types/sessions.js';
 import { baseLogger } from '../logging/logger.js';
+import { AppError } from '../errors/AppError.js';
+import { countInWindow } from '../storage/rateCounter.js';
+
+// Looking up join codes (#151): 30 tries per user per 10 minutes, so
+// guessing six-character codes is slow. Plenty for mistyping a few.
+const CODE_LOOKUPS_PER_WINDOW = 30;
+const CODE_LOOKUP_WINDOW_SECONDS = 10 * 60;
 
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
@@ -86,6 +94,17 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     validJson(JoinByCodeRequestSchema),
     async (c) => {
       const { code } = c.req.valid('json');
+      const { userId } = callerOf(c);
+      const allowed = await countInWindow(
+        `CODERATE#user:${userId}`,
+        CODE_LOOKUP_WINDOW_SECONDS,
+        CODE_LOOKUPS_PER_WINDOW,
+      );
+      if (!allowed.ok) {
+        throw new AppError('RATE_LIMITED', 'Too many codes tried. Wait a few minutes.', {
+          retryAfterSeconds: allowed.retryAfterSeconds,
+        });
+      }
       const result = await sessionService.resolveByCode({ code });
       return c.json(result);
     },
@@ -149,6 +168,19 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     });
     return c.json(session);
   });
+
+  r.put(
+    '/:sessionId/payout-check',
+    requireAuth(deps.idTokenVerifier),
+    validJson(SetPayoutCheckRequestSchema),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      const { payoutCheck } = c.req.valid('json');
+      const session = await sessionService.setPayoutCheck({ caller, sessionId, payoutCheck });
+      return c.json(session);
+    },
+  );
 
   r.post('/:sessionId/join', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);

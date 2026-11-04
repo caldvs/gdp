@@ -7,6 +7,7 @@
  * replaces unit claims; the last unit can't be claimed twice; claims are
  * frozen once the guest has said they've paid).
  */
+import { pbkdf2Sync } from 'node:crypto';
 import type { BrowserContext, Route } from '@playwright/test';
 
 export type User = { userId: string; displayName: string; email: string };
@@ -36,6 +37,8 @@ export const CODE = 'K7Q2MX';
 /** What the fake /email/start hands the asking tab, and the token in the emailed link. */
 export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
 export const SIGN_IN_LINK_TOKEN = 'link.emailed-secret';
+/** The number the asking tab shows and the link's page asks about (#138). */
+export const SIGN_IN_CODE = '47';
 export const LEAD_BANK = { accountHolderName: 'Callum Davies', sortCode: '040668', accountNumber: '00079660' };
 
 export const item = (n: number, name: string, unitPricePence: number, quantity = 1): Item => ({
@@ -74,7 +77,11 @@ export class FakeApi {
   /** Users who have signed in through the OTP flow (and so pass /v1/me). */
   private signedIn = new Set<string>();
   /** The emailed sign-in link: sent, opened, then collected by the tab that asked. */
-  signIn: 'none' | 'pending' | 'approved' | 'claimed' = 'none';
+  signIn: 'none' | 'pending' | 'approved' | 'denied' | 'claimed' = 'none';
+  /** Sign-outs everywhere (#155), by user. */
+  signedOutEverywhere: string[] = [];
+  /** The lead's fingerprint of their link's bank details (#151). */
+  payoutCheck: string | undefined;
   /** Sessions listed on /v1/me/sessions (the home tray and History). */
   mySessions: Record<string, unknown>[] = [];
   private seq = 0;
@@ -118,6 +125,7 @@ export class FakeApi {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
       ...(this.expectedDiners !== undefined ? { expectedDiners: this.expectedDiners } : {}),
+      ...(this.payoutCheck ? { payoutCheck: this.payoutCheck } : {}),
     };
   }
 
@@ -207,9 +215,17 @@ export class FakeApi {
 
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
-    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; return json({ ok: true, requestId: SIGN_IN_REQUEST }); }
-    if (path === '/v1/auth/email/link') {
+    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; return json({ ok: true, requestId: SIGN_IN_REQUEST, code: SIGN_IN_CODE }); }
+    if (path === '/v1/auth/email/link/code') {
       if ((body().token as string) !== SIGN_IN_LINK_TOKEN || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
+      return json({ code: SIGN_IN_CODE });
+    }
+    if (path === '/v1/auth/email/link/deny') {
+      if ((body().token as string) === SIGN_IN_LINK_TOKEN && this.signIn === 'pending') this.signIn = 'denied';
+      return json({ ok: true });
+    }
+    if (path === '/v1/auth/email/link') {
+      if ((body().token as string) !== SIGN_IN_LINK_TOKEN || body().code !== SIGN_IN_CODE || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
       this.signIn = 'approved'; this.signedIn.add(user.userId); this.join(user);
       return json({ token: 'test-token', user });
     }
@@ -221,6 +237,7 @@ export class FakeApi {
       return json({ status: 'signedIn', token: 'test-token', user });
     }
     if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
+    if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 
@@ -279,6 +296,11 @@ export class FakeApi {
     }
     if (path === `/v1/sessions/${SID}` && method === 'GET') {
       if (this.takeFault('session-get-500')) return err('INTERNAL_ERROR', 'boom', 500);
+      return json(this.session());
+    }
+    if (path === `/v1/sessions/${SID}/payout-check` && method === 'PUT') {
+      if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      this.payoutCheck = body().payoutCheck as string;
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}` && method === 'PATCH') {
@@ -391,6 +413,12 @@ export class FakeApi {
     }
     return err('NOT_FOUND', `unhandled ${method} ${path}`, 404);
   }
+}
+
+/** What the lead's device sends for these details (#151): same sum as core's payoutCheck.ts. */
+export function payoutCheckFor(account: { accountHolderName: string; sortCode: string; accountNumber: string; monzoHandle?: string; revolutTag?: string } = LEAD_BANK): string {
+  const password = JSON.stringify([account.accountHolderName.trim(), account.sortCode, account.accountNumber, account.monzoHandle ?? '', account.revolutTag ?? '']);
+  return pbkdf2Sync(password, `gdp-payout-check:${SID}`, 100_000, 32, 'sha256').toString('hex');
 }
 
 /** The lead's bank details as the join link carries them (ADR-0002). */

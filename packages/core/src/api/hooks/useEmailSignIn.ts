@@ -26,7 +26,9 @@ function useAdoptSession() {
 // response is the same for any well-formed email (no address enumeration,
 // and SES bounces are 200 too), so success means "we tried", not "it
 // arrived". It carries `requestId`: a secret this tab keeps and polls
-// with until the link has been opened (useSignInRequest).
+// with until the link has been opened (useSignInRequest), and `code`: the
+// number this tab shows, which the link's page asks the person to check
+// (#138).
 //
 // An exempt address (TABLE_FEE_EXEMPT_EMAILS on the API) gets a session
 // back instead: it's stored here, and `token` in the result tells the
@@ -41,15 +43,40 @@ export function useStartEmailSignIn() {
   });
 }
 
-type StartResponse = { ok: true; requestId?: string; token?: string; user?: SignedIn['user'] };
+type StartResponse = {
+  ok: true;
+  requestId?: string;
+  code?: string;
+  token?: string;
+  user?: SignedIn['user'];
+};
 
-// The tab the emailed link opened: swap the link's token for a session.
-// Every failure (used, expired, not ours) is a uniform 401 AUTH_INVALID.
+// The tab the emailed link opened, first: the number the asking tab shows,
+// for the person to check before anything is signed in (#138). Spends
+// nothing. A used, denied or expired link is a 401 AUTH_INVALID.
+export function useSignInLinkCode() {
+  return useMutation<{ code: string }, ApiError, { token: string }>({
+    mutationFn: (body) =>
+      api<{ code: string }>('/v1/auth/email/link/code', { method: 'POST', body }),
+  });
+}
+
+// The person confirmed the number: swap the link's token for a session
+// (and let the asking tab collect its own). Every failure (used, expired,
+// not ours) is a uniform 401 AUTH_INVALID.
 export function useOpenSignInLink() {
   const adopt = useAdoptSession();
-  return useMutation<SignedIn, ApiError, { token: string }>({
+  return useMutation<SignedIn, ApiError, { token: string; code: string }>({
     mutationFn: (body) => api<SignedIn>('/v1/auth/email/link', { method: 'POST', body }),
     onSuccess: adopt,
+  });
+}
+
+// "That's not my number": someone else asked, so nobody is signed in.
+export function useDenySignInLink() {
+  return useMutation<{ ok: true }, ApiError, { token: string }>({
+    mutationFn: (body) =>
+      api<{ ok: true }>('/v1/auth/email/link/deny', { method: 'POST', body }),
   });
 }
 

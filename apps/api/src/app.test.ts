@@ -49,7 +49,7 @@ describe('CORS', () => {
 
   describe('with an allow-list', () => {
     const locked = createApp({
-      allowedOrigins: 'https://paymeback.dev,https://*-caldvs-projects.vercel.app',
+      allowedOrigins: 'https://paymeback.dev,https://web-nqib-*-caldvs-projects.vercel.app',
     });
     const preflight = (origin: string) =>
       locked.request('/v1/me', {

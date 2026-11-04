@@ -18,14 +18,17 @@ const RESEND_LOCKOUT_SECONDS = 30;
 const PENDING_KEY = 'gdp.signIn.pending';
 const PENDING_MS = 15 * 60 * 1000;
 
-type Pending = { email: string; requestId: string };
+// `code` is the number this tab shows; the link's page asks about it (#138).
+type Pending = { email: string; requestId: string; code?: string };
 
 export function readPending(): Pending | null {
   try {
     const raw = window.sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
-    const { email, requestId, sentAt } = JSON.parse(raw) as { email?: unknown; requestId?: unknown; sentAt?: unknown };
-    if (typeof email === 'string' && typeof requestId === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_MS) return { email, requestId };
+    const { email, requestId, code, sentAt } = JSON.parse(raw) as { email?: unknown; requestId?: unknown; code?: unknown; sentAt?: unknown };
+    if (typeof email === 'string' && typeof requestId === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_MS) {
+      return { email, requestId, ...(typeof code === 'string' ? { code } : {}) };
+    }
     window.sessionStorage.removeItem(PENDING_KEY);
   } catch {}
   return null;
@@ -56,6 +59,7 @@ export function EmailLinkFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
   const [stage, setStage] = useState<Stage>('EMAIL');
   const [email, setEmail] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = useState(0);
   const startSignIn = useStartEmailSignIn();
@@ -69,6 +73,7 @@ export function EmailLinkFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
     if (!pending) return;
     setEmail(pending.email);
     setRequestId(pending.requestId);
+    setCode(pending.code ?? null);
     setStage('WAITING');
   }, []);
 
@@ -121,8 +126,9 @@ export function EmailLinkFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
     }
     if (!started.requestId) return false;
     rememberReturnTo(dest);
-    writePending({ email: address, requestId: started.requestId });
+    writePending({ email: address, requestId: started.requestId, ...(started.code ? { code: started.code } : {}) });
     setRequestId(started.requestId);
+    setCode(started.code ?? null);
     setStage('WAITING');
     setResendCountdown(RESEND_LOCKOUT_SECONDS);
     return true;
@@ -205,6 +211,12 @@ export function EmailLinkFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
           <div className="muted">{email}</div>
         </Notice>
       </div>
+      {code ? (
+        <div className="signin-code">
+          <span className="small muted">Your number</span>
+          <span className="code" data-testid="sign-in-code">{code}</span>
+        </div>
+      ) : null}
       <div className="btn-row">
         <Button tone="text" onClick={handleResend} disabled={!canResend}>
           {startSignIn.isPending ? 'Sendingâ€¦' : canResend ? 'Resend' : `Resend in ${resendCountdown}s`}

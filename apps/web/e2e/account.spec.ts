@@ -55,6 +55,8 @@ test('menu → account → sign out → the front door, and a deep link afterwar
   await lead.getByRole('button', { name: 'Sign out' }).click();
   await expect(lead).toHaveURL(/\/sign-in$/);
   expect(await lead.evaluate(() => localStorage.getItem('gdp.idToken'))).toBeNull();
+  // Signing out ends the account's sessions on every device (#155).
+  expect(api.signedOutEverywhere).toEqual([users.lead.userId]);
 });
 
 test('a failed poll doesn’t blank the table; the next one recovers', async ({ browser }) => {

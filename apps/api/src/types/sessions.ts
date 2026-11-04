@@ -141,6 +141,13 @@ export const SessionSchema = z.object({
   // How many people the lead expects at the table, lead included. Unset
   // until the lead says.
   expectedDiners: ExpectedDinersSchema.optional(),
+  // The lead's device's fingerprint of the bank details it puts in the join
+  // link (#151): PBKDF2 of the details salted with the session id, never the
+  // details themselves (ADR-0002). Guests' apps check the link against it.
+  payoutCheck: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   // Computed at read time from participants' sharedItemIds (ADR-0006).
   // One entry per shared item; userIds is the splitter set. Empty when
   // no items are shared. Server-only — clients never set this.
@@ -188,8 +195,16 @@ export const JoinByCodeRequestSchema = z.object({
 export type JoinByCodeRequest = z.infer<typeof JoinByCodeRequestSchema>;
 
 export const ClaimsRequestSchema = z.object({
-  claimedItemIds: z.array(z.string().uuid()),
+  // A bill has at most 200 lines (AMEND_LIMITS, #155).
+  claimedItemIds: z.array(z.string().uuid()).max(200),
 });
+
+// PUT /v1/sessions/:id/payout-check body (#151): the lead's device's
+// fingerprint of the bank details it puts in the join link. Never the
+// details themselves (ADR-0002).
+export const SetPayoutCheckRequestSchema = z
+  .object({ payoutCheck: z.string().regex(/^[0-9a-f]{64}$/) })
+  .strict();
 export type ClaimsRequest = z.infer<typeof ClaimsRequestSchema>;
 
 // Lightweight session summary returned by GET /v1/me/sessions. Distinct from

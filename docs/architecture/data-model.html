@@ -139,7 +139,7 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M950.0,764 L950.0,722" marker-end="url(#ah)"/>
 <text x="960.0" y="747" text-anchor="start">sessionId</text>
 </g>
-<g class="edge dashed"><path d="M804,540 L760,540 L760,560 L380,560 L380,355.0 L352,355.0" marker-end="url(#ah)"/>
+<g class="edge dashed"><path d="M804,540 L760,540 L760,560 L380,560 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
 <text x="610.0" y="553" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
 </g>
 <g class="edge "><path d="M1112,502 L1168,502" marker-end="url(#ah)" marker-start="url(#ah)"/>
@@ -157,8 +157,8 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="48" y1="168" x2="332" y2="168"/>
 <text class="t-attr" x="48" y="186">userId</text>
 <text class="t-attr" x="48" y="204">email (lower-cased)</text>
-<rect class="node" x="30" y="266" width="320" height="178" rx="10"/>
-<rect class="band band-id" x="30" y="266" width="6" height="178" rx="3"/>
+<rect class="node" x="30" y="266" width="320" height="196" rx="10"/>
+<rect class="band band-id" x="30" y="266" width="6" height="196" rx="3"/>
 <text class="t-title" x="48" y="293">User</text>
 <rect class="chip-none" x="286.4" y="279" width="49.599999999999994" height="20" rx="10"/>
 <text class="t-chip" x="311.2" y="293" text-anchor="middle">No TTL</text>
@@ -169,45 +169,48 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="48" y1="354" x2="332" y2="354"/>
 <text class="t-attr" x="48" y="372">displayName, email, avatarUrl</text>
 <text class="t-attr" x="48" y="390">createdAt, updatedAt</text>
-<text class="t-attr" x="48" y="408">payoutAccount: legacy, no longer written</text>
-<text class="t-attr" x="48" y="426">  (bank details stay on device, ADR-0002)</text>
-<rect class="node" x="30" y="488" width="320" height="178" rx="10"/>
-<rect class="band band-id" x="30" y="488" width="6" height="178" rx="3"/>
-<text class="t-title" x="48" y="515">Sign-in link</text>
-<rect class="chip-ttl" x="286.4" y="501" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="515" text-anchor="middle">25 min</text>
-<text class="t-keylab" x="48" y="540">pk</text>
-<text class="t-key" x="104" y="540">SIGNIN#{linkId}</text>
-<text class="t-keylab" x="48" y="562">sk</text>
-<text class="t-key" x="104" y="562">same as pk</text>
-<line class="rule" x1="48" y1="576" x2="332" y2="576"/>
-<text class="t-attr" x="48" y="594">email, linkHash, requestHash</text>
-<text class="t-attr" x="48" y="612">status pending → approved → claimed</text>
-<text class="t-attr" x="48" y="630">  (conditional updates: each once)</text>
-<text class="t-attr" x="48" y="648">expiresAt (15 min), claimBy</text>
-<rect class="node" x="30" y="710" width="320" height="142" rx="10"/>
-<rect class="band band-id" x="30" y="710" width="6" height="142" rx="3"/>
-<text class="t-title" x="48" y="737">Link sending limit</text>
-<rect class="chip-ttl" x="286.4" y="723" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="311.2" y="737" text-anchor="middle">15 min</text>
-<text class="t-keylab" x="48" y="762">pk</text>
-<text class="t-key" x="104" y="762">SIGNINRATE#email:{email}</text>
-<text class="t-keylab" x="48" y="784">sk</text>
-<text class="t-key" x="104" y="784">W#{15-min window} | LAST</text>
-<line class="rule" x1="48" y1="798" x2="332" y2="798"/>
-<text class="t-attr" x="48" y="816">sends (at most 5, conditional add)</text>
-<text class="t-attr" x="48" y="834">sentAt: one link per 30 s</text>
-<rect class="node" x="30" y="896" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="896" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="923">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="909" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="923" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="948">pk</text>
-<text class="t-key" x="104" y="948">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="970">sk</text>
-<text class="t-key" x="104" y="970">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="984" x2="332" y2="984"/>
-<text class="t-attr" x="48" y="1002">stored status + response body</text>
+<text class="t-attr" x="48" y="408">tokenVersion: sign out everywhere (#155)</text>
+<text class="t-attr" x="48" y="426">payoutAccount: legacy, no longer written</text>
+<text class="t-attr" x="48" y="444">  (bank details stay on device, ADR-0002)</text>
+<rect class="node" x="30" y="506" width="320" height="178" rx="10"/>
+<rect class="band band-id" x="30" y="506" width="6" height="178" rx="3"/>
+<text class="t-title" x="48" y="533">Sign-in link</text>
+<rect class="chip-ttl" x="286.4" y="519" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="311.2" y="533" text-anchor="middle">25 min</text>
+<text class="t-keylab" x="48" y="558">pk</text>
+<text class="t-key" x="104" y="558">SIGNIN#{linkId}</text>
+<text class="t-keylab" x="48" y="580">sk</text>
+<text class="t-key" x="104" y="580">same as pk</text>
+<line class="rule" x1="48" y1="594" x2="332" y2="594"/>
+<text class="t-attr" x="48" y="612">email, linkHash, requestHash, code (#138)</text>
+<text class="t-attr" x="48" y="630">status pending → approved | denied → claimed</text>
+<text class="t-attr" x="48" y="648">  (conditional updates: each once)</text>
+<text class="t-attr" x="48" y="666">expiresAt (15 min), claimBy</text>
+<rect class="node" x="30" y="728" width="320" height="178" rx="10"/>
+<rect class="band band-id" x="30" y="728" width="6" height="178" rx="3"/>
+<text class="t-title" x="48" y="755">Rate limits</text>
+<rect class="chip-ttl" x="293.0" y="741" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="314.5" y="755" text-anchor="middle">≤ 1 h</text>
+<text class="t-keylab" x="48" y="780">pk</text>
+<text class="t-key" x="104" y="780">SIGNINRATE#… | CODERATE#user:{id}</text>
+<text class="t-keylab" x="48" y="802">sk</text>
+<text class="t-key" x="104" y="802">W#{window} | LAST</text>
+<line class="rule" x1="48" y1="816" x2="332" y2="816"/>
+<text class="t-attr" x="48" y="834">SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s</text>
+<text class="t-attr" x="48" y="852">SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h</text>
+<text class="t-attr" x="48" y="870">CODERATE#user: 30 code lookups / 10 min</text>
+<text class="t-attr" x="48" y="888">(conditional add; key drops +tags, Gmail dots)</text>
+<rect class="node" x="30" y="950" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="950" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="977">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="963" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="977" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="1002">pk</text>
+<text class="t-key" x="104" y="1002">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="1024">sk</text>
+<text class="t-key" x="104" y="1024">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="1038" x2="332" y2="1038"/>
+<text class="t-attr" x="48" y="1056">stored status + response body</text>
 <rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -345,7 +348,7 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="369">META</text>
 <text class="t-attr" x="816" y="388">status, creatorUserId, collectorUserId</text>
 <text class="t-attr" x="816" y="406">billId, pinnedBillVersion</text>
-<text class="t-attr" x="816" y="424">joinCode, venue, expectedDiners</text>
+<text class="t-attr" x="816" y="424">joinCode, venue, expectedDiners, payoutCheck</text>
 <rect class="inner" x="804" y="448" width="292" height="106" rx="7"/>
 <text class="t-keylab" x="816" y="467">sk</text>
 <text class="t-key" x="842" y="467">PART#{userId}</text>

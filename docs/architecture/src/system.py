@@ -126,8 +126,8 @@ AX, AW = LX + 16, 246
 BX, BW = LX + 16 + 246 + 12, LW - 32 - 246 - 12
 y = 308
 y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
-y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/link'), ('POST', '/requests'), ('POST', '/test-sign-in')]) + 10
-y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
+y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/link/code'), ('POST', '/link'), ('POST', '/link/deny'), ('POST', '/requests'), ('POST', '/test-sign-in')]) + 10
+y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('POST', '/sign-out'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('GET', '/me')]) + 10
@@ -136,7 +136,7 @@ colA_end = y
 
 y = 308
 y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
-    ('POST', '/'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
+    ('POST', '/'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/payments')]) + 10

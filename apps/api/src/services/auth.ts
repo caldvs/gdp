@@ -8,6 +8,8 @@ export interface VerifiedIdentity {
   name?: string;
   /** Profile photo URL. Reserved for future use; OTP flow doesn't capture one. */
   picture?: string;
+  /** A guest (#183): the one session their token works for. */
+  guestSessionId?: string;
 }
 
 export type IdTokenVerifier = (token: string) => Promise<VerifiedIdentity>;
@@ -37,5 +39,6 @@ export const createSessionTokenVerifier =
       userId: claims.userId,
       email: claims.email,
       ...(claims.name ? { name: claims.name } : {}),
+      ...(claims.guestSessionId ? { guestSessionId: claims.guestSessionId } : {}),
     };
   };

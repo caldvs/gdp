@@ -74,6 +74,8 @@ export class FakeApi {
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in with the emailed code (and so pass /v1/me). */
   private signedIn = new Set<string>();
+  /** #183: the name a guest joined with, by user id. */
+  guestNames = new Map<string, string>();
   /** The emailed sign-in code: sent, then used by the tab that asked. */
   signIn: 'none' | 'pending' | 'used' = 'none';
   /** Tries left on the emailed code (the API allows 5). */
@@ -233,7 +235,32 @@ export class FakeApi {
       if (this.signIn !== 'pending' || this.codeTries <= 0) return json({ status: 'expired' });
       return json({ status: 'wrong', attemptsLeft: this.codeTries });
     }
-    if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
+    if (path === '/v1/me') {
+      const auth = req.headers()['authorization'];
+      if (!auth) return err('AUTH_MISSING', 'No token', 401);
+      const guest = this.guestNames.get(user.userId);
+      return json(auth === 'Bearer guest-token' && guest ? { userId: user.userId, displayName: guest, guestSessionId: SID } : user);
+    }
+    // #183: the QR's landing page and joining with just a name.
+    if (path === '/v1/sessions/preview') {
+      if ((body().code as string) !== CODE) return err('NOT_FOUND', 'Code not found', 404);
+      const host = this.participants.find((p) => p.userId === 'u-lead');
+      return json({
+        sessionId: SID, status: this.status, hostName: (host?.displayName ?? 'Callum').split(' ')[0],
+        ...(this.venue ? { venueName: this.venue.name } : {}), createdAt: '2026-10-31T12:00:00Z',
+        itemCount: this.items.reduce((n, i) => n + i.quantity, 0), totalPence: this.bill.totalPence,
+        people: this.participants.map((p) => p.displayName.split(' ')[0]),
+      });
+    }
+    if (path === '/v1/sessions/guest-join') {
+      const { code, name } = body() as { code?: string; name?: string };
+      if (code !== CODE || this.status !== 'claiming') return err('NOT_FOUND', 'Code not active', 404);
+      const n = (name ?? '').trim();
+      if (!n) return err('INVALID_INPUT', 'name', 400);
+      this.guestNames.set(user.userId, n);
+      this.join({ ...user, displayName: n });
+      return json({ token: 'guest-token', session: this.session() }, 201);
+    }
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });

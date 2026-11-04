@@ -239,6 +239,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     '/v1/sessions',
     buildSessionRoutes({
       idTokenVerifier,
+      ...(sessionJwtSecret ? { jwtSecret: sessionJwtSecret } : {}),
       reports: createReportService({ emailSender }),
       ...(tableFees ? { tableFees } : {}),
     }),

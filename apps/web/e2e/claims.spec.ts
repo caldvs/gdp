@@ -274,6 +274,7 @@ test('picks freeze once the guest has said they’ve sent it', async ({ browser 
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   // Sent: the session page is the guest table now, with nothing to claim.
   await expect(sam.getByText('Callum will confirm')).toBeVisible();
   await expect(sam.getByRole('button', { name: 'Claim Calamari' })).toHaveCount(0);

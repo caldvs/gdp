@@ -136,7 +136,7 @@ colA_end = y
 
 y = 308
 y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
-    ('POST', '/'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
+    ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/payments')]) + 10

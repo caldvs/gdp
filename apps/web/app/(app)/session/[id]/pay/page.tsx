@@ -20,7 +20,7 @@ import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { usePayoutVerdict } from '@gdp/core/lib/usePayoutCheck';
 import { copyText } from '@/lib/clipboard';
-import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Notice, Page, Spinner, TickIcon, Title, firstName } from '@/components/ui';
+import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Dialog, Notice, Page, Spinner, TickIcon, Title, firstName } from '@/components/ui';
 import { owedFor } from '../guest';
 
 type Instructions = components['schemas']['PaymentInstructions'];
@@ -37,6 +37,8 @@ export default function PayPage() {
   const markPaid = useMarkPaymentPaid(id);
   const [instructions, setInstructions] = useState<ManualInstructions | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // "Are you sure you've paid?" before it's marked (4 Nov).
+  const [confirming, setConfirming] = useState(false);
 
   const s = session.data;
   // #151: details from a link that don't match the lead's are never shown.
@@ -98,12 +100,16 @@ export default function PayPage() {
       ? <Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button>
       : startError
         ? <Button grow busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Button>
-        : <Button grow busy={markPaid.isPending} disabled={!open} onClick={() => open && markPaid.mutate(open.paymentId, { onSuccess: () => router.replace(`/session/${id}`) })}>I’ve paid</Button>;
+        : <Button grow busy={markPaid.isPending} disabled={!open} onClick={() => setConfirming(true)}>I’ve paid</Button>;
+  const confirmPaid = () => {
+    if (!open) return;
+    markPaid.mutate(open.paymentId, { onSuccess: () => router.replace(`/session/${id}`), onSettled: () => setConfirming(false) });
+  };
 
   return (
     <>
       <Page sub>
-        {done ? <BackLink href="/">Bills</BackLink> : <BackLink href={`/session/${id}`}>Your items</BackLink>}
+        {done ? (me.data?.guestSessionId ? null : <BackLink href="/">Bills</BackLink>) : <BackLink href={`/session/${id}`}>Your items</BackLink>}
         <Title
           title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst}`}
           sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to confirm.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid. By bank transfer.` : 'By bank transfer. Tap a detail to copy it.'}
@@ -126,9 +132,9 @@ export default function PayPage() {
               <Notice title={`No bank details from ${hostFirst} yet.`}>Scan their QR code again with this phone.</Notice>
             )}
             {monzo || revolut ? (
-              <div className="btn-row">
-                {monzo ? <a className="btn btn--secondary" href={monzo} target="_blank" rel="noopener noreferrer">Pay with Monzo</a> : null}
-                {revolut ? <a className="btn btn--secondary" href={revolut} target="_blank" rel="noopener noreferrer">Pay with Revolut</a> : null}
+              <div className="pay-apps">
+                {monzo ? <a className="btn btn--monzo" href={monzo} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Monzo</a> : null}
+                {revolut ? <a className="btn btn--revolut" href={revolut} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Revolut</a> : null}
               </div>
             ) : null}
             {startError ? <Notice tone="error">{startError}</Notice> : null}
@@ -137,6 +143,21 @@ export default function PayPage() {
         )}
       </Page>
       <ActionBar>{action}</ActionBar>
+      {confirming && open ? (
+        <Dialog
+          id="paid-t"
+          title="Are you sure you’ve paid?"
+          onClose={() => setConfirming(false)}
+          actions={(
+            <>
+              <Button tone="secondary" onClick={() => setConfirming(false)}>Not yet</Button>
+              <Button busy={markPaid.isPending} onClick={confirmPaid}>Yes, I’ve paid</Button>
+            </>
+          )}
+        >
+          <p className="muted">Only once {formatGBP(amount)} has left your account. {hostFirst} checks it’s arrived.</p>
+        </Dialog>
+      ) : null}
     </>
   );
 }

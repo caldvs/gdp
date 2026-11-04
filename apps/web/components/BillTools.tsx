@@ -12,16 +12,19 @@ import Link from 'next/link';
 import { startTransition, useState } from 'react';
 import { useBillImageUrl } from '@gdp/core/api/hooks/useBillImageUrl';
 import { useEmailReport } from '@gdp/core/api/hooks/useSession';
+import { useMe } from '@gdp/core/api/hooks/useMe';
 import { Button, Dialog, MailIcon, PhotoIcon, QrIcon, Spinner, TickIcon } from './ui';
 
 export function BillTools({ sessionId, billId, showQr }: { sessionId: string; billId: string; showQr: boolean }) {
   const [photo, setPhoto] = useState(false);
+  // Guests (#183) have no email address to send a report to.
+  const canEmail = !useMe().data?.guestSessionId;
   return (
     <>
       <div className="tools">
         {showQr ? <Link className="tool" href={`/session/${sessionId}/share`} aria-label="QR code" title="QR code"><QrIcon /></Link> : null}
         <button type="button" className="tool" onClick={() => setPhoto(true)} aria-label="Bill photo" title="Bill photo"><PhotoIcon /></button>
-        <EmailReport sessionId={sessionId} />
+        {canEmail ? <EmailReport sessionId={sessionId} /> : null}
       </div>
       {photo ? <BillPhoto billId={billId} onClose={() => startTransition(() => setPhoto(false))} /> : null}
     </>

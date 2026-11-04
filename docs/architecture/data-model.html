@@ -186,31 +186,32 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="630">status pending → used; attempts ≤ 5 (ADD)</text>
 <text class="t-attr" x="48" y="648">  (right code again for 5 min after use)</text>
 <text class="t-attr" x="48" y="666">expiresAt (15 min)</text>
-<rect class="node" x="30" y="728" width="320" height="178" rx="10"/>
-<rect class="band band-id" x="30" y="728" width="6" height="178" rx="3"/>
+<rect class="node" x="30" y="728" width="320" height="196" rx="10"/>
+<rect class="band band-id" x="30" y="728" width="6" height="196" rx="3"/>
 <text class="t-title" x="48" y="755">Rate limits</text>
 <rect class="chip-ttl" x="293.0" y="741" width="43.0" height="20" rx="10"/>
 <text class="t-chip" x="314.5" y="755" text-anchor="middle">≤ 1 h</text>
 <text class="t-keylab" x="48" y="780">pk</text>
-<text class="t-key" x="104" y="780">SIGNINRATE#… | CODERATE#user:{id}</text>
+<text class="t-key" x="104" y="780">SIGNINRATE#… | CODERATE#… | GUESTRATE#…</text>
 <text class="t-keylab" x="48" y="802">sk</text>
 <text class="t-key" x="104" y="802">W#{window} | LAST</text>
 <line class="rule" x1="48" y1="816" x2="332" y2="816"/>
 <text class="t-attr" x="48" y="834">SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s</text>
 <text class="t-attr" x="48" y="852">SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h</text>
-<text class="t-attr" x="48" y="870">CODERATE#user: 30 code lookups / 10 min</text>
-<text class="t-attr" x="48" y="888">(conditional add; key drops +tags, Gmail dots)</text>
-<rect class="node" x="30" y="950" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="950" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="977">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="963" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="977" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="1002">pk</text>
-<text class="t-key" x="104" y="1002">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="1024">sk</text>
-<text class="t-key" x="104" y="1024">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="1038" x2="332" y2="1038"/>
-<text class="t-attr" x="48" y="1056">stored status + response body</text>
+<text class="t-attr" x="48" y="870">CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews</text>
+<text class="t-attr" x="48" y="888">GUESTRATE#ip: 20 guest joins / h · #session: 60 / h</text>
+<text class="t-attr" x="48" y="906">(conditional add; key drops +tags, Gmail dots)</text>
+<rect class="node" x="30" y="968" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="968" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="995">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="981" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="995" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="1020">pk</text>
+<text class="t-key" x="104" y="1020">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="1042">sk</text>
+<text class="t-key" x="104" y="1042">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="1056" x2="332" y2="1056"/>
+<text class="t-attr" x="48" y="1074">stored status + response body</text>
 <rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -398,18 +399,19 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="681">CLAIMS</text>
 <text class="t-attr" x="816" y="700">version: bumped by claims, splits, amends</text>
 <text class="t-attr" x="816" y="718">claim and split writes conditional on it</text>
-<rect class="node" x="790" y="782" width="320" height="142" rx="10"/>
-<rect class="band band-sess" x="790" y="782" width="6" height="142" rx="3"/>
+<rect class="node" x="790" y="782" width="320" height="160" rx="10"/>
+<rect class="band band-sess" x="790" y="782" width="6" height="160" rx="3"/>
 <text class="t-title" x="808" y="809">Join code</text>
 <rect class="chip-ttl" x="1039.8" y="795" width="56.199999999999996" height="20" rx="10"/>
 <text class="t-chip" x="1067.9" y="809" text-anchor="middle">30 days</text>
 <text class="t-keylab" x="808" y="834">pk</text>
-<text class="t-key" x="864" y="834">JCODE#{code}</text>
+<text class="t-key" x="864" y="834">JCODE#{token}</text>
 <text class="t-keylab" x="808" y="856">sk</text>
 <text class="t-key" x="864" y="856">same as pk</text>
 <line class="rule" x1="808" y1="870" x2="1092" y2="870"/>
 <text class="t-attr" x="808" y="888">sessionId</text>
-<text class="t-attr" x="808" y="906">create-if-absent (collision check)</text>
+<text class="t-attr" x="808" y="906">22-char QR token (old: 6 letters)</text>
+<text class="t-attr" x="808" y="924">create-if-absent (collision check)</text>
 <rect class="node gsi" x="1170" y="80" width="320" height="165" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>

@@ -571,3 +571,29 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 @keyframes paid-draw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .paid-hero__ripple, .paid-hero__coin, .paid-hero__mark--ok, .paid-hero__tick { animation: none; } .paid-hero__ripple { opacity: .15; transform: scale(1.2); } }
 
+/* ---------- Joining: the QR's landing page for a guest (#183) ---------- */
+.join-hero { background: var(--sky); color: #fff; padding: 0 var(--gutter) 56px; margin-bottom: -40px; }
+.join-hero__in { max-width: calc(var(--col) - 2 * var(--gutter)); margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
+.join-hero__h { font-family: var(--display); font-size: 44px; font-weight: 400; line-height: .95; text-transform: uppercase; }
+.join-hero__who { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; }
+.join-card { border-radius: var(--radius-card); background: var(--bg); box-shadow: 0 10px 30px rgba(0,60,120,.16); overflow: hidden; position: relative; }
+.join-card__top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 18px; }
+.join-card__venue { font-size: 20px; font-weight: 700; }
+.join-card__total { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.join-card__total b { font-family: var(--display); font-size: 32px; font-weight: 400; line-height: 1; }
+.join-steps { list-style: none; margin: 0; padding: 12px 18px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; font-size: 14px; font-weight: 600; }
+.join-steps li { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.join-steps span { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-tint); color: #0a4f8c; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 16px; }
+.input--name { height: 56px; border: 2px solid var(--ink); font-size: 18px; }
+
+/* ---------- Pay in the guest's banking app (4 Nov) ---------- */
+/* Styled after each bank so it's recognisable at a glance; white on both is over 12:1. */
+.pay-apps { display: flex; flex-direction: column; gap: 10px; }
+.btn--monzo { background: #14233c; color: #fff; font-weight: 700; }
+.btn--monzo:hover { background: #0d1a2e; }
+.btn--monzo .pay-apps__mark { background: #ff4f40; }
+.btn--revolut { background: #191c1f; color: #fff; font-weight: 700; }
+.btn--revolut:hover { background: #000; }
+.btn--revolut .pay-apps__mark { background: #fff; box-shadow: inset 0 0 0 4px #191c1f, 0 0 0 2px #fff; }
+.pay-apps__mark { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+

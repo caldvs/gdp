@@ -210,6 +210,32 @@ export const JoinByCodeRequestSchema = z.object({
 });
 export type JoinByCodeRequest = z.infer<typeof JoinByCodeRequestSchema>;
 
+/** A guest joining with just a name (#183). */
+export const GuestJoinRequestSchema = z.object({
+  code: z.string().regex(JOIN_CODE),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    // No markup or control characters: it's shown to everyone at the table.
+    .refine((n) => !/[<>]/.test(n) && [...n].every((ch) => ch.charCodeAt(0) >= 32), 'Not a name'),
+});
+export type GuestJoinRequest = z.infer<typeof GuestJoinRequestSchema>;
+
+/** What the QR's landing page shows before anyone joins (#183). No bank details (ADR-0002). */
+export interface SessionPreview {
+  sessionId: string;
+  status: 'setup' | 'claiming' | 'paying' | 'settled' | 'abandoned';
+  hostName: string;
+  venueName?: string;
+  createdAt: string;
+  itemCount: number;
+  totalPence: number;
+  /** First names of everyone at the table, host first. */
+  people: string[];
+}
+
 export const ClaimsRequestSchema = z.object({
   // A bill has at most 200 lines (AMEND_LIMITS, #155).
   claimedItemIds: z.array(z.string().uuid()).max(200),

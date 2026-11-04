@@ -424,6 +424,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What the QR's landing page shows before anyone joins
+         * @description For whoever holds the QR (#183): host first name, venue, date, item count,
+         *     total incl. service and the first names of everyone at the table. Nothing
+         *     about bank details (ADR-0002). No sign-in; at most 60 per IP address every
+         *     10 minutes.
+         */
+        post: operations["previewSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/guest-join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join a bill with just a name, no account
+         * @description Guests never sign in (#183). Seats a new guest at the table and returns a
+         *     session token that works for this one session only (its own session, the
+         *     bill it's pinned to, its payments, and `GET /v1/me`; anything else is 404).
+         *     At most 20 per IP address an hour, and 60 per table an hour.
+         */
+        post: operations["guestJoin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/by-code": {
         parameters: {
             query?: never;
@@ -1165,6 +1211,11 @@ export interface components {
             /** Format: uri */
             avatarUrl?: string;
             /**
+             * Format: uuid
+             * @description Set for a guest who joined with just a name (#183); their token works for this session only.
+             */
+            guestSessionId?: string;
+            /**
              * @deprecated
              * @description **Deprecated** per ADR-0002. Bank details are now device-local and
              *     exchanged peer-to-peer via QR. The field may still be returned for
@@ -1618,6 +1669,28 @@ export interface components {
         UpdateSessionRequest: {
             /** @description How many people are eating, lead included; `null` clears it. */
             expectedDiners: number | null;
+        };
+        GuestJoinRequest: {
+            code: string;
+            name: string;
+        };
+        GuestJoinResponse: {
+            /** @description Session token for this one session */
+            token: string;
+            session: components["schemas"]["Session"];
+        };
+        SessionPreview: {
+            /** Format: uuid */
+            sessionId: string;
+            /** @enum {string} */
+            status: "setup" | "claiming" | "paying" | "settled" | "abandoned";
+            hostName: string;
+            venueName?: string;
+            /** Format: date-time */
+            createdAt: string;
+            itemCount: number;
+            totalPence: number;
+            people: string[];
         };
         JoinByCodeRequest: {
             code: string;
@@ -2345,6 +2418,92 @@ export interface operations {
             };
             /** @description The bill already has an open session (`SESSION_INVALID_STATE`) */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    previewSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinByCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The bill as the landing page shows it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't open */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many tries from this address (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    guestJoin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestJoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Seated; keep the token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestJoinResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't taking new people */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many joins (`RATE_LIMITED`). */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

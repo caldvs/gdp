@@ -26,6 +26,7 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£17.25');
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £17.25.')).toBeVisible(POLL);
 
   await expect(lead.getByText('Says they’ve paid £17.25')).toBeVisible(POLL);
@@ -48,6 +49,7 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£22.50');
   await expect(sam.getByText('The rest, after the £17.25 you’ve paid.', { exact: false })).toBeVisible();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £22.50.')).toBeVisible(POLL);
   await expect(sam.getByRole('heading', { name: 'Your payments' })).toBeVisible();
 
@@ -68,10 +70,12 @@ test('a top-up can go before the lead has confirmed the first', async ({ browser
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await sam.getByRole('button', { name: 'I had something else' }).click();
   await sam.getByRole('button', { name: 'Claim Calamari' }).click();
   await sam.getByRole('link', { name: 'Pay Callum £22.50' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £39.75.')).toBeVisible(POLL);
 
   // Two to confirm, oldest first.

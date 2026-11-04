@@ -644,6 +644,74 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/preview:
+    post:
+      tags: [sessions]
+      operationId: previewSession
+      security: []
+      summary: What the QR's landing page shows before anyone joins
+      description: |
+        For whoever holds the QR (#183): host first name, venue, date, item count,
+        total incl. service and the first names of everyone at the table. Nothing
+        about bank details (ADR-0002). No sign-in; at most 60 per IP address every
+        10 minutes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JoinByCodeRequest' }
+      responses:
+        '200':
+          description: The bill as the landing page shows it
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Unknown token, or a bill that isn't open
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Too many tries from this address (`RATE_LIMITED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/guest-join:
+    post:
+      tags: [sessions]
+      operationId: guestJoin
+      security: []
+      summary: Join a bill with just a name, no account
+      description: |
+        Guests never sign in (#183). Seats a new guest at the table and returns a
+        session token that works for this one session only (its own session, the
+        bill it's pinned to, its payments, and `GET /v1/me`; anything else is 401 `AUTH_MISSING`).
+        At most 20 per IP address an hour, and 60 per table an hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestJoinRequest' }
+      responses:
+        '201':
+          description: Seated; keep the token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestJoinResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404':
+          description: Unknown token, or a bill that isn't taking new people
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Too many joins (`RATE_LIMITED`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/by-code:
     post:
       tags: [sessions]
@@ -1682,6 +1750,10 @@ components:
         displayName: { type: string }
         email: { type: string, format: email }
         avatarUrl: { type: string, format: uri }
+        guestSessionId:
+          type: string
+          format: uuid
+          description: Set for a guest who joined with just a name (#183); their token works for this session only.
         payoutAccount:
           allOf:
             - $ref: '#/components/schemas/PayoutAccount'
@@ -2242,6 +2314,35 @@ components:
           minimum: 2
           maximum: 99
           description: How many people are eating, lead included; `null` clears it.
+
+    GuestJoinRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          pattern: '^(?:[A-HJ-NP-Z2-9]{6}|[A-Za-z0-9_-]{22})$'
+        name: { type: string, minLength: 1, maxLength: 40 }
+
+    GuestJoinResponse:
+      type: object
+      required: [token, session]
+      properties:
+        token: { type: string, description: Session token for this one session }
+        session: { $ref: '#/components/schemas/Session' }
+
+    SessionPreview:
+      type: object
+      required: [sessionId, status, hostName, createdAt, itemCount, totalPence, people]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { type: string, enum: [setup, claiming, paying, settled, abandoned] }
+        hostName: { type: string }
+        venueName: { type: string }
+        createdAt: { type: string, format: date-time }
+        itemCount: { type: integer, minimum: 0 }
+        totalPence: { type: integer, minimum: 0 }
+        people: { type: array, items: { type: string } }
 
     JoinByCodeRequest:
       type: object

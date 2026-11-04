@@ -86,7 +86,7 @@ sx, sy = COLS[2], y
 rows = [
     ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck', 'platformFeePence: the hold guests repay']),
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
-    ('SHARE', 'SHARE#{itemId}', ['ways, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
+    ('SHARE', 'SHARE#{itemId}', ['ways, units, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),
 ]
 ih = [26 + len(r[2]) * LH + 8 for r in rows]

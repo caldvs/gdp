@@ -123,6 +123,38 @@ describe('buildReport', () => {
   });
 });
 
+describe('a split covering several of a line', () => {
+  it('names how many it covers and leaves the rest of the line to claims', () => {
+    const s = session('claiming');
+    const r = buildReport(
+      {
+        ...s,
+        shareSettings: [
+          ...s.shareSettings!,
+          { itemId: WINE, ways: 2, units: 2, version: 1, activity: [] },
+        ],
+        participants: s.participants.map((p) =>
+          p.userId === 'lead'
+            ? { ...p, claimedItemIds: [], sharedItemIds: [PIZZA, WINE] }
+            : p.userId === 'b'
+              ? { ...p, claimedItemIds: [WINE], sharedItemIds: [PIZZA, WINE] }
+              : p,
+        ),
+      },
+      bill,
+      amounts,
+    );
+    const b = r.diners.find((d) => d.userId === 'b')!;
+    expect(b.lines).toEqual([
+      { name: 'Pizza', detail: 'split 3 ways', pence: 400 },
+      { name: 'Wine × 2', detail: 'split 2 ways', pence: 600 },
+      { name: 'Wine', pence: 600 },
+    ]);
+    // 2 in the split and b's one: all 3 taken.
+    expect(r.unclaimed.map((l) => l.name)).toEqual(['Pizza', 'Bread <warm>']);
+  });
+});
+
 describe('platform fee (#166)', () => {
   it('adds each guest’s part of the hold to their total, and none to the lead’s', () => {
     const s = { ...session('claiming'), platformFeePence: 100 };

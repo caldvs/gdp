@@ -58,7 +58,7 @@ export type PaymentAmounts = ReadonlyMap<string, number>;
 
 export function buildReport(session: Session, bill: Bill, amounts: PaymentAmounts): BillReport {
   const settled = session.status === 'settled';
-  const waysByItem = new Map((session.shareSettings ?? []).map((s) => [s.itemId, s.ways]));
+  const splitByItem = new Map((session.shareSettings ?? []).map((s) => [s.itemId, s]));
   const linesByUser = new Map<string, ReportLine[]>(
     session.participants.map((p) => [p.userId, []]),
   );
@@ -69,22 +69,22 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
       .filter((p) => (p.sharedItemIds ?? []).includes(item.itemId))
       .map((p) => p.userId);
 
+    let shared = 0;
     if (sharers.length > 0) {
-      const ways = Math.max(waysByItem.get(item.itemId) ?? sharers.length, sharers.length);
-      const parts = splitShare(item.unitPricePence, sharers, ways);
+      const st = splitByItem.get(item.itemId);
+      const ways = Math.max(st?.ways ?? sharers.length, sharers.length);
+      shared = st?.units ?? 1;
+      const price = item.unitPricePence * shared;
+      const name = shared > 1 ? `${item.name} × ${shared}` : item.name;
+      const parts = splitShare(price, sharers, ways);
       for (const [userId, pence] of parts) {
-        linesByUser.get(userId)?.push({ name: item.name, detail: `split ${ways} ways`, pence });
+        linesByUser.get(userId)?.push({ name, detail: `split ${ways} ways`, pence });
       }
       const taken = [...parts.values()].reduce((a, b) => a + b, 0);
       const open = ways - sharers.length;
       if (open > 0) {
-        unclaimed.push({
-          name: item.name,
-          detail: `${open} of ${ways} shares`,
-          pence: item.unitPricePence - taken,
-        });
+        unclaimed.push({ name, detail: `${open} of ${ways} shares`, pence: price - taken });
       }
-      continue;
     }
 
     let claimedUnits = 0;
@@ -94,7 +94,7 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
       claimedUnits += n;
       linesByUser.get(p.userId)?.push(unitLine(item.name, n, item.unitPricePence));
     }
-    const left = item.quantity - claimedUnits;
+    const left = item.quantity - shared - claimedUnits;
     if (left > 0) unclaimed.push(unitLine(item.name, left, item.unitPricePence));
   }
 

@@ -120,7 +120,8 @@ type OwedBill = {
 
 /**
  * A diner's items: whole-unit claims plus their part of each split. Share
- * subtotal (ADR-0006): equal split, remainder pennies to the lowest userIds.
+ * subtotal (ADR-0006): the split's units of the line divided equally,
+ * remainder pennies to the lowest userIds.
  */
 export function itemsPenceFor(bill: OwedBill, session: Session, participant: Participant): number {
   let claimSub = 0;
@@ -136,8 +137,10 @@ export function itemsPenceFor(bill: OwedBill, session: Session, participant: Par
       .filter((p) => (p.sharedItemIds ?? []).includes(itemId))
       .map((p) => p.userId);
     if (sharers.length === 0) continue;
-    const ways = session.shareSettings?.find((s) => s.itemId === itemId)?.ways ?? sharers.length;
-    shareSub += splitShare(item.unitPricePence, sharers, ways).get(participant.userId) ?? 0;
+    const st = session.shareSettings?.find((s) => s.itemId === itemId);
+    const ways = st?.ways ?? sharers.length;
+    const price = item.unitPricePence * (st?.units ?? 1);
+    shareSub += splitShare(price, sharers, ways).get(participant.userId) ?? 0;
   }
   return claimSub + shareSub;
 }

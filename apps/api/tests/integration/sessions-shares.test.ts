@@ -76,6 +76,7 @@ describe('shares — ADR-0006', () => {
         itemId: itemIds[0],
         userIds: [creator],
         ways: 2,
+        units: 1,
         activity: [expect.objectContaining({ kind: 'started', byUserId: creator, toWays: 2 })],
       },
     ]);
@@ -135,23 +136,6 @@ describe('shares — ADR-0006', () => {
     // Repeating is a no-op.
     const again = await unshareItem(app, creator, sessionId, itemIds[0]!);
     expect(again.status).toBe(200);
-  });
-
-  it('returns 409 ITEM_NOT_SHAREABLE for an item with quantity > 1', async () => {
-    const app = buildApp({
-      ...sampleParsedBill,
-      items: [
-        { name: 'Two Pints', unitPricePence: 650, quantity: 2, category: 'drink' },
-        ...sampleParsedBill.items.slice(1),
-      ],
-    });
-    const creator = `c-${uuidv7()}`;
-    const { sessionId, itemIds } = await setUpSessionForSharing(app, creator);
-    // itemIds[0] is the quantity-2 item.
-    const res = await shareItem(app, creator, sessionId, itemIds[0]!);
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('ITEM_NOT_SHAREABLE');
   });
 
   it('returns 409 CLAIM_SHARE_CONFLICT if the caller has claimed the item themselves', async () => {
@@ -412,5 +396,102 @@ describe('shares — number of ways', () => {
     await setWays(app, g1, sessionId, shared!, 2);
     const ok = await lock();
     expect(ok.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Splitting some of a line with more than one of something
+// ---------------------------------------------------------------------------
+
+describe('splits on a multi-quantity line', () => {
+  const threeBottles = buildApp.bind(null, {
+    ...sampleParsedBill,
+    items: [
+      { name: 'Rioja bottle', unitPricePence: 2400, quantity: 3, category: 'drink' },
+      ...sampleParsedBill.items.slice(1),
+    ],
+  });
+  const claim = (
+    app: ReturnType<typeof buildApp>,
+    user: string,
+    sessionId: string,
+    ids: string[],
+  ) =>
+    app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(user) },
+      body: JSON.stringify({ claimedItemIds: ids }),
+    });
+  const split = (
+    app: ReturnType<typeof buildApp>,
+    user: string,
+    sessionId: string,
+    body: Record<string, unknown>,
+  ) =>
+    app.request(`/v1/sessions/${sessionId}/shares`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(user) },
+      body: JSON.stringify(body),
+    });
+
+  it('covers every unit nobody has claimed by default, and they can’t then be claimed', async () => {
+    const app = threeBottles();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [guest]);
+    const wine = itemIds[0]!;
+    expect((await claim(app, guest, sessionId, [wine])).status).toBe(200);
+
+    const res = await split(app, creator, sessionId, { itemId: wine, ways: 2 });
+    expect(res.status).toBe(200);
+    const session = (await res.json()) as Session;
+    expect(shareOf(session, wine)).toMatchObject({ ways: 2, units: 2, userIds: [creator] });
+    // The guest keeps their own bottle alongside the split.
+    expect(session.participants.find((p) => p.userId === guest)?.claimedItemIds).toEqual([wine]);
+
+    const more = await claim(app, guest, sessionId, [wine, wine]);
+    expect(more.status).toBe(409);
+    expect(((await more.json()) as { error: { code: string } }).error.code).toBe(
+      'SESSION_INVALID_STATE',
+    );
+
+    // Joining takes the open spot: £48 two ways.
+    const joined = (await (await split(app, guest, sessionId, { itemId: wine })).json()) as Session;
+    expect(shareOf(joined, wine)).toMatchObject({ ways: 2, units: 2 });
+    expect(joined.participants.find((p) => p.userId === guest)?.claimedItemIds).toEqual([wine]);
+  });
+
+  it('takes just `units`, leaves the rest to claim, and refuses more than is left', async () => {
+    const app = threeBottles();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [guest]);
+    const wine = itemIds[0]!;
+
+    const tooMany = await split(app, creator, sessionId, { itemId: wine, units: 4 });
+    expect(tooMany.status).toBe(409);
+    expect(((await tooMany.json()) as { error: { code: string } }).error.code).toBe(
+      'SESSION_INVALID_STATE',
+    );
+
+    const res = await split(app, creator, sessionId, { itemId: wine, units: 1, ways: 3 });
+    expect(shareOf((await res.json()) as Session, wine)).toMatchObject({ units: 1, ways: 3 });
+    expect((await claim(app, guest, sessionId, [wine, wine])).status).toBe(200);
+    expect((await claim(app, creator, sessionId, [wine])).status).toBe(409);
+  });
+
+  it('keeps its units when someone leaves or the ways change', async () => {
+    const app = threeBottles();
+    const creator = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const { sessionId, itemIds } = await openWithGuests(app, creator, [guest]);
+    const wine = itemIds[0]!;
+    await split(app, creator, sessionId, { itemId: wine, units: 2, ways: 2 });
+    await split(app, guest, sessionId, { itemId: wine });
+
+    const wider = (await (await setWays(app, guest, sessionId, wine, 3)).json()) as Session;
+    expect(shareOf(wider, wine)).toMatchObject({ units: 2, ways: 3 });
+    const left = (await (await unshareItem(app, guest, sessionId, wine)).json()) as Session;
+    expect(shareOf(left, wine)).toMatchObject({ units: 2, ways: 3, userIds: [creator] });
   });
 });

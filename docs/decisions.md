@@ -18,12 +18,12 @@ Why: the server never holds data that would let someone redirect payments, and t
 
 ## ADR-0006: Splits by ways
 
-A shared item (a bottle of wine) is split into `ways`, the number of people who shared it. Each sharer owes price ÷ ways; the remainder penny goes to the lowest `userId`.
+A shared item (a bottle of wine) is split into `ways`, the number of people who shared it. Each sharer owes its price ÷ ways; the remainder penny goes to the lowest `userId`.
 
 - Settings live in one `SHARE#<itemId>` row per item, with a `version` for optimistic locking and the last 10 activity entries.
 - Whoever starts the split sets `ways`. People in the split can change it (`PUT /v1/sessions/{id}/shares/{itemId}`), but not below the number already in, and not once any of them has paid.
 - Joining a full split adds a way. Leaving frees the spot.
-- Only quantity-1 items can be split (`ITEM_NOT_SHAREABLE` otherwise).
+- **Some of several can be split** (4 Nov 2026, Callum). On a line with more than one of something, whoever starts the split picks how many of it (`units`, default every one nobody has claimed) as well as how many ways; each person owes unit price × units ÷ ways. The rest of the line is still claimed one at a time, and a line has at most one split. On a quantity-1 line an item is claimed or split, never both.
 - **Splitting someone else's dish: told, not asked** (#130, 4 Nov 2026; Callum can revisit). *Split* on a dish one person has claimed turns their claim into a 2-way split with the splitter at once; the confirm sheet says "Priya will see you're sharing it" and Priya's row then reads "split with Tom". Nobody is asked to approve it. Refused (`SHARE_PAID`) once that person has paid, so what they paid never changes. Splitting a split with no spot left joins it as one more way (as before). The split's activity records it as `split` with `fromUserId`.
 - `splitShare` in the API and `sharePence` in `packages/core` must give the same answer.
 

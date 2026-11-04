@@ -1,7 +1,7 @@
 import type { components } from '../api';
 import { ledger } from './ledger';
 import { formatGBP } from './money';
-import { projectFeePence, projectOwedPence, sharePence } from './owed';
+import { projectFeePence, projectOwedPence, sharePence, splitPricePence } from './owed';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -57,6 +57,12 @@ export type Statement = {
 const owedOf = (s: Session, b: Bill, p: Participant): number =>
   p.owedPence ?? projectOwedPence(s, b, p.userId);
 
+/** A split's line name, with how many of it when it covers more than one. */
+function splitName(item: { name: string }, share: { units?: number }): string {
+  const n = share.units ?? 1;
+  return n > 1 ? `${n} × ${item.name}` : item.name;
+}
+
 function itemsOf(s: Session, b: Bill, p: Participant): StatementLine[] {
   const out: StatementLine[] = [];
   for (const item of b.items) {
@@ -70,8 +76,8 @@ function itemsOf(s: Session, b: Bill, p: Participant): StatementLine[] {
     const share = s.shares?.find((x) => x.itemId === item.itemId && x.userIds.includes(p.userId));
     if (share) {
       out.push({
-        label: `${item.name} (${share.ways === 2 ? 'half' : `1 of ${share.ways} ways`})`,
-        pence: sharePence(item.unitPricePence, share.userIds, share.ways, p.userId),
+        label: `${splitName(item, share)} (${share.ways === 2 ? 'half' : `1 of ${share.ways} ways`})`,
+        pence: sharePence(splitPricePence(item, share), share.userIds, share.ways, p.userId),
       });
     }
   }
@@ -82,22 +88,21 @@ function unclaimedItems(s: Session, b: Bill): StatementLine[] {
   const out: StatementLine[] = [];
   for (const item of b.items) {
     const share = s.shares?.find((x) => x.itemId === item.itemId && x.userIds.length > 0);
+    let shared = 0;
     if (share) {
+      shared = share.units ?? 1;
       const open = share.ways - share.userIds.length;
       if (open > 0) {
-        const taken = share.userIds.reduce(
-          (acc, u) => acc + sharePence(item.unitPricePence, share.userIds, share.ways, u),
-          0,
-        );
-        out.push({ label: `${item.name} (${open} of ${share.ways} ways)`, pence: item.unitPricePence - taken });
+        const price = splitPricePence(item, share);
+        const taken = share.userIds.reduce((acc, u) => acc + sharePence(price, share.userIds, share.ways, u), 0);
+        out.push({ label: `${splitName(item, share)} (${open} of ${share.ways} ways)`, pence: price - taken });
       }
-      continue;
     }
     const taken = s.participants.reduce(
       (acc, p) => acc + p.claimedItemIds.filter((id) => id === item.itemId).length,
       0,
     );
-    const left = item.quantity - taken;
+    const left = item.quantity - shared - taken;
     if (left > 0) {
       out.push({
         label: item.quantity > 1 ? `${item.name} (${left} of ${item.quantity})` : item.name,

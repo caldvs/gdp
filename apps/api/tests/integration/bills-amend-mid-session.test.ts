@@ -132,6 +132,47 @@ describe('POST /v1/bills/:billId/amend — mid-session', () => {
     expect(guestPart.claimedItemIds).toEqual([keptItem.itemId]);
   });
 
+  it('counts a split’s units when a quantity goes down', async () => {
+    const app = buildApp();
+    const { creator, guest, bill, sessionId } = await setupSessionInClaiming(app);
+    const itemId = bill.items[0]!.itemId;
+    const amend = (qty: number) =>
+      app.request(`/v1/bills/${bill.billId}/amend`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+        body: JSON.stringify({
+          items: bill.items.map((it) => ({
+            itemId: it.itemId,
+            name: it.name,
+            unitPricePence: it.unitPricePence,
+            quantity: it.itemId === itemId ? qty : it.quantity,
+            category: 'food' as const,
+          })),
+          taxPence: 0,
+          serviceChargePence: 0,
+        }),
+      });
+    expect((await amend(3)).status).toBe(200);
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [itemId] }),
+    });
+    // The other two are split.
+    const split = await app.request(`/v1/sessions/${sessionId}/shares`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({ itemId }),
+    });
+    expect(split.status).toBe(200);
+
+    const down = await amend(2);
+    expect(down.status).toBe(409);
+    const body = (await down.json()) as { error: { code: string; details?: { claimed?: number } } };
+    expect(body.error.code).toBe('CLAIMS_EXCEED_QUANTITY');
+    expect(body.error.details?.claimed).toBe(3);
+  });
+
   it('rejects with CLAIMS_EXCEED_QUANTITY when new quantity orphans existing claims', async () => {
     const app = buildApp();
     const { creator, guest, bill, sessionId } = await setupSessionInClaiming(app);

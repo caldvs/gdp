@@ -45,9 +45,10 @@ export const ParticipantSchema = z.object({
   avatarUrl: z.string().url().optional(),
   claimedItemIds: z.array(z.string().uuid()),
   // Items the participant is *sharing* with other diners (ADR-0006).
-  // Distinct from claimedItemIds: a share is one unit divided across the
-  // sharers, not a per-unit claim. Items may only appear in one of the
-  // two lists session-wide (v1 simplification). Default [].
+  // Distinct from claimedItemIds: a share is `units` of the line divided
+  // across the sharers, not a per-unit claim. On a quantity-1 line an item
+  // is either claimed or shared; on a longer line the rest of it can still
+  // be claimed one at a time. Default [].
   sharedItemIds: z.array(z.string().uuid()).default([]),
   owedPence: z.number().int().nonnegative().optional(),
   // The latest state across `payments` (in flight if any is), kept for
@@ -78,14 +79,20 @@ export type LockClaimsRequest = z.infer<typeof LockClaimsRequestSchema>;
 export const SHARE_WAYS_MIN = 2;
 export const SHARE_WAYS_MAX = 20;
 const WaysSchema = z.number().int().min(SHARE_WAYS_MIN).max(SHARE_WAYS_MAX);
+// How many of a line one split covers (2 bottles of wine shared by 4).
+export const SHARE_UNITS_MAX = 999;
+const UnitsSchema = z.number().int().min(1).max(SHARE_UNITS_MAX);
 
 // POST /v1/sessions/:id/shares body — caller joins the splitter set
 // for a single item (ADR-0006). `ways` is how many people shared the
 // item; it is only read when the caller *starts* the split (nobody else
-// in it yet). Joining an existing split ignores it.
+// in it yet). Joining an existing split ignores it. `units` is how many of
+// a multi-quantity line the split covers, also read only when starting it;
+// it defaults to every unit nobody has claimed.
 export const AddShareRequestSchema = z.object({
   itemId: z.string().uuid(),
   ways: WaysSchema.optional(),
+  units: UnitsSchema.optional(),
 });
 export type AddShareRequest = z.infer<typeof AddShareRequestSchema>;
 
@@ -111,6 +118,9 @@ export type ShareActivity = z.infer<typeof ShareActivitySchema>;
 export const ShareSettingsSchema = z.object({
   itemId: z.string().uuid(),
   ways: WaysSchema,
+  // How many of the line the split covers. Absent on splits from before
+  // multi-quantity splits, which always covered one.
+  units: UnitsSchema.optional(),
   version: z.number().int().min(1),
   activity: z.array(ShareActivitySchema),
 });
@@ -159,14 +169,16 @@ export const SessionSchema = z.object({
   // no items are shared. Server-only — clients never set this.
   //
   // `ways` is how many people the item is divided between (fixed by
-  // whoever started the split, changeable by anyone in it). Each sharer
-  // owes unitPrice / ways; spots nobody has taken yet are unclaimed.
+  // whoever started the split, changeable by anyone in it). `units` is how
+  // many of the line it covers. Each sharer owes unitPrice × units / ways;
+  // spots nobody has taken yet are unclaimed.
   shares: z
     .array(
       z.object({
         itemId: z.string().uuid(),
         userIds: z.array(z.string()),
         ways: z.number().int().min(1),
+        units: z.number().int().min(1),
         activity: z.array(ShareActivitySchema),
       }),
     )

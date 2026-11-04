@@ -10,7 +10,7 @@ import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
-import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
+import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
@@ -36,12 +36,14 @@ export function ItemLine({ st }: { st: ItemStatus }) {
   const open = left > 0;
   const name = item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name;
   const seats = share ? Math.max(0, share.ways - share.userIds.length) : 0;
+  // A longer line can have a split and units still to claim.
+  const units = share?.units ?? 1;
   const sub = share
-    ? `Shared ${share.ways} ways${seats ? ` · ${seats} open` : ''}`
+    ? [`${units > 1 ? `${units} shared` : 'Shared'} ${share.ways} ways`, seats ? `${seats} open` : null, item.quantity > 1 && open ? `${left} left` : null].filter(Boolean).join(' · ')
     : open && who.length > 0 ? `${left} left` : undefined;
-  const price = share
-    ? formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, ''))
-    : formatGBP(item.unitPricePence * (mine > 0 ? mine : open ? left : item.quantity));
+  const price = share && !(item.quantity > 1 && open)
+    ? formatGBP(sharePence(splitPricePence(item, share), share.userIds, share.ways, ''))
+    : formatGBP(item.unitPricePence * (mine > 0 && !share ? mine : open ? left : item.quantity));
   return <Row title={name} sub={sub} end={price} muted={!open && mine === 0} lead={who.length > 0 ? <AvatarStack names={who} /> : undefined} />;
 }
 export const owedFor = (s: Session, b: Bill, p: Participant) => p.owedPence ?? projectOwedPence(s, b, p.userId);
@@ -151,7 +153,8 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
                 const item = b.items.find((x) => x.itemId === id);
                 const share = s.shares?.find((x) => x.itemId === id);
                 if (!item || !share) return null;
-                return <Row key={id} title={item.name} sub={splitSub(s, share, meUserId)} end={formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, meUserId))} />;
+                const units = share.units ?? 1;
+                return <Row key={`${id}:split`} title={units > 1 ? `${item.name} × ${units}` : item.name} sub={splitSub(s, share, meUserId)} end={formatGBP(sharePence(splitPricePence(item, share), share.userIds, share.ways, meUserId))} />;
               })}
             </Box>
             <Totals>

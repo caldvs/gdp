@@ -233,8 +233,8 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
-      const { itemId, ways } = c.req.valid('json');
-      const session = await sessionService.addShare({ caller, sessionId, itemId, ways });
+      const { itemId, ways, units } = c.req.valid('json');
+      const session = await sessionService.addShare({ caller, sessionId, itemId, ways, units });
       return c.json(session);
     },
   );

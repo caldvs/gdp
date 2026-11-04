@@ -85,6 +85,14 @@ export const amendService = {
         }
       }
     }
+    // A split holds its units of the line too.
+    const shared = new Set(session.participants.flatMap((p) => p.sharedItemIds));
+    for (const st of session.shareSettings ?? []) {
+      if (newItemIds.has(st.itemId) && shared.has(st.itemId)) {
+        const held = (wholeClaimsForItem.get(st.itemId) ?? 0) + (st.units ?? 1);
+        wholeClaimsForItem.set(st.itemId, held);
+      }
+    }
     for (const [id, claimed] of wholeClaimsForItem) {
       const qty = newQty.get(id) ?? 0;
       if (claimed > qty) {

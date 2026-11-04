@@ -296,11 +296,15 @@ export const sessionService = {
    * Caller joins the splitter set for `itemId` (ADR-0006). Idempotent —
    * a no-op if already in the set. Returns the updated session.
    *
-   * Only quantity-1 items can be split. If someone else has claimed the
-   * item (#130), splitting it turns their claim into a split between the
-   * two of them at once: they're told, not asked (decisions.md). Refused
-   * with SHARE_PAID if they've already paid, since what they paid can't
-   * change. The caller's own claim must be released first.
+   * On a quantity-1 line, if someone else has claimed the item (#130),
+   * splitting it turns their claim into a split between the two of them
+   * at once: they're told, not asked (decisions.md). Refused with
+   * SHARE_PAID if they've already paid, since what they paid can't change.
+   * The caller's own claim must be released first.
+   *
+   * On a longer line the split covers `units` of it (default: every unit
+   * nobody has claimed), taken from what's left; the rest is still
+   * claimed one at a time.
    */
   async addShare(input: {
     caller: VerifiedCaller;
@@ -308,6 +312,8 @@ export const sessionService = {
     itemId: string;
     /** How many people shared it — only used when starting the split. */
     ways?: number;
+    /** How many of a multi-quantity line it covers — only used when starting. */
+    units?: number;
   }): Promise<Session> {
     return withShareRetry(async () => {
       const { session, claimsVersion } = await assertEditableSession(
@@ -320,14 +326,10 @@ export const sessionService = {
       if (!item) {
         throw new AppError('INVALID_INPUT', 'Unknown itemId', { itemId: input.itemId });
       }
-      if (item.quantity !== 1) {
-        throw new AppError(
-          'ITEM_NOT_SHAREABLE',
-          `"${item.name}" has quantity ${item.quantity}; only quantity-1 items are shareable in v1`,
-          { itemId: input.itemId, quantity: item.quantity },
-        );
-      }
-      const claimer = session.participants.find((p) => p.claimedItemIds.includes(input.itemId));
+      const multi = item.quantity > 1;
+      const claimer = multi
+        ? undefined
+        : session.participants.find((p) => p.claimedItemIds.includes(input.itemId));
       if (claimer && claimer.userId === input.caller.userId) {
         throw new AppError(
           'CLAIM_SHARE_CONFLICT',
@@ -372,11 +374,24 @@ export const sessionService = {
       const at = new Date().toISOString();
       let settings: ShareSettings;
       if (sharers.length === 0) {
-        // Starting the split: the starter says how many people shared it.
+        // Starting the split: the starter says how many people shared it,
+        // and on a longer line how many of it.
         const ways = input.ways ?? 2;
+        const left = item.quantity - claimedUnits(session, input.itemId);
+        const units = multi ? (input.units ?? left) : 1;
+        if (units < 1 || units > left) {
+          throw new AppError(
+            'SESSION_INVALID_STATE',
+            left < 1
+              ? `All of "${item.name}" has been claimed`
+              : `Only ${left} of "${item.name}" left to split`,
+            { itemId: input.itemId, units, available: Math.max(0, left) },
+          );
+        }
         settings = {
           itemId: input.itemId,
           ways,
+          units,
           version: (existing?.version ?? 0) + 1,
           activity: [{ kind: 'started', byUserId: input.caller.userId, at, toWays: ways }],
         };
@@ -405,6 +420,7 @@ export const sessionService = {
         settings = {
           itemId: input.itemId,
           ways,
+          ...keepUnits(existing),
           version: (existing?.version ?? 0) + 1,
           activity: pushActivity(existing?.activity, {
             kind: 'joined',
@@ -474,6 +490,7 @@ export const sessionService = {
           : {
               itemId: input.itemId,
               ways: existing?.ways ?? sharers.length,
+              ...keepUnits(existing),
               version: (existing?.version ?? 0) + 1,
               activity: pushActivity(existing?.activity, {
                 kind: 'left',
@@ -549,6 +566,7 @@ export const sessionService = {
       const settings: ShareSettings = {
         itemId: input.itemId,
         ways: input.ways,
+        ...keepUnits(existing),
         version: (existing?.version ?? 0) + 1,
         activity: pushActivity(existing?.activity, {
           kind: 'ways',
@@ -623,6 +641,7 @@ export const sessionService = {
         bill,
         session.participants,
         new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.ways])),
+        new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.units ?? 1])),
       );
     } catch (err) {
       if (err instanceof Error && err.message === 'CLAIMS_INCOMPLETE') {
@@ -800,6 +819,7 @@ function computeShares(
       userIds,
       // Splits from before `ways` existed: divide between whoever joined.
       ways: Math.max(st?.ways ?? userIds.length, userIds.length),
+      units: st?.units ?? 1,
       activity: st?.activity ?? [],
     };
   });
@@ -811,6 +831,24 @@ function sharersOf(session: Session, itemId: string): string[] {
 
 function settingsOf(session: Session, itemId: string): ShareSettings | undefined {
   return session.shareSettings?.find((st) => st.itemId === itemId);
+}
+
+/** A split's units carried into its next settings (absent on old splits: 1). */
+function keepUnits(st: ShareSettings | undefined): { units?: number } {
+  return st?.units ? { units: st.units } : {};
+}
+
+/** Units of a line claimed one at a time, by anyone. */
+function claimedUnits(session: Session, itemId: string, exceptUserId?: string): number {
+  return session.participants
+    .filter((p) => p.userId !== exceptUserId)
+    .reduce((acc, p) => acc + p.claimedItemIds.filter((c) => c === itemId).length, 0);
+}
+
+/** Units of a line a split covers; 0 when nobody is sharing it. */
+function sharedUnits(session: Session, itemId: string): number {
+  if (sharersOf(session, itemId).length === 0) return 0;
+  return settingsOf(session, itemId)?.units ?? 1;
 }
 
 function withSettings(
@@ -984,27 +1022,26 @@ async function setClaimsOnce(input: {
         { itemId: id, claimed: count, available: item.quantity },
       );
     }
-    // Other-participants check: sum existing (excluding caller) + my new count must not exceed quantity
-    const othersCount = session.participants
-      .filter((p) => p.userId !== input.caller.userId)
-      .reduce((acc, p) => acc + p.claimedItemIds.filter((c) => c === id).length, 0);
-    if (othersCount + count > item.quantity) {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        `Only ${item.quantity - othersCount} of "${item.name}" left to claim`,
-        { itemId: id, claimed: count, available: item.quantity - othersCount },
-      );
-    }
-    // ADR-0006 v1: an item is in claim-mode or share-mode, not both.
-    // If anyone (including the caller) currently shares this item we
-    // refuse the claim — they must leave the share first via DELETE
-    // /v1/sessions/:id/shares/:itemId.
-    const isShared = session.participants.some((p) => p.sharedItemIds.includes(id));
-    if (isShared) {
+    // ADR-0006: a quantity-1 item is claimed or shared, not both. If
+    // anyone (including the caller) currently shares it we refuse the
+    // claim — they must leave the share first via DELETE
+    // /v1/sessions/:id/shares/:itemId. On a longer line a split holds its
+    // units and the rest can be claimed.
+    const shared = sharedUnits(session, id);
+    if (shared > 0 && item.quantity === 1) {
       throw new AppError(
         'CLAIM_SHARE_CONFLICT',
         `"${item.name}" is currently being shared; leave the share before claiming`,
         { itemId: id },
+      );
+    }
+    // Everyone else's claims, plus any split, plus mine must fit the line.
+    const available = item.quantity - shared - claimedUnits(session, id, input.caller.userId);
+    if (count > available) {
+      throw new AppError(
+        'SESSION_INVALID_STATE',
+        `Only ${available} of "${item.name}" left to claim`,
+        { itemId: id, claimed: count, available },
       );
     }
   }

@@ -41,9 +41,6 @@ const SHARE_PATTERNS: RegExp[] = [
 ];
 
 export function isLikelyShareable(item: Pick<BillItem, 'name' | 'category' | 'quantity'>): boolean {
-  // Multi-quantity items use per-unit claiming (1/4 wings each), not
-  // share-mode. Share is reserved for single-unit splits.
-  if (item.quantity !== 1) return false;
   const name = item.name.toLowerCase();
   return SHARE_PATTERNS.some((re) => re.test(name));
 }

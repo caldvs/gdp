@@ -6,5 +6,5 @@ export const LEGAL = {
   operator: 'Callum Davies',
   address: '[trading address]',
   email: 'dvscllm@gmail.com',
-  updated: '31 October 2026',
+  updated: '4 November 2026',
 } as const;

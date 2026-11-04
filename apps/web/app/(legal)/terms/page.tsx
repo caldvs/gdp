@@ -37,16 +37,20 @@ export default function TermsPage() {
         <ul>
           <li>Each lead gets one free bill a month.</li>
           <li>
-            After that, sharing a bill costs £2, or £3 if the bill is over £100. The lead pays it by card when they
-            share the bill. Card payments are handled by Stripe.
+            After that, sharing a bill puts a £1 hold on the lead’s card. Nothing is taken when you share. Card
+            payments are handled by Stripe.
           </li>
           <li>
-            The fee is added to what the guests owe, split between them, so they pay it back to the lead with their
-            share of the bill.
+            Each guest pays back part of the £1 with their share of the bill, in proportion to what they had. When the
+            lead closes the bill, we take what the guests owe from the hold, never more than £1, and release the rest.
           </li>
           <li>
-            The fee pays for a service we supply straight away. When you pay, you agree to that, which means the
-            14-day cancellation period doesn’t apply. See <Link href="/refunds">Refunds</Link> for when we refund it.
+            If nobody joins, if the lead deletes the bill, or if the guests’ part is under 30p, we release the hold and
+            take nothing.
+          </li>
+          <li>
+            The fee pays for a service we supply straight away. When you share, you agree to that, which means the
+            14-day cancellation period doesn’t apply. See <Link href="/refunds">Refunds</Link>.
           </li>
         </ul>
       </section>

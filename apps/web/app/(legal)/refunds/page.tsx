@@ -13,14 +13,15 @@ export default function RefundsPage() {
 
       <section>
         <p>
-          The £2 or £3 fee pays for sharing one bill with your table. It’s supplied as soon as you pay, so the usual
-          14-day cancellation period doesn’t apply.
+          Sharing a bill without a free credit puts a £1 hold on your card. When you close the bill, we take only what
+          your guests owe of it (they pay it back to you with their share), and release the rest. The service is
+          supplied as soon as you share, so the usual 14-day cancellation period doesn’t apply.
         </p>
       </section>
 
       <section>
-        <h2>When we refund automatically</h2>
-        <p>If nobody joins the bill before you close it or bin it, we refund the fee to your card.</p>
+        <h2>When we take nothing</h2>
+        <p>If nobody joins the bill, or you delete it, we release the hold: nothing is taken.</p>
       </section>
 
       <section>

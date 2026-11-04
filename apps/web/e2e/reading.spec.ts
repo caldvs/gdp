@@ -43,13 +43,14 @@ test('reading asks nothing, then opens Review bill with the receipt’s place', 
   expect(api.requests.some((r) => r.path === '/v1/venues/nearby')).toBe(false);
 });
 
-test('no place on the receipt: none shown, none asked, and the table has no party size', async ({ browser }) => {
+test('no place on the receipt: asked once, Skip leaves none, and the table has no party size', async ({ browser }) => {
   const api = new FakeApi({ status: 'setup', venue: null });
   const page = await lead(browser, api);
   await scan(page).catch(() => undefined);
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Where was this?' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await expect(page.getByText(/^5 items/)).toBeVisible();
-  await expect(page.getByLabel('Where was this?')).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);

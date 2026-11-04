@@ -1,0 +1,48 @@
+{
+  "venue": "Westminster Kitchen",
+  "totalPence": 7228,
+  "servicePence": 803,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Apple Tart",
+      "quantity": 1,
+      "lineTotalPence": 650
+    },
+    {
+      "name": "Chicken Fillet",
+      "quantity": 1,
+      "lineTotalPence": 1145
+    },
+    {
+      "name": "Creamy Mashed Potatoes",
+      "quantity": 1,
+      "lineTotalPence": 395
+    },
+    {
+      "name": "Deep Fried Brie",
+      "quantity": 1,
+      "lineTotalPence": 745
+    },
+    {
+      "name": "Diet Coke",
+      "quantity": 3,
+      "lineTotalPence": 825
+    },
+    {
+      "name": "Margarita Pizza",
+      "quantity": 2,
+      "lineTotalPence": 1990
+    },
+    {
+      "name": "Tap Water Glass",
+      "quantity": 1,
+      "lineTotalPence": 0
+    },
+    {
+      "name": "Tricolore",
+      "quantity": 1,
+      "lineTotalPence": 675
+    }
+  ]
+}

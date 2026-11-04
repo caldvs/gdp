@@ -83,14 +83,51 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   await expect(lead.getByText('matches the receipt')).toBeVisible();
 });
 
-test('#136 no venue on the photo: none shown, none asked', async ({ browser }) => {
+test('no venue on the photo: asked once before Review bill; the name typed is saved', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
+  await expect(lead.getByRole('heading', { name: 'Where was this?' })).toBeVisible();
+  await lead.getByLabel('Restaurant').fill('The Dog & Partridge');
+  await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await expect(lead.getByText(/^5 items/)).toBeVisible();
-  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
-  await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
+  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  expect(api.bill.venue?.name).toBe('The Dog & Partridge');
+});
+
+test('no venue, skipped: not asked again in this tab, and it can still be added', async ({ browser }) => {
+  const api = new FakeApi({ venue: null });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await lead.getByRole('button', { name: 'Skip' }).click();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await lead.reload();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Add venue' }).click();
+  await expect(lead.getByLabel('Venue')).toBeVisible();
+});
+
+test('#107 lines the reader was unsure of are checked one at a time, then Review bill', async ({ browser }) => {
+  const unsure = items.map((it, i) => (i === 1 ? { ...it, unsure: 'price faded' } : i === 3 ? { ...it, unsure: 'quantity unclear' } : it));
+  const api = new FakeApi({ items: unsure });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Check this' })).toBeVisible();
+  await expect(lead.getByText('price faded · 1 of 2')).toBeVisible();
+  await expect(lead.getByLabel('Item')).toHaveValue('Calamari');
+  await lead.getByLabel('Price each').fill('23.50');
+  await lead.getByRole('button', { name: 'Looks right' }).click();
+
+  await expect(lead.getByText('quantity unclear · 2 of 2')).toBeVisible();
+  await expect(lead.getByLabel('Item')).toHaveValue('Negroni');
+  await lead.getByRole('button', { name: 'Looks right' }).click();
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  // Saved once: the fix is on the bill and the reader's notes are gone.
+  expect(api.items[1]).toMatchObject({ name: 'Calamari', unitPricePence: 2350 });
+  expect(api.items.some((it) => it.unsure)).toBe(false);
+  await lead.reload();
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
 });
 
 test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {

@@ -1,0 +1,23 @@
+{
+  "venue": "d Maiora - Italian Sandwich Shop",
+  "totalPence": 3670,
+  "servicePence": 0,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Bella Ciao",
+      "quantity": 1,
+      "lineTotalPence": 990
+    },
+    {
+      "name": "MISC",
+      "quantity": 1,
+      "lineTotalPence": 1290
+    },
+    {
+      "name": "Schiacciata - 5 Ingredients",
+      "quantity": 1,
+      "lineTotalPence": 1390
+    }
+  ]
+}

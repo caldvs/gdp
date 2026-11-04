@@ -1,0 +1,78 @@
+{
+  "venue": "The Bank Restaurant",
+  "totalPence": 9200,
+  "servicePence": 0,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Becks Alc Free",
+      "quantity": 1,
+      "lineTotalPence": 280
+    },
+    {
+      "name": "Cobra",
+      "quantity": 1,
+      "lineTotalPence": 360
+    },
+    {
+      "name": "J2O",
+      "quantity": 1,
+      "lineTotalPence": 265
+    },
+    {
+      "name": "Onion Bhaji",
+      "quantity": 1,
+      "lineTotalPence": 495
+    },
+    {
+      "name": "Kashmiri Rice",
+      "quantity": 1,
+      "lineTotalPence": 395
+    },
+    {
+      "name": "Steam Rice",
+      "quantity": 1,
+      "lineTotalPence": 315
+    },
+    {
+      "name": "Saffron Rice",
+      "quantity": 1,
+      "lineTotalPence": 365
+    },
+    {
+      "name": "Sweet Naan",
+      "quantity": 1,
+      "lineTotalPence": 325
+    },
+    {
+      "name": "Bombay Aloo",
+      "quantity": 1,
+      "lineTotalPence": 495
+    },
+    {
+      "name": "Lamb Madras",
+      "quantity": 1,
+      "lineTotalPence": 1395
+    },
+    {
+      "name": "Chicken Jalfrezi",
+      "quantity": 1,
+      "lineTotalPence": 1195
+    },
+    {
+      "name": "Honey Chilli Chicken",
+      "quantity": 1,
+      "lineTotalPence": 1195
+    },
+    {
+      "name": "Chicken Korma",
+      "quantity": 1,
+      "lineTotalPence": 1195
+    },
+    {
+      "name": "Beef Lasagne",
+      "quantity": 1,
+      "lineTotalPence": 925
+    }
+  ]
+}

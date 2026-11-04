@@ -16,6 +16,10 @@ export const BillItemSchema = z.object({
   quantity: z.number().int().positive(),
   category: BillItemCategory,
   course: BillItemCourse.optional(),
+  // Set by the reader on a line it couldn't read clearly ("price faded").
+  // The lead is asked to check those lines before Review bill; any edit of
+  // the bill (amend) clears it, since the lead has then seen every line.
+  unsure: z.string().max(60).optional(),
 });
 export type BillItem = z.infer<typeof BillItemSchema>;
 

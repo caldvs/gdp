@@ -349,3 +349,66 @@ describe('POST /v1/bills/parse', () => {
     expect((await parse(again)).status).toBe(200);
   });
 });
+
+describe('lines the reader is unsure of', () => {
+  it('keeps the note on the bill, and an amend clears it', async () => {
+    const unsure = {
+      ...sampleParsedBill,
+      items: sampleParsedBill.items.map((it, i) =>
+        i === 0 ? { ...it, unsure: 'price faded' } : it,
+      ),
+    };
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(unsure),
+    });
+    const userId = `u-${uuidv7()}`;
+    const uploadId = uuidv7();
+    await putObject(userId, uploadId, uniqueImageBytes());
+    const res = await app.request('/v1/bills/parse', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': newIdempotencyKey(),
+        ...makeAuth(userId),
+      },
+      body: JSON.stringify({ uploadId }),
+    });
+    const bill = (await res.json()) as {
+      billId: string;
+      items: {
+        itemId: string;
+        name: string;
+        unitPricePence: number;
+        quantity: number;
+        category: string;
+        unsure?: string;
+      }[];
+      taxPence: number;
+      serviceChargePence: number;
+    };
+    expect(bill.items.map((i) => i.unsure)).toEqual([
+      'price faded',
+      ...bill.items.slice(1).map(() => undefined),
+    ]);
+
+    const amended = await app.request(`/v1/bills/${bill.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        items: bill.items.map(({ itemId, name, unitPricePence, quantity, category }) => ({
+          itemId,
+          name,
+          unitPricePence,
+          quantity,
+          category,
+        })),
+        taxPence: bill.taxPence,
+        serviceChargePence: bill.serviceChargePence,
+      }),
+    });
+    expect(amended.status).toBe(200);
+    const after = (await amended.json()) as { items: { unsure?: string }[] };
+    expect(after.items.every((i) => i.unsure === undefined)).toBe(true);
+  });
+});

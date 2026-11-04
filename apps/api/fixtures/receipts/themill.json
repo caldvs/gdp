@@ -1,0 +1,48 @@
+{
+  "venue": "The Mill",
+  "totalPence": 17920,
+  "servicePence": 0,
+  "taxPence": 0,
+  "items": [
+    {
+      "name": "Zinfandel BTL",
+      "quantity": 4,
+      "lineTotalPence": 8600
+    },
+    {
+      "name": "Large Coke",
+      "quantity": 1,
+      "lineTotalPence": 320
+    },
+    {
+      "name": "Halloumi Fries",
+      "quantity": 1,
+      "lineTotalPence": 700
+    },
+    {
+      "name": "French Mussel Starter",
+      "quantity": 2,
+      "lineTotalPence": 1800
+    },
+    {
+      "name": "Thai Curry Chicken",
+      "quantity": 1,
+      "lineTotalPence": 1400
+    },
+    {
+      "name": "Fillet",
+      "quantity": 1,
+      "lineTotalPence": 2800
+    },
+    {
+      "name": "Half Lobster",
+      "quantity": 1,
+      "lineTotalPence": 2000
+    },
+    {
+      "name": "Peppercorn",
+      "quantity": 1,
+      "lineTotalPence": 300
+    }
+  ]
+}

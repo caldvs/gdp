@@ -162,6 +162,7 @@ function buildBillV1(args: {
     quantity: it.quantity,
     category: it.category,
     ...(it.category === 'food' && it.course ? { course: it.course } : {}),
+    ...(it.unsure ? { unsure: it.unsure } : {}),
   }));
   const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
   const taxPence = addedTaxPence(args.parsed, subtotalPence);

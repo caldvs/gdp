@@ -7,6 +7,7 @@ import { ApiError, type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { isFeeRequired, shareSession, useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
 import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
+import { useBillImageUrl } from '@gdp/core/api/hooks/useBillImageUrl';
 import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
@@ -31,6 +32,22 @@ const fromBillItem = (it: BillItem, idx: number): DraftItem => ({
 const blankItem = (): DraftItem => ({ draftId: `new-${Math.random().toString(36).slice(2, 9)}`, name: '', unitPricePounds: '0.00', quantity: 1, category: 'food' });
 const parsePence = (s: string): number => { const n = Number(s); return !Number.isFinite(n) || n < 0 ? 0 : Math.round(n * 100); };
 const pounds = (p: number) => (p / 100).toFixed(2);
+
+// "Where was this?" skipped for a bill, in this browser, so it isn't asked again.
+const skipKey = (billId: string) => `gdp.venue-skipped.${billId}`;
+const venueSkipped = (billId: string): boolean => {
+  try { return sessionStorage.getItem(skipKey(billId)) === '1'; } catch { return false; }
+};
+const skipVenue = (billId: string) => {
+  try { sessionStorage.setItem(skipKey(billId), '1'); } catch { /* asked again next time */ }
+};
+
+/**
+ * The check step (#107), before Review bill: each line the reader was
+ * unsure of, one at a time, then the place when the receipt names none.
+ * `steps` holds itemIds and 'venue'; fixed when the bill first loads.
+ */
+type Check = { steps: string[]; notes: Record<string, string>; at: number };
 
 function existingSessionIdFromError(err: unknown): string | undefined {
   if (!(err instanceof ApiError) || err.code !== 'SESSION_INVALID_STATE') return undefined;
@@ -80,11 +97,26 @@ function CheckBill() {
   const [hydrated, setHydrated] = useState(false);
   const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
+  const [check, setCheck] = useState<Check | null>(null);
+  const photo = useBillImageUrl(billId, !!check);
 
   useEffect(() => {
     if (bill.data && !hydrated) {
       hydrateFrom(bill.data);
       setHydrated(true);
+      // Mid-session the lead is fixing something specific; no check then.
+      if (!isMidSession && billId) {
+        const unsure = bill.data.items.filter((it) => it.unsure);
+        const steps = [
+          ...unsure.map((it) => it.itemId),
+          ...(!bill.data.venue?.name && !venueSkipped(billId) ? ['venue'] : []),
+        ];
+        if (steps.length > 0) {
+          setCheck({ steps, notes: Object.fromEntries(unsure.map((it) => [it.itemId, it.unsure!])), at: 0 });
+          // Holds the autosave until the check is done: it saves once, at the end.
+          setEditing('check');
+        }
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bill.data, hydrated]);
@@ -146,7 +178,7 @@ function CheckBill() {
   const finishEditing = () => { setEditing(null); setSnapshot(null); };
   const addAndEdit = () => { const it = blankItem(); setItems((prev) => [...prev, it]); startEditing(it); };
 
-  const buildAmendPayload = () => ({
+  const buildAmendPayload = (venue = venueName) => ({
     items: items.map((it) => ({
       ...(it.itemId ? { itemId: it.itemId } : {}),
       name: it.name.trim() || 'Item',
@@ -157,12 +189,25 @@ function CheckBill() {
     })),
     taxPence,
     serviceChargePence: servicePence,
-    ...(venueName.trim()
+    ...(venue.trim()
       ? {
-          venue: { name: venueName.trim() },
+          venue: { name: venue.trim() },
         }
       : {}),
   });
+
+  /** Next check, or save once (clearing the reader's notes) and show Review bill. */
+  const nextCheck = async (venue?: string) => {
+    if (!check) return;
+    if (check.at + 1 < check.steps.length) { setCheck({ ...check, at: check.at + 1 }); return; }
+    const hadNotes = Object.keys(check.notes).length > 0;
+    if (venue !== undefined) setVenueName(venue);
+    if (hadNotes || venue?.trim()) {
+      try { hydrateFrom(await amend.mutateAsync(buildAmendPayload(venue ?? venueName))); } catch { return; }
+    }
+    setCheck(null);
+    setEditing(null);
+  };
 
   const saveDraft = async (): Promise<boolean> => {
     if (!isDirty) return true;
@@ -211,24 +256,66 @@ function CheckBill() {
   if (bill.isError) {
     return <Centre><Notice tone="error" title="Couldn’t load the bill.">{bill.error.message}</Notice><Button tone="secondary" href="/" replace>Back to bills</Button></Centre>;
   }
+  if (check) {
+    const step = check.steps[check.at]!;
+    const of = check.steps.length > 1 ? ` · ${check.at + 1} of ${check.steps.length}` : '';
+    const it = items.find((d) => d.itemId === step);
+    return (
+      <Page sub>
+        <BackLink href="/">Bills</BackLink>
+        {step === 'venue' ? (
+          <>
+            <Title title="Where was this?" sub={`Not on the receipt${of}`} />
+            <VenueAsk
+              busy={amend.isPending}
+              onSkip={() => { if (billId) skipVenue(billId); void nextCheck(); }}
+              onDone={(name) => void nextCheck(name)}
+            />
+          </>
+        ) : (
+          <>
+            <Title title="Check this" sub={`${check.notes[step] ?? 'Hard to read'}${of}`} />
+            {photo.data ? (
+              <a href={photo.data.url} target="_blank" rel="noopener noreferrer" aria-label="Open the photo full size">
+                <img src={photo.data.url} alt="Photo of the bill" className="photo-check" />
+              </a>
+            ) : null}
+            {it ? (
+              <ItemEditor
+                key={it.draftId}
+                item={it}
+                claimed={0}
+                doneLabel="Looks right"
+                onChange={(patch) => updateItem(it.draftId, patch)}
+                onDone={() => void nextCheck()}
+                onRemove={() => { removeItem(it.draftId); void nextCheck(); }}
+              />
+            ) : null}
+          </>
+        )}
+        {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
+      </Page>
+    );
+  }
+
   const b = bill.data as Bill & { parsedTotalPence?: number };
   const busy = amend.isPending || createSession.isPending;
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
-  // #136: nothing on the photo names the place: none is shown, or asked.
-  const noVenue = !b.venue?.name;
+  // Nothing on the photo names the place: the check step asked; here it can still be added.
+  const noVenue = !b.venue?.name && !venueName.trim();
   const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
     : (
       <>
         {restOfSub}
-        {noVenue ? null : (
-          <>
-            {' · '}
-            <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
-          </>
+        {' · '}
+        {noVenue ? (
+          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Add venue">add place</button>
+        ) : (
+          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
         )}
         {/* Where the venue is: the full address when the lookup matched it,
             else what the bill printed. Lets the lead catch a wrong branch. */}
@@ -329,12 +416,15 @@ function CheckBill() {
   );
 }
 
-function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
-  item: DraftItem; claimed: number; onChange: (p: Partial<DraftItem>) => void; onDone: () => void; onCancel: () => void; onRemove: () => void;
+function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove, doneLabel = 'Done' }: {
+  item: DraftItem; claimed: number; onChange: (p: Partial<DraftItem>) => void; onDone: () => void;
+  /** Absent in the check step: there's nothing to go back to. */
+  onCancel?: () => void;
+  onRemove: () => void; doneLabel?: string;
 }) {
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') { e.preventDefault(); onDone(); }
-    if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    if (e.key === 'Escape' && onCancel) { e.preventDefault(); onCancel(); }
   };
   const minQty = Math.max(1, claimed);
   return (
@@ -364,8 +454,8 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove }: {
       <div className="btn-row btn-row--end">
         <Button tone="text" small onClick={onRemove} disabled={claimed > 0} className={claimed > 0 ? undefined : 'btn--text-danger'}>Remove</Button>
         <span style={{ flex: 1 }} />
-        <Button tone="secondary" small onClick={onCancel}>Cancel</Button>
-        <Button small onClick={onDone}>Done</Button>
+        {onCancel ? <Button tone="secondary" small onClick={onCancel}>Cancel</Button> : null}
+        <Button small onClick={onDone}>{doneLabel}</Button>
       </div>
     </div>
   );
@@ -406,6 +496,32 @@ function MoneyEditor({ label, value, onChange, onDone }: { label: string; value:
           </div>
         </div>
         <Button onClick={onDone}>Done</Button>
+      </div>
+    </div>
+  );
+}
+
+/** The check step's last question when the receipt names no place. */
+function VenueAsk({ busy, onSkip, onDone }: { busy: boolean; onSkip: () => void; onDone: (name: string) => void }) {
+  const [name, setName] = useState('');
+  return (
+    <div className="editor" style={{ borderRadius: 'var(--radius)' }}>
+      <div className="field">
+        <label htmlFor="venue-ask">Restaurant</label>
+        <input
+          id="venue-ask"
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Where was this?"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) { e.preventDefault(); onDone(name.trim()); } }}
+        />
+      </div>
+      <div className="btn-row btn-row--end">
+        <span style={{ flex: 1 }} />
+        <Button tone="secondary" small onClick={onSkip} disabled={busy}>Skip</Button>
+        <Button small busy={busy} onClick={() => onDone(name.trim())} disabled={!name.trim()}>Done</Button>
       </div>
     </div>
   );

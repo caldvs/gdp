@@ -29,7 +29,7 @@ function aggregate(entries: Entry[]): Payment {
   return { status: 'unpaid' };
 }
 type Share = { itemId: string; userIds: string[]; ways: number; /** How many of the line (1 when absent). */ units?: number; activity: unknown[] };
-type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string };
+type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string; /** The reader couldn't read it clearly (#107). */ unsure?: string };
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';

@@ -28,6 +28,9 @@ export interface CachedVenueRecord {
   // `null` when Amazon Location had no good match, so the same text isn't
   // looked up again. The bill still records the text read off it.
   venue: Venue | null;
+  // Written by exact-name matching: the venue, if any, is the place printed
+  // on the bill. Rows without it predate that and are looked up again.
+  exact?: boolean;
 }
 
 export const venueCacheStore = {
@@ -39,7 +42,10 @@ export const venueCacheStore = {
       }),
     );
     if (!result.Item || result.Item.source !== VENUE_SOURCE) return null;
-    return { venue: (result.Item.venue ?? null) as Venue | null };
+    return {
+      venue: (result.Item.venue ?? null) as Venue | null,
+      ...(result.Item.exact === true && { exact: true }),
+    };
   },
 
   async put(key: string, record: CachedVenueRecord): Promise<void> {
@@ -51,6 +57,7 @@ export const venueCacheStore = {
           sk: pk(key),
           source: VENUE_SOURCE,
           venue: record.venue,
+          ...(record.exact && { exact: true }),
           cachedAt: new Date().toISOString(),
         },
       }),

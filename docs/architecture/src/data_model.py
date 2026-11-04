@@ -68,8 +68,9 @@ y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#00
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
            'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId }']) + GAP
-y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE (current)'), ('sk', 'FEE#{csId} (replaced)')], ['Stripe checkout state, amount, refund', 'sessionId: the one share it paid for', '  (set in the share transaction)', 'kept as a tax record', 'GSI1PK FEES#{userId} · GSI1SK paidAt']) + GAP
+y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE (current)'), ('sk', 'FEE#{csId} (replaced)')], ['kind hold: £1 card hold (#165), amount,', '  capturedPence at close or releasedAt', 'sessionId: the one share it paid for', '  (set in the share transaction)', 'kept as a tax record', 'GSI1PK FEES#{userId} · GSI1SK paidAt']) + GAP
 y = place(1, y, 'Monthly credit', 'bill', 'No TTL', [('pk', 'CREDIT#{userId}#{yyyy-mm}'), ('sk', 'CREDIT')], ['one free bill a month (UK time)', 'sessionId, billId, claimedAt: put in the', '  share transaction if unclaimed', 'returnedAt: nobody joined, spend again', 'GSI1PK FEES#{userId} · GSI1SK claimedAt']) + GAP
+y = place(1, y, 'Pending hold', 'bill', 'No TTL', [('pk', 'HOLDQ#{billId}'), ('sk', 'HOLDQ')], ['billId, sessionId, heldAt: put in the', '  share transaction with the hold (#168)', 'GSI1PK HOLDS · GSI1SK heldAt: the daily', '  sweep; cleared once settled']) + GAP
 y = place(1, y, 'Venue lookup', 'bill', 'No TTL', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['Amazon Location answer, or no match', 'source = amazon-location']) + GAP
 y = place(1, y, 'Nearby places', 'bill', '30 days', [('pk', 'NEARQ#{lat|lng to 3 dp}'), ('sk', 'same as pk')], ['places [{ placeId, name, address, lat, lng }]', 'rounded cell only; never who asked']) + GAP
 y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
@@ -82,7 +83,7 @@ y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('
 # Session item collection (custom)
 sx, sy = COLS[2], y
 rows = [
-    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck']),
+    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck', 'platformFeePence: the hold guests repay']),
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),

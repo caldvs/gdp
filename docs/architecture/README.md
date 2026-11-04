@@ -43,8 +43,8 @@ Then refresh the PNGs with any headless Chrome:
 
 ```sh
 cd docs/architecture
-google-chrome --headless=new --hide-scrollbars --window-size=1720,1500 --screenshot=system.png "file://$PWD/system.html"
-google-chrome --headless=new --hide-scrollbars --window-size=1600,2040 --screenshot=data-model.png "file://$PWD/data-model.html"
+google-chrome --headless=new --hide-scrollbars --window-size=1720,1540 --screenshot=system.png "file://$PWD/system.html"
+google-chrome --headless=new --hide-scrollbars --window-size=1600,2980 --screenshot=data-model.png "file://$PWD/data-model.html"
 ```
 
 Sources of truth: `apps/api/openapi.yaml` for endpoints, `apps/api/infra/main.ts` for AWS resources, `apps/api/src/storage/*` for keys. Update the diagrams in the same PR as a change to any of those.

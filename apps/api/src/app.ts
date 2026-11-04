@@ -51,8 +51,12 @@ import {
 import { parseEmailList } from './config/exemptEmails.js';
 import {
   creditStore as defaultCreditStore,
+  holdIndex,
   tableFeeStore as defaultTableFeeStore,
 } from './storage/tableFeeStore.js';
+import { sessionStore } from './storage/sessionStore.js';
+import { sessionService } from './services/sessions/sessionService.js';
+import { runHoldSweep, type HoldSweepReport } from './ops/holdSweep.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
@@ -269,3 +273,31 @@ export const runBillRead = createReadRunner({
   parser: defaultBillParser(),
   venueResolver: defaultVenueResolver(),
 });
+
+/**
+ * Runs the daily hold sweep (#168, see ops/holdSweep.ts) when EventBridge
+ * invokes this Lambda. Throws when a hold couldn't be settled, so the
+ * Lambda errors alarm fires; the next day's run tries it again.
+ */
+export const runHoldSweepNow = async (): Promise<HoldSweepReport | { skipped: string }> => {
+  if (!env.STRIPE_SECRET_KEY) return { skipped: 'Stripe not enabled' };
+  const tableFees = createTableFeeService({
+    stripe: new Stripe(env.STRIPE_SECRET_KEY),
+    store: defaultTableFeeStore,
+    credits: defaultCreditStore,
+    getBill: (billId) => billStore.getLatest(billId),
+    appBaseUrl: env.APP_BASE_URL,
+  });
+  const report = await runHoldSweep({
+    holds: holdIndex,
+    getFee: (billId) => defaultTableFeeStore.get(billId),
+    getSession: (sessionId) => sessionStore.get(sessionId),
+    guestsFeePence: (sessionId) => sessionService.guestsFeePence(sessionId),
+    tableFees,
+  });
+  baseLogger.info({ event: 'hold_sweep.done', ...report }, 'Hold sweep');
+  if (report.failed.length > 0) {
+    throw new Error(`Hold sweep: ${report.failed.length} hold(s) not settled`);
+  }
+  return report;
+};

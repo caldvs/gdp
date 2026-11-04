@@ -9,7 +9,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type Stripe from 'stripe';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
-import { creditStore, tableFeeStore } from '../../src/storage/tableFeeStore.js';
+import { creditStore, holdIndex, tableFeeStore } from '../../src/storage/tableFeeStore.js';
 import { monthOf, nextCreditOn } from '../../src/services/billing/tableFee.js';
 import {
   createBillFor,
@@ -43,7 +43,7 @@ type App = ReturnType<typeof buildApp>;
 const payFee = (
   billId: string,
   userId: string,
-  extra: { sessionId?: string; kind?: 'hold'; amountPence?: number } = {},
+  extra: { sessionId?: string; kind?: 'hold'; amountPence?: number; paidAt?: string } = {},
 ) =>
   tableFeeStore.putIfAbsent({
     billId,
@@ -114,6 +114,18 @@ describe('share needs the platform fee (#139)', () => {
     expect(((await res.json()) as { platformFeePence?: number }).platformFeePence).toBe(100);
     const get = await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(lead) });
     expect(((await get.json()) as { platformFeePence?: number }).platformFeePence).toBe(100);
+  });
+
+  it('a share on a hold is put where the daily sweep looks, and can be cleared (#168)', async () => {
+    const app = buildApp({ credits: false });
+    const lead = `c-${uuidv7()}`;
+    const { sessionId, billId } = await newSession(app, lead);
+    const heldAt = '2026-11-01T19:00:00.000Z';
+    await payFee(billId, lead, { kind: 'hold', amountPence: 100, paidAt: heldAt });
+    expect((await share(app, sessionId, lead)).status).toBe(200);
+    expect(await holdIndex.list()).toContainEqual({ billId, sessionId, heldAt });
+    await holdIndex.clear(billId);
+    expect((await holdIndex.list()).some((h) => h.billId === billId)).toBe(false);
   });
 
   it('a fee paid outright (before holds) asks the guests for nothing', async () => {

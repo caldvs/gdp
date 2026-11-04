@@ -2,7 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
-import { entitlementOp } from '../../storage/tableFeeStore.js';
+import { entitlementOps } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
@@ -212,7 +212,7 @@ export const sessionService = {
       await sessionStore.applyShare({
         sessionMeta: updatedMeta,
         creator: updatedCreator,
-        entitlement: entitlement ? entitlementOp(entitlement) : null,
+        entitlement: entitlement ? entitlementOps(entitlement) : [],
       });
     } catch (err) {
       // The fee was spent or refunded, or the credit claimed, in between.

@@ -182,11 +182,11 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in links'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
-                   ('FEE#', 'Table fees'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
+                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
-c4card('cw', 'CloudWatch', ['Logs, dashboard', 'Alarms: errors, p99,', '5xx, DDB throttles'])
+c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge: daily hold', 'sweep invokes the Lambda'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
 c4card('location', 'Amazon Location', ['Venue lookup, nearby places'])
@@ -195,7 +195,7 @@ c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Del
 # ---- Column 5 externals at gap y's
 def ext(key, title, lines, h=72):
     cy = gaps[key]; card(C5X, cy - h // 2, C5W, h, title, lines, 'node ext')
-ext('stripe', 'Stripe', ['Table-fee Checkout', 'Webhooks back'], 82)
+ext('stripe', 'Stripe', ['£1 hold Checkout', 'Capture or cancel'], 82)
 s3y = pos['s3'][0]
 card(C5X, s3y - 10, C5W, 92, 'GitHub Actions', ['CI, e2e, typecheck', 'Deploys dev from main'], 'node ext')
 

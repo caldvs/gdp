@@ -388,5 +388,12 @@ jobs:
       - name: Deploy a preview and point test.paymeback.dev at it
         run: |
           url=$(npx --yes vercel@64.7.0 deploy --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$GITHUB_SHA")
-          npx --yes vercel@64.7.0 alias set "$url" test.paymeback.dev --token "$VERCEL_TOKEN" --scope caldvs-projects
+          # `vercel alias` looks up the token's user, which this token can't;
+          # the REST API needs only the team.
+          host=${url#https://}
+          id=$(curl -fsS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/$host?teamId=$VERCEL_ORG_ID" | jq -r .id)
+          curl -fsS -X POST -H "Authorization: Bearer $VERCEL_TOKEN" -H 'content-type: application/json' \
+            -d '{"alias":"test.paymeback.dev"}' \
+            "https://api.vercel.com/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID" | jq -r '.alias // .'
           echo "test.paymeback.dev → $url (${GITHUB_SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"

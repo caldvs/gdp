@@ -4,6 +4,7 @@ import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-s
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
+import { readQuotaStore } from '../../src/storage/readQuotaStore.js';
 import {
   fakeVerifier,
   makeAuth,
@@ -311,5 +312,40 @@ describe('POST /v1/bills/parse', () => {
     });
     const fetched = (await got.json()) as { totalPence: number; parsedTotalPence?: number };
     expect(fetched.parsedTotalPence).toBe(3500);
+  });
+  it('refuses a new read once the daily quota is used, but serves cached photos (#145)', async () => {
+    const app = buildApp();
+    const userId = `u-${uuidv7()}`;
+    const parse = async (uploadId: string) =>
+      app.request('/v1/bills/parse', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'idempotency-key': newIdempotencyKey(),
+          ...makeAuth(userId),
+        },
+        body: JSON.stringify({ uploadId }),
+      });
+
+    const cachedBytes = uniqueImageBytes();
+    const first = uuidv7();
+    await putObject(userId, first, cachedBytes);
+    expect((await parse(first)).status).toBe(200);
+    for (let i = 1; i < readQuotaStore.READS_PER_DAY; i++) await readQuotaStore.reserve(userId);
+
+    const fresh = uuidv7();
+    await putObject(userId, fresh, uniqueImageBytes());
+    const refused = await parse(fresh);
+    expect(refused.status).toBe(429);
+    const body = (await refused.json()) as {
+      error: { code: string; details?: { retryAfterSeconds?: number } };
+    };
+    expect(body.error.code).toBe('RATE_LIMITED');
+    expect(body.error.details?.retryAfterSeconds).toBeGreaterThan(0);
+
+    // The same photo again comes from the cache and isn't refused.
+    const again = uuidv7();
+    await putObject(userId, again, cachedBytes);
+    expect((await parse(again)).status).toBe(200);
   });
 });

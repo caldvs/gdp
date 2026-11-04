@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
+import { ReadQuotaExceeded, readQuotaStore } from '../../storage/readQuotaStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
@@ -87,6 +88,20 @@ export const parseService = {
         'INTERNAL_ERROR',
         'Image hash index points to a missing bill — manual reconciliation needed',
       );
+    }
+
+    // Only reads that reach the model count against the daily quota (#145).
+    try {
+      await readQuotaStore.reserve(input.userId);
+    } catch (err) {
+      if (err instanceof ReadQuotaExceeded) {
+        throw new AppError(
+          'RATE_LIMITED',
+          `You've read ${readQuotaStore.READS_PER_DAY} bills today. Try again tomorrow.`,
+          { retryAfterSeconds: err.retryAfterSeconds },
+        );
+      }
+      throw err;
     }
 
     const parsed = await input.parser.parse(bytes, input.requestId, { signal });

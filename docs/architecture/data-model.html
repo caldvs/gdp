@@ -107,11 +107,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>17</b> item types</span><span><b>1</b> GSI</span><span><b>10</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>18</b> item types</span><span><b>1</b> GSI</span><span><b>11</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 1336" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in link, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 1522" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in link, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -288,6 +288,18 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="428" y1="1228" x2="712" y2="1228"/>
 <text class="t-attr" x="428" y="1246">userId, uploadId, status reading|done|failed</text>
 <text class="t-attr" x="428" y="1264">billId when done, error when failed</text>
+<rect class="node" x="410" y="1326" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="1326" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="1353">Read quota</text>
+<rect class="chip-ttl" x="666.4" y="1339" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="1353" text-anchor="middle">2 days</text>
+<text class="t-keylab" x="428" y="1378">pk</text>
+<text class="t-key" x="484" y="1378">READQ#{userId}</text>
+<text class="t-keylab" x="428" y="1400">sk</text>
+<text class="t-key" x="484" y="1400">D#{utc day}</text>
+<line class="rule" x1="428" y1="1414" x2="712" y2="1414"/>
+<text class="t-attr" x="428" y="1432">reads: model reads today (max 20)</text>
+<text class="t-attr" x="428" y="1450">cached photos don&#x27;t count (#145)</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>

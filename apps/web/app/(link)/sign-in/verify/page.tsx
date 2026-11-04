@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useDenySignInLink, useOpenSignInLink, useSignInLinkCode } from '@gdp/core/api/hooks/useEmailSignIn';
 import { takeReturnTo } from '@/lib/signInReturn';
+import { takeSignInToken } from '@/lib/secretFragment';
 import { Button, Centre, Page, Spinner, Title } from '@/components/ui';
 
 type State =
@@ -12,9 +13,9 @@ type State =
   | { kind: 'denied' }
   | { kind: 'expired' };
 
-/** The token from `#t=…`, and the fragment wiped so it isn't left in history. */
+/** The token from `#t=…` (taken out of the address bar on load), and the fragment wiped if it's still there. */
 function takeToken(): string | null {
-  const token = new URLSearchParams(window.location.hash.slice(1)).get('t');
+  const token = takeSignInToken() ?? new URLSearchParams(window.location.hash.slice(1)).get('t');
   if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
   return token;
 }

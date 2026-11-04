@@ -1632,7 +1632,7 @@ components:
         client_secret:
           type: string
           description: Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`.
-        amountPence: { type: integer, description: The hold, £1 }
+        amountPence: { type: integer, description: 'The hold: £1' }
     StartCreditPackRequest:
       type: object
       additionalProperties: false

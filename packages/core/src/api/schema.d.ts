@@ -676,12 +676,19 @@ export interface paths {
          *     someone in the split has already paid). Spots nobody has taken are
          *     unclaimed.
          *
-         *     v1 simplification: only items with `quantity: 1` are shareable, and
-         *     an item is in exactly one mode session-wide — claim-mode (unit
-         *     claims via `/claims`) or share-mode. Either:
-         *     - `409 ITEM_NOT_SHAREABLE` if the item has quantity > 1, or
-         *     - `409 CLAIM_SHARE_CONFLICT` if any participant is currently
-         *       claiming this item.
+         *     Only items with `quantity: 1` are shareable, and an item is in
+         *     exactly one mode session-wide — claim-mode (unit claims via
+         *     `/claims`) or share-mode.
+         *
+         *     Splitting an item someone else has claimed (#130) turns their claim
+         *     into their spot in a new split with the caller, `ways` (default 2),
+         *     at once: they're told, not asked. The split's `activity` records it
+         *     as `split`, `fromUserId` the former claimer.
+         *
+         *     - `409 ITEM_NOT_SHAREABLE` if the item has quantity > 1,
+         *     - `409 CLAIM_SHARE_CONFLICT` if the caller has claimed it
+         *       themselves (remove the claim first), or
+         *     - `409 SHARE_PAID` if the person who claimed it has paid.
          *
          *     Editing the caller's share set un-readies them (same rule as
          *     `/claims`).
@@ -1390,9 +1397,13 @@ export interface components {
             ttlAt?: string;
         };
         ShareActivity: {
-            /** @enum {string} */
-            kind: "started" | "joined" | "left" | "ways";
+            /**
+             * @description `split`: `byUserId` split an item `fromUserId` had claimed (#130).
+             * @enum {string}
+             */
+            kind: "started" | "joined" | "left" | "ways" | "split";
             byUserId: string;
+            fromUserId?: string;
             /** Format: date-time */
             at: string;
             fromWays?: number;
@@ -2741,9 +2752,10 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /**
              * @description Session is not in setup/claiming, item has quantity > 1
-             *     (`ITEM_NOT_SHAREABLE`), the item is currently claimed
+             *     (`ITEM_NOT_SHAREABLE`), the caller has claimed it
              *     (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
-             *     has paid (`SHARE_PAID`), or a concurrent edit kept winning
+             *     has paid or the person who claimed it has paid (`SHARE_PAID`),
+             *     or a concurrent edit kept winning
              *     (`SHARE_CONFLICT`).
              */
             409: {

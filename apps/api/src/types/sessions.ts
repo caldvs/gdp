@@ -96,8 +96,10 @@ export type SetShareWaysRequest = z.infer<typeof SetShareWaysRequestSchema>;
 
 // Recent changes to a split, so the people in it can see what others did.
 export const ShareActivitySchema = z.object({
-  kind: z.enum(['started', 'joined', 'left', 'ways']),
+  // 'split': byUserId split an item fromUserId had claimed (#130).
+  kind: z.enum(['started', 'joined', 'left', 'ways', 'split']),
   byUserId: z.string(),
+  fromUserId: z.string().optional(),
   at: z.string().datetime(),
   fromWays: z.number().int().optional(),
   toWays: z.number().int().optional(),

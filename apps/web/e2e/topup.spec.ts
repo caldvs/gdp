@@ -22,7 +22,7 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   const sam = await at(browser, api, users.sam);
 
   // First payment: the lasagne.
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByRole('heading', { name: 'Pay Callum £17.25' })).toBeVisible();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
@@ -36,11 +36,11 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await sam.getByRole('button', { name: 'I had something else' }).click();
   await expect(sam.getByRole('heading', { name: 'What else did you have?' })).toBeVisible();
   // Can't drop what's been paid for: nobody gets money back.
-  await sam.getByRole('button', { name: 'Untick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Remove Lasagne' }).click();
   await expect(sam.getByText('You’ve already paid for that')).toBeVisible();
-  await expect(sam.getByRole('button', { name: 'Untick Lasagne' })).toBeVisible();
+  await expect(sam.getByRole('button', { name: 'Remove Lasagne' })).toBeVisible();
 
-  await sam.getByRole('button', { name: 'Tick Calamari' }).click();
+  await sam.getByRole('button', { name: 'Claim Calamari' }).click();
   await expect(sam.getByText('Paid £17.25 · still to pay')).toBeVisible();
   await expect(sam.getByTestId('your-share')).toHaveText('£22.50');
 
@@ -65,11 +65,11 @@ test('a top-up can go before the lead has confirmed the first', async ({ browser
   const lead = await at(browser, api, users.lead);
   const sam = await at(browser, api, users.sam);
 
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
   await sam.getByRole('button', { name: 'I had something else' }).click();
-  await sam.getByRole('button', { name: 'Tick Calamari' }).click();
+  await sam.getByRole('button', { name: 'Claim Calamari' }).click();
   await sam.getByRole('link', { name: 'Pay Callum £22.50' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
   await expect(sam.getByText('You’ve marked £39.75 as paid')).toBeVisible(POLL);

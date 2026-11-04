@@ -98,6 +98,31 @@ test('the lead’s table and the close dialog', async ({ page }) => {
   await audit(page);
 });
 
+test('the lead’s items, the Not claimed sheet and the bill summary', async ({ page }) => {
+  await open(page, busyTable(), users.lead, `/session/${SID}`);
+  await page.getByRole('tab', { name: 'Your items' }).click();
+  await expect(page.getByRole('heading', { name: 'Claimed by others' })).toBeVisible();
+  await audit(page);
+  await page.getByRole('tab', { name: 'The table' }).click();
+  await page.getByRole('button', { name: /^Not claimed/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Not claimed' })).toBeVisible();
+  await audit(page);
+  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('link', { name: 'Full summary' }).click();
+  await expect(page.getByRole('heading', { name: /Bill summary/ })).toBeVisible();
+  await audit(page);
+});
+
+test('splitting someone else’s dish', async ({ page }) => {
+  const api = new FakeApi();
+  api.join(users.priya);
+  api.participants[1]!.claimedItemIds = [items[2]!.itemId];
+  await open(page, api, users.tom, `/session/${SID}`);
+  await page.getByRole('button', { name: 'Split Lasagne with Priya' }).click();
+  await expect(page.getByRole('dialog', { name: 'Split the lasagne with Priya?' })).toBeVisible();
+  await audit(page);
+});
+
 test('guest pick and the split dialog', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.sam, `/session/${SID}`);
@@ -110,7 +135,7 @@ test('guest pick and the split dialog', async ({ page }) => {
 
 test('pay', async ({ page }) => {
   await open(page, new FakeApi(), users.sam, `/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
-  await page.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await page.getByRole('button', { name: 'Claim Lasagne' }).click();
   await page.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(page.getByText('gdp-0193ab12')).toBeVisible();
   await audit(page);

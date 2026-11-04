@@ -7,28 +7,27 @@
  */
 import { startTransition, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError, type components } from '@gdp/core/api';
-import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
+import type { components } from '@gdp/core/api';
+import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useSetClaims, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { coverLeftovers } from '@gdp/core/lib/leftovers';
-import { projectOwedPence, sharePence } from '@gdp/core/lib/owed';
+import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
+import { extrasRate, projectOwedPence, sharePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  ActionBar, AvatarStack, BackLink, Badge, Box, Button, Dialog, Notice, Page, Avatar, Row, Section, Stats, Title, TotalLine, Totals, firstName,
+  ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowButton, RowLink, Section, TabPanel, Tabs, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { billTitle } from '@/components/PageTransition';
-import { PickRow, SplitSheet, Stepper, itemStatuses, splitSub, useChangeFeed } from './guest';
+import { itemStatuses } from './guest';
+import { ClaimList } from './claim';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
 type Participant = components['schemas']['Participant'];
-type BillItem = components['schemas']['BillItem'];
-type Share = NonNullable<Session['shares']>[number];
 
 function owedFor(s: Session, b: Bill, p: Participant): number {
   return p.owedPence ?? projectOwedPence(s, b, p.userId);
@@ -70,157 +69,43 @@ export function LeadSetup({ s, b }: { s: Session; b: Bill }) {
 
 /* ============================ the bill ============================ */
 
+type LeadTab = 'mine' | 'table';
+
+/**
+ * The lead's live bill (#131, board L4.1/L4.2): two tabs. Your items is
+ * the same claiming list guests use; The table is who's paid, what nobody
+ * has claimed yet, and the way to the full summary.
+ */
 export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
   const router = useRouter();
   const close = useCloseSession(s.sessionId);
   const abandon = useAbandonSession(s.sessionId);
   const confirm = useConfirmPayment(s.sessionId);
-  const setClaims = useSetClaims(s.sessionId);
-  const addShare = useAddShare(s.sessionId);
-  const removeShare = useRemoveShare(s.sessionId);
-  const setWays = useSetShareWays(s.sessionId);
-  const [splitting, setSplitting] = useState<{ item: BillItem; ways: number; share?: Share } | null>(null);
+  const me = s.participants.find((p) => p.userId === meUserId);
+  // Straight after sharing the lead has nothing yet: start on their items.
+  const [tab, setTab] = useState<LeadTab>(() => (me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? 'table' : 'mine'));
+  const [leftOpen, setLeftOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [binning, setBinning] = useState(false);
-  // #123: an item a tap just lost the race for, and whether taken-by-others rows are folded away.
-  const [raceLostItemId, setRaceLostItemId] = useState<string | null>(null);
-  const [hideTaken, setHideTaken] = useState(false);
   // #64: how many the lead said are eating, lead included. Display only.
   const setExpected = useSetExpectedDiners(s.sessionId);
   const [sizing, setSizing] = useState<number | null>(null);
   const joined = s.participants.length;
   const everyoneHere = s.expectedDiners !== undefined && joined >= s.expectedDiners;
 
-  const me = s.participants.find((p) => p.userId === meUserId);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
-  const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
   // Nobody joined: closing or deleting gives back what sharing cost (#132).
   const spent = useSpent(s.sessionId, guests.length === 0);
   const giveBack = spent.fee && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
     : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
-  const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
-  const { changes, liveText } = useChangeFeed(statuses);
-  const unclaimed = statuses.filter((x) => x.left > 0);
-  const unclaimedPence = unclaimed.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0);
-  // What "I'll cover these" takes: every unclaimed unit that isn't in a split.
-  const cover = coverLeftovers(s, statuses, me?.claimedItemIds ?? []);
-  const coverable = cover.lines;
-  const coverPence = cover.pence;
-  const busy = setClaims.isPending || addShare.isPending || removeShare.isPending;
-
-  const takeOne = (itemId: string) => {
-    if (!me) return;
-    setRaceLostItemId(null);
-    setClaims.mutate(
-      { claimedItemIds: [...me.claimedItemIds, itemId] },
-      {
-        onError: (e) => {
-          const errItemId = e instanceof ApiError ? (e.details as { itemId?: string } | undefined)?.itemId : undefined;
-          if (e instanceof ApiError && e.code === 'SESSION_INVALID_STATE' && errItemId === itemId) {
-            setRaceLostItemId(itemId);
-          }
-        },
-      },
-    );
-  };
-  const dropOne = (itemId: string) => {
-    if (!me) return;
-    const next = [...me.claimedItemIds];
-    const i = next.lastIndexOf(itemId);
-    if (i < 0) return;
-    next.splice(i, 1);
-    setClaims.mutate({ claimedItemIds: next });
-  };
-  const coverAll = () => {
-    if (!me || coverable.length === 0) return;
-    setClaims.mutate({ claimedItemIds: cover.claimedItemIds });
-  };
-
-  // #123: rows stay in bill order and in place; a taken-by-others row never
-  // vanishes, it just flashes and says what happened.
-  const rows = statuses.map(({ item, left, mine, who, share }) => {
-    const others = who.filter((n) => n !== 'you');
-    const name = item.quantity > 1 ? `${item.name} × ${item.quantity}` : item.name;
-    const change = changes.get(item.itemId);
-    if (share) {
-      // A split: anyone can join, the lead included.
-      const inIt = share.userIds.includes(meUserId);
-      const seats = Math.max(0, share.ways - share.userIds.length);
-      const myWays = inIt || seats > 0 ? share.ways : share.ways + 1;
-      return {
-        taken: false,
-        el: (
-          <PickRow
-            key={item.itemId}
-            on={inIt}
-            changed={!!change}
-            busy={busy}
-            action={inIt ? 'Leave the split for' : 'Join the split for'}
-            onTap={() => (inIt ? removeShare.mutate({ itemId: item.itemId }) : addShare.mutate({ itemId: item.itemId }))}
-            name={name}
-            sub={change?.text ?? splitSub(s, share, meUserId)}
-            price={<>{formatGBP(sharePence(item.unitPricePence, share.userIds, myWays, meUserId))}<span className="each">each</span></>}
-            aside={inIt ? <Button tone="text" small onClick={() => setSplitting({ item, ways: share.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share.ways} ways</Button> : undefined}
-          />
-        ),
-      };
-    }
-    if (mine > 0 && item.quantity > 1) {
-      return {
-        taken: false,
-        el: (
-          <PickRow
-            key={item.itemId}
-            on
-            changed={!!change}
-            name={name}
-            sub={change?.text ?? (others.length ? `You and ${others.join(', ')}` : `${formatGBP(item.unitPricePence)} each`)}
-            price={formatGBP(item.unitPricePence * mine)}
-            aside={<Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => takeOne(item.itemId)} name={item.name} />}
-          />
-        ),
-      };
-    }
-    if (left > 0) {
-      const sub = [others.length ? others.join(', ') : 'Not claimed', item.quantity > 1 ? `${left} left · ${formatGBP(item.unitPricePence)} each` : null].filter(Boolean).join(' · ');
-      return {
-        taken: false,
-        el: (
-          <PickRow
-            key={item.itemId}
-            changed={!!change}
-            busy={busy}
-            action="Take"
-            onTap={() => takeOne(item.itemId)}
-            name={name}
-            sub={change?.text ?? sub}
-            price={formatGBP(item.unitPricePence * left)}
-            aside={others.length > 0 ? <AvatarStack names={others} /> : item.quantity === 1 ? <Button tone="text" small onClick={() => setSplitting({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</Button> : undefined}
-          />
-        ),
-      };
-    }
-    if (mine > 0) {
-      return { taken: false, el: <PickRow key={item.itemId} on busy={busy} action="Hand back" onTap={() => dropOne(item.itemId)} name={name} sub="You" price={formatGBP(item.unitPricePence)} /> };
-    }
-    const justTaken = raceLostItemId === item.itemId;
-    return {
-      taken: true,
-      el: (
-        <PickRow
-          key={item.itemId}
-          taken
-          changed={!!change || justTaken}
-          name={name}
-          sub={justTaken ? `${others[others.length - 1] ?? 'Someone'} just took this` : change?.text}
-          aside={<AvatarStack names={others} />}
-          price={formatGBP(item.unitPricePence * item.quantity)}
-        />
-      ),
-    };
-  });
-  const leadRows = { rows, taken: rows.filter((r) => r.taken) };
+  const rate = extrasRate(b);
+  const myOwed = projectOwedPence(s, b, meUserId);
+  const rows = useMemo(() => claimRows(s, b, meUserId), [s, b, meUserId]);
+  const left = rows.filter((r) => r.group === 'open');
+  const leftPence = left.reduce((acc, r) => acc + openPence(r), 0);
+  const leftWithService = Math.round(leftPence * (1 + rate));
+  const myItems = rows.filter((r) => r.group === 'yours').map((r) => r.item.name);
 
   return (
     <>
@@ -228,76 +113,68 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <BackLink href="/">Bills</BackLink>
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} />
         <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />
-        <Stats items={[
-          { k: 'Bill', v: formatGBP(b.totalPence) },
-          { k: 'Collected', v: formatGBP(collected) },
-          { k: 'To collect', v: formatGBP(toCome), warn: toCome > 0 },
-        ]} />
+        <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
 
-        <Section title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}>
-          <p className="small muted" style={{ textAlign: 'right' }}>
-            <button type="button" className="link-btn" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
-              {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
-            </button>
-          </p>
-          <Box>
-            {guests.length === 0 ? (
-              <Row title="Nobody’s joined yet" sub="Show them the QR code. People appear here as they join." muted />
-            ) : guests.map((p) => (
-              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
-            ))}
-          </Box>
-          {confirm.isError ? <Notice tone="error">{confirm.error.message}</Notice> : null}
-        </Section>
+        {tab === 'mine' ? (
+          <TabPanel id="mine">
+            <ClaimList s={s} b={b} meUserId={meUserId} />
+          </TabPanel>
+        ) : (
+          <TabPanel id="table">
+            <Section title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}>
+              <p className="small muted" style={{ textAlign: 'right' }}>
+                <button type="button" className="link-btn" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
+                  {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
+                </button>
+              </p>
+              <Box>
+                <RowButton
+                  onClick={() => startTransition(() => setTab('mine'))}
+                  action="Your items:"
+                  lead={<Avatar name={me?.displayName || 'You'} you />}
+                  title="You"
+                  sub={myItems.length > 0 ? myItems.join(', ') : 'Claim your items'}
+                  end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>}
+                />
+                {guests.length === 0 ? (
+                  <Row title="Nobody’s joined yet" sub="Show them the QR code." muted />
+                ) : guests.map((p) => (
+                  <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
+                ))}
+              </Box>
+              {confirm.isError ? <Notice tone="error">{confirm.error.message}</Notice> : null}
+            </Section>
 
-        <Section title={unclaimed.length > 0 ? `Items · ${formatGBP(unclaimedPence)} not claimed yet` : 'Items · all claimed'}>
-          <div className="vh" aria-live="polite">{liveText}</div>
-          {everyoneHere && unclaimed.length > 0 ? (
-            <Notice tone="warn" title="Everyone’s here">{formatGBP(unclaimedPence)} still not claimed.</Notice>
-          ) : null}
-          {!hideTaken && leadRows.taken.length > 0 ? (
-            <p className="small muted" style={{ textAlign: 'right' }}>
-              <button type="button" className="link-btn" onClick={() => setHideTaken(true)}>Hide taken</button>
-            </p>
-          ) : null}
-          <Box>
-            {(hideTaken ? leadRows.rows.filter((r) => !r.taken) : leadRows.rows).map((r) => r.el)}
-            {hideTaken && leadRows.taken.length > 0 ? (
-              <button type="button" className="pick pick--fold" onClick={() => setHideTaken(false)}>Show taken ({leadRows.taken.length})</button>
+            {everyoneHere && left.length > 0 ? (
+              <Notice tone="warn" title="Everyone’s here">{formatGBP(leftWithService)} still not claimed.</Notice>
             ) : null}
-          </Box>
-          {coverable.length > 0 ? (
-            <Button tone="secondary" busy={setClaims.isPending} onClick={coverAll}>I’ll cover these · {formatGBP(coverPence)}</Button>
-          ) : null}
-          {unclaimed.length > 0 ? <p className="small muted">Tap an item to take it yourself. Anything left when you close is yours.</p> : null}
-          {setClaims.isError ? <Notice tone="error">{setClaims.error.message}</Notice> : null}
-          {addShare.isError ? <Notice tone="error">{addShare.error.message}</Notice> : null}
-          {removeShare.isError ? <Notice tone="error">{removeShare.error.message}</Notice> : null}
-        </Section>
+            <Box>
+              {left.length > 0 ? (
+                <RowButton onClick={() => setLeftOpen(true)} title={`Not claimed · ${left.length} ${left.length === 1 ? 'item' : 'items'}`} end={formatGBP(leftWithService)} chevron />
+              ) : null}
+              <RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" />
+            </Box>
 
-        <Button tone="text" className="btn--text-danger" onClick={() => setBinning(true)} style={{ alignSelf: 'flex-start', width: 'auto', padding: 0 }}>Delete this bill</Button>
+            <Button tone="text" className="btn--text-danger" onClick={() => setBinning(true)} style={{ alignSelf: 'flex-start', width: 'auto', padding: 0 }}>Delete this bill</Button>
+          </TabPanel>
+        )}
       </Page>
-      <ActionBar>
-        <Button tone="secondary" href={`/confirm-bill/${s.billId}?sessionId=${s.sessionId}`}>Edit bill</Button>
-        <Button grow onClick={() => setClosing(true)}>Close bill</Button>
-      </ActionBar>
+      {tab === 'mine' ? (
+        <ActionBar stack>
+          <div className="actionbar__total">
+            <span className="muted">{`Your share${rate > 0 ? ' incl. service' : ''}`}</span>
+            <Pulse value={myOwed}><b data-testid="your-share">{formatGBP(myOwed)}</b></Pulse>
+          </div>
+          <Button onClick={() => startTransition(() => setTab('table'))}>Done</Button>
+        </ActionBar>
+      ) : (
+        <ActionBar>
+          <Button tone="secondary" href={`/confirm-bill/${s.billId}?sessionId=${s.sessionId}`}>Edit bill</Button>
+          <Button grow onClick={() => setClosing(true)}>Close bill</Button>
+        </ActionBar>
+      )}
 
-      {splitting ? (
-        <SplitSheet
-          item={splitting.item}
-          ways={splitting.ways}
-          min={Math.max(2, splitting.share?.userIds.length ?? 1)}
-          busy={addShare.isPending || setWays.isPending}
-          error={setWays.error instanceof ApiError ? setWays.error.message : undefined}
-          onChange={(ways) => setSplitting({ ...splitting, ways })}
-          onCancel={() => { startTransition(() => setSplitting(null)); setWays.reset(); }}
-          onOk={() => {
-            const done = () => startTransition(() => setSplitting(null));
-            if (splitting.share) setWays.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
-            else addShare.mutate({ itemId: splitting.item.itemId, ways: splitting.ways }, { onSuccess: done });
-          }}
-        />
-      ) : null}
+      {leftOpen ? <NotClaimedSheet s={s} rows={left} meUserId={meUserId} onClose={() => startTransition(() => setLeftOpen(false))} /> : null}
       {sizing !== null ? (
         <PartySizeSheet
           n={sizing}
@@ -314,7 +191,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <Confirm
           title="Close the bill?"
           body={giveBack ?? ([
-            unclaimedPence > 0 ? `Nobody claimed ${formatGBP(unclaimedPence)}. It goes on you.` : null,
+            leftPence > 0 ? `Nobody claimed ${formatGBP(leftWithService)}. It goes on you.` : null,
             toCome > 0 ? `${formatGBP(toCome)} still to collect. People can still pay.` : null,
           ].filter(Boolean).join(' ') || 'Everyone has paid.')}
           ok="Close bill"
@@ -337,6 +214,58 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         />
       ) : null}
     </>
+  );
+}
+
+/** What's still open on a line: unclaimed portions, or a split's open spots. */
+function openPence(r: ClaimRow): number {
+  const share = r.share;
+  if (share) {
+    const taken = share.userIds.reduce((acc, u) => acc + sharePence(r.item.unitPricePence, share.userIds, share.ways, u), 0);
+    return Math.max(0, r.item.unitPricePence - taken);
+  }
+  return r.item.unitPricePence * r.left;
+}
+
+const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * L4.2's Not claimed sheet: Claim takes a line (every portion left of it)
+ * onto the lead's share; a split's open spot is joined. The row slides out
+ * and the list closes up. Anything left goes on the lead at close anyway.
+ */
+function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: ClaimRow[]; meUserId: string; onClose: () => void }) {
+  const setClaims = useSetClaims(s.sessionId);
+  const addShare = useAddShare(s.sessionId);
+  const [leaving, setLeaving] = useState<string | null>(null);
+  const me = s.participants.find((p) => p.userId === meUserId);
+  const take = (r: ClaimRow) => {
+    if (!me || leaving) return;
+    setLeaving(r.item.itemId);
+    const last = rows.length === 1;
+    const done = { onSuccess: () => { if (last) onClose(); }, onSettled: () => setLeaving(null) };
+    setTimeout(() => {
+      if (r.share) addShare.mutate({ itemId: r.item.itemId }, done);
+      else setClaims.mutate({ claimedItemIds: [...me.claimedItemIds, ...Array<string>(r.left).fill(r.item.itemId)] }, done);
+    }, reducedMotion() ? 0 : 280);
+  };
+  const err = setClaims.error?.message ?? addShare.error?.message;
+  return (
+    <Dialog id="left-t" title="Not claimed" onClose={onClose} actions={<Button tone="secondary" onClick={onClose}>Close</Button>}>
+      <Box>
+        {rows.map((r) => (
+          <div key={r.item.itemId} className={`claim${leaving === r.item.itemId ? ' leaving' : ''}`}>
+            <span className="row__main">
+              <span className="row__title">{r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.item.name}</span>
+              <span className="row__sub">{formatGBP(openPence(r))}</span>
+            </span>
+            <Button tone="secondary" small className="claim__btn" disabled={!!leaving} onClick={() => take(r)} aria-label={`Claim ${r.item.name}`}>Claim</Button>
+          </div>
+        ))}
+      </Box>
+      <p className="small muted">Anything left goes on yours when you close.</p>
+      {err ? <Notice tone="error">{err}</Notice> : null}
+    </Dialog>
   );
 }
 
@@ -414,6 +343,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
           <TotalLine k="Bill" v={formatGBP(b.totalPence)} />
           <TotalLine tone="total" k="Your part" v={formatGBP(yourPart)} />
         </Totals>
+        <Box><RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" /></Box>
       </Page>
       <ActionBar><Button grow href="/" replace>Done</Button></ActionBar>
     </>
@@ -421,7 +351,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
 }
 
 /** The platform fee or credit that paid for sharing this session, if any. */
-function useSpent(sessionId: string, enabled = true) {
+export function useSpent(sessionId: string, enabled = true) {
   const billing = useMyBilling({ enabled: enabled && !!STRIPE_PUBLISHABLE_KEY });
   const data = enabled ? billing.data : null;
   return {

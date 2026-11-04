@@ -53,7 +53,7 @@ test('join link, signed out: the invite names the host, and the bank details in 
   // The tab that asked carries on to the join by itself once the link is opened.
   await signInWithLink(browser, api, sam);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   // The sort code shown comes from the fragment, formatted.
   await expect(sam.getByText('04-06-68')).toBeVisible();
@@ -94,7 +94,7 @@ test('a join link with someone else’s bank details is caught, and they’re ne
   const swapped = Buffer.from(JSON.stringify({ ...real, a: '12345678' })).toString('base64url');
   await sam.goto(`/join/${CODE}#p=${swapped}`);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByText('These aren’t Callum’s bank details.')).toBeVisible();
   await expect(sam.getByText('12345678')).toHaveCount(0);
@@ -131,7 +131,7 @@ test('an expired link leaves the guest without bank details, with a way out', as
   // Shared 3 days ago with a 48 h expiry.
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ ageMs: 3 * 24 * 3600_000, ttlMs: 48 * 3600_000 })}`);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   // The fake's initiate carries no server-side bank details here.
   api.participants.find((p) => p.userId === 'u-sam')!.payment = { status: 'unpaid' };
@@ -142,7 +142,7 @@ test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
-  await sam.getByRole('button', { name: 'Tick Calamari' }).click(POLL);
+  await sam.getByRole('button', { name: 'Claim Calamari' }).click(POLL);
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByRole('link', { name: 'Pay with Monzo' })).toHaveAttribute('href', 'https://monzo.me/callum.davies/22.50?d=gdp-0193ab12');
   await expect(sam.getByRole('link', { name: 'Pay with Revolut' })).toHaveAttribute('href', 'https://revolut.me/callumd');
@@ -150,7 +150,7 @@ test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo
   const api2 = new FakeApi();
   const { page: tom } = await ctxFor(browser, api2, users.tom);
   await tom.goto(`/join/${CODE}#p=${fragmentFor()}`);
-  await tom.getByRole('button', { name: 'Tick Calamari' }).click(POLL);
+  await tom.getByRole('button', { name: 'Claim Calamari' }).click(POLL);
   await tom.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(tom.getByText('04-06-68')).toBeVisible();
   await expect(tom.getByRole('link', { name: 'Pay with Monzo' })).toHaveCount(0);
@@ -162,7 +162,7 @@ test('tapping a bank detail copies the raw value', async ({ browser, browserName
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor()}`);
-  await sam.getByRole('button', { name: 'Tick Lasagne' }).click(POLL);
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click(POLL);
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'Copy sort code' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('040668');

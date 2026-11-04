@@ -5,7 +5,7 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import { ViewTransition, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { ViewTransition, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -57,6 +57,49 @@ export function Section({ title, children }: { title?: ReactNode; children: Reac
 
 export function Box({ children }: { children: ReactNode }) {
   return <div className="box">{children}</div>;
+}
+
+/* ---------- Tabs ---------- */
+
+/** Two or three tabs over one panel. Arrow keys move between them. */
+export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: { id: T; label: string }[]; value: T; onChange: (id: T) => void; label: string }) {
+  const move = (dir: number) => {
+    const i = tabs.findIndex((t) => t.id === value);
+    const next = tabs[(i + dir + tabs.length) % tabs.length]!;
+    onChange(next.id);
+    if (typeof document !== 'undefined') document.getElementById(`tab-${next.id}`)?.focus();
+  };
+  return (
+    <div className="tabs" role="tablist" aria-label={label}>
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          id={`tab-${t.id}`}
+          aria-selected={t.id === value}
+          aria-controls={`panel-${t.id}`}
+          tabIndex={t.id === value ? 0 : -1}
+          className={cx('tab', t.id === value && 'tab--on')}
+          onClick={() => onChange(t.id)}
+          onKeyDown={(e) => { if (e.key === 'ArrowRight') move(1); if (e.key === 'ArrowLeft') move(-1); }}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The panel for the selected tab; it fades in each time the tab changes. */
+export function TabPanel({ id, children }: { id: string; children: ReactNode }) {
+  return <div key={id} role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} className="tabpanel">{children}</div>;
+}
+
+/** Pulses its child once whenever `value` changes (not on first show). */
+export function Pulse({ value, children }: { value: string | number; children: ReactNode }) {
+  const [first] = useState(value);
+  return <span key={String(value)} className={cx('pulse-wrap', value !== first && 'pulse')}>{children}</span>;
 }
 
 /* ---------- Rows ---------- */

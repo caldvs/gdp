@@ -154,7 +154,7 @@ describe('shares — ADR-0006', () => {
     expect(body.error.code).toBe('ITEM_NOT_SHAREABLE');
   });
 
-  it('returns 409 CLAIM_SHARE_CONFLICT if the item is already claimed', async () => {
+  it('returns 409 CLAIM_SHARE_CONFLICT if the caller has claimed the item themselves', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
     const { sessionId, itemIds } = await setUpSessionForSharing(app, creator);

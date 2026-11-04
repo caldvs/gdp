@@ -35,8 +35,8 @@ jobs:
       core: ${{ steps.filter.outputs.core }}
       web: ${{ steps.filter.outputs.web }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         id: filter
         with:
           filters: |
@@ -60,8 +60,8 @@ jobs:
     name: scripts
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
       - run: npm run test:scripts
@@ -75,8 +75,8 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -96,8 +96,8 @@ jobs:
       - run: npm run build
       - name: Validate Lambda bundle (cdk synth + handler load)
         run: npm run validate:bundle
-      - run: npm audit --audit-level=high
-        continue-on-error: true
+      # Runtime dependencies only; blocks on high or critical (#143).
+      - run: npm audit --omit=dev --audit-level=high
 
   api-coverage:
     name: api • unit + integration • coverage
@@ -108,8 +108,8 @@ jobs:
       run:
         working-directory: apps/api
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -136,7 +136,7 @@ jobs:
         env:
           DYNAMODB_ENDPOINT: http://localhost:8000
           S3_ENDPOINT: http://localhost:9000
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: coverage-api
@@ -156,15 +156,15 @@ jobs:
     if: needs.changes.outputs.core == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run typecheck -w packages/core
       - run: npm run test:cov -w packages/core
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: coverage-core
@@ -178,8 +178,8 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -191,7 +191,7 @@ jobs:
       - run: npm run e2e -w apps/web
       # On failure, keep the report and any screenshots it wrote (including
       # new visual baselines) so they can be inspected or committed.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: playwright
@@ -215,8 +215,8 @@ jobs:
       matrix:
         language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v6
-      - uses: github/codeql-action/init@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: github/codeql-action/init@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
@@ -226,7 +226,7 @@ jobs:
               - '**/node_modules'
               - '**/coverage'
               - 'packages/core/src/api/schema.d.ts'
-      - uses: github/codeql-action/analyze@v4
+      - uses: github/codeql-action/analyze@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           category: /language:${{ matrix.language }}
 
@@ -239,11 +239,11 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: coverage-*
           path: cov
@@ -307,11 +307,11 @@ jobs:
       group: coverage-baseline
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: coverage-*
           path: cov
@@ -359,3 +359,32 @@ jobs:
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           bad=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")')
           if [ -n "$bad" ]; then echo "::error::Failed: $bad"; exit 1; fi
+
+  # Push to main → test (#124). Once `gate` passes, a web change goes to
+  # test.paymeback.dev: a Vercel Preview build (Preview env vars, so the dev
+  # API) aliased to that name. API changes deploy dev through API Deploy.
+  # One Vercel deploy per web push; Hobby allows 100 a day.
+  deploy-test-web:
+    name: deploy test • web
+    needs: [changes, gate]
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.changes.outputs.web == 'true' && needs.gate.result == 'success'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: deploy-test-web
+      cancel-in-progress: true
+    env:
+      VERCEL_ORG_ID: team_q5vYiPRRAr17CPwZR2Dbhopi
+      VERCEL_PROJECT_ID: prj_1FsdXAkZbS0ikRFRXJXJ9BPKvDK9
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Deploy a preview and point test.paymeback.dev at it
+        run: |
+          url=$(npx --yes vercel@64.7.0 deploy --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$GITHUB_SHA")
+          npx --yes vercel@64.7.0 alias set "$url" test.paymeback.dev --token "$VERCEL_TOKEN" --scope "$VERCEL_ORG_ID"
+          echo "test.paymeback.dev → $url (${GITHUB_SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"

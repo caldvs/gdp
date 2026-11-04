@@ -67,6 +67,8 @@ Before pushing, run what CI would, so `main` stays green:
 
 After pushing, check CI's `gate` on that commit (`.github/workflows/ci.yml`) and the dev deploy that follows. If either fails, fix it on `main` straight away, or revert the commit; don't leave `main` red.
 
+`main` deploys to test only (test.paymeback.dev and the dev API). Going live is one manual **Release** run (`.github/workflows/release.yml`), Callum's call; see [docs/deploy.md](docs/deploy.md).
+
 Coverage: each package's `vitest.config.ts` thresholds are hard floors, and CI fails a push that goes under them. Raise floors as tests land; never lower them to get a push through.
 
 ## When you finish a piece of work

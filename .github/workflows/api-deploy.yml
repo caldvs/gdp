@@ -1,7 +1,9 @@
 name: API Deploy
 
-# Push to main → deploy dev automatically.
-# Manual dispatch → choose an environment (dev / prod).
+# Push to main → deploy dev (test.paymeback.dev's API) automatically.
+# Manual dispatch → redeploy dev.
+# Prod only deploys through the Release workflow (release.yml), which calls
+# this one with `environment: prod` (#124).
 #
 # Required setup (one-off, per AWS account/environment):
 #   1. Create a GitHub OIDC IAM role in each AWS account (infra/githubDeploy.ts).
@@ -20,40 +22,54 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment
+        description: Target environment (prod deploys through Release)
         required: true
         type: choice
         default: dev
-        options: [dev, prod]
+        options: [dev]
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      ref:
+        description: Commit to deploy
+        type: string
+        required: true
 
 concurrency:
   # Serialise deploys per environment, but allow dev and prod to deploy in parallel.
-  group: deploy-${{ github.event.inputs.environment || 'dev' }}
+  group: deploy-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 permissions:
   id-token: write # for OIDC
-  contents: write # to move the api-prod tag (#80)
+  contents: read
 
 jobs:
   deploy:
-    name: Deploy ${{ github.event.inputs.environment || 'dev' }}
+    name: Deploy ${{ inputs.environment || 'dev' }}
     runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    environment: ${{ inputs.environment || 'dev' }}
     env:
-      ENV_NAME: ${{ github.event.inputs.environment || 'dev' }}
+      ENV_NAME: ${{ inputs.environment || 'dev' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      - run: npm ci
+      # This job can mint the AWS deploy role's OIDC token, so no package's
+      # install script runs here (#152). esbuild (CDK bundling) is the one
+      # that needs its own; rebuild just that.
+      - run: npm ci --ignore-scripts && npm rebuild esbuild
         working-directory: .
 
       # Re-run the cheap safety nets before touching AWS. Catches the
@@ -64,12 +80,12 @@ jobs:
       - run: npm test
       - run: npm run validate:bundle
 
-      # Prod only ever deploys main. The `prod` GitHub environment should also
-      # be limited to main; this holds even if it isn't.
+      # Prod only ever deploys main, through Release. The `prod` GitHub
+      # environment should also be limited to main; this holds even if it isn't.
       - name: Refuse prod outside main
-        if: env.ENV_NAME == 'prod' && github.ref != 'refs/heads/main'
+        if: env.ENV_NAME == 'prod' && (github.ref != 'refs/heads/main' || github.workflow != 'Release')
         run: |
-          echo "::error::prod deploys only from main (this run is on ${GITHUB_REF})"
+          echo "::error::prod deploys only from main through Release (this run: ${GITHUB_WORKFLOW} on ${GITHUB_REF})"
           exit 1
 
       - name: Resolve stack name
@@ -92,7 +108,7 @@ jobs:
           echo "$payload" | base64 -d | jq '{sub, aud, environment, repository}'
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
@@ -105,9 +121,10 @@ jobs:
         env:
           STRIPE_ENABLED: ${{ vars.STRIPE_ENABLED }}
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
-          # Comma list of emails that never pay the table fee. A secret
-          # (keeps the addresses out of logs) or a variable; either works.
-          TABLE_FEE_EXEMPT_EMAILS: ${{ secrets.TABLE_FEE_EXEMPT_EMAILS || vars.TABLE_FEE_EXEMPT_EMAILS }}
+          # Comma list of emails that never pay the platform fee and sign in
+          # with no link. A secret only, so the addresses never appear in a
+          # public run log (#137).
+          TABLE_FEE_EXEMPT_EMAILS: ${{ secrets.TABLE_FEE_EXEMPT_EMAILS }}
           # Optional custom API domain: both or neither (infra/main.ts).
           API_DOMAIN: ${{ vars.API_DOMAIN }}
           API_CERT_ARN: ${{ vars.API_CERT_ARN }}
@@ -143,26 +160,17 @@ jobs:
             '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
           npx tsx scripts/deps-check.ts "$fn"
 
-      # #80: mark the commit prod's API now runs. Web Deploy only puts a web
-      # build live when the API it talks to has the same API code, so a web
-      # change that needs a new route waits for this.
-      - name: Mark what prod runs (api-prod tag)
-        if: env.ENV_NAME == 'prod'
-        working-directory: .
-        run: |
-          git tag -f api-prod "$GITHUB_SHA"
-          git push -f origin refs/tags/api-prod
-          echo "Prod API now runs ${GITHUB_SHA::7} (api-prod)" >>"$GITHUB_STEP_SUMMARY"
-
       # The deploy roles' own stacks (infra/githubDeploy.ts), dev and prod,
-      # from the dev job only: both live in this account. Last, so a mistake
+      # from the prod job only (#144): it needs the prod environment's
+      # reviewer, so a push to main can't rewrite either role's trust
+      # policy. Both live in this account. Last, so a mistake
       # in a trust policy can't stop an API deploy; the next run would fail to
       # assume the role, and the fix is `npx cdk deploy GdpGithubDeploy
       # --profile gdp-dev` with the provider ARN below. The OIDC provider
       # predates the stacks, so pass its ARN rather than letting CDK try to
       # create a second one.
       - name: Deploy role stacks
-        if: env.ENV_NAME == 'dev'
+        if: env.ENV_NAME == 'prod'
         run: |
           acct=$(aws sts get-caller-identity --query Account --output text)
           npx cdk deploy GdpGithubDeploy GdpGithubDeployProd \
@@ -179,7 +187,7 @@ jobs:
 
       - name: Upload CDK outputs
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cdk-outputs-${{ env.ENV_NAME }}
           path: apps/api/cdk-outputs.${{ env.ENV_NAME }}.json

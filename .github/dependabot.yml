@@ -22,7 +22,11 @@ updates:
           - esbuild
           - typescript
 
+  # Also keeps the SHA-pinned actions in .github/workflows current (#152).
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

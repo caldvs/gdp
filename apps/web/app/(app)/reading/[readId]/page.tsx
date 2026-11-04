@@ -9,8 +9,8 @@ import { ReadingFailed, ReadingWait, photoFor, stashPhoto, useSlow } from '@/com
 import { Button } from '@/components/ui';
 
 /**
- * Waits for a background read (POST /v1/bills/reads) on R2: the photo and
- * the bill's rows filling in, nothing else to do. When it's read, Review
+ * Waits for a background read (POST /v1/bills/reads) on R2: the photo being
+ * scanned and the stages ticking off (#174), nothing else to do. When it's read, Review
  * bill opens. The place comes from the receipt alone; nothing is asked
  * (#136). The lead can go back to Bills meanwhile; the read carries on and
  * Bills' "Bill read" row comes back here. If it fails, the photo stays,
@@ -74,6 +74,7 @@ export default function ReadingPage() {
         photo={photo}
         title="Reading your bill"
         slow={slow}
+        since={mine?.startedAt}
         actions={<Button tone="secondary" href="/">Back to bills</Button>}
       />
     </>

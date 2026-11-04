@@ -1,8 +1,10 @@
 'use client';
 
 /**
- * Claiming by portion (#130, board G2.1–G2.4): Yours, Still to claim and
- * Claimed by others. Guests pick here, and the lead uses the same list on
+ * Claiming by portion (#130, board G2.1–G2.4). One list in bill order that
+ * stays put (#177): claiming a row changes it in place (tinted, ticked)
+ * rather than moving it to a Yours list above, so claiming several things
+ * needs no scrolling back and forth. Guests pick here, and the lead uses the same list on
  * their Your items tab (#131). Several of one thing are claimed a portion
  * at a time, never more than were ordered; someone else's dish can be
  * split with them at once (they're told, not asked: docs/decisions.md).
@@ -14,7 +16,7 @@ import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { formatGBP } from '@gdp/core/lib/money';
 import { sharePence } from '@gdp/core/lib/owed';
-import { AvatarStack, Button, Dialog, Notice, Section, TickIcon, TotalLine, Totals, firstName } from '@/components/ui';
+import { AvatarStack, Button, Dialog, Notice, TickIcon, TotalLine, Totals, firstName } from '@/components/ui';
 
 const itemStatuses = (s: Session, b: Bill, meUserId: string) => coreItemStatuses(s, b, meUserId, (p) => firstName(p?.displayName));
 
@@ -86,9 +88,9 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     // In Yours, only someone splitting my dish is news; the rest was my doing.
     const flash = changes.get(item.itemId)?.text;
     const change = r.group === 'yours' && !flash?.startsWith('Split with') ? undefined : flash;
-    const key = `${r.group}-${item.itemId}`;
+    const key = item.itemId;
     const row = (note: string, action?: ReactNode) => (
-      <ClaimItem key={key} title={title} names={names} note={change ?? note} action={action} changed={!!change} arrive={r.group === 'yours'} muted={r.group === 'others'} />
+      <ClaimItem key={key} group={r.group} title={title} names={names} note={change ?? note} action={action} changed={!!change} />
     );
 
     if (r.group === 'yours') {
@@ -97,11 +99,11 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} />);
       }
       if (kind === 'single') {
+        // Where Claim was, so the row doesn't shift: tap again to put it back.
         return row(unit, (
-          <>
-            <span className="claim__yours"><TickIcon size={16} />Yours</span>
-            <button type="button" className="link-btn" disabled={busy} onClick={() => dropOne(item.itemId)} aria-label={`Remove ${item.name}`}>Remove</button>
-          </>
+          <Button tone="secondary" small className="claim__btn claim__btn--on" disabled={busy} onClick={() => dropOne(item.itemId)} aria-label={`Yours. Remove ${item.name}`}>
+            <TickIcon size={16} />Yours
+          </Button>
         ));
       }
       const each = sharePence(item.unitPricePence, share!.userIds, share!.ways, meUserId);
@@ -146,16 +148,10 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     return row(unit, splitBtn);
   };
 
-  const yours = rows.filter((r) => r.group === 'yours');
-  const open = rows.filter((r) => r.group === 'open');
-  const others = rows.filter((r) => r.group === 'others');
-
   return (
     <>
       <div className="vh" aria-live="polite">{liveText}</div>
-      {yours.length > 0 ? <Section title="Yours"><div className="box box--yours">{yours.map(render)}</div></Section> : null}
-      {open.length > 0 ? <Section title="Still to claim"><div className="box">{open.map(render)}</div></Section> : null}
-      {others.length > 0 ? <Section title="Claimed by others"><div className="box">{others.map(render)}</div></Section> : null}
+      <div className="box">{rows.map(render)}</div>
       {err ? <Notice tone="error">{err}</Notice> : null}
 
       {confirming ? (
@@ -268,12 +264,12 @@ export function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, o
 }
 
 /** One line on the claiming list: name, who has it and a note, then what you can do. */
-function ClaimItem({ title, names, note, action, changed, arrive, muted }: {
-  title: string; names: string[]; note: string; action?: ReactNode; /** #123: someone else just changed it. */ changed: boolean; /** Just moved into Yours: a short fade. */ arrive: boolean; muted: boolean;
+function ClaimItem({ group, title, names, note, action, changed }: {
+  group: ClaimRow['group']; title: string; names: string[]; note: string; action?: ReactNode; /** #123: someone else just changed it. */ changed: boolean;
 }) {
-  const cls = ['claim', muted && 'claim--muted', arrive && 'claim--in', changed && 'pick--changed'].filter(Boolean).join(' ');
+  const cls = ['claim', group === 'yours' && 'claim--mine', group === 'others' && 'claim--muted', changed && 'pick--changed'].filter(Boolean).join(' ');
   return (
-    <div className={cls}>
+    <div className={cls} data-group={group}>
       <span className="row__main">
         <span className="row__title">{title}</span>
         <span className="row__sub claim__sub">{names.length > 0 ? <AvatarStack names={names} /> : null}<span>{note}</span></span>

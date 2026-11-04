@@ -6,7 +6,7 @@
  * (while the read runs in the background), so the two look like one screen.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActionBar, BillSkeleton, Button, Page, Title } from './ui';
+import { ActionBar, Button, Page, Steps, Title, type StepState } from './ui';
 import type { ScanError } from './Scanner';
 
 /** Photo URLs by read id, so /reading/[id] can show the photo the scanner just took. */
@@ -36,26 +36,71 @@ export function Thumb({ uri }: { uri?: string }) {
     : <span className="skel reading-thumb" aria-hidden="true" />;
 }
 
-/** Waiting: the photo beside the title, grey bill rows below. */
-export function ReadingWait({ photo, title, slow, actions }: {
+/** Seconds into a read at which the next stage is shown as under way (a read takes 5–20s). */
+const STAGE_AT = [0, 3_000, 10_000];
+
+/** Which reading stage is under way, `ms` after the read started. */
+export function readingStage(ms: number): number {
+  return STAGE_AT.filter((at) => ms >= at).length - 1;
+}
+
+/** Re-renders every half second, from `since` (or mount). */
+function useElapsed(since?: number): number {
+  const [start] = useState(() => since ?? Date.now());
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  return Math.max(0, now - (since ?? start));
+}
+
+/**
+ * Waiting (#174): the photo large, with a scan line moving over it, and the
+ * stages ticking off underneath, so it's plain something is happening.
+ * `preparing` is before the read starts (shrinking and uploading the photo).
+ * The read gives no progress of its own, so its stages go by time and the
+ * last one stays under way until the bill opens.
+ */
+export function ReadingWait({ photo, title, slow, actions, phase = 'reading', since }: {
   photo?: string;
   title: string;
   slow: boolean;
   actions: ReactNode;
+  phase?: 'preparing' | 'reading';
+  /** When the read started (ms), so coming back to it doesn't start the stages again. */
+  since?: number;
 }) {
+  const elapsed = useElapsed(since);
+  const at = phase === 'preparing' ? -1 : readingStage(elapsed);
+  const labels = ['Photo', 'Finding the bill', 'Reading the items', 'Checking the total'];
+  const steps = labels.map((label, i) => ({
+    label,
+    state: (i - 1 < at ? 'done' : i - 1 === at ? 'busy' : 'todo') as StepState,
+  }));
   return (
     <>
       <Page>
-        <div className="reading-head">
-          <Thumb uri={photo} />
-          <div role="status" aria-live="polite">
-            <Title title={title} sub={slow ? 'Long bill? Nearly there.' : 'Usually a few seconds.'} />
-          </div>
+        <div role="status" aria-live="polite">
+          <Title title={title} sub={slow ? 'Long bill? Nearly there.' : undefined} />
         </div>
-        <BillSkeleton />
+        <div className="scan" aria-hidden="true">
+          {photo ? <img src={photo} alt="" className="scan__photo" /> : <ReceiptSketch />}
+          <span className="scan__line" />
+        </div>
+        <div className="box"><Steps steps={steps} /></div>
       </Page>
       <ActionBar>{actions}</ActionBar>
     </>
+  );
+}
+
+/** No photo to hand (came back from Bills): a plain receipt shape instead. */
+function ReceiptSketch() {
+  return (
+    <span className="scan__sketch">
+      {[60, 40, 82, 70, 76, 58, 66, 48].map((w, i) => <span key={i} className="skel" style={{ width: `${w}%` }} />)}
+    </span>
   );
 }
 

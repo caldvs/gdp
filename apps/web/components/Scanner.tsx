@@ -192,6 +192,7 @@ export function useScanner() {
         photo={photo?.uri}
         title={busy === 'processing' ? 'Getting your photo ready' : 'Reading your bill'}
         slow={slow}
+        phase={busy === 'processing' || busy === 'uploading' ? 'preparing' : 'reading'}
         actions={<Button tone="secondary" onClick={cancel}>Cancel</Button>}
       />
     ) : null;

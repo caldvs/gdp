@@ -16,33 +16,34 @@ async function diner(browser: Browser, api: FakeApi, user: User, opts: { clipboa
   return page;
 }
 
-const group = (page: Page, name: 'Yours' | 'Still to claim' | 'Claimed by others') =>
-  page.locator('section', { has: page.getByRole('heading', { name, exact: true }) });
+// #177: one list in bill order; each row says whose it is in place.
+const GROUPS = { Yours: 'yours', 'Still to claim': 'open', 'Claimed by others': 'others' } as const;
+const group = (page: Page, name: keyof typeof GROUPS) => page.locator(`.claim[data-group="${GROUPS[name]}"]`);
 
 test('#130: a 3× line is claimed one portion at a time, never more than were ordered', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   const sam = await diner(browser, api, users.sam);
 
-  await expect(group(sam, 'Still to claim')).toContainText('3 × Espresso Martini');
-  await expect(group(sam, 'Still to claim')).toContainText('£13.00 each · 3 left');
+  await expect(group(sam, 'Still to claim').filter({ hasText: '3 × Espresso Martini' })).toBeVisible();
+  await expect(group(sam, 'Still to claim').filter({ hasText: '£13.00 each · 3 left' })).toBeVisible();
   await sam.getByRole('button', { name: 'Claim one Espresso Martini' }).click();
-  await expect(group(sam, 'Yours')).toContainText('3 × Espresso Martini');
+  await expect(group(sam, 'Yours').filter({ hasText: '3 × Espresso Martini' })).toBeVisible();
   await expect(sam.getByTestId('your-share')).toHaveText('£13.00');
   await sam.getByRole('button', { name: 'One more Espresso Martini' }).click();
   await sam.getByRole('button', { name: 'One more Espresso Martini' }).click();
   await expect(sam.getByTestId('your-share')).toHaveText('£39.00');
   // All three taken: + stops.
   await expect(sam.getByRole('button', { name: 'One more Espresso Martini' })).toBeDisabled();
-  await expect(group(sam, 'Yours')).toContainText('all claimed');
+  await expect(group(sam, 'Yours').filter({ hasText: 'all claimed' })).toBeVisible();
 
   // The lead's Your items: all claimed by someone else, no button.
   await lead.getByRole('tab', { name: 'Your items' }).click();
-  await expect(group(lead, 'Claimed by others')).toContainText('All claimed', POLL);
+  await expect(group(lead, 'Claimed by others').filter({ hasText: 'All claimed' })).toBeVisible(POLL);
   await expect(lead.getByRole('button', { name: 'Claim one Espresso Martini' })).toHaveCount(0);
 
   await sam.getByRole('button', { name: 'One fewer Espresso Martini' }).click();
-  await expect(group(lead, 'Still to claim')).toContainText('£13.00 each · 1 left', POLL);
+  await expect(group(lead, 'Still to claim').filter({ hasText: '£13.00 each · 1 left' })).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'One fewer Espresso Martini' }).click();
   await sam.getByRole('button', { name: 'One fewer Espresso Martini' }).click();
   // Back to none: Claim again, and Continue is off until something is claimed.
@@ -51,16 +52,18 @@ test('#130: a 3× line is claimed one portion at a time, never more than were or
   expect(api.participants.find((p) => p.userId === 'u-sam')!.claimedItemIds).toEqual([]);
 });
 
-test('#130: one thing in Yours shows "Yours" with a plain Remove', async ({ browser }) => {
+test('#130, #177: claiming one thing ticks its row in place; tapping again puts it back', async ({ browser }) => {
   const api = new FakeApi();
   const sam = await diner(browser, api, users.sam);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
-  await expect(group(sam, 'Yours')).toContainText('Lasagne');
-  await expect(group(sam, 'Yours')).toContainText('Yours');
+  await expect(group(sam, 'Yours').filter({ hasText: 'Lasagne' })).toBeVisible();
+  await expect(group(sam, 'Yours').filter({ hasText: 'Yours' })).toBeVisible();
+  // Changed in place: still the same row, where it was.
+  await expect(sam.locator('.claim').nth(2)).toHaveAttribute('data-group', 'yours');
   await expect(sam.getByRole('link', { name: 'Continue to payment' })).toBeVisible();
   await sam.getByRole('button', { name: 'Remove Lasagne' }).click();
-  await expect(group(sam, 'Still to claim')).toContainText('Lasagne');
-  await expect(sam.getByRole('heading', { name: 'Yours', exact: true })).toHaveCount(0);
+  await expect(group(sam, 'Still to claim').filter({ hasText: 'Lasagne' })).toBeVisible();
+  await expect(group(sam, 'Yours')).toHaveCount(0);
 });
 
 test('#130: Split on someone else’s dish asks first, then both share it at once', async ({ browser }) => {
@@ -77,11 +80,11 @@ test('#130: Split on someone else’s dish asks first, then both share it at onc
   await expect(sheet).toContainText('Priya will see you’re sharing it.');
   await sheet.getByRole('button', { name: 'Split it' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(group(tom, 'Yours')).toContainText('£11.25 · split with Priya');
+  await expect(group(tom, 'Yours').filter({ hasText: '£11.25 · split with Priya' })).toBeVisible();
   await expect(tom.getByTestId('your-share')).toHaveText('£11.25');
 
   // Told, not asked: Priya's row now says who she's sharing with.
-  await expect(group(priya, 'Yours')).toContainText('split with Tom', POLL);
+  await expect(group(priya, 'Yours').filter({ hasText: 'split with Tom' })).toBeVisible(POLL);
   await expect(priya.getByTestId('your-share')).toHaveText('£11.25');
   expect(api.shares).toEqual([expect.objectContaining({ itemId: items[1]!.itemId, ways: 2, userIds: ['u-priya', 'u-tom'] })]);
   expect(api.participants.find((p) => p.userId === 'u-priya')!.claimedItemIds).toEqual([]);
@@ -104,7 +107,7 @@ test('#130: no Split on a dish the person who has it has already paid for', asyn
   api.participants[1]!.claimedItemIds = [items[1]!.itemId];
   api.participants[1]!.payment = { status: 'succeeded', paymentId: 'pay-priya', paidAt: '2026-10-31T12:30:00Z' };
   const tom = await diner(browser, api, users.tom);
-  await expect(group(tom, 'Claimed by others')).toContainText('Calamari');
+  await expect(group(tom, 'Claimed by others').filter({ hasText: 'Calamari' })).toBeVisible();
   await expect(tom.getByRole('button', { name: /^Split Calamari/ })).toHaveCount(0);
 });
 
@@ -117,7 +120,7 @@ test('#123: losing a race for a dish offers Split with Sam', async ({ browser })
   api.participants.find((p) => p.userId === 'u-sam')!.claimedItemIds = [items[1]!.itemId];
   await tom.getByRole('button', { name: 'Claim Calamari' }).click();
 
-  await expect(group(tom, 'Claimed by others')).toContainText('Sam just took this');
+  await expect(group(tom, 'Claimed by others').filter({ hasText: 'Sam just took this' })).toBeVisible();
   await expect(tom.getByRole('button', { name: 'Split Calamari with Sam' })).toHaveText('Split with Sam');
   await tom.getByRole('button', { name: 'Split Calamari with Sam' }).click();
   await tom.getByRole('dialog').getByRole('button', { name: 'Split it' }).click();
@@ -134,7 +137,7 @@ test('two guests grab the last Negroni: the second is told and nothing is claime
   await expect(sam.getByTestId('your-share')).toHaveText('£21.00');
 
   await tom.getByRole('button', { name: 'Claim one Negroni' }).click();
-  await expect(group(tom, 'Claimed by others')).toContainText('Sam just took this');
+  await expect(group(tom, 'Claimed by others').filter({ hasText: 'Sam just took this' })).toBeVisible();
   await expect(tom.getByRole('button', { name: 'Claim something to continue' })).toBeDisabled();
   expect(api.participants.find((p) => p.userId === 'u-tom')!.claimedItemIds).toEqual([]);
 });
@@ -213,7 +216,7 @@ test('#123: a row someone else just took flashes who took it, then settles to an
   await sam.getByRole('button', { name: 'Claim Calamari' }).click();
 
   await expect(tom.locator('.row__sub', { hasText: 'Sam took it' })).toBeVisible(POLL);
-  await expect(group(tom, 'Claimed by others')).toContainText('Calamari');
+  await expect(group(tom, 'Claimed by others').filter({ hasText: 'Calamari' })).toBeVisible();
   await expect(tom.getByText('Sam', { exact: true })).toBeVisible();
 });
 

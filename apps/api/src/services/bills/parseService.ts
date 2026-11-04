@@ -155,7 +155,7 @@ function buildBillV1(args: {
   sha256: string;
   readBy: ReadBy;
 }): Bill {
-  const items: BillItem[] = args.parsed.items.map((it) => ({
+  const items: BillItem[] = mergeRepeatedLines(args.parsed.items).map((it) => ({
     itemId: uuidv7(),
     name: it.name,
     unitPricePence: it.unitPricePence,
@@ -192,6 +192,43 @@ function buildBillV1(args: {
     ...(args.venue ? { venue: args.venue } : {}),
     createdAt: new Date().toISOString(),
   };
+}
+
+type ParsedLine = ParsedBillFromImage['items'][number];
+
+/**
+ * Some tills print each of a repeated item on its own line (four "Zinfandel
+ * BTL £21.50" rows), others print "4 Zinfandel BTL". Fold the first kind into
+ * the second, so guests claim them one at a time from one line. Lines merge
+ * when name (ignoring case and spacing), unit price, category and course all
+ * match, wherever they sit on the receipt; the merged line keeps the first
+ * one's place and name. A line the reader was unsure of stays on its own so
+ * the lead still sees it.
+ */
+export function mergeRepeatedLines(lines: ParsedLine[]): ParsedLine[] {
+  const merged: ParsedLine[] = [];
+  const byKey = new Map<string, ParsedLine>();
+  for (const line of lines) {
+    if (line.unsure) {
+      merged.push(line);
+      continue;
+    }
+    const key = [
+      line.name.trim().replace(/\s+/g, ' ').toLowerCase(),
+      line.unitPricePence,
+      line.category,
+      line.category === 'food' ? (line.course ?? '') : '',
+    ].join('|');
+    const first = byKey.get(key);
+    if (first) {
+      first.quantity += line.quantity;
+      continue;
+    }
+    const copy = { ...line };
+    byKey.set(key, copy);
+    merged.push(copy);
+  }
+  return merged;
 }
 
 /**

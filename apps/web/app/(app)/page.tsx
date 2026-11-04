@@ -4,6 +4,7 @@ import { useMySessions, type SessionSummary } from '@gdp/core/api/hooks/useMySes
 import { formatGBP } from '@gdp/core/lib/money';
 import { useScanner } from '@/components/Scanner';
 import { PendingReadRow } from '@/components/PendingRead';
+import { billTitle } from '@/components/PageTransition';
 import { ActionBar, Badge, Box, Button, Notice, Page, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
 
 const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'paying' || s.status === 'setup';
@@ -12,7 +13,7 @@ const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'p
 export default function BillsPage() {
   const sessions = useMySessions(50);
   const scanner = useScanner();
-  if (scanner.reading) return <>{scanner.inputs}{scanner.reading}</>;
+  if (scanner.screen) return <>{scanner.inputs}{scanner.screen}</>;
 
   const all = sessions.data?.sessions ?? [];
   const open = all.filter(isOpen);
@@ -31,7 +32,7 @@ export default function BillsPage() {
         {open.length > 0 ? (
           <Section title="Open">
             {open.map((s) => (
-              <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} card strong title={venue(s)} sub={openSub(s)} end={openBadge(s)} />
+              <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} card strong title={venue(s)} sub={openSub(s)} end={openBadge(s)} />
             ))}
           </Section>
         ) : null}
@@ -40,7 +41,7 @@ export default function BillsPage() {
           <Section title="Past">
             <Box>
               {past.map((s) => (
-                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} tall title={venue(s)} sub={pastSub(s)} end={pastEnd(s)} />
+                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} tall title={venue(s)} sub={pastSub(s)} end={pastEnd(s)} />
               ))}
             </Box>
           </Section>

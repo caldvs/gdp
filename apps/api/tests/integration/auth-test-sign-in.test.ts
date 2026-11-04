@@ -12,7 +12,6 @@ const buildApp = (testAccountSignIn: boolean) =>
     emailSender: noEmail,
     sessionJwtSecret: SECRET,
     idTokenVerifier: createSessionTokenVerifier(SECRET),
-    paymentProvider: null,
     testAccountSignIn,
   });
 

@@ -1,11 +1,14 @@
 import type { Metadata, Viewport } from 'next';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/next';
 import { DEMO_MODE } from '@gdp/core/lib/demoMode';
 import { Providers } from './providers';
 import './globals.css';
 
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
+
 export const metadata: Metadata = {
-  title: { default: 'Group Dine Pay', template: '%s · Group Dine Pay' },
+  title: { default: 'Pay Me Back', template: '%s · Pay Me Back' },
   description: 'Snap the bill, share a QR, get paid direct. Your friends don’t install anything.',
   robots: DEMO_MODE ? { index: false, follow: false } : undefined,
 };
@@ -19,7 +22,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-GB">
+    <html lang="en-GB" className={jakarta.variable}>
       <body>
         <Providers>{children}</Providers>
         <Analytics />

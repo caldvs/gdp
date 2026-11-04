@@ -85,11 +85,15 @@ export const UploadRequestSchema = z.object({
     .positive()
     .max(5 * 1024 * 1024),
   mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  /** Local only: ignore an earlier read of the same photo. */
+  skipCache: z.boolean().optional(),
 });
 export type UploadRequest = z.infer<typeof UploadRequestSchema>;
 
 export const ParseRequestSchema = z.object({
   uploadId: z.string().uuid(),
+  /** Local only: read the photo again even if it was read before. */
+  skipCache: z.boolean().optional(),
 });
 export type ParseRequest = z.infer<typeof ParseRequestSchema>;
 
@@ -108,5 +112,13 @@ export const AmendBillRequestSchema = z.object({
     .min(1),
   taxPence: z.number().int().nonnegative(),
   serviceChargePence: z.number().int().nonnegative(),
+  // Set to override the parsed venue. Absent keeps whatever the bill has.
+  venue: z
+    .object({
+      name: z.string().min(1).max(80),
+      placeId: z.string().optional(),
+      address: z.string().optional(),
+    })
+    .optional(),
 });
 export type AmendBillRequest = z.infer<typeof AmendBillRequestSchema>;

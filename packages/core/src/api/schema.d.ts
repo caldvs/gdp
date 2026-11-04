@@ -48,24 +48,33 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Request a one-time sign-in code for an email
-         * @description Generates a 6-digit code, stores its hash, and emails the plaintext
-         *     code to the supplied address. The code expires in 10 minutes and
-         *     allows up to 5 verification attempts.
+         * Email a one-time sign-in link
+         * @description Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
+         *     token is in the fragment, so it never reaches a server log. It works
+         *     once and expires in 15 minutes. The link points at the calling
+         *     origin when it's on the allow-list (test.paymeback.dev, previews),
+         *     otherwise at `APP_BASE_URL`. At most one link every 30 seconds and
+         *     5 every 15 minutes per address (429 otherwise).
          *
-         *     Response is uniform regardless of whether the email belongs to an
-         *     existing user — this prevents address enumeration. Email delivery
-         *     failures (e.g. SES bounce) also return `200` and are logged
-         *     server-side.
+         *     Returns `requestId`, a secret the asking tab keeps and passes to
+         *     `POST /v1/auth/email/requests` until the link has been opened.
+         *
+         *     The response is the same whether or not the address has an
+         *     account, so addresses can't be enumerated. Email delivery failures
+         *     (e.g. SES bounce) also return `200` and are logged server-side.
+         *
+         *     An address on `TABLE_FEE_EXEMPT_EMAILS` gets no link: the response
+         *     carries `token` and `user` instead of `requestId`, and the caller is
+         *     signed in.
          */
-        post: operations["startEmailOtp"];
+        post: operations["startEmailSignIn"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/email/verify": {
+    "/v1/auth/email/link": {
         parameters: {
             query?: never;
             header?: never;
@@ -75,16 +84,40 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Exchange a valid OTP for a session JWT
-         * @description Verifies a 6-digit code against the most recent OTP issued for the
-         *     email. On success: looks up (or creates) an opaque userId, persists
-         *     the user profile if new, and mints a session JWT. The JWT is
-         *     carried in `Authorization: Bearer ...` on every subsequent request.
+         * Sign in with the token from an emailed link
+         * @description Called by the tab the link opened. Looks up (or creates) the
+         *     account for the link's email and mints a session JWT. Also marks
+         *     the request approved, so the tab that asked signs in too.
          *
-         *     On failure (wrong code, expired, used, no OTP, too many attempts)
-         *     returns `401 AUTH_INVALID` uniformly so failure modes don't leak.
+         *     Works once, within 15 minutes. Any failure (used, expired, wrong
+         *     or unknown token) is `401 AUTH_INVALID`, so they can't be told apart.
          */
-        post: operations["verifyEmailOtp"];
+        post: operations["openEmailSignInLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/email/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check whether the emailed link has been opened yet
+         * @description The tab that asked polls this (every 2 seconds) with the
+         *     `requestId` from `/email/start`. `pending` until the link is
+         *     opened; then `signedIn` once, with this tab's own session JWT;
+         *     `expired` for a used, timed-out, wrong or unknown request. Only
+         *     the `requestId` can collect the session, so the link alone can't
+         *     sign in someone else's tab. POST so the secret stays out of logs.
+         */
+        post: operations["getEmailSignInRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -215,7 +248,7 @@ export interface paths {
         /**
          * Parse a previously uploaded image into a structured bill
          * @description Synchronous call. Fetches the image from S3 (by `uploadId`), runs the configured `BillParser`
-         *     (Claude Haiku on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
+         *     (Claude Sonnet on Amazon Bedrock), validates the parser output with zod, persists `Bill` v1, and indexes
          *     the image hash. Has 22s, under API Gateway's 30s. The web app uses `POST /v1/bills/reads` instead.
          *     Idempotent via `Idempotency-Key`.
          */
@@ -343,6 +376,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/venues/nearby": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Food and drink places near a position
+         * @description Up to 5 food and drink places within about 300 m, nearest first, from
+         *     Amazon Location. Results are cached by the position rounded to 3
+         *     decimal places; the caller's own position is never stored and is
+         *     logged rounded at most. An empty list when nothing is near, when the
+         *     search fails, or locally (no venue lookup).
+         */
+        get: operations["nearbyVenues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions": {
         parameters: {
             query?: never;
@@ -403,7 +460,13 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change how many people the lead expects at the table
+         * @description Lead only. Sets `expectedDiners` (lead included), or clears it with
+         *     `null`. Allowed until the bill is closed or deleted. Display only:
+         *     it never changes what anyone owes.
+         */
+        patch: operations["updateSession"];
         trace?: never;
     };
     "/v1/sessions/{sessionId}/share": {
@@ -423,9 +486,8 @@ export interface paths {
          *     `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
          *     (subsequent calls to `/by-code` will resolve it).
          *
-         *     Per ADR-0002 this endpoint no longer requires the creator's bank details to be on file —
-         *     those live device-local and reach guests via the join QR. The previous
-         *     `PAYOUT_ACCOUNT_REQUIRED` (409) response has been removed.
+         *     Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
+         *     reach guests via the join QR.
          */
         post: operations["shareSession"];
         delete?: never;
@@ -701,7 +763,7 @@ export interface paths {
          * Initiate a payment from the current participant to the collector
          * @description The current user must be a participant in the session, the session must be in `paying`, and the
          *     participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
-         *     record with a TrueLayer redirect URL the client should open to complete the authentication.
+         *     record and the details the guest pays with from their own banking app.
          */
         post: operations["initiatePayment"];
         delete?: never;
@@ -745,13 +807,9 @@ export interface paths {
         put?: never;
         /**
          * Collector confirms a manual payment was received
-         * @description Manual mode only. The collector marks a guest payment as `succeeded` after seeing
-         *     the funds arrive in their bank account. Idempotent — confirming a payment already
-         *     in `succeeded` returns the same payment unchanged. When this is the last unpaid
-         *     guest, the session transitions to `settled` automatically.
-         *
-         *     Rejected for `provider != manual` payments (those advance via webhook from
-         *     TrueLayer) — returns `409 SESSION_INVALID_STATE`.
+         * @description The collector marks a guest payment as `succeeded` after seeing the funds arrive in
+         *     their bank account. Idempotent — confirming a payment already in `succeeded` returns
+         *     the same payment unchanged.
          */
         post: operations["confirmManualPayment"];
         delete?: never;
@@ -777,9 +835,6 @@ export interface paths {
          *     **Does not advance payment status** — only the lead's `/confirm` does that. This claim
          *     exists purely as a UX signal: the lead's session view can flag pending payments where
          *     the payer says they've already paid, so the lead knows which ones to confirm next.
-         *
-         *     Available for any provider, but really only meaningful in manual mode (TrueLayer-mediated
-         *     payments advance via webhook from TL, not via the payer self-claiming).
          */
         post: operations["markPaymentPaidByPayer"];
         delete?: never;
@@ -819,7 +874,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Whether the table fee for a bill is paid */
+        /**
+         * Whether the table fee for a bill is paid
+         * @description With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
+         *     Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
+         */
         get: operations["getTableFeeStatus"];
         put?: never;
         post?: never;
@@ -852,31 +911,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/webhooks/truelayer": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * TrueLayer payment-status webhook
-         * @description Provider-to-server callback. Authentication is via TrueLayer's `Tl-Signature` header
-         *     (request signing scheme) verified using TrueLayer's public JWKS. The body is provider-defined;
-         *     we resolve `providerPaymentId` to our `paymentId` via GSI2 and apply the state transition.
-         *
-         *     Returns `200` for accepted updates (idempotent), `401` for invalid signature, `404` if the
-         *     provider payment id cannot be resolved.
-         */
-        post: operations["truelayerWebhook"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -894,8 +928,11 @@ export interface components {
         TableFeeStatus: {
             /** Format: uuid */
             billId: string;
-            /** @enum {string} */
-            status: "paid" | "unpaid";
+            /**
+             * @description `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+             * @enum {string}
+             */
+            status: "paid" | "unpaid" | "waived";
             amountPence: number;
             /** Format: date-time */
             paidAt?: string;
@@ -906,7 +943,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "PAYOUT_ACCOUNT_REQUIRED" | "TABLE_FEE_PAID" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1016,7 +1053,7 @@ export interface components {
             parsedFrom: {
                 /** @description SHA-256 hex of resized image bytes */
                 imageHash: string;
-                /** @example eu.anthropic.claude-haiku-4-5-20251001-v1:0 */
+                /** @example eu.anthropic.claude-sonnet-4-6 */
                 parser: string;
                 /** @example v1 */
                 parserVersion: string;
@@ -1036,6 +1073,18 @@ export interface components {
         };
         /** @enum {string} */
         SessionStatus: "setup" | "claiming" | "paying" | "settled" | "abandoned";
+        ParticipantPaymentEntry: {
+            /** Format: uuid */
+            paymentId: string;
+            amountPence: number;
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed";
+            /** Format: date-time */
+            payerClaimedPaidAt?: string;
+            /** Format: date-time */
+            paidAt?: string;
+            reason?: string;
+        };
         ParticipantPayment: {
             /** @constant */
             status: "unpaid";
@@ -1089,6 +1138,16 @@ export interface components {
             owedPence?: number;
             payment: components["schemas"]["ParticipantPayment"];
             /**
+             * @description `payment` above is the latest state across these: in flight if
+             *     any payment is, else paid if any was. "Paid" doesn't mean nothing
+             *     more is owed; compare the sent payments with what's owed now.
+             *     Every payment this guest has made to the lead, oldest first (#121:
+             *     a guest who claims more after paying tops up the difference). A
+             *     `pending` payment without `payerClaimedPaidAt` was opened but not
+             *     sent yet. Absent on sessions from before top-ups.
+             */
+            payments?: components["schemas"]["ParticipantPaymentEntry"][];
+            /**
              * @description True once the diner has signalled they're done claiming via
              *     `POST /v1/sessions/:id/ready`. Lead's `lock-claims` rejects
              *     with `PARTICIPANTS_NOT_READY` unless all non-creator participants
@@ -1117,6 +1176,11 @@ export interface components {
              *     has a venue the reader could extract.
              */
             venue?: components["schemas"]["Venue"];
+            /**
+             * @description How many people the lead said are eating, lead included. Shown as
+             *     "3 of 4 joined"; never used in the money maths. Absent until set.
+             */
+            expectedDiners?: number;
             /**
              * @description Computed view of share state per ADR-0006. One entry per item
              *     with at least one sharer; `userIds` is the splitter set. Server
@@ -1183,7 +1247,7 @@ export interface components {
             myPaymentStatus: "unpaid" | "self_paid" | "pending" | "succeeded" | "failed";
         };
         /** @enum {string} */
-        PaymentStatus: "pending" | "authorized" | "succeeded" | "failed" | "refunded";
+        PaymentStatus: "pending" | "succeeded" | "failed";
         Payment: {
             /** Format: uuid */
             paymentId: string;
@@ -1195,9 +1259,6 @@ export interface components {
             amountPence: number;
             /** @enum {string} */
             currency: "GBP";
-            /** @enum {string} */
-            provider: "truelayer" | "manual";
-            providerPaymentId?: string;
             status: components["schemas"]["PaymentStatus"];
             /** Format: uuid */
             idempotencyKey?: string;
@@ -1208,7 +1269,7 @@ export interface components {
                 from: components["schemas"]["PaymentStatus"];
                 to: components["schemas"]["PaymentStatus"];
                 /** @enum {string} */
-                source: "api" | "webhook" | "system";
+                source: "api" | "system";
                 note?: string;
             }[];
             /** Format: date-time */
@@ -1229,6 +1290,8 @@ export interface components {
             sizeBytes: number;
             /** @enum {string} */
             mimeType: "image/jpeg" | "image/png" | "image/webp";
+            /** @description Local API only (ignored elsewhere): don't return an earlier bill for this photo, so it's uploaded and read again. */
+            skipCache?: boolean;
         };
         UploadSlot: {
             /**
@@ -1263,6 +1326,8 @@ export interface components {
         ParseRequest: {
             /** Format: uuid */
             uploadId: string;
+            /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
+            skipCache?: boolean;
         };
         BillRead: {
             /** Format: uuid */
@@ -1303,12 +1368,33 @@ export interface components {
             taxPence: number;
             /** Format: int64 */
             serviceChargePence: number;
+            /** @description Set to override the parsed venue; absent keeps whatever the bill has. */
+            venue?: {
+                name: string;
+                placeId?: string;
+                address?: string;
+            };
+        };
+        NearbyVenue: {
+            /** @description Amazon Location place ID */
+            placeId: string;
+            name: string;
+            /** @description Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom" */
+            address?: string;
+            /** @description Metres from the position asked about */
+            distanceM: number;
         };
         CreateSessionRequest: {
             /** Format: uuid */
             billId: string;
             /** @description Defaults to the latest version of the bill at session-create time */
             billVersion?: number;
+            /** @description How many people are eating, lead included. Optional. */
+            expectedDiners?: number;
+        };
+        UpdateSessionRequest: {
+            /** @description How many people are eating, lead included; `null` clears it. */
+            expectedDiners: number | null;
         };
         JoinByCodeRequest: {
             code: string;
@@ -1322,27 +1408,13 @@ export interface components {
             instructions: components["schemas"]["PaymentInstructions"];
         };
         /**
-         * @description Discriminated union telling the client how to actually complete the payment.
-         *     - `redirect`: open `url` (e.g. TrueLayer hosted payment page).
-         *     - `manual_transfer`: render the bank details + optional Monzo/Revolut links;
-         *       the guest pays via their own banking app, then the lead confirms receipt
-         *       via `POST /v1/payments/{paymentId}/confirm`.
+         * @description How the guest pays: the bank details and reference to use in their own banking app,
+         *     plus optional Monzo/Revolut links. The lead then confirms receipt via
+         *     `POST /v1/payments/{paymentId}/confirm`.
          */
-        PaymentInstructions: components["schemas"]["RedirectInstructions"] | components["schemas"]["ManualTransferInstructions"];
-        RedirectInstructions: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "redirect";
-            /** Format: uri */
-            url: string;
-        };
+        PaymentInstructions: components["schemas"]["ManualTransferInstructions"];
         ManualTransferInstructions: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
+            /** @enum {string} */
             type: "manual_transfer";
             /** @description The collector's bank details, when stored server-side. Omitted when they only live on the lead's device (ADR-0002); clients then use the details from the join QR fragment. */
             bankDetails?: {
@@ -1489,7 +1561,7 @@ export interface operations {
             };
         };
     };
-    startEmailOtp: {
+    startEmailSignIn: {
         parameters: {
             query?: never;
             header?: never;
@@ -1505,7 +1577,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Code dispatched (or treated as dispatched). */
+            /** @description Link sent (or treated as sent). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1514,13 +1586,36 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         ok: true;
+                        /** @description Everyone but exempt addresses. Secret; keep it in the tab that asked. */
+                        requestId?: string;
+                        /** @description Exempt addresses only: the session JWT. */
+                        token?: string;
+                        /** @description Exempt addresses only. */
+                        user?: {
+                            userId: string;
+                            email: string;
+                            displayName: string;
+                        };
                     };
                 };
             };
             400: components["responses"]["BadRequest"];
+            /**
+             * @description `RATE_LIMITED`: a link was sent to this address less than 30
+             *     seconds ago, or 5 have been sent in the last 15 minutes.
+             *     `details.retryAfterSeconds` says when to try again.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    verifyEmailOtp: {
+    openEmailSignInLink: {
         parameters: {
             query?: never;
             header?: never;
@@ -1530,14 +1625,12 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: email */
-                    email: string;
-                    code: string;
+                    token: string;
                 };
             };
         };
         responses: {
-            /** @description Verified. Token is good for 30 days. */
+            /** @description Signed in. Token is good for 30 days. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1557,11 +1650,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            /**
-             * @description Code didn't match, expired, was already used, or the attempt
-             *     cap was hit. Response is `AUTH_INVALID` in every failure mode
-             *     so callers can't distinguish them.
-             */
+            /** @description The link was used already, expired, or isn't one we sent (`AUTH_INVALID`). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1570,6 +1659,46 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    getEmailSignInRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    requestId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Where the request is. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "pending" | "signedIn" | "expired";
+                        /** @description `signedIn` only: the session JWT. */
+                        token?: string;
+                        /** @description `signedIn` only. */
+                        user?: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
     testAccountSignIn: {
@@ -1588,7 +1717,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Signed in. Same shape as `verifyEmailOtp`. */
+            /** @description Signed in. Same shape as `openEmailSignInLink`. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1949,6 +2078,33 @@ export interface operations {
             };
         };
     };
+    nearbyVenues: {
+        parameters: {
+            query: {
+                lat: number;
+                lng: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Nearby places, nearest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        venues: components["schemas"]["NearbyVenue"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     createSession: {
         parameters: {
             query?: never;
@@ -2053,6 +2209,44 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session with the new value */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill is closed or deleted (`SESSION_INVALID_STATE`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     shareSession: {
@@ -2515,7 +2709,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Payment created and authorized with TrueLayer */
+            /** @description Payment created */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2538,15 +2732,6 @@ export interface operations {
             404: components["responses"]["NotFound"];
             /** @description Session not in `paying`, or payment status not unpaid/failed */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description TrueLayer error */
-            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2619,7 +2804,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Payment is non-manual, or in a state that can't be confirmed */
+            /** @description Payment is in a state that can't be confirmed */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2695,7 +2880,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description The fee for this bill is already paid (`TABLE_FEE_PAID`) */
+            /** @description The fee for this bill is already paid (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2717,7 +2902,10 @@ export interface operations {
     };
     getTableFeeStatus: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The Checkout Session the page just confirmed (`cs_…`). */
+                session_id?: string;
+            };
             header?: never;
             path: {
                 billId: string;
@@ -2757,49 +2945,6 @@ export interface operations {
             };
             /** @description Invalid signature */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    truelayerWebhook: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description TrueLayer JWS detached signature of the raw body */
-                "Tl-Signature": string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": Record<string, never>;
-            };
-        };
-        responses: {
-            /** @description Update accepted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Signature verification failed */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description providerPaymentId not found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

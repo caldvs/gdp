@@ -39,7 +39,12 @@ def chip(xr, y, ttl):
     text(xr - w / 2, y + 14, ttl, 't-chip', 'middle')
 
 P = {}  # name -> (x, y, w, h)
+# Item types drawn, for the header. The session collection adds its own
+# rows below (META, PART#, SHARE#, CLAIMS: four types, one counted here).
+COUNTS = {'types': 3, 'expiring': 3}
 def place(col, y, name, *args, **kw):
+    COUNTS['types'] += 1
+    if args and args[1] != 'No TTL': COUNTS['expiring'] += 1
     x = COLS[col]
     h = entity(x, y, name, *args, **kw)
     P[name] = (x, y, CW, h)
@@ -51,7 +56,8 @@ y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
-y = place(0, y, 'Sign-in code', 'id', '10 min', [('pk', 'OTP#email:{email}'), ('sk', 'same as pk')], ['codeHash', 'attempts (conditional increment)', 'ttlAt, also checked on read']) + GAP
+y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash', 'status pending → approved → claimed', '  (conditional updates: each once)', 'expiresAt (15 min), claimBy']) + GAP
+y = place(0, y, 'Link sending limit', 'id', '15 min', [('pk', 'SIGNINRATE#email:{email}'), ('sk', 'W#{15-min window} | LAST')], ['sends (at most 5, conditional add)', 'sentAt: one link per 30 s']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 
@@ -62,8 +68,9 @@ y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#00
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
            'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId }']) + GAP
-y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE')], ['Stripe checkout state, amount', 'kept as a tax record']) + GAP
+y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE')], ['Stripe checkout state, amount, refund', 'kept as a tax record']) + GAP
 y = place(1, y, 'Venue lookup', 'bill', 'No TTL', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['Amazon Location answer, or no match', 'source = amazon-location']) + GAP
+y = place(1, y, 'Nearby places', 'bill', '30 days', [('pk', 'NEARQ#{lat|lng to 3 dp}'), ('sk', 'same as pk')], ['places [{ placeId, name, address, lat, lng }]', 'rounded cell only; never who asked']) + GAP
 y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
 col2_end = y
 
@@ -73,8 +80,8 @@ y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('
 # Session item collection (custom)
 sx, sy = COLS[2], y
 rows = [
-    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue']),
-    ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId, paidAt }', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
+    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners']),
+    ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, version (optimistic lock)', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),
 ]
@@ -104,7 +111,7 @@ col3_end = y
 # ---- Column 4: payments + indexes
 y = 80
 gx, gy = COLS[3], y
-gh = 250
+gh = 165
 a(f'<rect class="node gsi" x="{gx}" y="{gy}" width="{CW}" height="{gh}" rx="10"/>')
 text(gx + 18, gy + 27, 'Table gdp-{env}', 't-title')
 text(gx + 18, gy + 50, 'On-demand · pk (S) / sk (S) · TTL ttlAt', 't-attr')
@@ -112,15 +119,11 @@ text(gx + 18, gy + 80, 'GSI1', 't-inner'); text(gx + 74, gy + 80, 'GSI1PK / GSI1
 text(gx + 18, gy + 99, 'Only on participant rows: USER#{userId}', 't-attr')
 text(gx + 18, gy + 117, '→ sessionId. UUIDv7 ids sort by time,', 't-attr')
 text(gx + 18, gy + 135, 'so reverse order = newest first.', 't-attr')
-text(gx + 18, gy + 165, 'GSI2', 't-inner'); text(gx + 74, gy + 165, 'GSI2PK', 't-key')
-text(gx + 18, gy + 184, 'Only on payment rows:', 't-attr')
-text(gx + 18, gy + 202, 'PROVPAY#{providerPaymentId}', 't-attr')
-text(gx + 18, gy + 220, 'finds a payment from a webhook.', 't-attr')
 P['Table'] = (gx, gy, CW, gh)
 y = gy + gh + GAP
 pay_y = max(y, P['Session'][1] + rowpos['PART'][0] - P['Session'][1] - 40)
-y = place(3, pay_y, 'Payment', 'pay', 'No TTL', [('pk', 'PAY#{paymentId}'), ('sk', 'same as pk'), ('GSI2', 'PROVPAY#{providerPaymentId}')],
-          ['sessionId, payerUserId, collectorUserId', 'amountPence, currency GBP', 'provider (truelayer · mock · manual)',
+y = place(3, pay_y, 'Payment', 'pay', 'No TTL', [('pk', 'PAY#{paymentId}'), ('sk', 'same as pk')],
+          ['sessionId, payerUserId, collectorUserId', 'amountPence, currency GBP',
            'status, idempotencyKey', 'events[] { at, from, to, source }', 'createdAt, payerClaimedPaidAt']) + GAP
 col4_end = y
 
@@ -180,7 +183,7 @@ for i, lab in enumerate(['Identity & request safety', 'Bills', 'Sessions', 'Tabl
     zones.append(f'<text class="zone-label" x="{COLS[i]}" y="52">{e(lab)}</text>')
 
 svg = '\n'.join(zones + edges + nodes)
-page = (HERE / 'data_model.template.html').read_text().replace('%%SVG%%', svg).replace('%%VBH%%', str(int(H)))
+page = (HERE / 'data_model.template.html').read_text().replace('%%SVG%%', svg).replace('%%VBH%%', str(int(H))).replace('%%TYPES%%', str(COUNTS['types'])).replace('%%EXPIRING%%', str(COUNTS['expiring']))
 HEAD = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n')
 page = HEAD + page.replace('<div class="wrap">', '</head>\n<body>\n<div class="wrap">', 1) + '</body>\n</html>\n'

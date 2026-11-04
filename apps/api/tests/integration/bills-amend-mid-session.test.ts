@@ -249,4 +249,30 @@ describe('POST /v1/bills/:billId/amend — mid-session', () => {
     const body = (await amend.json()) as { error: { code: string } };
     expect(body.error.code).toBe('SESSION_INVALID_STATE');
   });
+
+  it('a venue set mid-session updates the session too', async () => {
+    const app = buildApp();
+    const { creator, bill, sessionId } = await setupSessionInClaiming(app);
+
+    await app.request(`/v1/bills/${bill.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(creator) },
+      body: JSON.stringify({
+        items: bill.items.map((it) => ({
+          itemId: it.itemId,
+          name: it.name,
+          unitPricePence: it.unitPricePence,
+          quantity: it.quantity,
+          category: 'food' as const,
+        })),
+        taxPence: 0,
+        serviceChargePence: 0,
+        venue: { name: 'The New Place' },
+      }),
+    });
+
+    const session = await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(creator) });
+    const sessionBody = (await session.json()) as { venue?: { name: string } };
+    expect(sessionBody.venue?.name).toBe('The New Place');
+  });
 });

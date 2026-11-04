@@ -22,6 +22,9 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   const lead = await diner(browser, api, users.lead, '/');
 
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+
+  await lead.getByRole('button', { name: 'Use photo' }).click();
+
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByText('Gennaro · 5 items')).toBeVisible();
 
@@ -52,9 +55,60 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   api.status = 'setup';
   await lead.goto('/');
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
+});
+
+test('a cut-off photo: no printed total to check, Retake photo goes back to scanning', async ({ browser }) => {
+  const api = new FakeApi({ noPrintedTotal: true });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('No total on the photo')).toBeVisible();
+  await expect(lead.getByText('Bottom cut off? We can\u2019t check the sum.')).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Retake photo' }).click();
+  await expect(lead.getByRole('heading', { name: 'Scan a bill' })).toBeVisible();
+});
+
+test('a printed total that matches the sum: no notice, shown as matching', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('No total on the photo')).toHaveCount(0);
+  await expect(lead.getByText('matches the receipt')).toBeVisible();
+});
+
+test('#136 no venue on the photo: none shown, none asked', async ({ browser }) => {
+  const api = new FakeApi({ venue: null });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText(/^5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
+});
+
+test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('Gennaro')).toBeVisible();
+  // Where it is, so the lead can catch a wrong match (the lookup's full address, or what was printed).
+  await expect(lead.getByText('12 King Street, Manchester')).toBeVisible();
+
+  await lead.getByRole('button', { name: 'Change venue' }).click();
+  await lead.getByLabel('Venue').fill('The Dog & Partridge');
+  await lead.getByRole('button', { name: 'Done' }).click();
+
+  await expect(lead.getByText('The Dog & Partridge')).toBeVisible();
+  await expect(lead.getByText('Gennaro')).toHaveCount(0);
+  // The old place's address doesn't stay under the new name.
+  await expect(lead.getByText('12 King Street, Manchester')).toHaveCount(0);
 });
 
 test('parse errors say what went wrong', async ({ browser }) => {
@@ -62,6 +116,7 @@ test('parse errors say what went wrong', async ({ browser }) => {
   const lead = await diner(browser, api, users.lead, '/');
   const snap = async () => {
     await lead.locator('input[capture]').setInputFiles(PHOTO);
+    await lead.getByRole('button', { name: 'Use photo' }).click();
   };
 
   api.faults.push({ kind: 'parse', code: 'PARSE_FAILED', message: 'Bedrock: TimeoutError' });
@@ -79,14 +134,23 @@ test('parse errors say what went wrong', async ({ browser }) => {
   api.faults.push({ kind: 'parse', code: 'IMAGE_TOO_LARGE', message: 'too big' });
   await snap();
   await expect(lead.getByText('That photo is too big.')).toBeVisible({ timeout: 15_000 });
+
+  // #94: the API crashed mid-read. Not the photo's fault; e2e builds are
+  // local, so it names what broke and points at the API terminal.
+  api.faults.push({ kind: 'parse', code: 'INTERNAL_ERROR', message: 'Reading the bill failed', details: { errorName: 'CredentialsProviderError' } });
+  await snap();
+  await expect(lead.getByText('Something went wrong on our side.')).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByText('CredentialsProviderError. Check the API terminal, then try again.')).toBeVisible();
 });
 
-test('leave while the bill is read: Bills shows it, then opens it when it’s ready', async ({ browser }) => {
+test('leave while the bill is read: Bills shows it, and coming back opens Review bill', async ({ browser }) => {
   const api = new FakeApi();
   api.holdReads = true;
   const lead = await diner(browser, api, users.lead, '/');
 
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'Reading your bill' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('link', { name: 'Back to bills' }).click();
 
@@ -105,10 +169,12 @@ test('a slow read keeps the photo, and Try again reads it', async ({ browser }) 
 
   api.faults.push({ kind: 'parse', code: 'PARSE_TIMEOUT', message: 'Bedrock took too long to read the bill' });
   await lead.locator('input[capture]').setInputFiles(PHOTO);
+  await lead.getByRole('button', { name: 'Use photo' }).click();
   await expect(lead.getByRole('heading', { name: 'That took too long.' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByRole('img', { name: 'Your bill' })).toBeVisible();
 
   await lead.getByRole('button', { name: 'Try again' }).click();
+
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
 });
 
@@ -197,4 +263,40 @@ test('anyone at the table can email themselves a report of the bill', async ({ b
   await sam.getByRole('button', { name: 'Email me a report of this bill' }).click();
   await expect(sam.getByRole('button', { name: 'Report emailed to you' })).toBeVisible();
   expect(api.reportsTo).toEqual(['u-lead', 'u-sam']);
+});
+
+test('#64: the lead says how many are eating and sees "n of m joined"; once everyone is in, unclaimed items are flagged', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead);
+
+  // Unset by default: no count, no flag.
+  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+
+  await lead.getByRole('button', { name: 'How many eating?' }).click();
+  const sheet = lead.getByRole('dialog', { name: 'How many eating?' });
+  await sheet.getByRole('button', { name: 'More people' }).click(); // 2 → 3
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(lead.getByRole('heading', { name: 'People · 1 of 3 joined' })).toBeVisible();
+  expect(api.requests.find((r) => r.method === 'PATCH')?.body).toBe('{"expectedDiners":3}');
+
+  // Guests join; the count follows on the poll.
+  await diner(browser, api, users.sam);
+  await expect(lead.getByRole('heading', { name: 'People · 2 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+  await diner(browser, api, users.tom);
+  await expect(lead.getByRole('heading', { name: 'People · 3 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByText('Everyone’s here')).toBeVisible();
+
+  // Change it, then clear it.
+  await lead.getByRole('button', { name: 'Change number' }).click();
+  await lead.getByRole('button', { name: 'More people' }).click();
+  await lead.getByRole('button', { name: 'Save' }).click();
+  await expect(lead.getByRole('heading', { name: 'People · 3 of 4 joined' })).toBeVisible();
+  await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
+  await lead.getByRole('button', { name: 'Change number' }).click();
+  await lead.getByRole('button', { name: 'Not sure' }).click();
+  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  expect(api.expectedDiners).toBeUndefined();
 });

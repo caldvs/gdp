@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "**": false,
+      "preview": true
+    }
+  },
+  "ignoreCommand": "s=${VERCEL_GIT_PREVIOUS_SHA:-HEAD^}; git cat-file -e \"$s^{commit}\" 2>/dev/null || exit 1; git diff --quiet \"$s\" HEAD -- . ../../packages/core ../../package.json ../../package-lock.json"
+}

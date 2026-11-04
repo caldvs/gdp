@@ -100,13 +100,16 @@ describe('read runner', () => {
     });
   });
 
-  it("doesn't leak an unexpected error's message", async () => {
+  it("doesn't leak an unexpected error's message, only its name (#94)", async () => {
     const read = await started();
-    parse.mockRejectedValue(new Error('socket hang up at 10.0.0.1'));
+    const err = new Error('socket hang up at 10.0.0.1');
+    err.name = 'CredentialsProviderError';
+    parse.mockRejectedValue(err);
     await createReadRunner(deps)({ ...job, readId: read.readId });
     expect(store.get(read.readId)?.error).toEqual({
       code: 'INTERNAL_ERROR',
       message: 'Reading the bill failed',
+      details: { errorName: 'CredentialsProviderError' },
     });
   });
 });

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import './context/types.js';
 import { env } from './config/env.js';
+import { originMatcher, parseOrigins } from './config/allowedOrigins.js';
 import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -10,8 +11,14 @@ import { docsRoutes } from './routes/docs.js';
 import { buildMeRoutes, meRoutes } from './routes/me.js';
 import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
+import { buildVenueRoutes } from './routes/venues.js';
+import {
+  amazonLocationNearby,
+  createNearbyVenueService,
+  noNearby,
+  type NearbySearch,
+} from './services/venues/nearbyVenues.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
-import { buildWebhookRoutes } from './routes/webhooks.js';
 import { buildAuthRoutes } from './routes/auth.js';
 import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
@@ -34,23 +41,29 @@ import {
   type ReadJob,
 } from './services/bills/readService.js';
 import { baseLogger } from './logging/logger.js';
-import type { PaymentProvider } from './services/payments/provider.js';
-import { MockTrueLayerProvider } from './services/payments/mockProvider.js';
-import { TrueLayerSandboxProvider } from './services/payments/trueLayerProvider.js';
 import Stripe from 'stripe';
 import { createTableFeeService, type TableFeeStore } from './services/billing/tableFee.js';
+import { parseEmailList } from './config/exemptEmails.js';
 import { tableFeeStore as defaultTableFeeStore } from './storage/tableFeeStore.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
 
 export interface AppDeps {
+  /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
+  allowedOrigins?: string;
+  /** Comma list; overrides TABLE_FEE_EXEMPT_EMAILS (tests). */
+  exemptEmails?: string;
   idTokenVerifier?: IdTokenVerifier;
   billParser?: BillParser;
   venueResolver?: VenueResolver;
+  /** Finds places near the lead for the scan screen (#62). */
+  nearbySearch?: NearbySearch;
   emailSender?: EmailSender;
   /** Override the JWT secret for tests (use a deterministic value). */
   sessionJwtSecret?: Uint8Array;
+  /** Honour `skipCache` on bill uploads and reads. Defaults to APP_ENV=local. */
+  allowSkipCache?: boolean;
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
   devEmailSignIn?: boolean;
   /**
@@ -58,11 +71,6 @@ export interface AppDeps {
    * code). Defaults to AUTH_TEST_ACCOUNTS. Ignored when APP_ENV=prod.
    */
   testAccountSignIn?: boolean;
-  /**
-   * Pass a concrete provider for tests. Pass `null` to force manual mode.
-   * Omit to fall back to env-driven default.
-   */
-  paymentProvider?: PaymentProvider | null;
   /**
    * Stripe client for the lead's table fee. Omit to build one from
    * STRIPE_SECRET_KEY; pass `null` to leave the billing routes unmounted.
@@ -85,38 +93,16 @@ const defaultIdTokenVerifier = (): IdTokenVerifier =>
   createSessionTokenVerifier(sessionJwtSecretFromEnv());
 
 // The venue Bedrock read off the bill, looked up with Amazon Location
-// Service when VENUE_LOOKUP=amazon-location (deployed), else used as read.
+// Service when VENUE_LOOKUP=amazon-location (deployed, and locally from
+// .env.example), else used as read.
 const defaultVenueResolver = (): VenueResolver =>
   env.VENUE_LOOKUP === 'amazon-location'
     ? new AmazonLocationVenueResolver(amazonLocationSearch(env.AWS_REGION), baseLogger)
     : new NoopVenueResolver();
 
-const defaultPaymentProvider = (): PaymentProvider | null => {
-  if (env.PAYMENT_PROVIDER === 'manual') return null;
-  if (env.PAYMENT_PROVIDER === 'truelayer') {
-    if (
-      !env.TRUELAYER_CLIENT_ID ||
-      !env.TRUELAYER_CLIENT_SECRET ||
-      !env.TRUELAYER_SIGNING_KID ||
-      !env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM ||
-      !env.TRUELAYER_RETURN_URI
-    ) {
-      throw new Error(
-        'PAYMENT_PROVIDER=truelayer requires TRUELAYER_CLIENT_ID, TRUELAYER_CLIENT_SECRET, TRUELAYER_SIGNING_KID, TRUELAYER_SIGNING_PRIVATE_KEY_PEM, TRUELAYER_RETURN_URI',
-      );
-    }
-    return new TrueLayerSandboxProvider({
-      environment: env.TRUELAYER_ENVIRONMENT,
-      clientId: env.TRUELAYER_CLIENT_ID,
-      clientSecret: env.TRUELAYER_CLIENT_SECRET,
-      signingKid: env.TRUELAYER_SIGNING_KID,
-      signingPrivateKeyPem: env.TRUELAYER_SIGNING_PRIVATE_KEY_PEM,
-      returnUri: env.TRUELAYER_RETURN_URI,
-    });
-  }
-  const secret = env.TRUELAYER_WEBHOOK_SECRET ?? 'local-mock-secret';
-  return new MockTrueLayerProvider(secret);
-};
+// Nearby food and drink places: Amazon Location when VENUE_LOOKUP says so.
+const defaultNearbySearch = (): NearbySearch =>
+  env.VENUE_LOOKUP === 'amazon-location' ? amazonLocationNearby(env.AWS_REGION) : noNearby;
 
 const defaultBillParser = (): BillParser =>
   createBillParser({
@@ -146,19 +132,17 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     deps.sessionJwtSecret ?? (env.SESSION_JWT_SECRET ? sessionJwtSecretFromEnv() : undefined);
   const idTokenVerifier =
     deps.idTokenVerifier ?? (env.SESSION_JWT_SECRET ? defaultIdTokenVerifier() : undefined);
-  // `paymentProvider: undefined` (omitted) → use env default (which may itself be null).
-  // `paymentProvider: null` → explicit "manual mode" override (used in tests).
-  const paymentProvider =
-    deps.paymentProvider === undefined ? defaultPaymentProvider() : deps.paymentProvider;
-
   app.use('*', requestId());
   app.use('*', requestLogger());
 
-  // CORS for browser clients (Expo web dev). Permissive in dev — tighten before prod.
+  // CORS: only the web app's own origins (ALLOWED_ORIGINS, set per stage by
+  // CDK). Unset (local) allows any origin.
+  const allowed = parseOrigins(deps.allowedOrigins ?? env.ALLOWED_ORIGINS);
+  const originAllowed = originMatcher(allowed);
   app.use(
     '*',
     cors({
-      origin: '*',
+      origin: allowed.length === 0 ? '*' : (origin) => (originAllowed(origin) ? origin : null),
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
       exposeHeaders: ['x-request-id'],
@@ -176,7 +160,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       buildAuthRoutes({
         emailSender,
         jwtSecret: sessionJwtSecret,
+        appBaseUrl: env.APP_BASE_URL,
+        linkOriginAllowed: allowed.length === 0 ? null : originAllowed,
         devEmailSignIn: deps.devEmailSignIn === true,
+        exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(
           env.APP_ENV,
           deps.testAccountSignIn ?? env.AUTH_TEST_ACCOUNTS === 'true',
@@ -185,21 +172,26 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     );
   }
   app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
-  app.route('/v1/bills', buildBillRoutes({ idTokenVerifier, billParser, venueResolver, reads }));
   app.route(
-    '/v1/sessions',
-    buildSessionRoutes({
+    '/v1/bills',
+    buildBillRoutes({
       idTokenVerifier,
-      paymentProvider,
-      reports: createReportService({ emailSender }),
+      billParser,
+      venueResolver,
+      reads,
+      allowSkipCache: deps.allowSkipCache ?? env.APP_ENV === 'local',
     }),
   );
-  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
-  // No webhook route in manual mode — there's no provider sending events.
-  if (paymentProvider) {
-    app.route('/webhooks', buildWebhookRoutes({ provider: paymentProvider }));
-  }
-
+  app.route(
+    '/v1/venues',
+    buildVenueRoutes({
+      idTokenVerifier,
+      nearby: createNearbyVenueService({
+        search: deps.nearbySearch ?? defaultNearbySearch(),
+        logger: baseLogger,
+      }),
+    }),
+  );
   // The lead's table fee, paid through Stripe's embedded form.
   const stripe =
     deps.stripe === undefined
@@ -207,13 +199,27 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         ? new Stripe(env.STRIPE_SECRET_KEY)
         : null
       : deps.stripe;
-  if (stripe) {
-    const tableFees = createTableFeeService({
-      stripe,
-      store: deps.tableFeeStore ?? defaultTableFeeStore,
-      getBill: (billId) => billStore.getLatest(billId),
-      appBaseUrl: env.APP_BASE_URL,
-    });
+  const tableFees = stripe
+    ? createTableFeeService({
+        stripe,
+        store: deps.tableFeeStore ?? defaultTableFeeStore,
+        getBill: (billId) => billStore.getLatest(billId),
+        appBaseUrl: env.APP_BASE_URL,
+        exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
+      })
+    : null;
+
+  app.route(
+    '/v1/sessions',
+    buildSessionRoutes({
+      idTokenVerifier,
+      reports: createReportService({ emailSender }),
+      ...(tableFees ? { tableFees } : {}),
+    }),
+  );
+  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
+
+  if (stripe && tableFees) {
     app.route('/v1/billing', buildBillingRoutes({ idTokenVerifier, tableFees }));
     const webhookSecret = deps.stripeWebhookSecret ?? env.STRIPE_WEBHOOK_SECRET;
     if (webhookSecret) {

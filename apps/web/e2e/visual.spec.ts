@@ -43,7 +43,7 @@ function busyTable() {
 test('landing', async ({ page }) => {
   await page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
   await page.goto('/sign-in');
-  await expect(page.getByRole('heading', { name: 'Split the bill, get paid back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Pay the bill/ })).toBeVisible();
   await expect(page).toHaveScreenshot('landing.png', shot);
 });
 

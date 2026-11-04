@@ -43,7 +43,7 @@ More than 3 Lambda errors in 5 minutes. Open the _Errors and warnings_ and _Cras
 | `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts`  | Fix the env block in `infra/main.ts`, redeploy |
 | `Dynamic require of …`                   | Bundle banner missing                         | Check `bundling.banner` in `infra/main.ts`     |
 | `Task timed out after 30`                | A downstream call hung (usually bill reading) | See lambda-duration                            |
-| `PAYMENT_PROVIDER_ERROR`                 | Only with TrueLayer, which isn't in use       | Check `PAYMENT_PROVIDER` is `manual`           |
+| `PAYMENT_PROVIDER_ERROR`                 | Stripe refused a table-fee call               | The log line has Stripe's message              |
 
 ### lambda-duration
 
@@ -68,7 +68,7 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 
 `PARSE_FAILED` or slow parses:
 
-- `AccessDeniedException` from Bedrock: model access for Claude Haiku 4.5 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
+- `AccessDeniedException` from Bedrock: model access for Claude Sonnet 4.6 isn't enabled in the account, or the inference profile changed. Bedrock console → Model access.
 - `ThrottlingException`: Bedrock quota. There's no fallback reader, so bills fail until it clears. Ask for a quota increase.
 
 `PARSE_LOW_CONFIDENCE` isn't an outage: the photo was unreadable.
@@ -76,6 +76,8 @@ DynamoDB throttled at least one request. The table is on-demand, so this means a
 ### Venues have no full address
 
 Venue lookup (Amazon Location) only fills in what the bill didn't print, and never fails a bill. Search the logs for `venue lookup failed`: `AccessDeniedException` means the function's `geo-places:SearchText` permission is missing. A wrong match is cached for good in its `VENUEQ#` row; delete that row to look it up again.
+
+Nearby places (`GET /v1/venues/nearby`, #62) return an empty list rather than an error when Amazon Location fails; search the logs for `nearby search failed` (`AccessDeniedException` means `geo-places:SearchNearby` is missing). Results are cached 30 days per `NEARQ#<lat>|<lng>` cell (3 decimal places); delete a row to search that spot again.
 
 ### Sign-in codes don't arrive
 

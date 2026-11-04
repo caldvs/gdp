@@ -1,13 +1,23 @@
 # Architecture
 
-Two diagrams of the system as it is on `main`.
+Diagrams of the system as it is on `main`.
 
 | Diagram | Shows |
 | --- | --- |
 | [System](system.html) | Clients, the web app, API Gateway, the Lambda with every endpoint, AWS services and third parties |
-| [Data model](data-model.html) | The DynamoDB single table: every item type, its keys and TTL, both GSIs, access patterns and transactions |
+| [Data model](data-model.html) | The DynamoDB single table: every item type, its keys and TTL, the GSI, access patterns and transactions |
+| [Domains and certificates](domains.md) | How `paymeback.dev` names reach Vercel and AWS, how the API certificate is issued, why `API_DOMAIN`/`API_CERT_ARN` are GitHub variables, where config lives |
 
 The `.html` files are the real diagrams (light and dark theme, readable at any size). GitHub won't render them, so open them locally or use the PNG previews below.
+
+## Design boards
+
+Kept as boards on claude.ai (private to Callum):
+
+| Board | Shows |
+| --- | --- |
+| [Option D service map](https://claude.ai/code/artifact/df51259b-42ab-414e-8fbb-988b92effc1c) | The whole meal as a service blueprint, the lead's and guest's journeys, and the moments that branch |
+| [Domains & certificates map](https://claude.ai/artifact/4wqQZFykwj8it1GN2wAXwD) | The same content as [domains.md](domains.md), as boards |
 
 ## System
 

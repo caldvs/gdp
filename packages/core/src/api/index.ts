@@ -5,7 +5,7 @@ import { getStoredToken, clearToken } from './auth';
 // The app calls `configureApi` once at start-up with its API origin.
 // The hooks import `api` from here, so they work in any React app that
 // has configured the base URL — no app-specific imports inside core.
-let baseUrl = 'https://8yh705358k.execute-api.eu-west-2.amazonaws.com';
+let baseUrl = 'https://api.test.paymeback.dev';
 let queryClient: QueryClient | null = null;
 
 export function configureApi(opts: { baseUrl: string }): void {

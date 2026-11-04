@@ -6,7 +6,7 @@
  * check the photo of the bill against what they had, and anyone can email
  * themselves a report of the bill (the lead's lists every diner).
  */
-import { useState } from 'react';
+import { startTransition, useState } from 'react';
 import { useBillImageUrl } from '@gdp/core/api/hooks/useBillImageUrl';
 import { useEmailReport } from '@gdp/core/api/hooks/useSession';
 import { Button, Dialog, MailIcon, PhotoIcon, QrIcon, Spinner, TickIcon } from './ui';
@@ -20,7 +20,7 @@ export function BillTools({ sessionId, billId, showQr }: { sessionId: string; bi
         <Button tone="secondary" small onClick={() => setPhoto(true)}><PhotoIcon />Bill photo</Button>
         <EmailReport sessionId={sessionId} />
       </div>
-      {photo ? <BillPhoto billId={billId} onClose={() => setPhoto(false)} /> : null}
+      {photo ? <BillPhoto billId={billId} onClose={() => startTransition(() => setPhoto(false))} /> : null}
     </>
   );
 }

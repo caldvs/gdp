@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type Stripe from 'stripe';
 import {
   isSelfCheckEvent,
+  refundRoundTrip,
   runSelfCheck,
   stripeKeyModeProblem,
   testAccountsProblem,
@@ -61,5 +63,47 @@ describe('testAccountsProblem', () => {
     expect(testAccountsProblem('prod', 'false')).toBeNull();
     expect(testAccountsProblem('dev', 'true')).toBeNull();
     expect(testAccountsProblem('local', 'true')).toBeNull();
+  });
+});
+
+describe('refundRoundTrip', () => {
+  const fake = (over: { paymentStatus?: string; refundStatus?: string } = {}) => {
+    const piCreate = vi.fn((_params: object) =>
+      Promise.resolve({ id: 'pi_smoke', status: over.paymentStatus ?? 'succeeded' }),
+    );
+    const refundCreate = vi.fn((_params: object, _opts: object) =>
+      Promise.resolve({ id: 're_smoke' }),
+    );
+    const refundRetrieve = vi.fn(() =>
+      Promise.resolve({ id: 're_smoke', status: over.refundStatus ?? 'succeeded', amount: 200 }),
+    );
+    const stripe = {
+      paymentIntents: { create: piCreate },
+      refunds: { create: refundCreate, retrieve: refundRetrieve },
+    } as unknown as Stripe;
+    return { stripe, piCreate, refundCreate };
+  };
+
+  it('pays £2 with the test card and refunds it through the real refund code', async () => {
+    const { stripe, piCreate, refundCreate } = fake();
+    await expect(refundRoundTrip(stripe)).resolves.toMatch(/refunded re_smoke \(succeeded\)/);
+    expect(piCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 200, currency: 'gbp', payment_method: 'pm_card_visa' }),
+    );
+    expect(refundCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ payment_intent: 'pi_smoke' }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(/^table-fee-refund-/) as string,
+      }),
+    );
+  });
+
+  it('fails when the payment or the refund does not go through', async () => {
+    await expect(
+      refundRoundTrip(fake({ paymentStatus: 'requires_action' }).stripe),
+    ).rejects.toThrow(/requires_action/);
+    await expect(refundRoundTrip(fake({ refundStatus: 'failed' }).stripe)).rejects.toThrow(
+      /failed/,
+    );
   });
 });

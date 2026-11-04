@@ -6,6 +6,7 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { Header } from '@/components/AppShell';
 import { TestBar } from '@/components/TestBar';
+import { PageTransition } from '@/components/PageTransition';
 import { Centre, Spinner } from '@/components/ui';
 
 function UnauthGate({ children }: { children: React.ReactNode }) {
@@ -19,14 +20,24 @@ function UnauthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Arriving from a join link shows its own sign-in, so no header link then. */
+function FrontDoorHeader() {
+  const from = useSearchParams().get('from');
+  return <Header wide signIn={!from} />;
+}
+
 export default function UnauthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
       <TestBar open reload={false} />
-      <Header />
-      <Suspense fallback={<Centre><Spinner /></Centre>}>
-        <UnauthGate>{children}</UnauthGate>
+      <Suspense fallback={<Header wide />}>
+        <FrontDoorHeader />
       </Suspense>
+      <PageTransition>
+        <Suspense fallback={<Centre><Spinner /></Centre>}>
+          <UnauthGate>{children}</UnauthGate>
+        </Suspense>
+      </PageTransition>
     </div>
   );
 }

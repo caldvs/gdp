@@ -3,44 +3,48 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
-import { useDevEmailSignIn, useStartEmailOtp, useVerifyEmailOtp } from '@gdp/core/api/hooks/useEmailOtp';
+import { useDevEmailSignIn, useSignInRequest, useStartEmailSignIn } from '@gdp/core/api/hooks/useEmailSignIn';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { decodePayoutFromQR, readPayoutFragment } from '@gdp/core/lib/qrPayload';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { peekJoinFragment } from '@/lib/joinFragment';
+import { rememberReturnTo } from '@/lib/signInReturn';
 import Link from 'next/link';
-import { Box, Button, Notice, Page, Row, Section, Title } from '@/components/ui';
+import { QRCodeSVG } from 'qrcode.react';
+import { Button, Notice, Page, Title } from '@/components/ui';
 
-type Stage = 'EMAIL' | 'AWAITING_CODE';
+type Stage = 'EMAIL' | 'WAITING';
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
 const RESEND_LOCKOUT_SECONDS = 30;
-// The email a code was sent to, so the code step survives the tab being
-// reloaded or discarded while the user fetches the code (common on phones).
-// Kept for the code's lifetime (10 minutes on the API).
-const PENDING_CODE_KEY = 'gdp.signIn.pendingCode';
-const PENDING_CODE_MS = 10 * 60 * 1000;
+// The link this tab is waiting on (email and the secret requestId), so the
+// wait survives the tab being reloaded or discarded while the user opens
+// their email (common on phones). Kept for the link's lifetime (15 minutes).
+const PENDING_KEY = 'gdp.signIn.pending';
+const PENDING_MS = 15 * 60 * 1000;
 
-function readPendingCode(): string | null {
+type Pending = { email: string; requestId: string };
+
+function readPending(): Pending | null {
   try {
-    const raw = window.sessionStorage.getItem(PENDING_CODE_KEY);
+    const raw = window.sessionStorage.getItem(PENDING_KEY);
     if (!raw) return null;
-    const { email, sentAt } = JSON.parse(raw) as { email?: unknown; sentAt?: unknown };
-    if (typeof email === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_CODE_MS) return email;
-    window.sessionStorage.removeItem(PENDING_CODE_KEY);
+    const { email, requestId, sentAt } = JSON.parse(raw) as { email?: unknown; requestId?: unknown; sentAt?: unknown };
+    if (typeof email === 'string' && typeof requestId === 'string' && typeof sentAt === 'number' && Date.now() - sentAt < PENDING_MS) return { email, requestId };
+    window.sessionStorage.removeItem(PENDING_KEY);
   } catch {}
   return null;
 }
 
-function writePendingCode(email: string | null) {
+function writePending(p: Pending | null) {
   try {
-    if (email) window.sessionStorage.setItem(PENDING_CODE_KEY, JSON.stringify({ email, sentAt: Date.now() }));
-    else window.sessionStorage.removeItem(PENDING_CODE_KEY);
+    if (p) window.sessionStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, sentAt: Date.now() }));
+    else window.sessionStorage.removeItem(PENDING_KEY);
   } catch {}
 }
 
 /**
  * The front door. Signed-out visitors see what the app does and sign in
- * with an email code. Arriving from a join link shows whose bill it is.
+ * with an emailed link. Arriving from a join link shows whose bill it is.
  */
 export default function SignInPage() {
   return (
@@ -72,29 +76,226 @@ function Landing() {
     return (
       <Page>
         <Title title={first ? `Join ${first}’s bill` : 'Join a bill'} sub={`Code ${invite.code}. Sign in with your email to pick what you had.`} />
-        <EmailOtpFlow cta="Continue" />
+        <EmailLinkFlow cta="Continue" />
       </Page>
     );
   }
 
   return (
-    <Page>
-      <Title title="Split the bill, get paid back" sub="Scan the bill. Friends pick what they had and pay you by bank transfer." />
-      <Box>
-        <Row title="1. Scan the bill" sub="We read the items and prices." />
-        <Row title="2. Share a code with the table" sub="Friends open it on their phones." />
-        <Row title="3. Everyone pays you back" sub="Straight to your bank account." />
-      </Box>
-      <Section title="Sign in or create an account">
-        <EmailOtpFlow cta="Email me a code" />
-      </Section>
-      <p className="muted">Got a code from a friend? <Link href="/join">Join a bill</Link></p>
-      <nav className="legal-links" aria-label="Legal">
-        <Link href="/terms">Terms</Link>
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/refunds">Refunds</Link>
-      </nav>
-    </Page>
+    <main className="home">
+      <section className="home__hero">
+        <div className="home__intro">
+          <h1 className="home__h">Pay the bill.<br />Get paid back.</h1>
+          <p className="home__sub">Snap the receipt. Friends tick what they had and pay you.<span className="home__desk"> No app to download.</span></p>
+          <JoinBar />
+          <ScanHere />
+        </div>
+        <ExampleBill />
+        <ol className="home__steps">
+          <li><span className="home__num" aria-hidden="true">1</span>Snap the bill</li>
+          <li><span className="home__num" aria-hidden="true">2</span>Share the QR code</li>
+          <li><span className="home__num" aria-hidden="true">3</span>Get paid back</li>
+        </ol>
+      </section>
+
+      <section id="sign-in" className="home__login" aria-labelledby="login-h">
+        <h2 id="login-h" className="home__login-top">Log in or sign up</h2>
+        <div className="home__login-body">
+          <EmailLinkFlow cta="Email me a link" />
+        </div>
+      </section>
+
+      <section id="how" className="home__band" aria-labelledby="how-h">
+        <div className="home__band-in">
+          <h2 id="how-h" className="home__h2">How it works</h2>
+          <ol className="home__cards">
+            <li className="home__card"><span className="home__num" aria-hidden="true">1</span><b>Snap the bill</b><span>Take a photo of the receipt. Every item is read for you, and you can fix anything that’s off.</span></li>
+            <li className="home__card"><span className="home__num" aria-hidden="true">2</span><b>Share the QR code</b><span>Friends scan it at the table. They join with their name, no account needed.</span></li>
+            <li className="home__card"><span className="home__num" aria-hidden="true">3</span><b>Get paid back</b><span>Everyone ticks what they had and pays you by bank transfer. You see who’s paid.</span></li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="pricing" className="home__pricing" aria-labelledby="price-h">
+        <div className="home__pricing-text">
+          <h2 id="price-h" className="home__h2">One free bill a month</h2>
+          <p className="home__sub">The person who pays covers a small fee. Friends pay it back in what they owe.</p>
+          <ul className="home__key">
+            <li><span className="home__key-mark" aria-hidden="true"><Ring width={44} height={30} /></span><span><b>Free</b> · your first bill each month</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£2</span></span><span>every bill after that</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£3</span></span><span>when the bill is over £100</span></li>
+            <li><span className="home__key-mark" aria-hidden="true"><span className="home__dot" /></span><span>a new free bill on the 1st</span></li>
+          </ul>
+        </div>
+        <ExampleMonth />
+      </section>
+
+      <footer className="home__foot">
+        <span>© Pay Me Back</span>
+        <nav aria-label="Legal">
+          <Link href="/terms">Terms</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/refunds">Refunds</Link>
+        </nav>
+      </footer>
+
+      <div className="actionbar home__bar">
+        <div className="actionbar__in actionbar__in--stack">
+          <p className="home__bar-note">First bill each month is free</p>
+          <div className="btn-row">
+            <Button tone="secondary" href="/join">Join a bill</Button>
+            <a className="btn btn--primary grow" href="#sign-in">Scan a bill</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+/** "Got a code from a friend?": goes to that bill (signing in first if need be). */
+function JoinBar() {
+  const router = useRouter();
+  const [code, setCode] = useState('');
+  const clean = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return (
+    <form className="home__join" onSubmit={(e) => { e.preventDefault(); if (clean.length >= 4) router.push(`/join/${clean}`); }}>
+      <div className="home__join-field">
+        <label htmlFor="join-code">Got a code from a friend?</label>
+        <input id="join-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter it to join their bill" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} />
+      </div>
+      <button type="submit" className="home__join-go">
+        Join
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+      </button>
+    </form>
+  );
+}
+
+/** Desktop only: a QR that opens the site on the phone in your pocket. */
+function ScanHere() {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => setUrl(window.location.origin), []);
+  return (
+    <div className="home__scan">
+      {url ? <QRCodeSVG value={url} size={76} level="M" bgColor="#ffffff" fgColor="#222222" title="Opens Pay Me Back on your phone" /> : <span className="home__scan-blank" />}
+      <div>
+        <b>Paying for the table?</b>
+        <span>Point your phone camera here to scan the bill.</span>
+      </div>
+    </div>
+  );
+}
+
+const EXAMPLE: { item: string; who: string; tone?: 'paid' | 'open'; desk?: boolean }[] = [
+  { item: 'Calamari', who: 'Priya · paid', tone: 'paid' },
+  { item: 'Seafood risotto', who: 'Sam' },
+  { item: 'Lasagne', who: 'Tom' },
+  { item: 'Negroni × 2', who: 'You', desk: true },
+  { item: 'Affogato × 2', who: 'Not claimed', tone: 'open' },
+];
+
+/** A made-up bill mid-split. Decoration: the words are in the headline. */
+function ExampleBill() {
+  return (
+    <div className="home__example" aria-hidden="true">
+      <div className="home__bill">
+        <div className="home__bill-top"><b>Gennaro</b><span>£131.29 · 4 people</span></div>
+        {EXAMPLE.map((r) => (
+          <div key={r.item} className={['home__bill-row', r.tone === 'open' && 'home__bill-row--open', r.desk && 'home__desk-flex'].filter(Boolean).join(' ')}>
+            <span>{r.item}</span>
+            <span className={r.tone === 'paid' ? 'home__pill home__pill--paid' : r.tone === 'open' ? 'home__pill home__pill--open' : 'home__pill'}>{r.who}</span>
+          </div>
+        ))}
+      </div>
+      <div className="home__bubble">
+        <span className="home__bubble-tick"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg></span>
+        Priya paid you £23.50
+      </div>
+    </div>
+  );
+}
+
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+type Meal = 'std' | 'big';
+
+/** The hand-drawn circle round the free bill. */
+function Ring({ width, height, className }: { width: number; height: number; className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" width={width} height={height} viewBox="0 0 60 58" preserveAspectRatio="none">
+      <path d="M37 5C18 3 4 14 5 30c1 15 15 23 29 22 16-1 23-12 21-26C53 13 42 4 25 8" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+/**
+ * This month as a calendar with three made-up meals: the first is circled
+ * as free, the rest show their fee. Tapping a day adds a meal, again makes
+ * it a bill over £100, and again takes it away. The page is prerendered,
+ * so the month is only filled in once it's in the visitor's browser.
+ */
+function ExampleMonth() {
+  const [month, setMonth] = useState<{ y: number; m: number } | null>(null);
+  const [meals, setMeals] = useState<Record<number, Meal>>({ 6: 'std', 14: 'std', 21: 'big' });
+  useEffect(() => {
+    const now = new Date();
+    setMonth({ y: now.getFullYear(), m: now.getMonth() });
+  }, []);
+
+  const days = Object.keys(meals).map(Number).sort((a, b) => a - b);
+  const first = days[0];
+  const fees = days.reduce((sum, d) => sum + (d === first ? 0 : meals[d] === 'big' ? 3 : 2), 0);
+  const summary = days.length === 0 ? 'No bills yet' : days.length === 1 ? '1 bill · free' : `${days.length} bills · £${fees} in fees`;
+  const cycle = (d: number) => setMeals((prev) => {
+    const next = { ...prev };
+    if (!prev[d]) next[d] = 'std';
+    else if (prev[d] === 'std') next[d] = 'big';
+    else delete next[d];
+    return next;
+  });
+
+  // Six Monday-first weeks: blanks, this month, then next month's first days.
+  const cells: ({ kind: 'blank' } | { kind: 'day' | 'next'; n: number })[] = [];
+  if (month) {
+    const lead = (new Date(month.y, month.m, 1).getDay() + 6) % 7;
+    const count = new Date(month.y, month.m + 1, 0).getDate();
+    for (let i = 0; i < lead; i++) cells.push({ kind: 'blank' });
+    for (let n = 1; n <= count; n++) cells.push({ kind: 'day', n });
+    for (let n = 1; cells.length < 42; n++) cells.push({ kind: 'next', n });
+  } else {
+    while (cells.length < 42) cells.push({ kind: 'blank' });
+  }
+  const name = month ? MONTHS[month.m] : '';
+
+  return (
+    <div className="home__cal">
+      <div className="home__cal-top"><b>{name}</b><span>{month?.y}</span></div>
+      <div className="home__cal-grid home__cal-wd" aria-hidden="true">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <span key={i}>{d}</span>)}
+      </div>
+      <div className="home__cal-grid" role="group" aria-label={`${name}: pick a day to add a meal`}>
+        {cells.map((c, i) => {
+          if (c.kind === 'blank') return <span key={i} className="home__cal-cell" />;
+          if (c.kind === 'next') {
+            return <span key={i} className="home__cal-cell home__cal-next">{c.n}{c.n === 1 ? <span className="home__dot" aria-hidden="true" /> : null}</span>;
+          }
+          const meal = meals[c.n];
+          const free = !!meal && c.n === first;
+          const fee = meal === 'big' ? '£3' : '£2';
+          return (
+            <button key={i} type="button" className={meal ? 'home__cal-cell home__cal-day home__cal-day--meal' : 'home__cal-cell home__cal-day'} onClick={() => cycle(c.n)} aria-pressed={!!meal}>
+              {free ? <Ring width={50} height={50} className="home__cal-ring" /> : null}
+              <span>{c.n}</span>{meal ? ' ' : null}
+              {free ? <small className="home__cal-free">Free</small> : meal ? <small className="home__fee">{fee}</small> : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="home__cal-foot">
+        <b role="status">{summary}</b>
+        <span>Pick a day to add a meal</span>
+      </div>
+    </div>
   );
 }
 
@@ -109,26 +310,41 @@ function useDestination() {
   return safeInternalPath(useSearchParams().get('from'));
 }
 
-function EmailOtpFlow({ cta }: { cta: string }) {
+function EmailLinkFlow({ cta }: { cta: string }) {
   const router = useRouter();
   const dest = useDestination();
   const [stage, setStage] = useState<Stage>('EMAIL');
   const [email, setEmail] = useState('');
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [code, setCode] = useState('');
   const [resendCountdown, setResendCountdown] = useState(0);
-  const startOtp = useStartEmailOtp();
-  const verifyOtp = useVerifyEmailOtp();
+  const startSignIn = useStartEmailSignIn();
   const devSignIn = useDevEmailSignIn();
   const [devAvailable, setDevAvailable] = useState(DEV_SIGNIN_ENABLED);
+  const request = useSignInRequest(stage === 'WAITING' ? requestId : null);
 
-  // Back on the code step if a code was sent from this tab recently.
+  // Still waiting if a link was sent from this tab recently.
   useEffect(() => {
-    const pending = readPendingCode();
+    const pending = readPending();
     if (!pending) return;
-    setEmail(pending);
-    setStage('AWAITING_CODE');
+    setEmail(pending.email);
+    setRequestId(pending.requestId);
+    setStage('WAITING');
   }, []);
+
+  // The link was opened (here or anywhere): this tab is signed in now.
+  const status = request.data?.status;
+  useEffect(() => {
+    if (status === 'signedIn') {
+      writePending(null);
+      router.replace(dest);
+    } else if (status === 'expired') {
+      writePending(null);
+      setRequestId(null);
+      setStage('EMAIL');
+      setEmailError('Link expired. Send a new one.');
+    }
+  }, [status, dest, router]);
 
   // Local dev: sign straight back in as the last email used, unless the
   // user just signed out in this tab.
@@ -155,6 +371,23 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     return () => clearInterval(t);
   }, [resendCountdown]);
 
+  /** Email a link; true once this tab is waiting on it (or signed in). */
+  const send = async (address: string): Promise<boolean> => {
+    const started = await startSignIn.mutateAsync({ email: address });
+    if (started.token) {
+      // An exempt address: signed in already, no link.
+      router.replace(dest);
+      return true;
+    }
+    if (!started.requestId) return false;
+    rememberReturnTo(dest);
+    writePending({ email: address, requestId: started.requestId });
+    setRequestId(started.requestId);
+    setStage('WAITING');
+    setResendCountdown(RESEND_LOCKOUT_SECONDS);
+    return true;
+  };
+
   const handleStart = async () => {
     setEmailError(null);
     const trimmed = email.trim().toLowerCase();
@@ -178,43 +411,22 @@ function EmailOtpFlow({ cta }: { cta: string }) {
       }
     }
     try {
-      await startOtp.mutateAsync({ email: trimmed });
-      writePendingCode(trimmed);
-      setStage('AWAITING_CODE');
-      setCode('');
-      setResendCountdown(RESEND_LOCKOUT_SECONDS);
+      if (!(await send(trimmed))) setEmailError("Couldn't reach the server. Check your connection.");
     } catch (err) {
       setEmailError(err instanceof ApiError && err.code === 'INVALID_INPUT'
         ? "The server didn't accept that email."
-        : "Couldn't reach the server. Check your connection.");
-    }
-  };
-
-  // Takes the code as an argument because the auto-submit on the sixth
-  // digit fires from the change handler, before `code` state has caught up.
-  const handleVerify = async (value: string = code) => {
-    const trimmed = value.trim();
-    if (trimmed.length !== 6 || verifyOtp.isPending) return;
-    try {
-      await verifyOtp.mutateAsync({ email, code: trimmed });
-      writePendingCode(null);
-      router.replace(dest);
-    } catch {
-      setCode('');
+        : err instanceof ApiError && err.code === 'RATE_LIMITED'
+          ? err.message
+          : "Couldn't reach the server. Check your connection.");
     }
   };
 
   const handleResend = async () => {
     if (resendCountdown > 0) return;
-    setCode('');
-    try {
-      await startOtp.mutateAsync({ email });
-      writePendingCode(email);
-      setResendCountdown(RESEND_LOCKOUT_SECONDS);
-    } catch {}
+    try { await send(email); } catch {}
   };
 
-  const busy = startOtp.isPending || devSignIn.isPending;
+  const busy = startSignIn.isPending || devSignIn.isPending;
 
   if (stage === 'EMAIL') {
     return (
@@ -237,7 +449,7 @@ function EmailOtpFlow({ cta }: { cta: string }) {
             aria-describedby={emailError ? 'email-err' : 'email-hint'}
           />
           {emailError ? <div id="email-err" className="field__err">{emailError}</div> : (
-            <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no code needed.' : 'We’ll email you a 6-digit code. No password.'}</div>
+            <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no link needed.' : 'We’ll email you a link. No password.'}</div>
           )}
         </div>
         <Button type="submit" busy={busy}>{devAvailable ? 'Continue' : cta}</Button>
@@ -245,33 +457,21 @@ function EmailOtpFlow({ cta }: { cta: string }) {
     );
   }
 
-  const canResend = resendCountdown <= 0 && !startOtp.isPending;
+  const canResend = resendCountdown <= 0 && !startSignIn.isPending;
   return (
-    <form onSubmit={(e) => { e.preventDefault(); void handleVerify(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="field">
-        <label htmlFor="otp">6-digit code</label>
-        <input
-          id="otp"
-          className="input input--code"
-          value={code}
-          onChange={(e) => { const v = e.target.value.replace(/\D/g, '').slice(0, 6); setCode(v); if (v.length === 6) void handleVerify(v); }}
-          placeholder="123456"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          autoFocus
-          maxLength={6}
-          disabled={verifyOtp.isPending}
-        />
-        <div className="field__hint">Sent to <b>{email}</b></div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div role="status">
+        <Notice tone="info" title="Check your email">
+          <div className="muted">{email}</div>
+        </Notice>
       </div>
-      {verifyOtp.isError ? <Notice tone="error">That code didn’t work. Check your email, or send a new one.</Notice> : null}
-      <Button type="submit" busy={verifyOtp.isPending} disabled={code.length !== 6}>Sign in</Button>
       <div className="btn-row">
         <Button tone="text" onClick={handleResend} disabled={!canResend}>
-          {startOtp.isPending ? 'Sending…' : canResend ? 'Resend code' : `Resend in ${resendCountdown}s`}
+          {startSignIn.isPending ? 'Sending…' : canResend ? 'Resend' : `Resend in ${resendCountdown}s`}
         </Button>
-        <Button tone="text" onClick={() => { writePendingCode(null); setStage('EMAIL'); setCode(''); verifyOtp.reset(); }}>Different email</Button>
+        {startSignIn.error instanceof ApiError && startSignIn.error.code === 'RATE_LIMITED' ? <p className="field__err" role="alert">{startSignIn.error.message}</p> : null}
+        <Button tone="text" onClick={() => { writePending(null); setRequestId(null); setStage('EMAIL'); }}>Different email</Button>
       </div>
-    </form>
+    </div>
   );
 }

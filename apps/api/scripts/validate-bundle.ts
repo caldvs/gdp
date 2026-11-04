@@ -1,5 +1,3 @@
-/* eslint-disable no-console -- CLI script, console is the whole point */
-
 /**
  * Pre-deploy bundle validator.
  *
@@ -18,7 +16,7 @@
  *   - CFN dynamic-reference resolution (Secrets Manager / SSM lookup
  *     happens server-side at deploy time)
  *   - IAM permission issues at runtime
- *   - Real network calls to DDB/S3/Bedrock/TrueLayer
+ *   - Real network calls to DDB/S3/Bedrock/Stripe
  */
 import { execSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -81,10 +79,6 @@ function setLambdaEnv(): void {
     S3_BUCKET_BILLS: 'gdp-bills-validator',
     LOG_LEVEL: 'silent',
     SESSION_JWT_SECRET: 'validator-fake-session-jwt-secret-32-bytes-long',
-    TRUELAYER_CLIENT_ID: 'validator-fake-tl-client',
-    TRUELAYER_CLIENT_SECRET: 'validator-fake-tl-secret',
-    TRUELAYER_WEBHOOK_SECRET: 'validator-fake-webhook-secret',
-    TRUELAYER_ENVIRONMENT: 'sandbox',
   };
   for (const [k, v] of Object.entries(envValues)) {
     process.env[k] = v;

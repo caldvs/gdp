@@ -9,7 +9,8 @@ import { CODE, FakeApi, SID, fragmentFor, items, users, type User } from './fake
 test.beforeEach(({ browserName }, info) => {
   test.skip(info.project.name !== 'desktop' || browserName !== 'chromium', 'one browser is enough for axe');
 });
-test.use({ viewport: { width: 390, height: 844 } });
+// Reduced motion: axe otherwise catches avatars mid fade-in and reports low contrast.
+test.use({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
 
 async function open(page: Page, api: FakeApi, user: User | null, to: string) {
   if (user) await api.attach(page.context(), user);
@@ -19,20 +20,16 @@ async function open(page: Page, api: FakeApi, user: User | null, to: string) {
 }
 
 /**
- * Findings that were already there when this check was added (1 Nov 2026),
- * by rule and the start of the element's selector. New ones fail. Fixing
- * these changes visual baselines or e2e selectors, so each fix removes its
- * entry in the same PR.
+ * Findings to tolerate, by rule and the start of the element's selector.
+ * Empty: fix new findings rather than listing them.
  */
-const KNOWN: { rule: string; target: RegExp; why: string }[] = [
-  { rule: 'color-contrast', target: /^\.pick--taken/, why: 'lines someone else took are greyed below 4.5:1' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="Copy /, why: 'copy buttons show the value, are named "Copy …"' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="Edit /, why: 'Review bill rows show name and price, are named "Edit …"' },
-  { rule: 'label-content-name-mismatch', target: /^button\[aria-label="(Hand back|Join the split for|Take|Take one|Tick|Untick|Split|Leave the split for) /, why: 'pick rows are named by action, not the visible text' },
-  { rule: 'link-in-text-block', target: /^a\[href\$="join"\]/, why: 'the "join" link on the landing page is colour-only' },
-];
+const KNOWN: { rule: string; target: RegExp; why: string }[] = [];
 
 async function audit(page: Page) {
+  // Check the settled screen, not a sheet halfway through fading in.
+  await page.evaluate(() =>
+    Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => undefined))),
+  );
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .exclude('nextjs-portal')
@@ -63,7 +60,7 @@ function busyTable() {
 
 test('landing', async ({ page }) => {
   await open(page, new FakeApi(), null, '/sign-in');
-  await expect(page.getByRole('heading', { name: 'Split the bill, get paid back' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Pay the bill/ })).toBeVisible();
   await audit(page);
 });
 

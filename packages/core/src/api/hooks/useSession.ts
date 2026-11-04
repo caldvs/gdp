@@ -34,9 +34,12 @@ export function useSession(sessionId: string | undefined) {
 
 export function useCreateSession() {
   const qc = useQueryClient();
-  return useMutation<Session, ApiError, { billId: string }>({
-    mutationFn: ({ billId }) =>
-      api<Session>('/v1/sessions', { method: 'POST', body: { billId } }),
+  return useMutation<Session, ApiError, { billId: string; expectedDiners?: number }>({
+    mutationFn: ({ billId, expectedDiners }) =>
+      api<Session>('/v1/sessions', {
+        method: 'POST',
+        body: { billId, ...(expectedDiners !== undefined ? { expectedDiners } : {}) },
+      }),
     onSuccess: (session) => {
       qc.setQueryData(['session', session.sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.
@@ -275,6 +278,18 @@ export function useAbandonSession(sessionId: string) {
       qc.setQueryData(['session', sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.
       void qc.invalidateQueries({ queryKey: ['my-sessions'] });
+    },
+  });
+}
+
+/** #64: the lead says how many are eating (lead included); null clears it. */
+export function useSetExpectedDiners(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<Session, ApiError, { expectedDiners: number | null }>({
+    mutationFn: (body) =>
+      api<Session>(`/v1/sessions/${sessionId}`, { method: 'PATCH', body }),
+    onSuccess: (session) => {
+      qc.setQueryData(['session', sessionId], session);
     },
   });
 }

@@ -1,5 +1,3 @@
-/* eslint-disable no-console -- CLI script, console is the whole point */
-
 /**
  * Post-deploy dependency check: invokes the deployed Lambda with
  * `{ "gdpSelfCheck": true }` so it checks Stripe, Bedrock, Amazon Location and SES with

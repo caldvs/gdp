@@ -8,7 +8,14 @@ import { BACKGROUND_READ_BUDGET_MS, type BillParser } from './parser.js';
 import type { VenueResolver } from './venueResolver.js';
 
 /** What the background job needs to read one bill. */
-export type ReadJob = { readId: string; userId: string; uploadId: string; requestId: string };
+export type ReadJob = {
+  readId: string;
+  userId: string;
+  uploadId: string;
+  requestId: string;
+  /** Read again even if this photo was read before (local testing). */
+  skipCache?: boolean;
+};
 
 /** Starts a read without waiting for it. */
 export type ReadDispatcher = (job: ReadJob) => Promise<void>;
@@ -31,6 +38,7 @@ export const createReadRunner =
         parser: deps.parser,
         venueResolver: deps.venueResolver,
         budgetMs: BACKGROUND_READ_BUDGET_MS,
+        skipCache: job.skipCache,
       });
       await readStore.finish(job.readId, { status: 'done', billId: bill.billId });
     } catch (err) {
@@ -41,7 +49,14 @@ export const createReadRunner =
               message: err.message,
               ...(err.details ? { details: err.details } : {}),
             }
-          : { code: 'INTERNAL_ERROR', message: 'Reading the bill failed' };
+          : {
+              code: 'INTERNAL_ERROR',
+              message: 'Reading the bill failed',
+              // #94: the error's name (never its message or stack), so the
+              // app can say which kind of thing broke (e.g. a missing AWS
+              // credential locally) instead of blaming the photo.
+              details: { errorName: (err as { name?: string } | null)?.name ?? 'Error' },
+            };
       if (!(err instanceof AppError)) {
         baseLogger.error(
           { event: 'bill.read.crashed', readId: job.readId, err },
@@ -94,7 +109,12 @@ export const isBillReadEvent = (event: unknown): event is { gdpBillRead: ReadJob
 export const createReadService = (deps: { dispatch: ReadDispatcher; now?: () => number }) => {
   const now = deps.now ?? Date.now;
   return {
-    async start(input: { userId: string; uploadId: string; requestId: string }): Promise<BillRead> {
+    async start(input: {
+      userId: string;
+      uploadId: string;
+      requestId: string;
+      skipCache?: boolean;
+    }): Promise<BillRead> {
       const read: BillRead = {
         readId: uuidv7(),
         userId: input.userId,

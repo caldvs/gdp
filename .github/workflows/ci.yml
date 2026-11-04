@@ -2,9 +2,9 @@ name: CI
 
 # One workflow for every PR and every push to main. Jobs are skipped by path,
 # but the workflow always runs, so the final `gate` job always reports. `gate`
-# is the single check that says whether a PR can merge. The repo is private on
-# the free plan, so GitHub itself can't block the merge button: don't merge
-# a PR unless `gate` passed on its latest commit.
+# is the single check that says whether a commit is good. Work is pushed
+# straight to main (no pull requests), so a red gate on main means fix or
+# revert at once.
 
 on:
   pull_request:
@@ -26,7 +26,7 @@ env:
 jobs:
   changes:
     name: changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: read
@@ -58,7 +58,7 @@ jobs:
 
   tooling:
     name: scripts
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -70,7 +70,7 @@ jobs:
     name: api • lint • typecheck • unit • build
     needs: changes
     if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
@@ -103,7 +103,7 @@ jobs:
     name: api • unit + integration • coverage
     needs: changes
     if: needs.changes.outputs.api == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
@@ -154,7 +154,7 @@ jobs:
     name: core • typecheck • unit • coverage
     needs: changes
     if: needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -176,7 +176,7 @@ jobs:
     name: web • typecheck • build • e2e
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -200,11 +200,41 @@ jobs:
             apps/web/e2e/*-snapshots/
           retention-days: 7
 
+  sast:
+    name: sast • codeql (${{ matrix.language }})
+    # Static analysis on every PR and push to main, whatever changed. Findings
+    # appear as code scanning alerts and annotations on the PR; the job only
+    # fails if the analysis itself breaks.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - '**/node_modules'
+              - '**/coverage'
+              - 'packages/core/src/api/schema.d.ts'
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
   coverage:
     name: coverage
     needs: [changes, api-coverage, core]
     if: always() && github.event_name == 'pull_request' && needs.changes.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write
@@ -270,7 +300,7 @@ jobs:
     if: >-
       always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
       && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     concurrency:
@@ -318,9 +348,9 @@ jobs:
 
   gate:
     name: gate
-    needs: [changes, tooling, api, api-coverage, core, web, coverage]
+    needs: [changes, tooling, api, api-coverage, core, web, sast, coverage]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: All required jobs passed or were skipped
         env:

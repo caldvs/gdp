@@ -37,7 +37,7 @@ const DOCS_HTML = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Group Dine Pay API</title>
+    <title>Pay Me Back API</title>
     <style>body { margin: 0 }</style>
   </head>
   <body>
@@ -56,7 +56,7 @@ const SWAGGER_HTML = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Group Dine Pay API · Swagger</title>
+    <title>Pay Me Back API · Swagger</title>
     <link rel="stylesheet" href="${SWAGGER_CDN}/swagger-ui.css" />
     <style>body { margin: 0 }</style>
   </head>

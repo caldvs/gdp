@@ -4,7 +4,7 @@
  * after the lead closes.
  */
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { CODE, FakeApi, SID, items, users, type User } from './fakeApi';
+import { CODE, FakeApi, SID, SIGN_IN_LINK_TOKEN, items, users, type User } from './fakeApi';
 import { fragmentFor } from './fakeApi';
 
 const POLL = { timeout: 10_000 };
@@ -17,10 +17,22 @@ async function ctxFor(browser: Browser, api: FakeApi, user: User, opts: Paramete
   return { ctx, page: await ctx.newPage() };
 }
 
-async function signInWithCode(page: Page) {
+/**
+ * Ask for a link, then open it the way a phone often does: in another
+ * browser (the mail app's), which shares nothing with this tab. The tab
+ * that asked must sign itself in from its own poll.
+ */
+async function signInWithLink(browser: Browser, api: FakeApi, page: Page) {
   await page.getByLabel('Email').fill('sam@example.com');
-  await page.locator('form button[type="submit"]').click();
-  await page.getByLabel('6-digit code').fill('123456');
+  await page.locator('form:has(#email) button[type="submit"]').click();
+  await expect(page.getByText('Check your email')).toBeVisible();
+  const { ctx: mailApp, page: linkTab } = await ctxFor(browser, api, users.sam, { signedIn: false });
+  await linkTab.goto(`/sign-in/verify#t=${SIGN_IN_LINK_TOKEN}`);
+  await expect(linkTab.getByRole('heading', { name: 'Signed in' })).toBeVisible();
+  await expect(linkTab.getByText('Go back to your other tab.')).toBeVisible();
+  // The token doesn't stay in the address bar or history.
+  expect(linkTab.url()).not.toContain(SIGN_IN_LINK_TOKEN);
+  await mailApp.close();
 }
 
 test('join link, signed out: the invite names the host, and the bank details in the fragment never reach a server', async ({ browser }) => {
@@ -33,7 +45,8 @@ test('join link, signed out: the invite names the host, and the bank details in 
   await expect(sam.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
   await expect(sam.getByText(`Code ${CODE}`)).toBeVisible();
 
-  await signInWithCode(sam);
+  // The tab that asked carries on to the join by itself once the link is opened.
+  await signInWithLink(browser, api, sam);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'Tick Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
@@ -104,7 +117,7 @@ test('tapping a bank detail copies the raw value', async ({ browser, browserName
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'Copy sort code' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('040668');
-  await sam.getByRole('button', { name: 'Copy account number' }).click();
+  await sam.getByRole('button', { name: 'Copy Account no.' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('00079660');
   await sam.getByRole('button', { name: 'Copy reference' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('gdp-0193ab12');

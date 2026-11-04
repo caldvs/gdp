@@ -42,6 +42,11 @@ export interface BillRoutesDeps {
   billParser: BillParser;
   venueResolver: VenueResolver;
   reads: ReadService;
+  /**
+   * Honour `skipCache` on uploads and reads, so the same test photo is read
+   * by the model again. Local only: elsewhere the flag is ignored.
+   */
+  allowSkipCache: boolean;
 }
 
 /** What the client sees of a read: no user or upload ids. */
@@ -78,8 +83,12 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     }),
     async (c) => {
       const { userId } = callerOf(c);
-      const body = c.req.valid('json');
-      const result = await uploadService.requestUpload({ ...body, userId });
+      const { skipCache, ...body } = c.req.valid('json');
+      const result = await uploadService.requestUpload({
+        ...body,
+        userId,
+        skipCache: deps.allowSkipCache && skipCache === true,
+      });
       return c.json(result);
     },
   );
@@ -91,13 +100,14 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     zValidator('json', ParseRequestSchema),
     async (c) => {
       const { userId } = callerOf(c);
-      const { uploadId } = c.req.valid('json');
+      const { uploadId, skipCache } = c.req.valid('json');
       const bill = await parseService.parse({
         userId,
         uploadId,
         requestId: c.var.requestId,
         parser: deps.billParser,
         venueResolver: deps.venueResolver,
+        skipCache: deps.allowSkipCache && skipCache === true,
       });
       return c.json(bill);
     },
@@ -111,8 +121,13 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     zValidator('json', ParseRequestSchema),
     async (c) => {
       const { userId } = callerOf(c);
-      const { uploadId } = c.req.valid('json');
-      const read = await deps.reads.start({ userId, uploadId, requestId: c.var.requestId });
+      const { uploadId, skipCache } = c.req.valid('json');
+      const read = await deps.reads.start({
+        userId,
+        uploadId,
+        requestId: c.var.requestId,
+        skipCache: deps.allowSkipCache && skipCache === true,
+      });
       return c.json(readView(read), 202);
     },
   );
@@ -158,7 +173,24 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
   r.post(
     '/:billId/amend',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', AmendBillRequestSchema),
+    zValidator('json', AmendBillRequestSchema, (result, c) => {
+      if (!result.success) {
+        const error = new AppError('INVALID_INPUT', 'Validation failed', {
+          fieldErrors: z.flattenError(result.error).fieldErrors,
+        });
+        return c.json(
+          {
+            error: {
+              code: error.code,
+              message: error.message,
+              requestId: c.var.requestId,
+              details: error.details,
+            },
+          },
+          error.http as 400,
+        );
+      }
+    }),
     async (c) => {
       const { userId } = callerOf(c);
       const billId = c.req.param('billId');

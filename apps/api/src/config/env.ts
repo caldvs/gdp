@@ -25,8 +25,9 @@ const EnvSchema = z.object({
   BEDROCK_MODEL_ID: z.string().optional(),
   // How the venue read off the bill is looked up. `amazon-location` fills in
   // the full address and coordinates (Amazon Location Service, cached for
-  // good in VENUEQ# rows); `none` keeps the text on the bill. Deployed
-  // stacks use amazon-location.
+  // good in VENUEQ# rows) and lists nearby places; `none` keeps the text on
+  // the bill. Deployed stacks and .env.example (local) use amazon-location;
+  // unset (tests, CI) is none, as they have no AWS credentials.
   VENUE_LOOKUP: z.enum(['none', 'amazon-location']).default('none'),
 
   // Verified SES sender address. When unset, transactional email is
@@ -35,29 +36,26 @@ const EnvSchema = z.object({
   // pre-verified once via `aws ses verify-email-identity`.
   SES_FROM_EMAIL: z.string().email().optional(),
 
-  TRUELAYER_CLIENT_ID: z.string().optional(),
-  TRUELAYER_CLIENT_SECRET: z.string().optional(),
-  TRUELAYER_WEBHOOK_SECRET: z.string().optional(),
-  TRUELAYER_ENVIRONMENT: z.enum(['sandbox', 'live']).default('sandbox'),
-  TRUELAYER_SIGNING_KID: z.string().optional(),
-  TRUELAYER_SIGNING_PRIVATE_KEY_PEM: z.string().optional(),
-  TRUELAYER_RETURN_URI: z.string().url().optional(),
-
   // Test accounts (@test.invalid, sign in with no code) for trying the app
   // as several people. CDK sets it to true for dev only; app.ts ignores it
   // in prod and the dependency check fails if it's on there.
   AUTH_TEST_ACCOUNTS: z.enum(['true', 'false']).default('false'),
-
-  PAYMENT_PROVIDER: z.enum(['mock', 'truelayer', 'manual']).default('mock'),
 
   // Stripe takes the lead's table fee (not diner money). Both optional:
   // without STRIPE_SECRET_KEY the billing and Stripe webhook routes aren't
   // mounted. For dev the values come from SSM per stage.
   STRIPE_SECRET_KEY: z.string().optional().transform(unwrapSecret),
   STRIPE_WEBHOOK_SECRET: z.string().optional().transform(unwrapSecret),
+  // Comma list of email addresses that never pay the table fee (the
+  // owner, friends testing it). Case and spaces don't matter. From the
+  // GitHub environment's TABLE_FEE_EXEMPT_EMAILS at deploy.
+  TABLE_FEE_EXEMPT_EMAILS: z.string().default(''),
   // Where the web app lives; Stripe sends the lead back here if a payment
   // method needs a redirect (most don't: cards and wallets complete in place).
   APP_BASE_URL: z.string().url().default('http://localhost:8081'),
+  // Comma list of browser origins allowed to call the API (see
+  // allowedOrigins.ts). Unset allows any origin, for local dev only.
+  ALLOWED_ORIGINS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

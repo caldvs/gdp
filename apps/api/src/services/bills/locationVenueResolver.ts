@@ -55,9 +55,11 @@ export function venueFromPlace(
 ): Venue | undefined {
   if (!place?.PlaceId || !place.PlaceType || !PRECISE.has(place.PlaceType)) return undefined;
   const [lng, lat] = place.Position ?? [];
-  // A point of interest's title is the business name; an address match's
-  // title is the address, so keep the name printed on the bill.
-  const name = place.PlaceType === 'PointOfInterest' ? (place.Title ?? input.name) : input.name;
+  // The name printed on the bill always wins. A building holds many
+  // businesses, and the top point of interest at a restaurant's address can
+  // be another one (Caravan, 6 Goods Yard Street, came back as the Chamber of
+  // Commerce, #175). The lookup only names the venue when the bill doesn't.
+  const name = input.name ?? (place.PlaceType === 'PointOfInterest' ? place.Title : undefined);
   const address = place.Address?.Label ?? input.address;
   return {
     placeId: place.PlaceId,
@@ -88,7 +90,8 @@ export class AmazonLocationVenueResolver implements VenueResolver {
       this.logger?.warn({ err, key }, 'venue cache get failed; treating as miss');
       return null;
     });
-    if (cached) return cached.venue ?? fromBill(input);
+    // Older cached answers may carry a looked-up name: the bill's still wins.
+    if (cached) return cached.venue ? withBillName(cached.venue, input) : fromBill(input);
 
     let found: Venue | undefined;
     try {
@@ -104,6 +107,10 @@ export class AmazonLocationVenueResolver implements VenueResolver {
     });
     return found ?? fromBill(input);
   }
+}
+
+function withBillName(venue: Venue, input: { name?: string }): Venue {
+  return input.name ? { ...venue, name: input.name } : venue;
 }
 
 function fromBill(input: { name?: string; address?: string }): Venue | undefined {

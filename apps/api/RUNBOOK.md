@@ -42,15 +42,24 @@ More than 3 Lambda errors in 5 minutes. Open the _Errors and warnings_ and _Cras
 | ---------------------------------------- | --------------------------------------------- | ---------------------------------------------- |
 | `Invalid environment variables` at start | Lambda env doesn't match `src/config/env.ts`  | Fix the env block in `infra/main.ts`, redeploy |
 | `Dynamic require of …`                   | Bundle banner missing                         | Check `bundling.banner` in `infra/main.ts`     |
-| `Task timed out after 30`                | A downstream call hung (usually bill reading) | See lambda-duration                            |
+| `Task timed out after 30`                | A downstream call hung (usually bill reading) | See bill-read-slow                             |
 | `PAYMENT_PROVIDER_ERROR`                 | Stripe refused a table-fee call               | The log line has Stripe's message              |
 
-### lambda-duration
+### api-latency
 
-p99 over 10 seconds for 5 minutes. Bill reading is almost always the cause: a parse takes 3–10 seconds normally, and the Lambda and API Gateway both stop at 30.
+API Gateway p99 latency over 10 seconds for 5 minutes: real requests are slow. The synchronous `POST /v1/bills/parse` is the usual suspect (it can take up to 22s); everything else should be well under a second.
 
-- Check the _Bill reading_ panel for slow or failing Bedrock calls.
+- _Requests by route and status_ shows which route.
 - If it's every request, look at the X-Ray map for the slow span.
+
+Background bill reads don't count here: they run in the same Lambda but outside API Gateway, and take 5–20s by design. That's why this replaced the old Lambda-duration alarm, which one read could set off (#172).
+
+### bill-read-slow
+
+A background read took over 40 seconds (its budget is 45). From the `bill.read.finished` log line (`ms`, `status`, `code`), as metric `gdp-<env>/BillReadMs`.
+
+- Check the _Bill reading_ panel and the `dep.call` lines with `dep: "bedrock"` for that `readId`'s request: a slow Bedrock call or many retries.
+- Time before the first Bedrock call is photo decoding; a huge photo makes it worse.
 
 ### api-5xx
 

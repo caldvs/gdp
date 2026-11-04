@@ -116,7 +116,7 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
     const second = await resolver.resolve(input);
     expect(first).toEqual({
       placeId: 'loc-1',
-      name: 'Test Kitchen',
+      name: input.name,
       address: '1 Test Street, Manchester, M4 1AA, United Kingdom',
       lat: 53.48,
       lng: -2.23,
@@ -145,6 +145,26 @@ describe('AmazonLocationVenueResolver (fake search, real cache)', () => {
     expect(await resolver.resolve(input)).toEqual({ name: input.name });
     expect(search.calls).toBe(2);
     expect(await row(input)).toBeUndefined();
+  });
+
+  it('serves a cached row under the bill’s name, not the looked-up one (#175)', async () => {
+    const input = { name: `Caravan ${uuidv7()}`, address: '6 Goods Yard Street' };
+    const key = `VENUEQ#${cacheKey(input)}`;
+    await ddb.send(
+      new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          pk: key,
+          sk: key,
+          source: 'amazon-location',
+          venue: { placeId: 'loc-2', name: 'Greater Manchester Chamber Of Commerce' },
+        },
+      }),
+    );
+    const search = counting(() => Promise.resolve(place));
+    const venue = await new AmazonLocationVenueResolver(search).resolve(input);
+    expect(venue).toEqual({ placeId: 'loc-2', name: input.name });
+    expect(search.calls).toBe(0);
   });
 
   it('replaces an old Google Places row, dropping its TTL', async () => {

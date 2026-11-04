@@ -155,7 +155,9 @@ class GdpBackendStack extends cdk.Stack {
       projectRoot: REPO_ROOT,
       depsLockFilePath: path.join(REPO_ROOT, 'package-lock.json'),
       handler: 'handler',
-      memorySize: 1024,
+      // Lambda CPU scales with memory. Bill reads decode, crop and re-encode
+      // photos in pure JS (jpeg-js): ~3.5s of a 10.7s read at 1024 MB (#172).
+      memorySize: 2048,
       // API Gateway gives up on a request at 30s whatever this says, and the
       // synchronous /v1/bills/parse budgets itself under that. 60s is for
       // background bill reads (POST /v1/bills/reads), which this function
@@ -387,16 +389,47 @@ class GdpBackendStack extends cdk.Stack {
     lambdaErrorsAlarm.addAlarmAction(snsAction);
     lambdaErrorsAlarm.addOkAction(snsAction);
 
-    const lambdaP99Alarm = new cw.Alarm(this, 'LambdaDurationP99Alarm', {
-      alarmName: `gdp-${envName}-lambda-duration-p99`,
-      alarmDescription: 'Lambda p99 duration > 10s for 5m. See RUNBOOK.md "lambda-duration".',
-      metric: fn.metricDuration({ period: period5m, statistic: 'p99' }),
+    // What people wait for: API Gateway's latency, not the Lambda's duration.
+    // Background bill reads run in the same Lambda (it invokes itself, outside
+    // API Gateway) and take 5-20s by design, so at low traffic one read was
+    // the Lambda's p99 and paged us for nothing (#172).
+    const apiLatencyAlarm = new cw.Alarm(this, 'ApiLatencyP99Alarm', {
+      alarmName: `gdp-${envName}-api-latency-p99`,
+      alarmDescription: 'API p99 latency > 10s over 5m. See RUNBOOK.md "api-latency".',
+      metric: new cw.Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName: 'Latency',
+        dimensionsMap: { ApiId: httpApi.apiId, Stage: '$default' },
+        period: period5m,
+        statistic: 'p99',
+      }),
       threshold: 10_000,
       evaluationPeriods: 1,
       treatMissingData: cw.TreatMissingData.NOT_BREACHING,
       comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
     });
-    lambdaP99Alarm.addAlarmAction(snsAction);
+    apiLatencyAlarm.addAlarmAction(snsAction);
+
+    // Background bill reads: one `bill.read.finished` log line each, with `ms`.
+    // Alarm when a read gets near its 45s budget (BACKGROUND_READ_BUDGET_MS).
+    const readMs = new logs.MetricFilter(this, 'BillReadMsFilter', {
+      logGroup: apiLogs,
+      filterPattern: logs.FilterPattern.stringValue('$.event', '=', 'bill.read.finished'),
+      metricNamespace: `gdp-${envName}`,
+      metricName: 'BillReadMs',
+      metricValue: '$.ms',
+      unit: cw.Unit.MILLISECONDS,
+    }).metric({ period: period5m, statistic: 'Maximum' });
+    const slowReadAlarm = new cw.Alarm(this, 'BillReadSlowAlarm', {
+      alarmName: `gdp-${envName}-bill-read-slow`,
+      alarmDescription: 'A bill read took > 40s (budget 45s). See RUNBOOK.md "bill-read-slow".',
+      metric: readMs,
+      threshold: 40_000,
+      evaluationPeriods: 1,
+      treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+      comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+    });
+    slowReadAlarm.addAlarmAction(snsAction);
 
     const api5xxAlarm = new cw.Alarm(this, 'Api5xxAlarm', {
       alarmName: `gdp-${envName}-api-5xx`,

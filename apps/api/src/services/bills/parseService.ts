@@ -164,7 +164,8 @@ function buildBillV1(args: {
     ...(it.category === 'food' && it.course ? { course: it.course } : {}),
   }));
   const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
-  const totalPence = subtotalPence + args.parsed.taxPence + args.parsed.serviceChargePence;
+  const taxPence = addedTaxPence(args.parsed, subtotalPence);
+  const totalPence = subtotalPence + taxPence + args.parsed.serviceChargePence;
 
   return {
     billId: uuidv7(),
@@ -172,7 +173,7 @@ function buildBillV1(args: {
     creatorUserId: args.userId,
     currency: 'GBP',
     subtotalPence,
-    taxPence: args.parsed.taxPence,
+    taxPence,
     serviceChargePence: args.parsed.serviceChargePence,
     totalPence,
     // Persist the reader's read-of-the-printed-total alongside the computed
@@ -190,4 +191,22 @@ function buildBillV1(args: {
     ...(args.venue ? { venue: args.venue } : {}),
     createdAt: new Date().toISOString(),
   };
+}
+
+/**
+ * The tax to add on top of the items. UK prices include VAT, and receipts
+ * print the VAT inside the total for information; the reader sometimes still
+ * returns it as tax, which charged everyone ~20% twice (#176). When the
+ * items and service already make the printed total, the tax is included:
+ * add none. A penny or two either way is rounding.
+ */
+export function addedTaxPence(
+  parsed: Pick<ParsedBillFromImage, 'taxPence' | 'serviceChargePence' | 'totalPence'>,
+  subtotalPence: number,
+): number {
+  if (parsed.taxPence === 0 || parsed.totalPence === undefined) return parsed.taxPence;
+  const withoutTax = subtotalPence + parsed.serviceChargePence;
+  const withTax = withoutTax + parsed.taxPence;
+  const near = (a: number) => Math.abs(a - parsed.totalPence!) <= 2;
+  return near(withoutTax) && !near(withTax) ? 0 : parsed.taxPence;
 }

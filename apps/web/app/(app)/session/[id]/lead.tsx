@@ -8,7 +8,9 @@
 import { startTransition, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, type components } from '@gdp/core/api';
-import { useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useRemoveShare, useSetClaims, useSetExpectedDiners, useSetShareWays, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
+import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
@@ -45,14 +47,18 @@ export function LeadSetup({ s, b }: { s: Session; b: Bill }) {
   const payout = usePayoutAccount();
   const onShare = () => {
     if (!payout.data) { router.push(`/payout-account?returnTo=${encodeURIComponent(`/session/${s.sessionId}`)}`); return; }
-    share.mutate(undefined, { onSuccess: () => router.replace(`/session/${s.sessionId}/share`) });
+    share.mutate(undefined, {
+      onSuccess: () => router.replace(`/session/${s.sessionId}/share?new=1`),
+      // No fee or credit for it: pay first, then the fee page shares this table.
+      onError: (err) => { if (isFeeRequired(err)) router.push(`/table-fee/${s.billId}`); },
+    });
   };
   return (
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${b.items.length} ${b.items.length === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)} · not shared yet`} />
-        {share.isError ? <Notice tone="error">{share.error.message}</Notice> : null}
+        {share.isError && !isFeeRequired(share.error) ? <Notice tone="error">{share.error.message}</Notice> : null}
       </Page>
       <ActionBar>
         <Button tone="secondary" href={`/confirm-bill/${s.billId}?sessionId=${s.sessionId}`}>Edit bill</Button>
@@ -89,6 +95,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
   const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
+  // Nobody joined: closing or deleting gives back what sharing cost (#132).
+  const spent = useSpent(s.sessionId, guests.length === 0);
+  const giveBack = spent.fee && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
+    : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
   const { changes, liveText } = useChangeFeed(statuses);
   const unclaimed = statuses.filter((x) => x.left > 0);
@@ -303,10 +313,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       {closing ? (
         <Confirm
           title="Close the bill?"
-          body={[
+          body={giveBack ?? ([
             unclaimedPence > 0 ? `Nobody claimed ${formatGBP(unclaimedPence)}. It goes on you.` : null,
             toCome > 0 ? `${formatGBP(toCome)} still to collect. People can still pay.` : null,
-          ].filter(Boolean).join(' ') || 'Everyone has paid.'}
+          ].filter(Boolean).join(' ') || 'Everyone has paid.')}
           ok="Close bill"
           busy={close.isPending}
           error={close.error?.message}
@@ -317,7 +327,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       {binning ? (
         <Confirm
           title="Delete this bill?"
-          body={guests.length > 0 ? `${guests.length} ${guests.length === 1 ? 'person loses' : 'people lose'} their picks. This can’t be undone.` : 'This can’t be undone.'}
+          body={guests.length > 0 ? `${guests.length} ${guests.length === 1 ? 'person loses' : 'people lose'} their picks. This can’t be undone.` : giveBack ?? 'This can’t be undone.'}
           ok="Delete bill"
           danger
           busy={abandon.isPending}
@@ -367,6 +377,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
   const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p), 0));
   const unclaimed = itemStatuses(s, b, s.creatorUserId).filter((x) => x.left > 0);
+  const spent = useSpent(s.sessionId);
   return (
     <>
       <Page sub>
@@ -390,6 +401,15 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
             ))}</Box>
           </Section>
         ) : null}
+        {spent.fee ? (
+          <Section title="Platform fee">
+            <Box><Row title={spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
+          </Section>
+        ) : spent.credit?.returnedAt ? (
+          <Section title="Platform fee">
+            <Box><Row title="Credit given back" end="1 credit" /></Box>
+          </Section>
+        ) : null}
         <Totals>
           <TotalLine k="Bill" v={formatGBP(b.totalPence)} />
           <TotalLine tone="total" k="Your part" v={formatGBP(yourPart)} />
@@ -398,6 +418,16 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
       <ActionBar><Button grow href="/" replace>Done</Button></ActionBar>
     </>
   );
+}
+
+/** The platform fee or credit that paid for sharing this session, if any. */
+function useSpent(sessionId: string, enabled = true) {
+  const billing = useMyBilling({ enabled: enabled && !!STRIPE_PUBLISHABLE_KEY });
+  const data = enabled ? billing.data : null;
+  return {
+    fee: data?.fees.find((f) => f.sessionId === sessionId),
+    credit: data?.credits.find((c) => c.sessionId === sessionId),
+  };
 }
 
 /* ============================ deleted ============================ */

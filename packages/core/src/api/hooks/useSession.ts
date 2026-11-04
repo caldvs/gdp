@@ -236,14 +236,31 @@ function applyRemoveShare(session: Session, itemId: string, userId: string): Ses
   return { ...session, participants, shares };
 }
 
+/**
+ * Shares the bill (the QR). With the platform fee on, the API needs a paid
+ * fee or this month's credit, else 402 `TABLE_FEE_REQUIRED`. Pass the
+ * Checkout Session just paid so a late webhook doesn't block it.
+ */
+export function shareSession(sessionId: string, checkoutSessionId?: string | null) {
+  return api<Session>(`/v1/sessions/${sessionId}/share`, {
+    method: 'POST',
+    ...(checkoutSessionId ? { body: { checkoutSessionId } } : {}),
+  });
+}
+
+/** The API wants the platform fee before this bill can be shared. */
+export const isFeeRequired = (err: unknown): boolean =>
+  err instanceof ApiError && err.code === 'TABLE_FEE_REQUIRED';
+
 export function useShareSession(sessionId: string) {
   const qc = useQueryClient();
   return useMutation<Session, ApiError, void>({
-    mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/share`, { method: 'POST' }),
+    mutationFn: () => shareSession(sessionId),
     onSuccess: (session) => {
       qc.setQueryData(['session', sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.
       void qc.invalidateQueries({ queryKey: ['my-sessions'] });
+      void qc.invalidateQueries({ queryKey: ['billing'] });
     },
   });
 }
@@ -256,6 +273,8 @@ export function useCloseSession(sessionId: string) {
       qc.setQueryData(['session', sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.
       void qc.invalidateQueries({ queryKey: ['my-sessions'] });
+      // Closing a bill nobody joined refunds its fee or hands back the credit.
+      void qc.invalidateQueries({ queryKey: ['billing'] });
     },
   });
 }
@@ -278,6 +297,8 @@ export function useAbandonSession(sessionId: string) {
       qc.setQueryData(['session', sessionId], session);
       // A bill's status changed: the home list (Open / Past) must not show it stale.
       void qc.invalidateQueries({ queryKey: ['my-sessions'] });
+      // Binning a bill nobody joined refunds its fee or hands back the credit.
+      void qc.invalidateQueries({ queryKey: ['billing'] });
     },
   });
 }

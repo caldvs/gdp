@@ -28,6 +28,11 @@ export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
     },
   );
 
+  // The lead's credits this month and the fees they've paid (the account page).
+  r.get('/me', requireAuth(deps.idTokenVerifier), async (c) => {
+    return c.json(await deps.tableFees.summary(callerOf(c)));
+  });
+
   // Whether the fee is paid yet. The page polls this after confirming. The
   // webhook records the payment; `session_id` lets this check Stripe directly
   // when the webhook is late or never arrives.

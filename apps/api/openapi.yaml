@@ -746,6 +746,21 @@ paths:
 
         Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
         reach guests via the join QR.
+
+        When the platform fee is on (Stripe configured), sharing needs one of: the bill's paid fee
+        (not refunded, not spent on another session), an exempt lead, or the lead's credit for the
+        month (one free bill a month, UK time). The fee or credit is spent in the same transaction
+        as the share. Otherwise `402 TABLE_FEE_REQUIRED`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                checkoutSessionId:
+                  type: string
+                  description: The Checkout Session just paid (`cs_...`), checked with Stripe if the webhook is late.
       responses:
         '200':
           description: Session, now in `claiming` with the join code visible
@@ -753,6 +768,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Session' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '402':
+          description: No paid fee, exemption or credit for this share (`TABLE_FEE_REQUIRED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '403':
           description: Caller is not the creator
           content:
@@ -1298,6 +1318,19 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/billing/me:
+    get:
+      tags: [billing]
+      operationId: getMyBilling
+      summary: The lead's credits this month and the platform fees they've paid
+      responses:
+        '200':
+          description: Credits and fees
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /webhooks/stripe:
     post:
       tags: [webhooks]
@@ -1396,10 +1429,51 @@ components:
         billId: { type: string, format: uuid }
         status:
           type: string
-          enum: [paid, unpaid, waived]
-          description: "`waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due."
+          enum: [paid, unpaid, waived, free]
+          description: |
+            `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+            `free`: the lead has this month's credit, which sharing spends.
         amountPence: { type: integer }
         paidAt: { type: string, format: date-time }
+        creditsLeft:
+          type: integer
+          enum: [0, 1]
+          description: Credits left this month (on `free` and `unpaid`).
+        nextCreditOn:
+          type: string
+          format: date
+          description: The 1st of next month, when the next credit comes (on `free` and `unpaid`).
+    BillingSummary:
+      type: object
+      required: [creditsLeft, nextCreditOn, paidPence, refundedPence, fees, credits]
+      properties:
+        creditsLeft: { type: integer, enum: [0, 1] }
+        nextCreditOn: { type: string, format: date }
+        paidPence: { type: integer, description: Every fee paid, refunded ones included }
+        refundedPence: { type: integer }
+        fees:
+          type: array
+          items:
+            type: object
+            required: [billId, amountPence, paidAt]
+            properties:
+              billId: { type: string, format: uuid }
+              sessionId: { type: string, format: uuid, description: The session this fee shared }
+              amountPence: { type: integer }
+              paidAt: { type: string, format: date-time }
+              refundedAt: { type: string, format: date-time }
+        credits:
+          type: array
+          items:
+            type: object
+            required: [month, billId, sessionId, claimedAt]
+            properties:
+              month: { type: string, description: '`yyyy-mm`, UK time' }
+              billId: { type: string, format: uuid }
+              sessionId: { type: string, format: uuid }
+              claimedAt: { type: string, format: date-time }
+              returnedAt:
+                { type: string, format: date-time, description: Given back because nobody joined }
     ErrorResponse:
       type: object
       required: [error]
@@ -1438,6 +1512,7 @@ components:
                 - PAYMENT_PROVIDER_ERROR
                 - TABLE_FEE_PAID
                 - TABLE_FEE_WAIVED
+                - TABLE_FEE_REQUIRED
                 - INTERNAL_ERROR
             message: { type: string, description: Human-safe explanation }
             requestId: { type: string, description: Server request ID; cross-reference in support }

@@ -4,11 +4,12 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { loadStripe, type StripeCheckoutFormConfirmEvent } from '@stripe/stripe-js';
 import { CheckoutForm, CheckoutFormProvider, useCheckoutForm } from '@stripe/react-stripe-js/checkout';
-import { api, ApiError } from '@gdp/core/api';
-import { useCreateSession } from '@gdp/core/api/hooks/useSession';
-import { useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
+import { ApiError } from '@gdp/core/api';
+import { shareSession, useCreateSession } from '@gdp/core/api/hooks/useSession';
+import { creditDate, useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { ActionBar, BackLink, Button, Centre, Notice, Page, QrIcon, Spinner, TickIcon, Title } from '@/components/ui';
+import { formatGBP } from '@gdp/core/lib/money';
+import { ActionBar, BackLink, Box, Button, Centre, Notice, Page, QrIcon, Row, Spinner, TickIcon, Title } from '@/components/ui';
 
 // loadStripe fetches Stripe.js from js.stripe.com (never bundled), as PCI requires.
 const stripePromise = STRIPE_PUBLISHABLE_KEY ? loadStripe(STRIPE_PUBLISHABLE_KEY) : null;
@@ -53,8 +54,8 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   // Stop polling after WAIT_MS so a lost webhook can't spin forever.
   const [slow, setSlow] = useState(false);
   const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
-  // Waived: this lead's email is exempt, so it's as good as paid.
-  const paid = status.data?.status === 'paid' || status.data?.status === 'waived';
+  // Waived (an exempt lead) or free (this month's credit) are as good as paid.
+  const paid = status.data?.status === 'paid' || status.data?.status === 'waived' || status.data?.status === 'free';
 
   useEffect(() => {
     if (!confirmed || paid || slow) return;
@@ -68,18 +69,28 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   useEffect(() => {
     if (!paid || started.current) return;
     started.current = true;
+    const next = status.data?.status === 'paid' ? 'fee' : status.data?.status === 'free' ? 'credit' : '1';
+    const shareAndGo = async (sessionId: string) => {
+      await shareSession(sessionId, checkoutSessionId);
+      router.replace(`/session/${sessionId}/share?new=${next}`);
+    };
     void (async () => {
+      let sessionId: string | undefined;
       try {
-        const created = await createSession.mutateAsync({ billId });
-        await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
-        router.replace(`/session/${created.sessionId}/share`);
+        sessionId = (await createSession.mutateAsync({ billId })).sessionId;
       } catch (err) {
+        // A table not yet shared (an earlier try stopped at the fee): share that one.
         const d = err instanceof ApiError ? (err.details as { sessionId?: unknown } | undefined) : undefined;
-        if (typeof d?.sessionId === 'string') router.replace(`/session/${d.sessionId}`);
-        else router.replace(`/confirm-bill/${billId}`);
+        if (typeof d?.sessionId === 'string') sessionId = d.sessionId;
+      }
+      if (!sessionId) { router.replace(`/confirm-bill/${billId}`); return; }
+      try {
+        await shareAndGo(sessionId);
+      } catch {
+        router.replace(`/session/${sessionId}`);
       }
     })();
-  }, [paid, billId, router, createSession]);
+  }, [paid, billId, router, createSession, checkoutSessionId, status.data?.status]);
 
   const back = <BackLink href={`/confirm-bill/${billId}`}>Platform fee</BackLink>;
 
@@ -119,14 +130,16 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
             {stage === 'qr' ? <span className="pay-wait__done"><TickIcon size={14} /></span> : null}
           </div>
           <h1 className="pay-wait__title">
-            {stage === 'qr' ? 'Paid' : stage === 'slow' ? 'Still checking' : 'Confirming payment'}
+            {stage === 'qr'
+              ? status.data.status === 'paid' ? `${pounds(status.data.amountPence)} platform fee paid` : status.data.status === 'free' ? '1 credit spent' : 'No fee'
+              : stage === 'slow' ? 'Still checking' : `Paying ${pounds(status.data.amountPence)}`}
           </h1>
           <p className="muted">
             {stage === 'qr'
               ? 'Making your QR code'
               : stage === 'slow'
                 ? 'Stripe hasn’t confirmed yet.'
-                : `${pounds(status.data.amountPence)} platform fee`}
+                : 'Confirming with your bank'}
           </p>
           <div className="pay-wait__bar" aria-hidden="true">
             <span className={stage === 'qr' ? 'on' : 'busy'} />
@@ -155,7 +168,13 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   return (
     <Page sub>
       {back}
-      <Title title={`Pay ${pounds(status.data.amountPence)} platform fee`} sub="Then your QR code" />
+      <Title
+        title="Platform fee"
+        sub={status.data.status === 'unpaid' && status.data.nextCreditOn
+          ? `No credits left this month. Next one ${creditDate(status.data.nextCreditOn)}.`
+          : 'Then your QR code'}
+      />
+      <Box><Row title="Platform fee" end={formatGBP(status.data.amountPence)} /></Box>
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {

@@ -68,7 +68,8 @@ y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#00
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
            'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId }']) + GAP
-y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE')], ['Stripe checkout state, amount, refund', 'kept as a tax record']) + GAP
+y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE (current)'), ('sk', 'FEE#{csId} (replaced)')], ['Stripe checkout state, amount, refund', 'sessionId: the one share it paid for', '  (set in the share transaction)', 'kept as a tax record', 'GSI1PK FEES#{userId} · GSI1SK paidAt']) + GAP
+y = place(1, y, 'Monthly credit', 'bill', 'No TTL', [('pk', 'CREDIT#{userId}#{yyyy-mm}'), ('sk', 'CREDIT')], ['one free bill a month (UK time)', 'sessionId, billId, claimedAt: put in the', '  share transaction if unclaimed', 'returnedAt: nobody joined, spend again', 'GSI1PK FEES#{userId} · GSI1SK claimedAt']) + GAP
 y = place(1, y, 'Venue lookup', 'bill', 'No TTL', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['Amazon Location answer, or no match', 'source = amazon-location']) + GAP
 y = place(1, y, 'Nearby places', 'bill', '30 days', [('pk', 'NEARQ#{lat|lng to 3 dp}'), ('sk', 'same as pk')], ['places [{ placeId, name, address, lat, lng }]', 'rounded cell only; never who asked']) + GAP
 y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
@@ -117,9 +118,9 @@ a(f'<rect class="node gsi" x="{gx}" y="{gy}" width="{CW}" height="{gh}" rx="10"/
 text(gx + 18, gy + 27, 'Table gdp-{env}', 't-title')
 text(gx + 18, gy + 50, 'On-demand · pk (S) / sk (S) · TTL ttlAt', 't-attr')
 text(gx + 18, gy + 80, 'GSI1', 't-inner'); text(gx + 74, gy + 80, 'GSI1PK / GSI1SK', 't-key')
-text(gx + 18, gy + 99, 'Only on participant rows: USER#{userId}', 't-attr')
-text(gx + 18, gy + 117, '→ sessionId. UUIDv7 ids sort by time,', 't-attr')
-text(gx + 18, gy + 135, 'so reverse order = newest first.', 't-attr')
+text(gx + 18, gy + 99, 'Participant rows: USER#{userId} → sessionId.', 't-attr')
+text(gx + 18, gy + 117, 'UUIDv7 ids sort by time: reverse = newest.', 't-attr')
+text(gx + 18, gy + 135, 'Fees and credits: FEES#{userId} → date.', 't-attr')
 P['Table'] = (gx, gy, CW, gh)
 y = gy + gh + GAP
 pay_y = max(y, P['Session'][1] + rowpos['PART'][0] - P['Session'][1] - 40)

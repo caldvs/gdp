@@ -8,13 +8,18 @@ import { useRouter } from 'next/navigation';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
-import { BackLink, Box, Button, Centre, Page, RowLink, Spinner, Title } from '@/components/ui';
+import { creditDate, useMyBilling } from '@gdp/core/api/hooks/useTableFee';
+import { formatGBP } from '@gdp/core/lib/money';
+import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
+import { BackLink, Badge, Box, Button, Centre, Page, Row, RowLink, Section, Spinner, Title } from '@/components/ui';
 
 export default function AccountPage() {
   const router = useRouter();
   const me = useMe();
   const payout = usePayoutAccount();
   const signOut = useSignOut();
+  // Credits and fees, when the platform fee is on.
+  const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY });
 
   if (me.isPending) return <Centre><Spinner /></Centre>;
   const name = me.data?.displayName ?? 'You';
@@ -32,6 +37,22 @@ export default function AccountPage() {
         <RowLink href="/history" tall title="History" />
       </Box>
       <p className="small muted">Bank details stay on this device. We never see them.</p>
+      {billing.data ? (
+        <Section title="Platform fee">
+          <Box>
+            <Row
+              title="Credits"
+              sub={billing.data.creditsLeft === 0 ? `Next one ${creditDate(billing.data.nextCreditOn)}` : undefined}
+              end={<Badge tone={billing.data.creditsLeft > 0 ? 'ok' : 'plain'}>{billing.data.creditsLeft} left</Badge>}
+            />
+            <Row
+              title="Fees paid"
+              sub={billing.data.refundedPence > 0 ? `${formatGBP(billing.data.refundedPence)} refunded` : undefined}
+              end={formatGBP(billing.data.paidPence)}
+            />
+          </Box>
+        </Section>
+      ) : null}
       <Button tone="secondary" onClick={() => { void signOut().then(() => router.replace('/sign-in')); }}>Sign out</Button>
     </Page>
   );

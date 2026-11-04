@@ -15,7 +15,7 @@ export function useAmendBill(billId: string) {
       // Sessions pin a version; refetch so the table moves to the new one.
       void qc.invalidateQueries({ queryKey: ['session'] });
       // The table fee depends on the total (£2, or £3 over £100).
-      void qc.invalidateQueries({ queryKey: ['tableFee', billId] });
+      void qc.invalidateQueries({ queryKey: ['billing', 'fee', billId] });
     },
   });
 }

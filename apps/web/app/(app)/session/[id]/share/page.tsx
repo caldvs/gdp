@@ -1,7 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { creditDate, useMyBilling } from '@gdp/core/api/hooks/useTableFee';
+import { formatGBP } from '@gdp/core/lib/money';
+import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useSession } from '@gdp/core/api/hooks/useSession';
 import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
@@ -9,7 +12,7 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { SHARED_LINK_TTL_MS } from '@gdp/core/lib/qrPayload';
 import { copyText } from '@/lib/clipboard';
-import { JoinQr, useJoinUrl } from '@/components/JoinQr';
+import { JoinQr, useJoinUrl, useQrBuilt } from '@/components/JoinQr';
 import { ActionBar, BackLink, Button, Centre, CopyIcon, Diners, Notice, Page, Section, ShareIcon, Spinner, TickIcon, Title, firstName } from '@/components/ui';
 
 /**
@@ -30,6 +33,12 @@ export default function SharePage() {
   const qrUrl = useJoinUrl(session.data?.joinCode, payout);
   const linkUrl = useJoinUrl(session.data?.joinCode, payout, SHARED_LINK_TTL_MS);
   const [copied, setCopied] = useState(false);
+  // Just shared (#129): `?new=fee|credit|1`. The QR fills in, and the
+  // buttons wait for it.
+  const fresh = useSearchParams().get('new');
+  const built = useQrBuilt(!!fresh, qrUrl);
+  const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY && (fresh === 'fee' || fresh === 'credit') });
+  const feePaid = fresh === 'fee' ? billing.data?.fees.find((f) => f.sessionId === id) : undefined;
 
   if (session.isPending || me.isPending) return <Centre><Spinner /></Centre>;
   if (session.isError) return <Centre><Notice tone="error" title="Couldn’t load the bill.">{session.error.message}</Notice></Centre>;
@@ -60,21 +69,32 @@ export default function SharePage() {
         {isHost && !ownPayout.isPending && !ownPayout.data ? (
           <Notice title="No bank details yet.">Friends can join, but won’t see where to pay.</Notice>
         ) : null}
+        {feePaid ? (
+          <Notice tone="ok" title={`${formatGBP(feePaid.amountPence)} platform fee paid`} />
+        ) : fresh === 'credit' && billing.data ? (
+          <Notice><b>1 credit spent</b> · next credit {creditDate(billing.data.nextCreditOn)}</Notice>
+        ) : null}
         {!code ? (
           <Notice>{s.status === 'settled' ? 'This bill is closed.' : 'No code yet. Give it a moment.'}</Notice>
         ) : (
           <div className="qr-box">
-            <JoinQr url={qrUrl} size={208} />
-            <div className="small muted">Or enter the code at Join a bill</div>
-            <div className="code">{code}</div>
+            <JoinQr url={qrUrl} size={208} building={!!fresh && !built} />
+            {built ? (
+              <div className="code-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <div className="small muted">Or enter the code at Join a bill</div>
+                <div className="code">{code}</div>
+              </div>
+            ) : (
+              <div className="code-wait" role="status">Making your QR code…</div>
+            )}
           </div>
         )}
         {code ? (
           <div className="btn-row">
-            <Button tone="secondary" onClick={copy} aria-label={copied ? 'Link copied' : 'Copy link'}>
+            <Button tone="secondary" onClick={copy} disabled={!built} aria-label={copied ? 'Link copied' : 'Copy link'}>
               {copied ? <TickIcon /> : <CopyIcon />}{copied ? 'Copied' : 'Copy link'}
             </Button>
-            {canShare ? <Button tone="secondary" onClick={share} aria-label="Share link"><ShareIcon />Share</Button> : null}
+            {canShare ? <Button tone="secondary" onClick={share} disabled={!built} aria-label="Share link"><ShareIcon />Share</Button> : null}
           </div>
         ) : null}
 
@@ -84,7 +104,7 @@ export default function SharePage() {
         </Section>
       </Page>
       <ActionBar>
-        <Button grow href={`/session/${id}`} replace>{isHost ? 'Go to the bill' : 'Back to your items'}</Button>
+        <Button grow href={`/session/${id}`} replace disabled={!built}>{isHost ? 'Go to the bill' : 'Back to your items'}</Button>
       </ActionBar>
     </>
   );

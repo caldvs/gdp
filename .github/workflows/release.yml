@@ -9,11 +9,11 @@ name: Release
 #   runs the smoke test and dependency check; if either fails, the web app
 #   isn't touched.
 # - The web app is a fresh Vercel production build (it bakes in the prod API
-#   URL and NEXT_PUBLIC_APP_ENV=prod), then the commit is tagged
-#   release-YYYY-MM-DD-n.
+#   URL and NEXT_PUBLIC_APP_ENV=prod), then the commit is recorded as a `live`
+#   deployment (Settings → Environments → live) named release-YYYY-MM-DD-n.
 #
 # Rollback: the web app with Vercel's Instant Rollback (no build); the API by
-# running Release again on the previous release tag's commit.
+# running Release again on the previous `live` deployment's commit.
 
 on:
   workflow_dispatch:
@@ -96,30 +96,36 @@ jobs:
           url=$(npx --yes vercel@64.7.0 deploy --prod --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$SHA")
           echo "paymeback.dev → $url (${SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"
 
-  tag:
-    name: tag the release
+  record:
+    name: record the release
     needs: [check, web]
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      contents: read
+      deployments: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
-      - name: Tag and summarise
+      # A GitHub deployment, not a tag: GitHub refuses a tag from this token
+      # on a commit that changed a workflow file.
+      - name: Record and summarise
         env:
           SHA: ${{ needs.check.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          prev=$(git tag --list 'release-*' --sort=-creatordate | head -n1)
+          r="repos/$GITHUB_REPOSITORY/deployments"
+          prev=$(gh api "$r?environment=live&per_page=1" --jq '.[0].sha // empty')
           day=$(date -u +%Y-%m-%d)
-          n=$(( $(git tag --list "release-$day-*" | wc -l) + 1 ))
-          tag="release-$day-$n"
-          git tag "$tag" "$SHA"
-          git push origin "refs/tags/$tag"
+          n=$(( $(gh api "$r?environment=live&per_page=100" --jq "[.[] | select((.description // \"\") | startswith(\"release-$day-\"))] | length") + 1 ))
+          name="release-$day-$n"
+          id=$(jq -n --arg sha "$SHA" --arg d "$name" '{ref: $sha, environment: "live", auto_merge: false, required_contexts: [], description: $d}' \
+            | gh api "$r" --input - --jq .id)
+          gh api "$r/$id/statuses" -f state=success -f environment_url=https://paymeback.dev >/dev/null
           {
-            echo "## $tag (${SHA::7})"
+            echo "## $name (${SHA::7})"
             if [ -n "$prev" ]; then
-              echo "Since $prev:"
+              echo "Since ${prev::7}:"
               git log --format='- %h %s' "$prev..$SHA"
             else
               echo "First release."

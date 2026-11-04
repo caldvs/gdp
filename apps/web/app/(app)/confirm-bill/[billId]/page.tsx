@@ -305,25 +305,24 @@ function CheckBill() {
   const existingSessionId = existingSessionIdFromError(createSession.error);
   const printed = b.parsedTotalPence;
   const mismatch = printed !== undefined && printed !== totalPence;
-  // Nothing on the photo names the place: the check step asked; here it can still be added.
-  const noVenue = !b.venue?.name && !venueName.trim();
+  // Nothing on the photo names the place (#65): the check step asked; here
+  // it's a field at the top until a name is saved.
+  const noVenue = !b.venue?.name;
   // The lines don't make the printed total: the strongest sign a price was
   // misread, since the reader's own notes miss some (#107). Live as lines are fixed.
   const offBy = mismatch && items.length > 0 ? totalPence - printed : 0;
   const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, !mismatch && printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
-    : (
-      <>
-        {restOfSub}
-        {' · '}
-        {noVenue ? (
-          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Add venue">add place</button>
-        ) : (
+    : noVenue
+      ? restOfSub
+      : (
+        <>
+          {restOfSub}
+          {' · '}
           <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
-        )}
-      </>
-    );
+        </>
+      );
   // No printed total to check against (a cut-off photo, usually). Only
   // before sharing: once guests are claiming, retaking the photo would
   // throw their claims away.
@@ -338,6 +337,8 @@ function CheckBill() {
 
         {editing === 'venue' ? (
           <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />
+        ) : noVenue ? (
+          <VenueField disabled={busy} onSave={setVenueName} />
         ) : null}
 
         {noTotal ? (
@@ -499,6 +500,33 @@ function VenueEditor({ value, onChange, onDone }: { value: string; onChange: (v:
         </div>
         <Button onClick={onDone}>Done</Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Review bill's "Where was this?" (#65) when no place is saved: typed
+ * here, saved (through the autosave) when the field is left or Enter pressed.
+ */
+function VenueField({ disabled, onSave }: { disabled: boolean; onSave: (name: string) => void }) {
+  const [name, setName] = useState('');
+  const save = () => { if (name.trim()) onSave(name.trim()); };
+  return (
+    <div className="field">
+      <label htmlFor="venue-field">Where was this?</label>
+      <input
+        id="venue-field"
+        className="input"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
+        placeholder="Restaurant"
+        aria-describedby="venue-field-hint"
+        disabled={disabled}
+        enterKeyHint="done"
+      />
+      <span id="venue-field-hint" className="field__hint">Not on the photo. Shown to everyone.</span>
     </div>
   );
 }

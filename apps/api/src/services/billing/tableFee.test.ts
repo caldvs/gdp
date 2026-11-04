@@ -643,7 +643,13 @@ describe('hold release: nobody joined', () => {
     const { service } = setup();
     expect(
       await service.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: SESSION_ID }),
-    ).toEqual({ kind: 'fee', billId: BILL_ID, sessionId: SESSION_ID, holdPence: 100 });
+    ).toEqual({
+      kind: 'fee',
+      billId: BILL_ID,
+      sessionId: SESSION_ID,
+      holdPence: 100,
+      heldAt: '2026-11-04T19:00:00.000Z',
+    });
   });
 
   it('a hold is not counted as paid on the account until it is taken', async () => {

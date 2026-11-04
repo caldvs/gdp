@@ -12,6 +12,8 @@ import * as cw from 'aws-cdk-lib/aws-cloudwatch';
 import * as cwActions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import type { Construct } from 'constructs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -303,6 +305,21 @@ class GdpBackendStack extends cdk.Stack {
     fn.grantInvoke(
       iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), { mutable: true }),
     );
+
+    // The daily hold sweep (#168, src/ops/holdSweep.ts): takes the platform
+    // fee from holds on bills still open after 6 days, before the card's
+    // hold lapses, and retries any close that couldn't settle its hold.
+    // A failed hold throws, which the Lambda errors alarm reports.
+    new events.Rule(this, 'HoldSweepDaily', {
+      description: 'Take the platform fee from card holds before they lapse (#168)',
+      schedule: events.Schedule.cron({ minute: '17', hour: '3' }),
+      targets: [
+        new targets.LambdaFunction(fn, {
+          event: events.RuleTargetInput.fromObject({ gdpHoldSweep: true }),
+          retryAttempts: 2,
+        }),
+      ],
+    });
 
     // Custom API domain (api.paymeback.dev / api.test.paymeback.dev). DNS is
     // on Vercel, so the ACM certificate is requested and validated by hand and

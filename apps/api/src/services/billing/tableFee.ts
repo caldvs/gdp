@@ -77,8 +77,11 @@ export interface CreditStore {
 
 /** What lets a share go ahead, written in the share's own transaction. */
 export type ShareEntitlement =
-  /** `holdPence`: a hold the guests pay back (absent for a fee paid outright). */
-  | { kind: 'fee'; billId: string; sessionId: string; holdPence?: number }
+  /**
+   * `holdPence`: a hold the guests pay back (absent for a fee paid outright),
+   * placed at `heldAt` (the daily sweep takes it before it lapses, #168).
+   */
+  | { kind: 'fee'; billId: string; sessionId: string; holdPence?: number; heldAt?: string }
   | { kind: 'credit'; credit: MonthlyCredit }
   | { kind: 'waived' };
 
@@ -494,6 +497,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
           billId: input.billId,
           sessionId: input.sessionId,
           holdPence: status.amountPence,
+          heldAt: status.heldAt,
         };
       }
       if (status.status === 'paid') {

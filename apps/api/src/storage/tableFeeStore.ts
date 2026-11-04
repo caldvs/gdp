@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -23,6 +24,21 @@ const creditPk = (userId: string, month: string) => `CREDIT#${userId}#${month}`;
 const CREDIT_SK = 'CREDIT';
 /** GSI1 partition for a lead's fees and credits (the account page). */
 const feesIdx = (userId: string) => `FEES#${userId}`;
+/**
+ * A hold spent on a share, waiting to be taken or released (#168): one row
+ * per bill, on GSI1 partition `HOLDS` sorted by when the hold was placed,
+ * so the daily sweep finds old ones without a scan.
+ */
+const holdQPk = (billId: string) => `HOLDQ#${billId}`;
+const HOLDQ_SK = 'HOLDQ';
+const HOLDS_IDX = 'HOLDS';
+
+/** A hold the daily sweep should look at. */
+export interface PendingHold {
+  billId: string;
+  sessionId: string;
+  heldAt: string;
+}
 
 type TransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
 
@@ -206,44 +222,94 @@ export const creditStore: CreditStore = {
   },
 };
 
+/** Holds spent on shares and not yet seen settled by the sweep (#168). */
+export const holdIndex = {
+  async list(): Promise<PendingHold[]> {
+    const out: PendingHold[] = [];
+    let startKey: Record<string, unknown> | undefined;
+    do {
+      const page = await ddb.send(
+        new QueryCommand({
+          TableName: TABLE_NAME,
+          IndexName: 'GSI1',
+          KeyConditionExpression: 'GSI1PK = :pk',
+          ExpressionAttributeValues: { ':pk': HOLDS_IDX },
+          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+        }),
+      );
+      for (const item of page.Items ?? []) out.push(strip<PendingHold>(item));
+      startKey = page.LastEvaluatedKey;
+    } while (startKey);
+    return out;
+  },
+
+  async clear(billId: string): Promise<void> {
+    await ddb.send(
+      new DeleteCommand({ TableName: TABLE_NAME, Key: { pk: holdQPk(billId), sk: HOLDQ_SK } }),
+    );
+  },
+};
+
 /**
  * The transaction step that spends an entitlement on a share, so the
  * session can't go to `claiming` without it (and two shares can't spend
  * one fee or one credit).
  */
-export const entitlementOp = (entitlement: ShareEntitlement): TransactItem | null => {
-  if (entitlement.kind === 'waived') return null;
+export const entitlementOps = (entitlement: ShareEntitlement): TransactItem[] => {
+  if (entitlement.kind === 'waived') return [];
   if (entitlement.kind === 'fee') {
-    return {
+    const spend: TransactItem = {
       Update: {
         TableName: TABLE_NAME,
         Key: { pk: feePk(entitlement.billId), sk: FEE_SK },
         UpdateExpression: 'SET sessionId = :sid',
         ConditionExpression:
-          'attribute_exists(pk) AND attribute_not_exists(refundedAt) AND (attribute_not_exists(sessionId) OR sessionId = :sid)',
+          'attribute_exists(pk) AND attribute_not_exists(refundedAt) AND attribute_not_exists(releasedAt) AND (attribute_not_exists(sessionId) OR sessionId = :sid)',
         ExpressionAttributeValues: { ':sid': entitlement.sessionId },
       },
     };
+    if (!entitlement.holdPence) return [spend];
+    // A hold: put it where the daily sweep looks (#168).
+    const heldAt = entitlement.heldAt ?? new Date().toISOString();
+    return [
+      spend,
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            pk: holdQPk(entitlement.billId),
+            sk: HOLDQ_SK,
+            GSI1PK: HOLDS_IDX,
+            GSI1SK: heldAt,
+            billId: entitlement.billId,
+            sessionId: entitlement.sessionId,
+            heldAt,
+          },
+        },
+      },
+    ];
   }
   const c = entitlement.credit;
-  return {
-    Put: {
-      TableName: TABLE_NAME,
-      Item: {
-        pk: creditPk(c.userId, c.month),
-        sk: CREDIT_SK,
-        GSI1PK: feesIdx(c.userId),
-        GSI1SK: c.claimedAt,
-        userId: c.userId,
-        month: c.month,
-        billId: c.billId,
-        sessionId: c.sessionId,
-        claimedAt: c.claimedAt,
+  return [
+    {
+      Put: {
+        TableName: TABLE_NAME,
+        Item: {
+          pk: creditPk(c.userId, c.month),
+          sk: CREDIT_SK,
+          GSI1PK: feesIdx(c.userId),
+          GSI1SK: c.claimedAt,
+          userId: c.userId,
+          month: c.month,
+          billId: c.billId,
+          sessionId: c.sessionId,
+          claimedAt: c.claimedAt,
+        },
+        // Unclaimed this month, already this session's, or handed back.
+        ConditionExpression:
+          'attribute_not_exists(pk) OR sessionId = :sid OR attribute_exists(returnedAt)',
+        ExpressionAttributeValues: { ':sid': c.sessionId },
       },
-      // Unclaimed this month, already this session's, or handed back.
-      ConditionExpression:
-        'attribute_not_exists(pk) OR sessionId = :sid OR attribute_exists(returnedAt)',
-      ExpressionAttributeValues: { ':sid': c.sessionId },
     },
-  };
+  ];
 };

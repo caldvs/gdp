@@ -4,9 +4,10 @@ import { loadRuntimeSecrets } from './config/runtimeSecrets.js';
 // Secrets first: env.ts validates process.env when it's imported, so the app
 // (and everything that reads env) is imported only after they're loaded.
 await loadRuntimeSecrets(process.env);
-const { app, runBillRead } = await import('./app.js');
+const { app, runBillRead, runHoldSweepNow } = await import('./app.js');
 const { isSelfCheckEvent, runSelfCheck } = await import('./ops/selfCheck.js');
 const { isBillReadEvent } = await import('./services/bills/readService.js');
+const { isHoldSweepEvent } = await import('./ops/holdSweep.js');
 
 const http = handle(app);
 
@@ -15,7 +16,9 @@ const http = handle(app);
  * `{ "gdpSelfCheck": true }` (from scripts/deps-check.ts after a deploy)
  * runs the dependency checks instead, and `{ "gdpBillRead": … }` (this
  * Lambda invoking itself from POST /v1/bills/reads) reads a bill in the
- * background. API Gateway can't send either shape.
+ * background, and `{ "gdpHoldSweep": true }` (EventBridge, daily) takes
+ * the platform fee from holds before they lapse (#168). API Gateway can't
+ * send any of these shapes.
  */
 export const handler = async (
   event: Parameters<typeof http>[0],
@@ -23,5 +26,6 @@ export const handler = async (
 ): Promise<unknown> => {
   if (isSelfCheckEvent(event)) return runSelfCheck();
   if (isBillReadEvent(event)) return runBillRead(event.gdpBillRead);
+  if (isHoldSweepEvent(event)) return runHoldSweepNow();
   return http(event, context);
 };

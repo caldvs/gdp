@@ -6,7 +6,9 @@ The model is in [decisions](decisions.md) (*Pricing*, #171). Each lead gets **on
 
 **At close** (#167): with guests at the table, `POST /v1/sessions/{id}/close` takes the guests' parts, in total and at most the hold, from the hold that shared this session (`paymentIntents.capture` with `amount_to_capture`, idempotency key `table-fee-capture-<checkout session>`; `sessionService.guestsFeePence` adds them up from the stored session and the pinned bill) and writes `capturedPence` / `capturedAt` on the `FEE#` row, once. Stripe releases the rest. Under Stripe's 30p minimum the hold is cancelled instead. Binning a bill (`/abandon`) releases the hold: nothing is taken. A capture Stripe already made (a lost row write) is recorded rather than repeated; a hold that lapsed is recorded as released. The close dialog says "£0.50 of your £1 hold is taken; your guests pay it back." (or "Your £1 hold is released."), the closed bill shows *Taken from your hold*, and the account counts what was taken as paid. Tests: *take from the hold at close* in `tableFee.test.ts`, and *the £1 hold at close* in `tests/integration/table-fee-refund.test.ts`.
 
-Not built yet: the expiry sweep (#168) and credit packs (#169). A hold on a bill left open for more than about 7 days lapses before close and nothing is taken.
+**Before it lapses** (#168): a card hold lasts about 7 days. Sharing on a hold also writes `HOLDQ#<billId>` (GSI1 `HOLDS`, sorted by `heldAt`) in the share transaction. Every day at 03:17 UTC an EventBridge rule invokes the API Lambda with `{ "gdpHoldSweep": true }` (`src/ops/holdSweep.ts`). For each hold not yet settled: on a bill still open, one older than 6 days has the guests' part taken now (the bill stays open; closing it later takes nothing more, and anyone who claims after that pays their part to the lead, who keeps it); on a bill closed or binned whose hold Stripe failed to settle, it tries again; nobody joined releases it. Settled ones are cleared from the index. A hold it couldn't settle stays for the next day and the run throws, so the Lambda errors alarm fires. Tests: `holdSweep.test.ts`, and the index row in `tests/integration/table-fee-share.test.ts`.
+
+Not built yet: credit packs (#169).
 
 The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it there's no fee and no credits: *Continue* on the bill goes straight to the QR, and the server shares without asking.
 
@@ -65,6 +67,6 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 - [x] The server requires the fee or the month's credit at `POST /v1/sessions/{id}/share` (#139).
 - [x] Guests repay the £1 in proportion to what they ordered (#166).
 - [x] It's taken from the hold at close (#167).
-- [ ] Holds on bills left open are taken before they lapse (#168).
+- [x] Holds on bills left open are taken before they lapse (#168).
 - [x] Release the hold (or refund an old fee) when a bill is closed or abandoned before anyone joins, shown on the close screen and the account (#132, #165).
 - [ ] e2e: stub the form in `FakeApi` and cover pay → share.

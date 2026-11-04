@@ -242,7 +242,7 @@ export class FakeApi {
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 
     // ---- bills
-    if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://mockapi.test/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
+    if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://localhost:9000/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
     if (path === '/v1/bills/reads' && method === 'POST') {
       const f = this.takeFault('parse');

@@ -74,18 +74,37 @@ describe('holdRoundTrip', () => {
     const piCancel = vi.fn((_id: string, _params: object, _opts: object) =>
       Promise.resolve({ id: 'pi_smoke', status: 'canceled' }),
     );
-    const piRetrieve = vi.fn(() =>
-      Promise.resolve({ id: 'pi_smoke', status: over.afterStatus ?? 'canceled' }),
+    // The first retrieve checks the released hold; the second the captured one.
+    const piRetrieve = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'pi_smoke', status: over.afterStatus ?? 'canceled' })
+      .mockResolvedValue({ id: 'pi_smoke', status: 'succeeded', amount_received: 66 });
+    const piCapture = vi.fn((_id: string, _p: object, _o: object) =>
+      Promise.resolve({ id: 'pi_smoke', status: 'succeeded' }),
     );
     const stripe = {
-      paymentIntents: { create: piCreate, cancel: piCancel, retrieve: piRetrieve },
+      paymentIntents: {
+        create: piCreate,
+        cancel: piCancel,
+        retrieve: piRetrieve,
+        capture: piCapture,
+      },
     } as unknown as Stripe;
-    return { stripe, piCreate, piCancel };
+    return { stripe, piCreate, piCancel, piCapture };
   };
 
   it('holds £1 with the test card and releases it through the real release code', async () => {
-    const { stripe, piCreate, piCancel } = fake();
-    await expect(holdRoundTrip(stripe)).resolves.toMatch(/held pi_smoke £1.00, released/);
+    const { stripe, piCreate, piCancel, piCapture } = fake();
+    await expect(holdRoundTrip(stripe)).resolves.toMatch(
+      /released; held pi_smoke £1.00, took £0.66/,
+    );
+    expect(piCapture).toHaveBeenCalledWith(
+      'pi_smoke',
+      { amount_to_capture: 66 },
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(/^table-fee-capture-/) as string,
+      }),
+    );
     expect(piCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: 100,

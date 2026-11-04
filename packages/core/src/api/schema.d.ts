@@ -1110,12 +1110,16 @@ export interface components {
                 /** Format: date-time */
                 paidAt: string;
                 /**
-                 * @description A £1 hold, not counted in `paidPence` until it's taken at close.
+                 * @description A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`).
                  * @enum {string}
                  */
                 kind?: "hold";
                 /** Format: date-time */
                 releasedAt?: string;
+                /** @description What was taken from the hold at close, the guests' part (#167). */
+                capturedPence?: number;
+                /** Format: date-time */
+                capturedAt?: string;
                 /** Format: date-time */
                 refundedAt?: string;
             }[];

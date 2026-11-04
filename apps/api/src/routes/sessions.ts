@@ -34,18 +34,36 @@ export interface SessionRoutesDeps {
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
   /** Gates sharing on the fee, and refunds it when nobody joined. Absent when Stripe is off. */
-  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined' | 'shareEntitlement'>;
+  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined' | 'shareEntitlement' | 'takeFromHold'>;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   const r = new Hono();
 
-  // Closing or binning the bill always succeeds for the lead; a refund
-  // that fails is logged for a manual one (the Refunds page's "ask us").
-  const refundIfNobodyJoined = async (session: Session) => {
+  // Closing or binning the bill always succeeds for the lead; a Stripe
+  // call that fails is logged, and the next close (or the daily sweep,
+  // #168) tries again. Nobody joined: the hold is released (or an old fee
+  // refunded) and a credit handed back. Guests joined: their part of the
+  // platform fee is taken from the hold at close; a binned bill takes none.
+  const settleFee = async (session: Session, binned: boolean) => {
     if (!deps.tableFees) return;
     try {
       const outcome = await deps.tableFees.refundIfNobodyJoined(session);
+      if (outcome === 'guests_joined') {
+        const owed = binned ? 0 : await sessionService.guestsFeePence(session.sessionId);
+        const taken = await deps.tableFees.takeFromHold(session, owed);
+        if (taken !== 'no_hold' && taken !== 'already_settled') {
+          baseLogger.info(
+            {
+              event: `table_fee.${taken}`,
+              sessionId: session.sessionId,
+              billId: session.billId,
+              guestsFeePence: owed,
+            },
+            'Hold settled at close',
+          );
+        }
+      }
       if (outcome === 'credit_returned') {
         baseLogger.info(
           { event: 'table_fee.credit_returned', sessionId: session.sessionId },
@@ -286,7 +304,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       sessionId,
       ...(reports ? { onClosed: (id: string) => reports.emailEveryone(id) } : {}),
     });
-    await refundIfNobodyJoined(session);
+    await settleFee(session, false);
     return c.json(session);
   });
 
@@ -306,7 +324,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');
     const session = await sessionService.abandon({ caller, sessionId });
-    await refundIfNobodyJoined(session);
+    await settleFee(session, true);
     return c.json(session);
   });
 

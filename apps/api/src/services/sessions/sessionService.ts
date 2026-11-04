@@ -233,6 +233,19 @@ export const sessionService = {
     );
   },
 
+  /**
+   * What the guests owe of the platform fee, in total (#166, #167): taken
+   * from the lead's hold at close. Reads the stored session (with each
+   * split's ways) and the pinned bill. 0 when no hold paid for it.
+   */
+  async guestsFeePence(sessionId: string): Promise<number> {
+    const session = await sessionStore.get(sessionId);
+    if (!session?.platformFeePence) return 0;
+    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+    if (!bill) return 0;
+    return session.participants.reduce((acc, p) => acc + feeFor(bill, session, p), 0);
+  },
+
   async join(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');

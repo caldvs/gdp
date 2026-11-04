@@ -111,10 +111,11 @@ test('no venue on the photo: asked once before Review bill; the name typed is sa
   await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
   expect(api.bill.venue?.name).toBe('The Dog & Partridge');
 });
 
-test('no venue, skipped: not asked again in this tab, and it can still be added', async ({ browser }) => {
+test('#65 no venue, skipped: not asked again in this tab; a “Where was this?” field on Review bill saves it', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
@@ -122,8 +123,36 @@ test('no venue, skipped: not asked again in this tab, and it can still be added'
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await lead.reload();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Add venue' }).click();
-  await expect(lead.getByLabel('Venue')).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Add venue' })).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
+
+  const field = lead.getByLabel('Where was this?');
+  await expect(field).toBeVisible();
+  await expect(field).toHaveAccessibleDescription('Not on the photo. Shown to everyone.');
+  await field.fill('The Dog & Partridge');
+  await field.press('Enter');
+
+  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toBeVisible();
+  expect(api.bill.venue?.name).toBe('The Dog & Partridge');
+});
+
+test('#65 the “Where was this?” field saves when it’s left, and an empty one saves nothing', async ({ browser }) => {
+  const api = new FakeApi({ venue: null });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await lead.getByRole('button', { name: 'Skip' }).click();
+  const field = lead.getByLabel('Where was this?');
+  await field.focus();
+  await field.blur();
+  await expect(field).toBeVisible();
+  expect(api.bill.venue?.name).toBeUndefined();
+
+  await field.fill('Gusto');
+  await field.blur();
+  await expect(lead.getByText(/^Gusto · 5 items/)).toBeVisible();
+  expect(api.bill.venue?.name).toBe('Gusto');
 });
 
 test('#107 lines the reader was unsure of are checked one at a time, then Review bill', async ({ browser }) => {

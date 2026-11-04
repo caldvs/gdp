@@ -283,6 +283,11 @@ async function main(): Promise<number> {
     try {
       const read = await reader.read(new Uint8Array(readFileSync(join(DIR, photo))), name);
       const problems = checkReceipt(expected, read);
+      // Lines the reader said it couldn't read clearly: the lead checks these.
+      const unsure = (read.items as { name: string; unsure?: string }[])
+        .filter((i) => i.unsure)
+        .map((i) => `${i.name} (${i.unsure})`);
+      const note = unsure.length > 0 ? `\n     (lead asked to check: ${unsure.join(', ')})` : '';
       const by =
         (read as { by?: string; parsedFrom?: { parser?: string } }).by ??
         (read as { parsedFrom?: { parser?: string } }).parsedFrom?.parser ??
@@ -290,11 +295,11 @@ async function main(): Promise<number> {
       const ms = Date.now() - started;
       if (problems.length === 0) {
         console.log(
-          `✓  ${name}: ${read.items.length} lines, ${fmt(expected.totalPence)} (${by}, ${ms} ms)`,
+          `✓  ${name}: ${read.items.length} lines, ${fmt(expected.totalPence)} (${by}, ${ms} ms)${note}`,
         );
       } else {
         failed += 1;
-        console.log(`✗  ${name} (${by}, ${ms} ms)\n     ${problems.join('\n     ')}`);
+        console.log(`✗  ${name} (${by}, ${ms} ms)\n     ${problems.join('\n     ')}${note}`);
       }
     } catch (err) {
       failed += 1;

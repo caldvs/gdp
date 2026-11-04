@@ -65,7 +65,6 @@ function Landing() {
         <div className="home__intro">
           <h1 className="home__h">Pay the bill.<br />Get paid back.</h1>
           <p className="home__sub">Snap the receipt. Friends tick what they had and pay you.<span className="home__desk"> No app to download.</span></p>
-          <JoinBar />
           <ScanHere />
         </div>
         <ExampleBill />
@@ -123,26 +122,6 @@ function Landing() {
   );
 }
 
-/** "Got a code from a friend?": goes to that bill (signing in first if need be). */
-function JoinBar() {
-  const router = useRouter();
-  const [code, setCode] = useState('');
-  const clean = code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  return (
-    <form className="home__join" onSubmit={(e) => { e.preventDefault(); if (clean.length >= 4) router.push(`/join/${clean}`); }}>
-      <div className="home__join-field">
-        <label htmlFor="join-code">Got a code from a friend?</label>
-        <input id="join-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Enter it to join their bill" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} />
-      </div>
-      <button type="submit" className="home__join-go">
-        Join
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-      </button>
-    </form>
-  );
-}
-
-/** Desktop only: a QR that opens the site on the phone in your pocket. */
 function ScanHere() {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => setUrl(window.location.origin), []);

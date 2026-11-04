@@ -37,7 +37,7 @@ _Last updated 4 Nov 2026 (evening)._
 
 ## Next up
 
-**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up, Terms, Refunds and landing pricing (#164), the £1 hold at the QR, released when nobody joins (#165), guests paying it back by what they ordered (#166), taking their part from the hold at close (#167), and a daily sweep (EventBridge → the API Lambda, `{ gdpHoldSweep: true }`) that takes it before a hold lapses on a bill left open (#168). Credit packs, 10 for £5 (#169), are built: `/credits`, spent after the free credit and before the hold. Left: Stripe Dashboard tidy-up (#170). Prod has no Stripe key yet, so none of this charges anyone live.
+**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up, Terms, Refunds and landing pricing (#164), the £1 hold at the QR, released when nobody joins (#165), guests paying it back by what they ordered (#166), taking their part from the hold at close (#167), and a daily sweep (EventBridge → the API Lambda, `{ gdpHoldSweep: true }`) that takes it before a hold lapses on a bill left open (#168). Credit packs, 10 for £5 (#169), are built: `/credits`, spent after the free credit and before the hold. The old *Table fee* product and its £2/£3 prices are archived in the Stripe sandbox (#170); the £1 and £5 are set in code. Prod has no Stripe key yet, so none of this charges anyone live.
 
 **Redesign** (board: the "Pay Me Back redesign" artifact, #127–#133): all six parts built.
 
@@ -49,7 +49,7 @@ _Last updated 4 Nov 2026 (evening)._
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 
-**Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); approve the *Protect main* ruleset with a passkey (#143); #141 (Identity Center, security contact); #144 (separate prod account?); #115, #107 (decisions); #79 (Stripe live); #69 (receipt photos). Seven Dependabot PRs are open: merge or close them on GitHub.
+**Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); #141 (Identity Center, security contact); #144 (separate prod account?); #115, #107 (decisions); #79 (Stripe live); #69 (receipt photos). Seven Dependabot PRs are open: merge or close them on GitHub.
 
 **Done 4 Nov in the consoles:** old branches deleted (#73); prod and dev alert emails confirmed (#81); `claude-mcp` can't read secret values (#85); `gdp-backend-dev` has `gdp-local-dev` instead of admin (#140, add actions there if the Mac hits AccessDenied); SPF, DMARC and SES MAIL FROM DNS (#153); GitHub `prod` environment requires Callum's approval and both environments deploy from `main` only.
 

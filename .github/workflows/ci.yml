@@ -388,5 +388,5 @@ jobs:
       - name: Deploy a preview and point test.paymeback.dev at it
         run: |
           url=$(npx --yes vercel@64.7.0 deploy --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$GITHUB_SHA")
-          npx --yes vercel@64.7.0 alias set "$url" test.paymeback.dev --token "$VERCEL_TOKEN" --scope "$VERCEL_ORG_ID"
+          npx --yes vercel@64.7.0 alias set "$url" test.paymeback.dev --token "$VERCEL_TOKEN" --scope caldvs-projects
           echo "test.paymeback.dev → $url (${GITHUB_SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"

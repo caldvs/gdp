@@ -51,6 +51,8 @@ class GdpBackendStack extends cdk.Stack {
       billingMode: ddb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: tableSchema.ttlAttribute,
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: envName === 'prod' },
+      // Prod's table can't be deleted by a stack change or a stray call (#154).
+      deletionProtection: envName === 'prod',
       removalPolicy,
     });
 
@@ -158,6 +160,9 @@ class GdpBackendStack extends cdk.Stack {
       // runs by invoking itself, outside API Gateway, with a 45s budget.
       timeout: cdk.Duration.seconds(60),
       tracing: lambda.Tracing.ACTIVE,
+      // Dev shares the account (and its Lambda and Bedrock quotas) with prod,
+      // so a runaway loop on dev can't take more than this (#145).
+      ...(envName === 'dev' ? { reservedConcurrentExecutions: 20 } : {}),
       environment: {
         // Node and libraries run in production mode everywhere deployed;
         // APP_ENV says which environment (env.ts).
@@ -235,25 +240,18 @@ class GdpBackendStack extends cdk.Stack {
       }),
     );
 
-    // Bedrock: the inference profile and the models it routes to, in any EU
-    // region the profile picks.
+    // Bedrock: only the reader's inference profile and the model it routes
+    // to, in any EU region the profile picks (#154). The Marketplace
+    // subscription for Anthropic models was completed on 1 Nov, so the
+    // function no longer needs aws-marketplace permissions.
+    const bedrockBaseModel = bedrockModelId.replace(/^(eu|us|apac|global)\./, '');
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream'],
         resources: [
-          `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
-          'arn:aws:bedrock:*::foundation-model/*',
+          `arn:aws:bedrock:*:${this.account}:inference-profile/${bedrockModelId}`,
+          `arn:aws:bedrock:*::foundation-model/${bedrockBaseModel}*`,
         ],
-      }),
-    );
-    // Anthropic models on Bedrock are sold through AWS Marketplace. The first
-    // call in each region the EU profile routes to completes the account's
-    // subscription, and fails with AccessDeniedException unless the caller
-    // may view and accept it.
-    fn.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe'],
-        resources: ['*'],
       }),
     );
     billsBucket.grantReadWrite(fn);
@@ -268,14 +266,12 @@ class GdpBackendStack extends cdk.Stack {
       }),
     );
 
-    // SES send permission for the EmailSender. Scoped to the verified-
-    // identity ARN pattern we provisioned out-of-band; covers SendEmail
-    // (templated + simple) and SendRawEmail. Cheap, no resource refs in
-    // the IAM policy because the verified identity is account-wide.
+    // SES send permission for the EmailSender: only as the paymeback.dev
+    // domain identity (verified out of band; #154).
     fn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-        resources: ['*'],
+        resources: [`arn:aws:ses:${this.region}:${this.account}:identity/paymeback.dev`],
       }),
     );
     // Read-only, for the post-deploy dependency check (src/ops/selfCheck.ts):
@@ -328,7 +324,20 @@ class GdpBackendStack extends cdk.Stack {
       apiName: `gdp-${envName}`,
       defaultIntegration: new integrations.HttpLambdaIntegration('LambdaIntegration', fn),
       ...(domainName ? { defaultDomainMapping: { domainName } } : {}),
+      // With a custom domain, nothing should call the raw execute-api URL
+      // (the web app, the Stripe webhook and the smoke test all use the
+      // domain), so switch it off (#154).
+      disableExecuteApiEndpoint: Boolean(domainName),
     });
+    // Stage throttling, so a loop can't run up Lambda and Bedrock costs (#145).
+    // Requests per second across the whole API; dev lower than prod.
+    const stage = httpApi.defaultStage?.node.defaultChild as apigw.CfnStage | undefined;
+    if (stage) {
+      stage.defaultRouteSettings =
+        envName === 'prod'
+          ? { throttlingRateLimit: 50, throttlingBurstLimit: 100 }
+          : { throttlingRateLimit: 10, throttlingBurstLimit: 20 };
+    }
     if (domainName) {
       // The CNAME to add in Vercel DNS: <api name> → this value.
       new cdk.CfnOutput(this, 'ApiDomainTargetOutput', { value: domainName.regionalDomainName });

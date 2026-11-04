@@ -67,20 +67,24 @@ itself doesn't separate them; a second account would.
 
 ### Setting up prod (one-off)
 
-The dev deploy job creates `gdp-github-deploy-prod` and prints its ARN in the
-run summary. Then:
+The deploy roles' stacks (`GdpGithubDeploy`, `GdpGithubDeployProd`) deploy
+from the prod job only (#144), so a push to main can't change either role's
+trust policy. Setting up from scratch, create them once from your Mac
+(`npx cdk deploy GdpGithubDeploy GdpGithubDeployProd -c githubOidcProviderArn=…`,
+see the comment in `api-deploy.yml`). Then:
 
 1. GitHub → Settings → Environments → **New environment** `prod`: required
    reviewer (Callum), deployment branches `main` only, and variables
    `AWS_DEPLOY_ROLE_ARN` (the prod role's ARN), `AWS_REGION` = `eu-west-2`,
    `APP_BASE_URL` (the web app's prod URL). Leave `STRIPE_ENABLED` unset until
-   Stripe live is ready. Optional secret `TABLE_FEE_EXEMPT_EMAILS`: emails that
-   never pay the platform fee and sign in with no code (docs/table-fee.md).
+   Stripe live is ready. Optional **secret** (never a variable: run logs are
+   public) `TABLE_FEE_EXEMPT_EMAILS`: emails that never pay the platform fee
+   and sign in with no link (docs/table-fee.md).
 2. In eu-west-2: the SSM parameter `/gdp-prod/ses-from-email` (the same
    verified sender as dev works; it's one account) and the secret
    `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM
    parameter fails the deploy; a missing secret fails the smoke test.
-3. Actions → **API Deploy** → Run workflow on `main` with `prod`, and approve.
+3. Actions → **Release** → Run workflow, and approve the prod deploy.
 
 What enforces it:
 
@@ -175,23 +179,26 @@ One-off, in the Vercel dashboard:
 4. **Settings → Tokens:** create a token and add it to the repo as the
    `VERCEL_TOKEN` Actions secret.
 
-Pushes don't deploy: Hobby allows 100 deployments a day and every push
-counts, so `apps/web/vercel.json` switches Git deploys off for every branch
-except `preview` (`test.paymeback.dev`). `.github/workflows/web-deploy.yml`
-deploys instead:
+Git pushes never deploy (`apps/web/vercel.json` switches Git deploys off):
+Hobby allows 100 deployments a day and every push counts. GitHub Actions
+deploys instead (#124):
 
-- **Production:** every hour, main is deployed if the web app (or
-  `packages/core`, or the lockfile) changed since the last production deploy,
-  which the `web-prod` tag marks. To ship now: Actions → Web Deploy → Run
-  workflow.
-- **Web waits for the prod API** (#80). Production talks to `GdpBackendProd`,
-  which only deploys by hand (Actions → API Deploy → prod) and then marks its
-  commit with the `api-prod` tag. If `apps/api/src` or `openapi.yaml` changed
-  between `api-prod` and main, the hourly run leaves the live site as it is
-  and says why in its summary. Deploy the API to prod; the web app follows on
-  the next hour (or run Web Deploy by hand).
-- **PR previews:** add the `preview` label. Each push to the PR then deploys a
-  preview and comments its URL.
+- **Test:** every push to main that touches the web app (`apps/web`,
+  `packages/core`, `package.json`, the lockfile) gets, once CI's `gate`
+  passes, a Vercel Preview build (Preview env vars: the dev API) aliased to
+  `test.paymeback.dev` (CI's `deploy test • web` job). API changes deploy
+  dev through API Deploy as before. So main is always what's on test.
+- **Live:** Actions → **Release** → Run workflow (optionally a commit on main;
+  blank means latest). It refuses a commit whose `gate` didn't pass, deploys
+  the prod API (`GdpBackendProd`; the `prod` environment's reviewer approves),
+  stops if the smoke test or dependency check fails, then builds and deploys
+  paymeback.dev from the same commit and tags it `release-YYYY-MM-DD-n` with
+  a summary of what changed since the last release. The prod API never
+  deploys any other way, so the live site can't get ahead of the API it
+  needs.
+- **Rollback:** the web app with Vercel's Instant Rollback (no build); the
+  API by running Release on the previous release tag's commit.
+- Vercel cost: one deploy per web push plus one per release.
 
 `NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back
 to the page's own origin, which is right on Vercel.

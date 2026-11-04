@@ -83,7 +83,7 @@ test('#130, #177: claiming one thing ticks its row in place; tapping again puts 
   const sam = await diner(browser, api, users.sam);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await expect(group(sam, 'Yours').filter({ hasText: 'Lasagne' })).toBeVisible();
-  await expect(group(sam, 'Yours').filter({ hasText: 'Yours' })).toBeVisible();
+  await expect(group(sam, 'Yours').filter({ hasText: 'Claimed' })).toBeVisible();
   // Changed in place: still the same row, where it was.
   await expect(sam.locator('.claim').nth(2)).toHaveAttribute('data-group', 'yours');
   await expect(sam.getByRole('link', { name: 'Continue to payment' })).toBeVisible();

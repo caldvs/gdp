@@ -279,7 +279,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
 
   let html =
     `<div style="${font};color:#222222;max-width:560px;margin:0 auto;padding:24px 16px">` +
-    `<div style="font-size:15px;font-weight:800;color:#d42a55">Pay Me Back</div>` +
+    `<div style="font-size:15px;font-weight:800;color:#0a6fc2">Pay Me Back</div>` +
     `<h1 style="margin:16px 0 4px;font-size:24px">${esc(where)}</h1>` +
     `<div style="color:#6a6a6a;font-size:15px">${esc(date)} · ${state}</div>` +
     shown.map(block).join('');

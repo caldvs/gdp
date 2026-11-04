@@ -63,7 +63,7 @@ export default function SummaryPage() {
   return (
     <Page sub>
       <BackLink href={`/session/${id}`}>The bill</BackLink>
-      <Title title={title} sub={<>{when}{s.joinCode ? <><br />Bill code {s.joinCode}</> : null}<br />Paid at the restaurant by {leadName}</>} />
+      <Title title={title} sub={<>{when}<br />Paid at the restaurant by {leadName}</>} />
 
       <div className="statement">
         <div>

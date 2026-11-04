@@ -103,6 +103,18 @@ describe('Join code resolution and joining', () => {
     expect(res.status).toBe(404);
   });
 
+  it('returns 404 for an unknown join token, and 400 for anything that is not a token or an old code', async () => {
+    const app = buildApp();
+    const ask = (code: string) =>
+      app.request('/v1/sessions/by-code', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(`o-${uuidv7()}`) },
+        body: JSON.stringify({ code }),
+      });
+    expect((await ask('AbCdEfGhIjKlMnOpQrSt_-')).status).toBe(404);
+    expect((await ask('abc')).status).toBe(400);
+  });
+
   it('does not resolve the code while the session is still in setup', async () => {
     const app = buildApp();
     const creator = `c-${uuidv7()}`;
@@ -118,7 +130,7 @@ describe('Join code resolution and joining', () => {
     // to confirm /by-code rejects even when the caller knows the code.
     const internal = await sessionStore.get(sessionId);
     const code = internal?.joinCode;
-    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+    expect(code).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
     const res = await app.request('/v1/sessions/by-code', {
       method: 'POST',

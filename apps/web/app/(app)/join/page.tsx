@@ -1,58 +1,15 @@
-'use client';
+import { BackLink, Page, Title } from '@/components/ui';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { api, ApiError } from '@gdp/core/api';
-import { ActionBar, BackLink, Button, Notice, Page, Title } from '@/components/ui';
-
-/** Type a 6-letter code when there's no QR to scan. */
-export default function JoinByCodePage() {
-  const router = useRouter();
-  const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const go = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const c = code.trim().toUpperCase();
-    if (c.length !== 6) { setError('Codes are 6 letters'); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      await api<{ sessionId: string }>('/v1/sessions/by-code', { method: 'POST', body: { code: c } });
-      router.push(`/join/${c}`);
-    } catch (err) {
-      setError(err instanceof ApiError && err.code === 'NOT_FOUND' ? 'Can’t find that code' : 'Try again');
-      setBusy(false);
-    }
-  };
-
+/** Joining is by scanning the lead's QR only (#182): nothing to type here. */
+export default function JoinPage() {
   return (
-    <>
-      <Page sub>
-        <BackLink href="/">Bills</BackLink>
-        <Title title="Join a bill" sub="Enter the 6-letter code from the host’s screen, or scan their QR code with your camera." />
-        <form id="join" onSubmit={go} className="field">
-          <label htmlFor="code">Code</label>
-          <input
-            id="code"
-            className={error ? 'input input--code input--invalid' : 'input input--code'}
-            aria-label="6-letter code"
-            value={code}
-            onChange={(e) => { setCode(e.target.value.toUpperCase()); if (error) setError(null); }}
-            placeholder="ABC123"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            autoComplete="off"
-            maxLength={6}
-            autoFocus
-          />
-        </form>
-        {error ? <Notice tone="error">{error}</Notice> : null}
-      </Page>
-      <ActionBar>
-        <Button grow type="submit" form="join" busy={busy} disabled={code.trim().length < 6}>Join</Button>
-      </ActionBar>
-    </>
+    <Page sub>
+      <BackLink href="/">Bills</BackLink>
+      <Title title="Join a bill" sub="Scan the QR code on the lead’s phone with your camera." />
+      <div className="join-scan" aria-hidden="true">
+        <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><rect x="8" y="8" width="8" height="8" rx="1" /></svg>
+      </div>
+      <p className="small muted">There’s no code to type. Ask whoever paid to show you their QR.</p>
+    </Page>
   );
 }

@@ -45,7 +45,8 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
-  await expect(lead.getByText('K7Q2MX')).toBeVisible();
+  await expect(lead.getByText('Point a phone camera here')).toBeVisible();
+  await expect(lead.getByText('K7Q2MX')).toHaveCount(0);
   // The amend went through with the edited line.
   const amend = api.requests.find((r) => r.path.endsWith('/amend'));
   expect(amend?.body).toContain('"unitPricePence":2000');

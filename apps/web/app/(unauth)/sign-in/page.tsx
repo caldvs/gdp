@@ -60,7 +60,7 @@ function Landing() {
   if (from) return <SignInScreen />;
 
   return (
-    <main className="home">
+    <div className="home">
       <section className="home__hero">
         <div className="home__intro">
           <h1 className="home__h">Pay the bill.<br />Get paid back.</h1>
@@ -118,7 +118,7 @@ function Landing() {
         </nav>
       </footer>
 
-    </main>
+    </div>
   );
 }
 

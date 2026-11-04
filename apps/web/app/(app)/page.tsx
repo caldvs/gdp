@@ -5,7 +5,7 @@ import { formatGBP } from '@gdp/core/lib/money';
 import { useScanner } from '@/components/Scanner';
 import { PendingReadRow } from '@/components/PendingRead';
 import { billTitle } from '@/components/PageTransition';
-import { ActionBar, Badge, Box, Button, Notice, Page, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
+import { ActionBar, Badge, Box, Button, CardList, Notice, Page, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
 
 const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'paying' || s.status === 'setup';
 
@@ -31,15 +31,17 @@ export default function BillsPage() {
 
         {open.length > 0 ? (
           <Section title="Open">
-            {open.map((s) => (
-              <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} card strong title={venue(s)} sub={openSub(s)} end={openBadge(s)} />
-            ))}
+            <CardList>
+              {open.map((s) => (
+                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} card strong title={venue(s)} sub={openSub(s)} end={openBadge(s)} />
+              ))}
+            </CardList>
           </Section>
         ) : null}
 
         {past.length > 0 ? (
           <Section title="Past">
-            <Box>
+            <Box list>
               {past.map((s) => (
                 <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} tall title={venue(s)} sub={pastSub(s)} end={pastEnd(s)} />
               ))}

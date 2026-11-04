@@ -5,15 +5,17 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import { ViewTransition, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Children, ViewTransition, isValidElement, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
 /* ---------- Page ---------- */
 
+/** The page column. `<main>` is one level up (PageTransition), so the
+ * ActionBar after the page is inside it too. */
 export function Page({ children, sub }: { children: ReactNode; sub?: boolean }) {
-  return <main className={cx('page', sub && 'page--sub')}>{children}</main>;
+  return <div className={cx('page', sub && 'page--sub')}>{children}</div>;
 }
 
 export function BackLink({ href, children }: { href: string; children: ReactNode }) {
@@ -55,8 +57,25 @@ export function Section({ title, children }: { title?: ReactNode; children: Reac
   );
 }
 
-export function Box({ children }: { children: ReactNode }) {
-  return <div className="box">{children}</div>;
+/** A card of rows. `list` makes it a `<ul>` with each child in an `<li>`, for
+ * rows that are a list (items, people, bills); a heading names it for
+ * screen readers when the screen has none. */
+export function Box({ children, list, label }: { children: ReactNode; list?: boolean; label?: string }) {
+  if (!list) return <div className="box">{children}</div>;
+  return (
+    <ul className="box box--list" aria-label={label}>
+      {Children.toArray(children).map((c, i) => <li key={isValidElement(c) && c.key != null ? c.key : i}>{c}</li>)}
+    </ul>
+  );
+}
+
+/** A list of cards with the gap between them (open bills). */
+export function CardList({ children, label }: { children: ReactNode; label?: string }) {
+  return (
+    <ul className="card-list" aria-label={label}>
+      {Children.toArray(children).map((c, i) => <li key={isValidElement(c) && c.key != null ? c.key : i}>{c}</li>)}
+    </ul>
+  );
 }
 
 /* ---------- Tabs ---------- */
@@ -78,7 +97,7 @@ export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs:
           role="tab"
           id={`tab-${t.id}`}
           aria-selected={t.id === value}
-          aria-controls={`panel-${t.id}`}
+          aria-controls={t.id === value ? `panel-${t.id}` : undefined}
           tabIndex={t.id === value ? 0 : -1}
           className={cx('tab', t.id === value && 'tab--on')}
           onClick={() => onChange(t.id)}
@@ -156,11 +175,16 @@ export function Badge({ children, tone = 'plain' }: { children: ReactNode; tone?
   return <span className={cx('badge', `badge--${tone}`)}>{children}</span>;
 }
 
-export function Totals({ children }: { children: ReactNode }) {
-  return <div className="totals">{children}</div>;
+/** Label–value lines (Subtotal £104.00): a `<dl>`, one `<div>` per pair. */
+export function Totals({ children, label }: { children: ReactNode; label?: string }) {
+  return <dl className="totals" aria-label={label}>{children}</dl>;
 }
 export function TotalLine({ k, v, tone }: { k: ReactNode; v: ReactNode; tone?: 'mute' | 'total' }) {
-  return <div className={cx('totals__line', tone && `totals__line--${tone}`)}><span>{k}</span><span>{v}</span></div>;
+  return <div className={cx('totals__line', tone && `totals__line--${tone}`)}><dt>{k}</dt><dd>{v}</dd></div>;
+}
+/** An editor in place of a TotalLine: `label` names the pair for screen readers. */
+export function TotalEdit({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="totals__edit"><dt className="vh">{label}</dt><dd>{children}</dd></div>;
 }
 
 export function Stats({ items }: { items: { k: string; v: string; warn?: boolean }[] }) {
@@ -334,6 +358,12 @@ export function Steps({ steps }: { steps: { label: string; state: StepState }[] 
 
 export function Centre({ children }: { children: ReactNode }) {
   return <div className="centre">{children}</div>;
+}
+
+/** A Centre state that stands in for the whole page (no PageTransition
+ * around it), so it brings its own `<main>`. */
+export function CentreMain({ children }: { children: ReactNode }) {
+  return <main className="vt-page"><Centre>{children}</Centre></main>;
 }
 
 /* ---------- Icons (stroke, inherit colour) ---------- */

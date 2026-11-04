@@ -13,7 +13,7 @@ import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
 import {
-  ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalLine, Totals,
+  ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalEdit, TotalLine, Totals,
 } from '@/components/ui';
 
 type Bill = components['schemas']['Bill'];
@@ -365,7 +365,8 @@ function CheckBill() {
           ) : photo.isError ? <p className="field__hint">Photo not available.</p> : null
         ) : null}
 
-        <Box>
+        <h2 className="vh">Items</h2>
+        <Box list>
           {items.map((it) =>
             it.draftId === editing ? (
               <ItemEditor
@@ -395,10 +396,11 @@ function CheckBill() {
           </button>
         </Box>
 
+        <h2 className="vh">Totals</h2>
         <Totals>
           <TotalLine k="Subtotal" v={formatGBP(subtotalPence)} />
           {editing === 'service' ? (
-            <MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} />
+            <TotalEdit label="Service"><MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} /></TotalEdit>
           ) : (
             <TotalLine
               k={<>Service{servicePct} · <button type="button" className="link-btn" onClick={() => setEditing('service')} disabled={editing !== null} aria-label="Change service charge">change</button></>}
@@ -406,7 +408,7 @@ function CheckBill() {
             />
           )}
           {editing === 'tax' ? (
-            <MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} />
+            <TotalEdit label="Tax"><MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} /></TotalEdit>
           ) : (
             <TotalLine
               tone={taxPence > 0 ? undefined : 'mute'}

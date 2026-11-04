@@ -136,7 +136,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                   {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
                 </button>
               </p>
-              <Box>
+              <Box list>
                 <RowButton
                   onClick={() => startTransition(() => setTab('mine'))}
                   action="Your items:"
@@ -263,7 +263,7 @@ function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: Cla
   const err = setClaims.error?.message ?? addShare.error?.message;
   return (
     <Dialog id="left-t" title="Not claimed" onClose={onClose} actions={<Button tone="secondary" onClick={onClose}>Close</Button>}>
-      <Box>
+      <Box list>
         {rows.map((r) => (
           <div key={r.key} className={`claim${leaving === r.key ? ' leaving' : ''}`}>
             <span className="row__main">
@@ -329,14 +329,14 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
           : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}
         {guests.length > 0 ? (
           <Section title="People">
-            <Box>{guests.map((p) => (
+            <Box list>{guests.map((p) => (
               <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
             ))}</Box>
           </Section>
         ) : null}
         {unclaimed.length > 0 ? (
           <Section title="Nobody claimed these">
-            <Box>{unclaimed.map(({ item, left }) => (
+            <Box list>{unclaimed.map(({ item, left }) => (
               <Row key={item.itemId} title={left > 1 ? `${item.name} × ${left}` : item.name} end={formatGBP(item.unitPricePence * left)} />
             ))}</Box>
           </Section>

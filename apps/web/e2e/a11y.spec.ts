@@ -1,6 +1,8 @@
 /**
  * Accessibility: axe on each main screen. Fails on serious and critical
- * violations (WCAG 2.1 A and AA). Chromium only; one size.
+ * violations (WCAG 2.1 A and AA), and on any structure finding (landmarks,
+ * headings, lists) whatever its impact. Every screen has its own title.
+ * Chromium only; one size.
  */
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
@@ -27,17 +29,23 @@ async function open(page: Page, api: FakeApi, user: User | null, to: string) {
  */
 const KNOWN: { rule: string; target: RegExp; why: string }[] = [];
 
+/** The page's structure (#186–#191): these fail at any impact. */
+const STRUCTURE = new Set([
+  'region', 'landmark-one-main', 'landmark-no-duplicate-banner', 'landmark-no-duplicate-contentinfo', 'landmark-no-duplicate-main', 'landmark-unique',
+  'page-has-heading-one', 'heading-order', 'empty-heading', 'list', 'listitem', 'definition-list', 'dlitem', 'aria-valid-attr-value',
+]);
+
 async function audit(page: Page) {
   // Check the settled screen, not a sheet halfway through fading in.
   await page.evaluate(() =>
     Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => undefined))),
   );
   const { violations } = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice'])
     .exclude('nextjs-portal')
     .analyze();
   const bad = violations
-    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical' || STRUCTURE.has(v.id))
     .flatMap((v) =>
       v.nodes
         .map((n) => n.target.join(' '))
@@ -45,6 +53,8 @@ async function audit(page: Page) {
         .map((t) => `${v.id} (${v.impact}): ${v.help} — ${t}`),
     );
   expect(bad).toEqual([]);
+  // The front door keeps the site's name; every other screen says where you are.
+  if (new URL(page.url()).pathname !== '/sign-in') await expect(page).toHaveTitle(/^.+ · Pay Me Back$/);
 }
 
 function busyTable() {

@@ -18,7 +18,7 @@ import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { formatGBP } from '@gdp/core/lib/money';
 import { sharePence, splitPricePence } from '@gdp/core/lib/owed';
-import { AvatarStack, Button, Dialog, Notice, TickIcon, TotalLine, Totals, firstName } from '@/components/ui';
+import { AvatarStack, Box, Button, Dialog, Notice, TickIcon, TotalLine, Totals, firstName } from '@/components/ui';
 
 const itemStatuses = (s: Session, b: Bill, meUserId: string) => coreItemStatuses(s, b, meUserId, (p) => firstName(p?.displayName));
 
@@ -167,7 +167,8 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   return (
     <>
       <div className="vh" aria-live="polite">{liveText}</div>
-      <div className="box">{rows.map(render)}</div>
+      <h2 className="vh">Items</h2>
+      <Box list>{rows.map(render)}</Box>
       {err ? <Notice tone="error">{err}</Notice> : null}
 
       {confirming ? (

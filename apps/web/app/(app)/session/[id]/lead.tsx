@@ -117,8 +117,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} />
-        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={s.joinCode ? `Code ${s.joinCode}` : undefined} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />} />
         <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
 
         {tab === 'mine' ? (
@@ -319,8 +318,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Bill closed" />
-        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Bill closed" aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
         {outstanding.length === 0
           ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>
           : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}

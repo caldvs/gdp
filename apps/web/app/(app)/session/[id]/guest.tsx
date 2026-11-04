@@ -70,8 +70,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
         ) : (
           <BackLink href="/">Bills</BackLink>
         )}
-        <Title title={paidSome ? 'What else did you have?' : 'What did you have?'} sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} />
-        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />
+        <Title title={paidSome ? 'What else did you have?' : 'What did you have?'} sub={`${b.venue?.name ? `${b.venue.name} · ` : ''}${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />} />
         <ClaimList s={s} b={b} meUserId={meUserId} />
       </Page>
       <ActionBar stack>
@@ -130,8 +129,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} />
-        <BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
         {l?.settled ? (
           <Notice tone="ok" title={`${hostFirst} has your ${formatGBP(l.confirmedPence)}`}>You’re all settled.</Notice>
         ) : mustPay ? (

@@ -5,7 +5,8 @@
  * bill-shaped guide over it. Falls back to the phone's camera app (the
  * `<input capture>`) when there's no camera API or permission is refused.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
+import { cropFor, type Crop } from '@gdp/core/lib/cameraCrop';
 import { CloseIcon } from './ui';
 
 const GalleryIcon = () => (
@@ -33,6 +34,7 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
   onSystemCamera: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const guide = useRef<HTMLDivElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [state, setState] = useState<'starting' | 'live' | 'denied'>('starting');
   const [torch, setTorch] = useState<boolean | null>(null); // null: no torch
@@ -90,7 +92,9 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
         // A full-resolution still, better than a video frame where it works.
         blob = await new ImageCapture(track).takePhoto().catch(() => null);
       }
-      if (!blob) blob = await frame(v);
+      const crop = guide.current ? guideCrop(v, guide.current) : null;
+      blob = blob ? await cropTo(blob, crop, v).catch(() => null) : null;
+      if (!blob) blob = await frame(v, crop);
       onPhoto(new File([blob], 'bill.jpg', { type: blob.type || 'image/jpeg' }));
     } finally {
       setTaking(false);
@@ -106,7 +110,7 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
           <button type="button" className="btn btn--primary" onClick={onSystemCamera}>Take a photo</button>
         </div>
       ) : (
-        <Guide />
+        <Guide ref={guide} />
       )}
 
       <div className="cam__top">
@@ -131,10 +135,10 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
 }
 
 /** The bill-shaped zone: header, item lines, total. No words. */
-function Guide() {
+function Guide({ ref }: { ref: Ref<HTMLDivElement> }) {
   const lines = [70, 54, 82, 62, 70, 48, 76, 58];
   return (
-    <div className="cam__guide" aria-hidden="true">
+    <div ref={ref} className="cam__guide" aria-hidden="true">
       <div className="cam__guide-head">
         <span style={{ width: '60%', height: 14 }} />
         <span style={{ width: '75%' }} />
@@ -152,15 +156,40 @@ function Guide() {
   );
 }
 
-/** The current video frame at the camera's full resolution, as a JPEG. */
-function frame(v: HTMLVideoElement): Promise<Blob> {
+function guideCrop(v: HTMLVideoElement, g: HTMLElement): Crop | null {
+  return cropFor({ width: v.videoWidth, height: v.videoHeight }, v.getBoundingClientRect(), g.getBoundingClientRect());
+}
+
+function draw(source: CanvasImageSource, width: number, height: number, crop: Crop | null): Promise<Blob> {
+  const c = crop ?? { x: 0, y: 0, w: 1, h: 1 };
   const canvas = document.createElement('canvas');
-  canvas.width = v.videoWidth;
-  canvas.height = v.videoHeight;
+  canvas.width = Math.round(width * c.w);
+  canvas.height = Math.round(height * c.h);
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.reject(new Error('Could not take the photo.'));
-  ctx.drawImage(v, 0, 0);
+  ctx.drawImage(source, width * c.x, height * c.y, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Could not take the photo.'))), 'image/jpeg', 0.95),
   );
+}
+
+/**
+ * A full-resolution still cropped like the preview. Only when it has the
+ * video's shape: a still from a differently shaped sensor mode wouldn't line
+ * up with the guide, so the caller falls back to the video frame.
+ */
+async function cropTo(blob: Blob, crop: Crop | null, v: HTMLVideoElement): Promise<Blob | null> {
+  if (!crop) return blob;
+  const bmp = await createImageBitmap(blob);
+  try {
+    const same = Math.abs(bmp.width / bmp.height - v.videoWidth / v.videoHeight) < 0.02;
+    return same ? await draw(bmp, bmp.width, bmp.height, crop) : null;
+  } finally {
+    bmp.close();
+  }
+}
+
+/** The current video frame at the camera's full resolution, cropped to the guide, as a JPEG. */
+function frame(v: HTMLVideoElement, crop: Crop | null): Promise<Blob> {
+  return draw(v, v.videoWidth, v.videoHeight, crop);
 }

@@ -101,7 +101,7 @@ test('the lead’s table and the close dialog', async ({ page }) => {
 test('the lead’s items, the Not claimed sheet and the bill summary', async ({ page }) => {
   await open(page, busyTable(), users.lead, `/session/${SID}`);
   await page.getByRole('tab', { name: 'Your items' }).click();
-  await expect(page.getByRole('heading', { name: 'Claimed by others' })).toBeVisible();
+  await expect(page.locator('.claim[data-group="others"]').first()).toBeVisible();
   await audit(page);
   await page.getByRole('tab', { name: 'The table' }).click();
   await page.getByRole('button', { name: /^Not claimed/ }).click();

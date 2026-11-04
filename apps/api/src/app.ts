@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import './context/types.js';
 import { env } from './config/env.js';
-import { originMatcher, parseOrigins, SIGN_IN_LINK_BASES } from './config/allowedOrigins.js';
+import { originMatcher, parseOrigins } from './config/allowedOrigins.js';
 import { requestId } from './middleware/requestId.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -66,8 +66,6 @@ import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
 export interface AppDeps {
   /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
   allowedOrigins?: string;
-  /** Exact bases a sign-in link may use besides APP_BASE_URL; overrides SIGN_IN_LINK_BASES (tests). */
-  linkBases?: string[];
   /** Comma list; overrides TABLE_FEE_EXEMPT_EMAILS (tests). */
   exemptEmails?: string;
   idTokenVerifier?: IdTokenVerifier;
@@ -185,8 +183,6 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       buildAuthRoutes({
         emailSender,
         jwtSecret: sessionJwtSecret,
-        appBaseUrl: env.APP_BASE_URL,
-        linkBases: deps.linkBases ?? SIGN_IN_LINK_BASES[env.APP_ENV],
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(

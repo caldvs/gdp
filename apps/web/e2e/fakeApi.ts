@@ -34,11 +34,9 @@ type Item = { itemId: string; name: string; unitPricePence: number; quantity: nu
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
-/** What the fake /email/start hands the asking tab, and the token in the emailed link. */
+/** What the fake /email/start hands the asking tab, and the code it emails. */
 export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
-export const SIGN_IN_LINK_TOKEN = 'link.emailed-secret';
-/** The number the asking tab shows and the link's page asks about (#138). */
-export const SIGN_IN_CODE = '47';
+export const SIGN_IN_CODE = '482913';
 export const LEAD_BANK = { accountHolderName: 'Callum Davies', sortCode: '040668', accountNumber: '00079660' };
 
 export const item = (n: number, name: string, unitPricePence: number, quantity = 1): Item => ({
@@ -74,10 +72,12 @@ export class FakeApi {
   private reads = new Map<string, { polls: number; error?: { code: string; message: string; details?: Record<string, unknown> } }>();
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
-  /** Users who have signed in through the OTP flow (and so pass /v1/me). */
+  /** Users who have signed in with the emailed code (and so pass /v1/me). */
   private signedIn = new Set<string>();
-  /** The emailed sign-in link: sent, opened, then collected by the tab that asked. */
-  signIn: 'none' | 'pending' | 'approved' | 'denied' | 'claimed' = 'none';
+  /** The emailed sign-in code: sent, then used by the tab that asked. */
+  signIn: 'none' | 'pending' | 'used' = 'none';
+  /** Tries left on the emailed code (the API allows 5). */
+  codeTries = 5;
   /** Sign-outs everywhere (#155), by user. */
   signedOutEverywhere: string[] = [];
   /** The lead's fingerprint of their link's bank details (#151). */
@@ -221,27 +221,17 @@ export class FakeApi {
 
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
-    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; return json({ ok: true, requestId: SIGN_IN_REQUEST, code: SIGN_IN_CODE }); }
-    if (path === '/v1/auth/email/link/code') {
-      if ((body().token as string) !== SIGN_IN_LINK_TOKEN || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
-      return json({ code: SIGN_IN_CODE });
-    }
-    if (path === '/v1/auth/email/link/deny') {
-      if ((body().token as string) === SIGN_IN_LINK_TOKEN && this.signIn === 'pending') this.signIn = 'denied';
-      return json({ ok: true });
-    }
-    if (path === '/v1/auth/email/link') {
-      if ((body().token as string) !== SIGN_IN_LINK_TOKEN || body().code !== SIGN_IN_CODE || this.signIn !== 'pending') return err('AUTH_INVALID', 'Link expired', 401);
-      this.signIn = 'approved'; this.signedIn.add(user.userId); this.join(user);
-      return json({ token: 'test-token', user });
-    }
-    if (path === '/v1/auth/email/requests') {
-      if ((body().requestId as string) !== SIGN_IN_REQUEST) return json({ status: 'expired' });
-      if (this.signIn === 'pending') return json({ status: 'pending' });
-      // Like the API: collecting again (overlapping polls) is still signed in.
-      if (this.signIn !== 'approved' && this.signIn !== 'claimed') return json({ status: 'expired' });
-      this.signIn = 'claimed';
-      return json({ status: 'signedIn', token: 'test-token', user });
+    if (path === '/v1/auth/email/start') { this.signIn = 'pending'; this.codeTries = 5; return json({ ok: true, requestId: SIGN_IN_REQUEST }); }
+    if (path === '/v1/auth/email/verify') {
+      const { requestId, code } = body() as { requestId?: string; code?: string };
+      if (requestId !== SIGN_IN_REQUEST || this.codeTries <= 0) return json({ status: 'expired' });
+      this.codeTries -= 1;
+      if (code === SIGN_IN_CODE && this.signIn !== 'none') {
+        this.signIn = 'used'; this.signedIn.add(user.userId); this.join(user);
+        return json({ status: 'signedIn', token: 'test-token', user });
+      }
+      if (this.signIn !== 'pending' || this.codeTries <= 0) return json({ status: 'expired' });
+      return json({ status: 'wrong', attemptsLeft: this.codeTries });
     }
     if (path === '/v1/me') return req.headers()['authorization'] ? json(user) : err('AUTH_MISSING', 'No token', 401);
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }

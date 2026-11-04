@@ -20,28 +20,6 @@ export const ALLOWED_ORIGINS: Record<EnvName, string[]> = {
   prod: ['https://paymeback.dev', 'https://web-nqib.vercel.app'],
 };
 
-/**
- * Where a sign-in link may point, besides APP_BASE_URL (#149). Exact bases
- * only: the request's Origin is used as the link's base only when it is
- * one of these, character for character. Prod has none, so its links
- * always go to APP_BASE_URL. Previews aren't listed (their hostnames
- * change), so someone signing in on one gets a link to APP_BASE_URL.
- */
-export const SIGN_IN_LINK_BASES: Record<EnvName | 'local', string[]> = {
-  dev: ['https://test.paymeback.dev', 'http://localhost:8081'],
-  prod: [],
-  local: [],
-};
-
-/** The sign-in link's base: the Origin if it's exactly a listed base, else the fallback. */
-export function pickLinkBase(
-  origin: string | undefined,
-  bases: readonly string[],
-  fallback: string,
-): string {
-  return origin && bases.includes(origin) ? origin : fallback;
-}
-
 export function parseOrigins(csv: string | undefined): string[] {
   return (csv ?? '')
     .split(',')

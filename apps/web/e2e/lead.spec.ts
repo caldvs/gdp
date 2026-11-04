@@ -83,6 +83,25 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   await expect(lead.getByText('matches the receipt')).toBeVisible();
 });
 
+test('#107 lines that don’t make the printed total: a notice that goes once a price is fixed', async ({ browser }) => {
+  // Lines make £104.00; the receipt says £106.50 (Calamari is really £25.00).
+  const api = new FakeApi({ printedTotalPence: 10650 });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByText('Doesn’t add up')).toBeVisible();
+  await expect(lead.getByText(/£2\.50 under the receipt’s £106\.50/)).toBeVisible();
+  await expect(lead.getByText('matches the receipt')).toHaveCount(0);
+  await lead.getByRole('button', { name: 'See photo' }).click();
+  await expect(lead.getByRole('button', { name: 'Hide photo' })).toBeVisible();
+
+  await lead.getByRole('button', { name: /Calamari/ }).click();
+  await lead.getByLabel('Price each').fill('25.00');
+  await lead.getByRole('button', { name: 'Done' }).click();
+  await expect(lead.getByText('Doesn’t add up')).toHaveCount(0);
+  await expect(lead.getByText('matches the receipt')).toBeVisible();
+});
+
 test('no venue on the photo: asked once before Review bill; the name typed is saved', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);

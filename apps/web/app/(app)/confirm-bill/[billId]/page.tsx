@@ -98,7 +98,9 @@ function CheckBill() {
   const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
-  const photo = useBillImageUrl(billId, !!check);
+  // The photo beside a total that doesn't add up, opened from its notice.
+  const [showPhoto, setShowPhoto] = useState(false);
+  const photo = useBillImageUrl(billId, !!check || showPhoto);
 
   useEffect(() => {
     if (bill.data && !hydrated) {
@@ -305,7 +307,10 @@ function CheckBill() {
   const mismatch = printed !== undefined && printed !== totalPence;
   // Nothing on the photo names the place: the check step asked; here it can still be added.
   const noVenue = !b.venue?.name && !venueName.trim();
-  const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, mismatch ? `receipt says ${formatGBP(printed)}` : printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+  // The lines don't make the printed total: the strongest sign a price was
+  // misread, since the reader's own notes miss some (#107). Live as lines are fixed.
+  const offBy = mismatch && items.length > 0 ? totalPence - printed : 0;
+  const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, !mismatch && printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
     : (
@@ -342,6 +347,22 @@ function CheckBill() {
               Retake photo
             </button>
           </Notice>
+        ) : null}
+
+        {offBy !== 0 ? (
+          <Notice tone="warn" title="Doesn’t add up">
+            {formatGBP(Math.abs(offBy))} {offBy < 0 ? 'under' : 'over'} the receipt’s {formatGBP(printed!)}. Check the prices.{' '}
+            <button type="button" className="link-btn" onClick={() => setShowPhoto((v) => !v)} aria-expanded={showPhoto}>
+              {showPhoto ? 'Hide photo' : 'See photo'}
+            </button>
+          </Notice>
+        ) : null}
+        {offBy !== 0 && showPhoto ? (
+          photo.data ? (
+            <a href={photo.data.url} target="_blank" rel="noopener noreferrer" aria-label="Open the photo full size">
+              <img src={photo.data.url} alt="Photo of the bill" className="photo-check" />
+            </a>
+          ) : photo.isError ? <p className="field__hint">Photo not available.</p> : null
         ) : null}
 
         <Box>

@@ -168,8 +168,9 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
 
   /**
    * The tab that asked, checking in. `signedIn` (with its own session)
-   * once the link has been opened, and only the first time; `expired`
-   * for an unknown, wrong, used or out-of-time request.
+   * once the link has been opened, and again on every poll for a few
+   * minutes after (polls overlap; answers get lost); `expired` for an
+   * unknown, wrong, denied or out-of-time request.
    */
   async requestStatus(input: { requestId: string }): Promise<SignInRequestStatus> {
     const parsed = parseToken(input.requestId);
@@ -180,7 +181,7 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     if (record.status === 'pending') {
       return record.expiresAt > t ? { status: 'pending' } : { status: 'expired' };
     }
-    if (record.status !== 'approved') return { status: 'expired' };
+    if (record.status !== 'approved' && record.status !== 'claimed') return { status: 'expired' };
     const claimed = await signInLinkStore.claim(parsed.linkId, parsed.hash);
     if (!claimed) return { status: 'expired' };
     const result = await signInByEmail(claimed.email, deps.jwtSecret);

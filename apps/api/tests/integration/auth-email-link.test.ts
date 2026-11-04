@@ -204,7 +204,7 @@ describe('POST /v1/auth/email/link', () => {
 });
 
 describe('POST /v1/auth/email/requests (the tab that asked)', () => {
-  it('pending until the link is opened, then signed in once, then expired', async () => {
+  it('pending until the link is opened, then signed in', async () => {
     const { app, sender } = buildApp();
     const { email, requestId, token } = await begin(app, sender);
     expect(await poll(app, requestId)).toEqual({ status: 'pending' });
@@ -217,8 +217,53 @@ describe('POST /v1/auth/email/requests (the tab that asked)', () => {
       headers: { authorization: `Bearer ${signedIn.token}` },
     });
     expect(((await me.json()) as { email: string }).email).toBe(email);
+  });
 
+  // 4 Nov 2026, prod: the tab polled twice 0.5 s apart on refocus. The
+  // first poll collected the session, the second was told `expired`, and
+  // that answer replaced the first on screen ("Link expired").
+  it('a second poll after collecting is still signed in, not expired', async () => {
+    const { app, sender } = buildApp();
+    const { email, requestId, token } = await begin(app, sender);
+    await openLink(app, token);
+    const first = await poll(app, requestId);
+    const second = await poll(app, requestId);
+    expect(first.status).toBe('signedIn');
+    expect(second.status).toBe('signedIn');
+    expect(second.user).toEqual(first.user);
+    const me = await app.request('/v1/me', {
+      headers: { authorization: `Bearer ${second.token}` },
+    });
+    expect(((await me.json()) as { email: string }).email).toBe(email);
+  });
+
+  it('polls racing each other all get the session', async () => {
+    const { app, sender } = buildApp();
+    const { requestId, token } = await begin(app, sender);
+    await openLink(app, token);
+    const all = await Promise.all(Array.from({ length: 5 }, () => poll(app, requestId)));
+    expect(all.map((s) => s.status)).toEqual(Array(5).fill('signedIn'));
+  });
+
+  it('a lost answer is no loss: the tab can collect again for a few minutes', async () => {
+    const { app, sender } = buildApp();
+    const { requestId, token } = await begin(app, sender);
+    await openLink(app, token);
+    const t0 = Date.now();
+    expect((await poll(app, requestId)).status).toBe('signedIn');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(t0 + 4 * 60_000);
+    expect((await poll(app, requestId)).status).toBe('signedIn');
+    // Not for ever: a requestId found later is no use.
+    vi.setSystemTime(t0 + 6 * 60_000);
     expect(await poll(app, requestId)).toEqual({ status: 'expired' });
+  });
+
+  it('the request is seen straight after it is made (consistent reads)', async () => {
+    const { app, sender } = buildApp();
+    const { requestId, token } = await begin(app, sender);
+    expect(await poll(app, requestId)).toEqual({ status: 'pending' });
+    expect((await linkCode(app, token)).status).toBe(200);
   });
 
   it('a wrong requestId never gets the session, even after the link is opened', async () => {

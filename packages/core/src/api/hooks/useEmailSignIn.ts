@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type components } from '../index';
 import { storeToken } from '../auth';
@@ -92,11 +92,16 @@ export const SIGN_IN_POLL_MS = 2000;
 // another browser, or the mail app's). Polls every 2 seconds; once the
 // server says `signedIn` this tab gets its own session and stops. The
 // caller watches `data.status` to move on.
+//
+// `signedIn` is final: polls can overlap (a refocus and the timer), and a
+// later answer must never turn a sign-in back into `expired` (4 Nov 2026).
 export function useSignInRequest(requestId: string | null) {
   const adopt = useAdoptSession();
+  const [signedIn, setSignedIn] = useState<{ requestId: string; data: SignInRequestStatus } | null>(null);
+  const done = !!requestId && signedIn?.requestId === requestId;
   const q = useQuery<SignInRequestStatus, ApiError>({
     queryKey: ['signInRequest', requestId],
-    enabled: !!requestId,
+    enabled: !!requestId && !done,
     queryFn: () =>
       api<SignInRequestStatus>('/v1/auth/email/requests', {
         method: 'POST',
@@ -109,12 +114,15 @@ export function useSignInRequest(requestId: string | null) {
     retry: true,
     gcTime: 0,
   });
-  const data = q.data;
+  const fetched = q.data;
   useEffect(() => {
-    if (data?.status === 'signedIn') void adopt(data);
+    if (fetched?.status !== 'signedIn' || !requestId || done) return;
+    setSignedIn({ requestId, data: fetched });
+    void adopt(fetched);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
-  return q;
+  }, [fetched, requestId, done]);
+  const data = done ? signedIn.data : fetched;
+  return { ...q, data };
 }
 
 // LOCAL DEVELOPMENT ONLY: sign in with just an email, no link. The local

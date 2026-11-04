@@ -56,7 +56,7 @@ y = 80
 y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), ('sk', 'same as pk')], ['userId', 'email (lower-cased)']) + GAP
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
-y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash, code (#138)', 'status pending → approved | denied → claimed', '  (conditional updates: each once)', 'expiresAt (15 min), claimBy']) + GAP
+y = place(0, y, 'Sign-in link', 'id', '25 min', [('pk', 'SIGNIN#{linkId}'), ('sk', 'same as pk')], ['email, linkHash, requestHash, code (#138)', 'status pending → approved | denied → claimed', '  (conditional; claimed again for 5 min)', 'expiresAt (15 min), claimBy']) + GAP
 y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#user:{id}'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y

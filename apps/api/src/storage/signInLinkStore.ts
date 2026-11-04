@@ -11,6 +11,15 @@ const LINK_TTL_SECONDS = 15 * 60;
  * still signs the waiting tab in.
  */
 const CLAIM_GRACE_SECONDS = 10 * 60;
+/**
+ * After the tab that asked first collects its session, how long it can
+ * collect again. Polls overlap (a refocus and the 2-second timer), and an
+ * answer can be lost (a dropped connection, a reload mid-request); without
+ * this the second poll was told `expired` and the person saw "Link
+ * expired" though they had signed in (4 Nov 2026). Only the holder of the
+ * request's secret can collect, and it already has the session.
+ */
+const RECLAIM_SECONDS = 5 * 60;
 // Sending limits per address (#76): one link every 30 seconds, and at
 // most 5 in any 15-minute window. Stops the app being used to flood
 // someone's inbox, which would also count against us with SES.
@@ -55,6 +64,7 @@ export interface SignInLinkRecord {
   status: 'pending' | 'approved' | 'denied' | 'claimed';
   expiresAt: number; // epoch seconds: the link stops working
   claimBy: number; // epoch seconds: the waiting tab must collect by then
+  claimedAt?: number; // epoch seconds: the waiting tab first collected
 }
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -133,7 +143,9 @@ export const signInLinkStore = {
    * in time, so the page can show the number. Changes nothing.
    */
   async peek(linkId: string, linkHash: string): Promise<SignInLinkRecord | null> {
-    const out = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: linkKey(linkId) }));
+    const out = await ddb.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: linkKey(linkId), ConsistentRead: true }),
+    );
     if (!out.Item || out.Item.linkHash !== linkHash) return null;
     const record = toRecord(out.Item);
     return record.status === 'pending' && record.expiresAt > now() ? record : null;
@@ -197,27 +209,38 @@ export const signInLinkStore = {
 
   /** The request as the waiting tab sees it. Null if unknown or the secret is wrong. */
   async getForRequest(linkId: string, requestHash: string): Promise<SignInLinkRecord | null> {
-    const out = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: linkKey(linkId) }));
+    // Strongly consistent: the first poll comes milliseconds after the
+    // request is made, and an eventually consistent read can miss it.
+    const out = await ddb.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: linkKey(linkId), ConsistentRead: true }),
+    );
     if (!out.Item || out.Item.requestHash !== requestHash) return null;
     return toRecord(out.Item);
   },
 
-  /** The waiting tab collects its session: approved → claimed, once, in time. */
+  /**
+   * The waiting tab collects its session: approved → claimed, in time. It
+   * can collect again for RECLAIM_SECONDS after the first time, so
+   * overlapping polls and lost answers all end signed in.
+   */
   async claim(linkId: string, requestHash: string): Promise<SignInLinkRecord | null> {
+    const t = now();
     try {
       const out = await ddb.send(
         new UpdateCommand({
           TableName: TABLE_NAME,
           Key: linkKey(linkId),
-          UpdateExpression: 'SET #s = :claimed, claimedAt = :now',
+          UpdateExpression: 'SET #s = :claimed, claimedAt = if_not_exists(claimedAt, :now)',
           ConditionExpression:
-            'attribute_exists(pk) AND requestHash = :h AND #s = :approved AND claimBy > :now',
+            'attribute_exists(pk) AND requestHash = :h AND claimBy > :now AND ' +
+            '(#s = :approved OR (#s = :claimed AND claimedAt > :reclaimAfter))',
           ExpressionAttributeNames: { '#s': 'status' },
           ExpressionAttributeValues: {
             ':claimed': 'claimed',
             ':approved': 'approved',
             ':h': requestHash,
-            ':now': now(),
+            ':now': t,
+            ':reclaimAfter': t - RECLAIM_SECONDS,
           },
           ReturnValues: 'ALL_NEW',
         }),
@@ -240,5 +263,6 @@ function toRecord(item: Record<string, unknown>): SignInLinkRecord {
     status: item.status as SignInLinkRecord['status'],
     expiresAt: item.expiresAt as number,
     claimBy: item.claimBy as number,
+    ...(typeof item.claimedAt === 'number' ? { claimedAt: item.claimedAt } : {}),
   };
 }

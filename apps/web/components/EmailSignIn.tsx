@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@gdp/core/api';
+import { getStoredToken } from '@gdp/core/api/auth';
 import { useDevEmailSignIn, useSignInRequest, useStartEmailSignIn } from '@gdp/core/api/hooks/useEmailSignIn';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
@@ -78,18 +80,33 @@ export function EmailLinkFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
   }, []);
 
   // The link was opened (here or anywhere): this tab is signed in now.
+  // `expired` while this browser is signed in (the link was opened in
+  // another of its tabs, which shares the sign-in) is signed in too: never
+  // tell someone who just signed in that their link expired.
+  const qc = useQueryClient();
   const status = request.data?.status;
   useEffect(() => {
     if (status === 'signedIn') {
       writePending(null);
       router.replace(dest);
-    } else if (status === 'expired') {
+      return;
+    }
+    if (status !== 'expired') return;
+    let live = true;
+    void getStoredToken().then(async (token) => {
+      if (!live) return;
       writePending(null);
       setRequestId(null);
+      if (token) {
+        await qc.invalidateQueries({ queryKey: ['me'] });
+        router.replace(dest);
+        return;
+      }
       setStage('EMAIL');
       setEmailError('Link expired. Send a new one.');
-    }
-  }, [status, dest, router]);
+    });
+    return () => { live = false; };
+  }, [status, dest, router, qc]);
 
   // Local dev: sign straight back in as the last email used, unless the
   // user just signed out in this tab.

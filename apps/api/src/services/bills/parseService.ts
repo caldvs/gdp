@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { ReadQuotaExceeded, readQuotaStore } from '../../storage/readQuotaStore.js';
+import { analysisStore, type Analysis } from '../../storage/analysisStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
@@ -90,32 +91,20 @@ export const parseService = {
       );
     }
 
-    // Only reads that reach the model count against the daily quota (#145).
-    try {
-      await readQuotaStore.reserve(input.userId);
-    } catch (err) {
-      if (err instanceof ReadQuotaExceeded) {
-        throw new AppError(
-          'RATE_LIMITED',
-          `You've read ${readQuotaStore.READS_PER_DAY} bills today. Try again tomorrow.`,
-          { retryAfterSeconds: err.retryAfterSeconds },
-        );
-      }
-      throw err;
-    }
-
-    const parsed = await input.parser.parse(bytes, input.requestId, { signal });
-    const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
+    const analysis = await analyse({ ...input, bytes, sha256, signal });
     const bill = BillSchema.parse(
       buildBillV1({
-        parsed,
-        venue,
+        parsed: analysis.parsed,
+        venue: analysis.venue,
         userId: input.userId,
         uploadId: input.uploadId,
         sha256,
-        readBy: readByOf(input.parser, parsed),
+        readBy: analysis.readBy,
+        source: analysis.source,
+        analysedAt: analysis.analysedAt,
       }),
     );
+    const { parsed } = analysis;
 
     // Sanity-check: the printed total on the receipt should match what
     // we computed from items + tax + service. A discrepancy usually
@@ -147,6 +136,76 @@ export const parseService = {
   },
 };
 
+/**
+ * What the parser read from these bytes, and the venue looked up from it:
+ * from the analysis cache when this photo was read before by a parser with
+ * the same fingerprint (anyone's upload: the row holds no user id), else
+ * from the parser, then cached. This is the caching point in
+ * docs/design/analysis-cache.md: before the read becomes a bill anyone can
+ * amend. `skipCache` (local testing) reads again. Failed reads aren't cached.
+ */
+async function analyse(input: {
+  userId: string;
+  requestId: string;
+  parser: BillParser;
+  venueResolver: VenueResolver;
+  skipCache?: boolean;
+  bytes: Uint8Array;
+  sha256: string;
+  signal: AbortSignal;
+}): Promise<Analysis & { source: 'parser' | 'cache' }> {
+  const { fingerprint } = input.parser;
+  const log = { fingerprint, requestId: input.requestId };
+  if (!input.skipCache) {
+    const cached = await analysisStore.get(input.sha256, fingerprint);
+    if (cached) {
+      baseLogger.info(
+        { event: 'bill.analysis.hit', ...log, analysedAt: cached.analysedAt },
+        'Bill read from the analysis cache',
+      );
+      return { ...cached, source: 'cache' };
+    }
+  }
+  baseLogger.info(
+    { event: 'bill.analysis.miss', ...log, ...(input.skipCache ? { skipped: true } : {}) },
+    'Bill not in the analysis cache',
+  );
+
+  // Only reads that reach the model count against the daily quota (#145).
+  try {
+    await readQuotaStore.reserve(input.userId);
+  } catch (err) {
+    if (err instanceof ReadQuotaExceeded) {
+      throw new AppError(
+        'RATE_LIMITED',
+        `You've read ${readQuotaStore.READS_PER_DAY} bills today. Try again tomorrow.`,
+        { retryAfterSeconds: err.retryAfterSeconds },
+      );
+    }
+    throw err;
+  }
+
+  const result = await input.parser.parse(input.bytes, input.requestId, { signal: input.signal });
+  const { readBy: _readBy, ...parsed } = result;
+  const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
+  const analysis: Analysis = {
+    parsed,
+    ...(venue ? { venue } : {}),
+    readBy: readByOf(input.parser, result),
+    analysedAt: new Date().toISOString(),
+  };
+  // A cache write that fails costs a read next time, not this bill.
+  await analysisStore
+    .putIfAbsent(input.sha256, fingerprint, analysis)
+    .catch((err: unknown) =>
+      baseLogger.error(
+        { event: 'bill.analysis.unsaved', ...log, err },
+        'Could not save the bill analysis',
+      ),
+    );
+  return { ...analysis, source: 'parser' };
+}
+
 function buildBillV1(args: {
   parsed: ParsedBillFromImage;
   venue: Venue | undefined;
@@ -154,6 +213,8 @@ function buildBillV1(args: {
   uploadId: string;
   sha256: string;
   readBy: ReadBy;
+  source: 'parser' | 'cache';
+  analysedAt: string;
 }): Bill {
   const items: BillItem[] = mergeRepeatedLines(args.parsed.items).map((it) => ({
     itemId: uuidv7(),
@@ -188,6 +249,8 @@ function buildBillV1(args: {
       parserVersion: args.readBy.version,
       parsedAt: new Date().toISOString(),
       uploadId: args.uploadId,
+      source: args.source,
+      analysedAt: args.analysedAt,
     },
     ...(args.venue ? { venue: args.venue } : {}),
     createdAt: new Date().toISOString(),

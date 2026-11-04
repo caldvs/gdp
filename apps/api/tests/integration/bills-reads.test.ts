@@ -68,6 +68,7 @@ async function settle(app: Hono, userId: string, readId: string): Promise<Read> 
 const failing = (err: AppError): BillParser => ({
   model: 'broken',
   version: 'v1',
+  fingerprint: 'broken:v1:00000000',
   parse: () => Promise.reject(err),
 });
 
@@ -98,6 +99,7 @@ describe('background bill reads', () => {
     const counting: BillParser = {
       model: fixture.model,
       version: fixture.version,
+      fingerprint: fixture.fingerprint,
       parse: () => {
         calls++;
         return fixture.parse();

@@ -1,6 +1,8 @@
 # Design: caching bill analysis by image
 
-_Status: proposed (31 Oct 2026). Not built. Owner: Callum. Written for the next agent to implement._
+_Status: step 1 (analysis cache) built 4 Nov 2026; steps 2–4 not built. Owner: Callum. Written for the next agent to implement._
+
+_Since this was written, bills are read by Claude Sonnet on Bedrock (crop to the receipt, then read), synchronously (`POST /v1/bills/parse`) or in the background (`POST /v1/bills/reads`). Both go through `parseService.parse`, where the cache sits (`analyse()`). Bedrock's fingerprint hashes every prompt it sends (find-the-receipt, parts note, the bill prompt)._
 
 ## Problem
 
@@ -131,13 +133,13 @@ Sessions on the old bill are untouched.
 - The analysis row has no user id. It holds what's printed on the receipt: items, prices, venue. It can only be found by someone who already has the exact bytes, who therefore already has that information.
 - The parser output schema has no card digits or names; keep it that way (any future field reading the payment slip must not go in the shared cache).
 - 30-day TTL. Account deletion removes the user's `IMGHASH` rows and bills; analysis rows age out.
-- **Open question for Callum:** global (cross-user) cache as above, or scope the analysis key by user too (`ANALYSIS#<user>#<sha>`)? Global saves money in a rare case; per-user is the zero-argument privacy story. Default in this plan: global.
+- **Decided (Callum, 4 Nov 2026): global.** The key has no user id (`ANALYSIS#<sha>`), as above.
 
 ## Implementation plan
 
 Build as small PRs, each with tests.
 
-1. **Analysis cache (API only).** `BillParser.fingerprint`; `analysisStore` (`get`, `putIfAbsent`); `parseService` steps 2–3; `parsedFrom.source: 'parser' | 'cache'` and `analysedAt` (optional fields, OpenAPI + `npm run gen:api`). Structured log events `bill.analysis.hit` / `.miss` with fingerprint. No client change.
+1. **Analysis cache (API only).** _Built 4 Nov 2026 (`storage/analysisStore.ts`, `analyse()` in `parseService.ts`)._ `BillParser.fingerprint`; `analysisStore` (`get`, `putIfAbsent`); `parseService` steps 2–3; `parsedFrom.source: 'parser' | 'cache'` and `analysedAt` (optional fields, OpenAPI + `npm run gen:api`). Structured log events `bill.analysis.hit` / `.miss` with fingerprint. No client change.
 2. **Duplicate context.** Extend `UploadDuplicate` with `versionNumber`, `amended`, `session?`. Same shape from `/parse` step 1. Client (`useUploadAndParse` + camera page) routes per the table; add the "Picked up where you left off" notice on the check sheet.
 3. **Settled repeat + fork.** `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
 4. **(Optional) backfill.** One-off script seeding `ANALYSIS#` rows from existing `V#001` items where `parsedFrom.parserVersion` matches the current version. Probably not worth it; the cache warms itself.

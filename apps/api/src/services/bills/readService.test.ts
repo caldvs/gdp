@@ -26,7 +26,7 @@ const { createReadRunner, createReadService, isBillReadEvent, STALE_READ_MS } =
 const { BACKGROUND_READ_BUDGET_MS } = await import('./parser.js');
 
 const deps = {
-  parser: { model: 'm', version: 'v1', parse: vi.fn() },
+  parser: { model: 'm', version: 'v1', fingerprint: 'm:v1:00000000', parse: vi.fn() },
   venueResolver: { resolve: vi.fn() },
 };
 const job = { userId: 'u1', uploadId: 'up1', requestId: 'r1' };

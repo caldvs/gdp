@@ -1104,7 +1104,7 @@ export interface components {
         TableFeeCheckout: {
             /** @description Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`. */
             client_secret: string;
-            /** @description The hold */
+            /** @description The hold: £1 */
             amountPence: number;
         };
         StartCreditPackRequest: {

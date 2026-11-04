@@ -394,11 +394,14 @@ export const sessionStore = {
   async applyShare(input: {
     sessionMeta: Omit<Session, 'participants'>;
     creator: Participant;
+    /** Spends the fee or credit that pays for this share (see tableFeeStore.entitlementOp). */
+    entitlement?: NonNullable<TransactWriteCommandInput['TransactItems']>[number] | null;
   }): Promise<void> {
     const ttlAt = ttlEpochSeconds();
     await ddb.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...(input.entitlement ? [input.entitlement] : []),
           {
             Put: {
               TableName: TABLE_NAME,

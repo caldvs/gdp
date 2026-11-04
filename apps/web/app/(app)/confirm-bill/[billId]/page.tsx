@@ -3,9 +3,9 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, type components } from '@gdp/core/api';
+import { ApiError, type components } from '@gdp/core/api';
 import { useBill } from '@gdp/core/api/hooks/useBill';
-import { useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
+import { isFeeRequired, shareSession, useCreateSession, useSession } from '@gdp/core/api/hooks/useSession';
 import { useAmendBill } from '@gdp/core/api/hooks/useAmendBill';
 import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
@@ -103,6 +103,8 @@ function CheckBill() {
   // Follow the total on screen (£2, or £3 over £100) so the button is right
   // while editing; the server sets the actual charge.
   const feeDue = fee.data?.status === 'unpaid' ? (totalPence > 10_000 ? 300 : 200) : null;
+  // This month's free bill: sharing spends it (#128).
+  const credit = fee.data?.status === 'free';
 
   const isDirty = useMemo(() => {
     const b = bill.data;
@@ -172,19 +174,23 @@ function CheckBill() {
       return;
     }
     if (!(await saveDraft())) return;
+    let status = fee.data?.status;
     if (feeDue !== null) {
       // Saving may have moved the bill across £100, so take the fee from the server.
       const fresh = await fee.refetch();
-      if (fresh.data?.status === 'unpaid') {
+      status = fresh.data?.status;
+      if (status === 'unpaid') {
         router.push(`/table-fee/${billId}`);
         return;
       }
     }
     try {
       const created = await createSession.mutateAsync({ billId });
-      await api(`/v1/sessions/${created.sessionId}/share`, { method: 'POST' });
-      router.replace(`/session/${created.sessionId}/share`);
+      await shareSession(created.sessionId);
+      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' ? 'credit' : '1'}`);
     } catch (err) {
+      // The server asks for the fee (the credit went on another bill meanwhile).
+      if (isFeeRequired(err)) { router.push(`/table-fee/${billId}`); return; }
       const existing = existingSessionIdFromError(err);
       if (existing) router.replace(`/session/${existing}`);
     }
@@ -308,12 +314,12 @@ function CheckBill() {
         {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
       </Page>
-      <ActionBar>
+      <ActionBar note={!isMidSession && credit ? '1 credit left · you get 1 free each month' : undefined}>
         {isMidSession ? (
           <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
         ) : (
           <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null ? `Pay ${formatGBP(feeDue)} platform fee & get QR code` : 'Continue'}
+            {feeDue !== null ? `Pay ${formatGBP(feeDue)} platform fee & get QR code` : credit ? 'Spend 1 credit & get QR code' : 'Continue'}
           </Button>
         )}
       </ActionBar>

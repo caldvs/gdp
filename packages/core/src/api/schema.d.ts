@@ -488,6 +488,11 @@ export interface paths {
          *
          *     Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
          *     reach guests via the join QR.
+         *
+         *     When the platform fee is on (Stripe configured), sharing needs one of: the bill's paid fee
+         *     (not refunded, not spent on another session), an exempt lead, or the lead's credit for the
+         *     month (one free bill a month, UK time). The fee or credit is spent in the same transaction
+         *     as the share. Otherwise `402 TABLE_FEE_REQUIRED`.
          */
         post: operations["shareSession"];
         delete?: never;
@@ -888,6 +893,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/billing/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The lead's credits this month and the platform fees they've paid */
+        get: operations["getMyBilling"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhooks/stripe": {
         parameters: {
             query?: never;
@@ -930,12 +952,61 @@ export interface components {
             billId: string;
             /**
              * @description `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+             *     `free`: the lead has this month's credit, which sharing spends.
              * @enum {string}
              */
-            status: "paid" | "unpaid" | "waived";
+            status: "paid" | "unpaid" | "waived" | "free";
             amountPence: number;
             /** Format: date-time */
             paidAt?: string;
+            /**
+             * @description Credits left this month (on `free` and `unpaid`).
+             * @enum {integer}
+             */
+            creditsLeft?: 0 | 1;
+            /**
+             * Format: date
+             * @description The 1st of next month, when the next credit comes (on `free` and `unpaid`).
+             */
+            nextCreditOn?: string;
+        };
+        BillingSummary: {
+            /** @enum {integer} */
+            creditsLeft: 0 | 1;
+            /** Format: date */
+            nextCreditOn: string;
+            /** @description Every fee paid */
+            paidPence: number;
+            refundedPence: number;
+            fees: {
+                /** Format: uuid */
+                billId: string;
+                /**
+                 * Format: uuid
+                 * @description The session this fee shared
+                 */
+                sessionId?: string;
+                amountPence: number;
+                /** Format: date-time */
+                paidAt: string;
+                /** Format: date-time */
+                refundedAt?: string;
+            }[];
+            credits: {
+                /** @description `yyyy-mm`, UK time */
+                month: string;
+                /** Format: uuid */
+                billId: string;
+                /** Format: uuid */
+                sessionId: string;
+                /** Format: date-time */
+                claimedAt: string;
+                /**
+                 * Format: date-time
+                 * @description Given back because nobody joined
+                 */
+                returnedAt?: string;
+            }[];
         };
         ErrorResponse: {
             error: {
@@ -943,7 +1014,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -2258,7 +2329,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description The Checkout Session just paid (`cs_...`), checked with Stripe if the webhook is late. */
+                    checkoutSessionId?: string;
+                };
+            };
+        };
         responses: {
             /** @description Session, now in `claiming` with the join code visible */
             200: {
@@ -2270,6 +2348,15 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /** @description No paid fee, exemption or credit for this share (`TABLE_FEE_REQUIRED`) */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Caller is not the creator */
             403: {
                 headers: {
@@ -2925,6 +3012,27 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getMyBilling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credits and fees */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingSummary"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     stripeWebhook: {

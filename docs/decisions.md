@@ -48,11 +48,12 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 - **Each meal settles on its own.** No balances carried between meals; history is a record, not a ledger.
 - **No nudging or chasing** unpaid guests.
 - **Exempt accounts** (decided 1 Nov 2026; tightened 3–4 Nov, #137). Email addresses on `TABLE_FEE_EXEMPT_EMAILS` never pay the platform fee, and sign in with just their email, no link. The list is a GitHub environment **secret** only (a variable would be printed in public run logs), and prod's entry is a hard-to-guess address used only for testing live, not anyone's real email (Callum, 3 Nov 2026): knowing the address is what signs you in, so it's treated like a password. Bank details stay on the device either way.
-- **Platform fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Screens call it the *platform fee* (#128, 3 Nov 2026); code, routes, Stripe lookup keys and `TABLE_FEE_*` settings keep the old name. Decided but not built:
-  - one free bill a month per lead (confirmed 1 Nov 2026), shown as a **credit**: "Spend 1 credit & get QR code", "1 credit left · you get 1 free each month", "No credits left this month"; the account shows "Credits · 1 left"
-  - after that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR
-  - guests repay the fee in what they owe
-  - a refund if nobody joins
+- **Platform fee.** The lead pays £2 (£3 over £100) by Stripe's embedded form before the QR. Screens call it the *platform fee* (#128, 3 Nov 2026); code, routes, Stripe lookup keys and `TABLE_FEE_*` settings keep the old name.
+  - **One free bill a month per lead** (confirmed 1 Nov 2026, built 4 Nov 2026, #139), shown as a **credit**: "Spend 1 credit & get QR code", "1 credit left · you get 1 free each month", "1 credit spent · next credit 1 Dec", "No credits left this month"; the account shows "Credits · 1 left". Months are calendar months in UK time; the next credit comes on the 1st.
+  - After that, everything up to the QR still works without paying (scan, check and edit the bill, bank details); the fee is due at the QR.
+  - **The server enforces it** (#139): `/share` needs the bill's paid fee, an exempt lead or the month's credit, else 402 `TABLE_FEE_REQUIRED`. **One fee, one share**: a fee pays for the session it shared and no other, so sharing a bill again after closing it costs a new fee (or the credit). A paid fee is used before the credit.
+  - **Refund if nobody joins, at close or bin only** (#132, 4 Nov 2026): no time limit for now, as the safe default; Callum can revisit. A credit spent on a bill nobody joined is handed back the same way.
+  - Not built: guests repay the fee in what they owe. Until then no screen says they do ("recovered from your guests" and "Your guests pay this back" from the board are left out).
 
   See [table-fee.md](table-fee.md).
 

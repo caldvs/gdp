@@ -4,6 +4,10 @@ import { Hono } from 'hono';
 import {
   checkoutSessionParams,
   createTableFeeService,
+  monthOf,
+  nextCreditOn,
+  type CreditStore,
+  type MonthlyCredit,
   feeLookupKeyFor,
   nobodyJoined,
   parseEmailList,
@@ -504,5 +508,159 @@ describe('refund policy: nobody joined', () => {
       status: 'paid',
     });
     expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
+  });
+});
+
+describe('monthly credit', () => {
+  it('counts months in UK time', () => {
+    // 23:30 UTC on 31 Oct is still October in London (GMT); 23:30 UTC on
+    // 31 Jul is already 1 Aug (BST).
+    expect(monthOf(new Date('2026-10-31T23:30:00Z'))).toBe('2026-10');
+    expect(monthOf(new Date('2026-07-31T23:30:00Z'))).toBe('2026-08');
+    expect(nextCreditOn('2026-11')).toBe('2026-12-01');
+    expect(nextCreditOn('2026-12')).toBe('2027-01-01');
+  });
+
+  const credits = (): CreditStore & { rows: Map<string, MonthlyCredit> } => {
+    const rows = new Map<string, MonthlyCredit>();
+    return {
+      rows,
+      get: (userId, month) => Promise.resolve(rows.get(`${userId}#${month}`) ?? null),
+      markReturned: (userId, month, sessionId, returnedAt) => {
+        const c = rows.get(`${userId}#${month}`);
+        if (!c || c.sessionId !== sessionId || c.returnedAt) {
+          return Promise.resolve('duplicate' as const);
+        }
+        rows.set(`${userId}#${month}`, { ...c, returnedAt });
+        return Promise.resolve('recorded' as const);
+      },
+      listForUser: () => Promise.resolve({ fees: [], credits: [...rows.values()] }),
+    };
+  };
+
+  const setup = () => {
+    const store = memoryStore();
+    const creditStore = credits();
+    const service = createTableFeeService({
+      stripe: fakeStripe().stripe,
+      store,
+      credits: creditStore,
+      getBill: () => Promise.resolve(bill(5_000)),
+      appBaseUrl: 'https://gdp.example',
+      now: () => new Date('2026-11-04T12:00:00Z'),
+    });
+    return { store, creditStore, service };
+  };
+
+  it('a lead with this month’s credit shares free; the entitlement is the credit', async () => {
+    const { service } = setup();
+    expect(await service.status({ caller: LEAD, billId: BILL_ID })).toEqual({
+      billId: BILL_ID,
+      status: 'free',
+      amountPence: 0,
+      creditsLeft: 1,
+      nextCreditOn: '2026-12-01',
+    });
+    expect(
+      await service.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: 's1' }),
+    ).toMatchObject({ kind: 'credit', credit: { month: '2026-11', sessionId: 's1' } });
+    expect(await service.summary(LEAD)).toMatchObject({ creditsLeft: 1 });
+  });
+
+  it('a spent credit means the fee is due, except for the session that spent it', async () => {
+    const { service, creditStore } = setup();
+    creditStore.rows.set(`${LEAD.userId}#2026-11`, {
+      userId: LEAD.userId,
+      month: '2026-11',
+      billId: 'other',
+      sessionId: 's1',
+      claimedAt: '2026-11-01T10:00:00Z',
+    });
+    expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+      amountPence: 200,
+      creditsLeft: 0,
+    });
+    await expect(
+      service.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: 's2' }),
+    ).rejects.toMatchObject({ code: 'TABLE_FEE_REQUIRED' });
+    expect(await service.status({ caller: LEAD, billId: BILL_ID, sessionId: 's1' })).toMatchObject({
+      status: 'free',
+    });
+    expect(await service.summary(LEAD)).toMatchObject({ creditsLeft: 0, paidPence: 0 });
+  });
+
+  it('the account sums the fees paid and refunded', async () => {
+    const { service, creditStore } = setup();
+    creditStore.listForUser = () =>
+      Promise.resolve({
+        fees: [
+          {
+            billId: 'b1',
+            userId: LEAD.userId,
+            checkoutSessionId: 'cs_1',
+            amountPence: 300,
+            paidAt: '2026-11-02T10:00:00Z',
+            sessionId: 's1',
+          },
+          {
+            billId: 'b2',
+            userId: LEAD.userId,
+            checkoutSessionId: 'cs_2',
+            amountPence: 200,
+            paidAt: '2026-11-01T10:00:00Z',
+            refundId: 're_2',
+            refundedAt: '2026-11-01T11:00:00Z',
+          },
+        ],
+        credits: [],
+      });
+    expect(await service.summary(LEAD)).toEqual({
+      creditsLeft: 1,
+      nextCreditOn: '2026-12-01',
+      paidPence: 500,
+      refundedPence: 200,
+      fees: [
+        { billId: 'b1', sessionId: 's1', amountPence: 300, paidAt: '2026-11-02T10:00:00Z' },
+        {
+          billId: 'b2',
+          amountPence: 200,
+          paidAt: '2026-11-01T10:00:00Z',
+          refundedAt: '2026-11-01T11:00:00Z',
+        },
+      ],
+      credits: [],
+    });
+  });
+
+  it('closing with nobody joined hands the credit back, and leaves a fee spent elsewhere alone', async () => {
+    const { service, creditStore, store } = setup();
+    creditStore.rows.set(`${LEAD.userId}#2026-11`, {
+      userId: LEAD.userId,
+      month: '2026-11',
+      billId: BILL_ID,
+      sessionId: 's2',
+      claimedAt: '2026-11-01T10:00:00Z',
+    });
+    store.rows.set(BILL_ID, {
+      billId: BILL_ID,
+      userId: LEAD.userId,
+      checkoutSessionId: 'cs_1',
+      paymentIntentId: 'pi_1',
+      amountPence: 200,
+      paidAt: '2026-11-01T09:00:00Z',
+      sessionId: 's1',
+    });
+    const outcome = await service.refundIfNobodyJoined({
+      sessionId: 's2',
+      billId: BILL_ID,
+      creatorUserId: LEAD.userId,
+      participants: [{ userId: LEAD.userId }],
+    });
+    expect(outcome).toBe('credit_returned');
+    expect(creditStore.rows.get(`${LEAD.userId}#2026-11`)?.returnedAt).toBe(
+      '2026-11-04T12:00:00.000Z',
+    );
+    expect(store.rows.get(BILL_ID)?.refundedAt).toBeUndefined();
   });
 });

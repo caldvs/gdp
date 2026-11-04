@@ -25,8 +25,8 @@ export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   /** Emails bill reports. Absent in tests that don't need it. */
   reports?: ReportService;
-  /** Refunds the table fee when nobody joined. Absent when Stripe is off. */
-  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined'>;
+  /** Gates sharing on the fee, and refunds it when nobody joined. Absent when Stripe is off. */
+  tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined' | 'shareEntitlement'>;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
@@ -38,6 +38,12 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     if (!deps.tableFees) return;
     try {
       const outcome = await deps.tableFees.refundIfNobodyJoined(session);
+      if (outcome === 'credit_returned') {
+        baseLogger.info(
+          { event: 'table_fee.credit_returned', sessionId: session.sessionId },
+          'Credit returned: nobody joined',
+        );
+      }
       if (outcome === 'refunded') {
         baseLogger.info(
           { event: 'table_fee.refunded', sessionId: session.sessionId, billId: session.billId },
@@ -105,10 +111,42 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     },
   );
 
+  // The QR: needs the bill's paid fee, an exempt lead, or this month's
+  // credit (402 TABLE_FEE_REQUIRED otherwise). Free when Stripe is off.
   r.post('/:sessionId/share', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');
-    const session = await sessionService.share({ caller, sessionId });
+    // Optional body: the Checkout Session just paid, so a late webhook
+    // doesn't block the share (the fee is checked with Stripe directly).
+    let checkoutSessionId: string | undefined;
+    try {
+      const text = await c.req.text();
+      const body = text.trim() ? (JSON.parse(text) as { checkoutSessionId?: unknown }) : {};
+      if (
+        typeof body.checkoutSessionId === 'string' &&
+        /^cs_[A-Za-z0-9_]+$/.test(body.checkoutSessionId)
+      ) {
+        checkoutSessionId = body.checkoutSessionId;
+      }
+    } catch {
+      /* no body, or not JSON: nothing to check with Stripe */
+    }
+    const tableFees = deps.tableFees;
+    const session = await sessionService.share({
+      caller,
+      sessionId,
+      ...(tableFees
+        ? {
+            entitle: (s: Session) =>
+              tableFees.shareEntitlement({
+                caller,
+                billId: s.billId,
+                sessionId: s.sessionId,
+                ...(checkoutSessionId ? { checkoutSessionId } : {}),
+              }),
+          }
+        : {}),
+    });
     return c.json(session);
   });
 

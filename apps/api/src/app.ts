@@ -42,9 +42,16 @@ import {
 } from './services/bills/readService.js';
 import { baseLogger } from './logging/logger.js';
 import Stripe from 'stripe';
-import { createTableFeeService, type TableFeeStore } from './services/billing/tableFee.js';
+import {
+  createTableFeeService,
+  type CreditStore,
+  type TableFeeStore,
+} from './services/billing/tableFee.js';
 import { parseEmailList } from './config/exemptEmails.js';
-import { tableFeeStore as defaultTableFeeStore } from './storage/tableFeeStore.js';
+import {
+  creditStore as defaultCreditStore,
+  tableFeeStore as defaultTableFeeStore,
+} from './storage/tableFeeStore.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
@@ -78,6 +85,10 @@ export interface AppDeps {
   stripe?: Stripe | null;
   stripeWebhookSecret?: string;
   tableFeeStore?: TableFeeStore;
+  /** The free monthly bill. Omit for DynamoDB; `null` turns credits off (every share pays). */
+  creditStore?: CreditStore | null;
+  /** Clock for the monthly credit, for tests. */
+  now?: () => Date;
   /** How a background bill read is started. Omit: a self-invoke on Lambda, in-process elsewhere. */
   readDispatcher?: ReadDispatcher;
 }
@@ -203,6 +214,8 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     ? createTableFeeService({
         stripe,
         store: deps.tableFeeStore ?? defaultTableFeeStore,
+        ...(deps.creditStore === null ? {} : { credits: deps.creditStore ?? defaultCreditStore }),
+        ...(deps.now ? { now: deps.now } : {}),
         getBill: (billId) => billStore.getLatest(billId),
         appBaseUrl: env.APP_BASE_URL,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),

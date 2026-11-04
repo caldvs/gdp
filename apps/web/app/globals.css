@@ -154,6 +154,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .actionbar__in > .grow { flex: 1.4; }
 .actionbar__in--stack { flex-direction: column; gap: 8px; }
 .actionbar__in--stack > * { flex: none; }
+.actionbar__note { max-width: calc(var(--col) - 2 * var(--gutter)); margin: 8px auto 0; text-align: center; font-size: 13px; color: var(--mute); }
 .actionbar__total { display: flex; justify-content: space-between; font-size: 16px; }
 
 /* ---------- Forms ---------- */
@@ -260,6 +261,16 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 
 /* ---------- Pieces ---------- */
 .qr-box { border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); padding: 24px 16px 20px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+/* The join QR fills in after the fee or credit (#129): white tiles clear in a scattered order. */
+.qr { position: relative; display: flex; align-items: center; justify-content: center; }
+.qr__cover { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(10, 1fr); }
+.qr__cover span { background: #fff; box-shadow: 0 0 0 1px #fff; animation: qr-tile .2s ease-out both; }
+@keyframes qr-tile { to { opacity: 0; transform: scale(.5); } }
+@media (prefers-reduced-motion: reduce) { .qr__cover { display: none; } }
+.code-wait { height: 58px; display: flex; align-items: center; color: var(--mute); }
+.code-in { animation: code-in .35s ease-out both; }
+@keyframes code-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .code-in { animation: none; } }
 .code { font-size: 28px; font-weight: 600; letter-spacing: .12em; font-variant-numeric: tabular-nums; }
 .photo-thumb { width: 100%; max-height: 280px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--line); background: var(--hover); }
 .editor { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--hover); }

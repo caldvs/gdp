@@ -99,11 +99,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Pay Me Back architecture</h1>
-    <div class="stats"><span><b>42</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
+    <div class="stats"><span><b>43</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1293" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 42 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1293" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 43 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -244,15 +244,16 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="588" y="883"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
 <text class="t-ep" x="588" y="901"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
 <text class="t-ep" x="588" y="919"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
-<rect class="inner" x="576" y="944" width="246" height="74" rx="7"/>
+<rect class="inner" x="576" y="944" width="246" height="92" rx="7"/>
 <text class="t-inner" x="588" y="965">Billing</text>
-<text class="t-base" x="810" y="965" text-anchor="end">/v1/billing/table-fee</text>
-<text class="t-ep" x="588" y="985"><tspan class="m m-post">POST</tspan><tspan x="644">/</tspan></text>
-<text class="t-ep" x="588" y="1003"><tspan class="m m-get">GET</tspan><tspan x="644">/{billId}</tspan></text>
-<rect class="inner" x="576" y="1028" width="246" height="56" rx="7"/>
-<text class="t-inner" x="588" y="1049">Webhooks</text>
-<text class="t-base" x="810" y="1049" text-anchor="end">/webhooks</text>
-<text class="t-ep" x="588" y="1069"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<text class="t-base" x="810" y="965" text-anchor="end">/v1/billing</text>
+<text class="t-ep" x="588" y="985"><tspan class="m m-post">POST</tspan><tspan x="644">/table-fee</tspan></text>
+<text class="t-ep" x="588" y="1003"><tspan class="m m-get">GET</tspan><tspan x="644">/table-fee/{billId}</tspan></text>
+<text class="t-ep" x="588" y="1021"><tspan class="m m-get">GET</tspan><tspan x="644">/me</tspan></text>
+<rect class="inner" x="576" y="1046" width="246" height="56" rx="7"/>
+<text class="t-inner" x="588" y="1067">Webhooks</text>
+<text class="t-base" x="810" y="1067" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="1087"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
 <rect class="inner" x="834" y="308" width="230" height="326" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
@@ -276,7 +277,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-inner" x="846" y="665">Venues</text>
 <text class="t-base" x="1052" y="665" text-anchor="end">/v1/venues</text>
 <text class="t-ep" x="846" y="685"><tspan class="m m-get">GET</tspan><tspan x="902">/nearby</tspan></text>
-<rect class="inner" x="834" y="710" width="230" height="384" rx="7"/>
+<rect class="inner" x="834" y="710" width="230" height="392" rx="7"/>
 <text class="t-inner" x="846" y="731">Services</text>
 <text class="t-base" x="1052" y="731" text-anchor="end">src/services</text>
 <text class="t-mono" x="846" y="754">auth</text>
@@ -297,10 +298,10 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="846" y="1051">sender (SES or console)</text>
 <text class="t-mono" x="846" y="1074">storage</text>
 <text class="t-sub" x="846" y="1091">one store per entity</text>
-<rect class="inner" x="576" y="1104" width="488" height="98" rx="7"/>
-<text class="t-inner" x="588" y="1126">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1148">Parser: Bedrock · fixture</text>
-<text class="t-mono" x="588" y="1166">Email: SES · console     Venue: Location · none</text>
+<rect class="inner" x="576" y="1112" width="488" height="90" rx="7"/>
+<text class="t-inner" x="588" y="1134">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1156">Parser: Bedrock · fixture</text>
+<text class="t-mono" x="588" y="1174">Email: SES · console     Venue: Location · none</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>

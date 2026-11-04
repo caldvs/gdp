@@ -150,11 +150,12 @@ export function Button({ href, replace, tone = 'primary', small, busy, grow, cla
 
 /** Fixed bottom bar for a screen's main action(s), within thumb reach.
  * Named so it stays put between pages while its buttons cross-fade. */
-export function ActionBar({ children, stack }: { children: ReactNode; stack?: boolean }) {
+export function ActionBar({ children, stack, note }: { children: ReactNode; stack?: boolean; note?: ReactNode }) {
   return (
     <ViewTransition name="actionbar" share="bar" enter="bar" exit="bar" default="none">
       <div className="actionbar">
         <div className={cx('actionbar__in', stack && 'actionbar__in--stack')}>{children}</div>
+        {note ? <p className="actionbar__note">{note}</p> : null}
       </div>
     </ViewTransition>
   );

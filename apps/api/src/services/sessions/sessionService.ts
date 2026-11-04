@@ -2,6 +2,8 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
+import { entitlementOp } from '../../storage/tableFeeStore.js';
+import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
 import { computeOwedForParticipant, paymentsOf, sentPence } from '../payments/ledger.js';
@@ -147,7 +149,16 @@ export const sessionService = {
     return { sessionId: resolved.sessionId };
   },
 
-  async share(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
+  async share(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    /**
+     * What pays for the share (the bill's fee, an exempt lead, or this
+     * month's credit), or throws TABLE_FEE_REQUIRED. Absent when Stripe is
+     * off: sharing is free.
+     */
+    entitle?: (session: Session) => Promise<ShareEntitlement>;
+  }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
     if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     if (session.creatorUserId !== input.caller.userId) {
@@ -168,7 +179,20 @@ export const sessionService = {
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'claiming' };
 
-    await sessionStore.applyShare({ sessionMeta: updatedMeta, creator: updatedCreator });
+    const entitlement = input.entitle ? await input.entitle(session) : null;
+    try {
+      await sessionStore.applyShare({
+        sessionMeta: updatedMeta,
+        creator: updatedCreator,
+        entitlement: entitlement ? entitlementOp(entitlement) : null,
+      });
+    } catch (err) {
+      // The fee was spent or refunded, or the credit claimed, in between.
+      if (entitlement && isConditionalCheckFailed(err)) {
+        throw new AppError('TABLE_FEE_REQUIRED', 'Pay the platform fee to share this bill');
+      }
+      throw err;
+    }
 
     return projectForCaller(
       {

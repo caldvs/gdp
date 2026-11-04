@@ -89,9 +89,21 @@ if [ "$web" = true ]; then
     exit 1
   fi
   step npm run typecheck -w apps/web
-  step npm run build -w apps/web
-  step npm run e2e -w apps/web
-  # Visual baselines are CI's: drop any snapshots this run wrote.
+  # CI builds with no API URL or Stripe key; a local apps/web/.env.local
+  # (the main checkout has one) would turn on the test bar and the table fee.
+  envfile=apps/web/.env.local
+  if [ -f "$envfile" ]; then
+    mv "$envfile" "$envfile.ci-local-aside"
+    trap 'mv -f "$envfile.ci-local-aside" "$envfile" 2>/dev/null; rm -rf "$lock"' EXIT
+  fi
+  ( for v in $(env | grep -oE '^NEXT_PUBLIC_[A-Z_]+'); do unset "$v"; done
+    step npm run build -w apps/web )
+  [ -f "$envfile.ci-local-aside" ] && mv -f "$envfile.ci-local-aside" "$envfile"
+  # Visual baselines are CI's Linux renders; elsewhere, skip the screenshot
+  # comparisons (the flows in visual.spec still run).
+  e2e_args=()
+  [ "$(uname -s)" = Linux ] || e2e_args=(--ignore-snapshots)
+  step npm run e2e -w apps/web -- "${e2e_args[@]}"
   git checkout -- apps/web/e2e/*-snapshots 2>/dev/null || true
   git clean -fdq -- apps/web/e2e/*-snapshots 2>/dev/null || true
 fi

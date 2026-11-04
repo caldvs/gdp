@@ -1,0 +1,127 @@
+name: Release
+
+# One manual run puts a commit live (#124): the prod API first, then
+# paymeback.dev from the same commit. `main` itself only ever deploys to test
+# (CI's deploy-test-web job and API Deploy → dev).
+#
+# - Refuses a commit that isn't on main or whose CI `gate` didn't pass.
+# - The prod API deploy (API Deploy, environment `prod`, with its reviewer)
+#   runs the smoke test and dependency check; if either fails, the web app
+#   isn't touched.
+# - The web app is a fresh Vercel production build (it bakes in the prod API
+#   URL and NEXT_PUBLIC_APP_ENV=prod), then the commit is tagged
+#   release-YYYY-MM-DD-n.
+#
+# Rollback: the web app with Vercel's Instant Rollback (no build); the API by
+# running Release again on the previous release tag's commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Commit on main to release (blank = latest main)
+        required: false
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check the commit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Resolve and check
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SHA: ${{ inputs.sha }}
+        run: |
+          sha=$(git rev-parse --verify "${INPUT_SHA:-origin/main}^{commit}")
+          git merge-base --is-ancestor "$sha" origin/main \
+            || { echo "::error::${sha::7} isn't on main"; exit 1; }
+          gate=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/check-runs?check_name=gate&filter=latest" \
+            --jq '[.check_runs[] | select(.conclusion == "success")] | length')
+          if [ "$gate" = "0" ]; then
+            echo "::error::CI's gate didn't pass on ${sha::7}; release a commit that's green"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${sha::7}" >> "$GITHUB_STEP_SUMMARY"
+
+  api:
+    name: prod API
+    needs: check
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/api-deploy.yml
+    with:
+      environment: prod
+      ref: ${{ needs.check.outputs.sha }}
+    secrets: inherit
+
+  web:
+    name: paymeback.dev
+    needs: [check, api]
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_ORG_ID: team_q5vYiPRRAr17CPwZR2Dbhopi
+      VERCEL_PROJECT_ID: prj_1FsdXAkZbS0ikRFRXJXJ9BPKvDK9
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.check.outputs.sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .nvmrc
+      - name: Deploy to production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SHA: ${{ needs.check.outputs.sha }}
+        run: |
+          url=$(npx --yes vercel@64.7.0 deploy --prod --yes --token "$VERCEL_TOKEN" --meta githubCommitSha="$SHA")
+          echo "paymeback.dev → $url (${SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  tag:
+    name: tag the release
+    needs: [check, web]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Tag and summarise
+        env:
+          SHA: ${{ needs.check.outputs.sha }}
+        run: |
+          prev=$(git tag --list 'release-*' --sort=-creatordate | head -n1)
+          day=$(date -u +%Y-%m-%d)
+          n=$(( $(git tag --list "release-$day-*" | wc -l) + 1 ))
+          tag="release-$day-$n"
+          git tag "$tag" "$SHA"
+          git push origin "refs/tags/$tag"
+          {
+            echo "## $tag (${SHA::7})"
+            if [ -n "$prev" ]; then
+              echo "Since $prev:"
+              git log --format='- %h %s' "$prev..$SHA"
+            else
+              echo "First release."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

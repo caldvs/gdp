@@ -416,6 +416,31 @@ class GdpBackendStack extends cdk.Stack {
     });
     ddbThrottleAlarm.addAlarmAction(snsAction);
 
+    // SES reputation (#146). Account-wide, so only the prod stack alarms on
+    // it. AWS reviews an account at 5% bounces or 0.1% complaints and can
+    // pause sending at 10% / 0.5%; alarm well before either.
+    if (envName === 'prod') {
+      const sesReputation = (metricName: string, id: string, threshold: number) => {
+        const alarm = new cw.Alarm(this, id, {
+          alarmName: `gdp-ses-${metricName === 'Reputation.BounceRate' ? 'bounce' : 'complaint'}-rate`,
+          alarmDescription: `SES ${metricName} is above ${threshold * 100}%. See RUNBOOK.md "ses-reputation".`,
+          metric: new cw.Metric({
+            namespace: 'AWS/SES',
+            metricName,
+            period: cdk.Duration.hours(1),
+            statistic: 'Maximum',
+          }),
+          threshold,
+          evaluationPeriods: 1,
+          treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+          comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        });
+        alarm.addAlarmAction(snsAction);
+      };
+      sesReputation('Reputation.BounceRate', 'SesBounceRateAlarm', 0.04);
+      sesReputation('Reputation.ComplaintRate', 'SesComplaintRateAlarm', 0.0008);
+    }
+
     // ---------------- Observability: dashboard ----------------
 
     const dashboard = new cw.Dashboard(this, 'Dashboard', {

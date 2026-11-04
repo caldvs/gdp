@@ -46,7 +46,9 @@ _Last updated 4 Nov 2026._
 
 **Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
 
-**Waiting on Callum** (steps in each issue): first Release; #137 (exempt list as a secret, delete old prod deploy logs, rotate the prod JWT secret); #81 (confirm two alert emails); #143 (approve the *Protect main* ruleset with a passkey; restrict environments to main); #153 (three DNS records); #85, #140 (IAM policies, ready to paste); #141 (Identity Center, security contact); #73 (delete old branches); #144 (separate prod account?); #115, #107 (decisions); #79 (Stripe live); #69 (receipt photos). Seven Dependabot PRs are open: merge or close them on GitHub.
+**Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); approve the *Protect main* ruleset with a passkey (#143); #141 (Identity Center, security contact); #144 (separate prod account?); #115, #107 (decisions); #79 (Stripe live); #69 (receipt photos). Seven Dependabot PRs are open: merge or close them on GitHub.
+
+**Done 4 Nov in the consoles:** old branches deleted (#73); prod and dev alert emails confirmed (#81); `claude-mcp` can't read secret values (#85); `gdp-backend-dev` has `gdp-local-dev` instead of admin (#140, add actions there if the Mac hits AccessDenied); SPF, DMARC and SES MAIL FROM DNS (#153); GitHub `prod` environment requires Callum's approval and both environments deploy from `main` only.
 
 **AWS account baseline** (#142, done 4 Nov): CloudTrail (multi-region, own bucket), GuardDuty, Access Analyzer, account S3 public-access block, password policy, a Bedrock budget alert.
 

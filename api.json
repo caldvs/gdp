@@ -1,16 +1,16 @@
 {
-  "sha": "5095d12bb8226297a1bbdd4dab966447194d0ff7",
-  "recordedAt": "2026-11-04T18:54:14.060Z",
+  "sha": "b60fc71edbd59571c832f42d7e51fa240982cf3f",
+  "recordedAt": "2026-11-04T20:47:18.292Z",
   "total": {
     "lines": {
-      "total": 2821,
-      "covered": 2549,
+      "total": 2819,
+      "covered": 2547,
       "skipped": 0,
       "pct": 90.35
     },
     "statements": {
-      "total": 3224,
-      "covered": 2840,
+      "total": 3222,
+      "covered": 2838,
       "skipped": 0,
       "pct": 88.08
     },

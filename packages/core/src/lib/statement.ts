@@ -48,7 +48,9 @@ export type Statement = {
   unpaid: { name: string; pence: number }[];
   receivedPence: number;
   outstandingPence: number;
-  /** The lead paid the restaurant; this is what comes back to them. */
+  /** The guests' parts of the lead's platform fee hold (#166). */
+  feesPence: number;
+  /** The lead paid the restaurant (and the platform fee); this is what comes back to them. */
   owedByGuestsPence: number;
 };
 
@@ -159,6 +161,7 @@ export function billStatement(
   }
 
   const leadTotal = people.find((p) => p.status === 'lead')?.totalPence ?? 0;
+  const feesPence = people.reduce((a, p) => a + p.feePence, 0);
   return {
     itemsPence: b.subtotalPence,
     extrasPence: b.serviceChargePence + b.taxPence,
@@ -169,7 +172,8 @@ export function billStatement(
     unpaid,
     receivedPence,
     outstandingPence,
-    owedByGuestsPence: Math.max(0, b.totalPence - leadTotal - unclaimedTotal),
+    feesPence,
+    owedByGuestsPence: Math.max(0, b.totalPence - leadTotal - unclaimedTotal) + feesPence,
   };
 }
 

@@ -100,6 +100,11 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const giveBack = spent.fee?.kind === 'hold' && !spent.fee.releasedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} hold is released.`
     : spent.fee && spent.fee.kind !== 'hold' && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
     : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
+  // #167: at close the guests' part of the platform fee comes off the hold.
+  const guestFees = guests.reduce((acc, p) => acc + projectFeePence(s, b, p.userId), 0);
+  const holdNote = s.platformFeePence && guests.length > 0
+    ? guestFees >= 30 ? `${formatGBP(guestFees)} of your ${formatGBP(s.platformFeePence)} hold is taken; your guests pay it back.` : `Your ${formatGBP(s.platformFeePence)} hold is released.`
+    : null;
   const rate = extrasRate(b);
   const myOwed = projectOwedPence(s, b, meUserId);
   const rows = useMemo(() => claimRows(s, b, meUserId), [s, b, meUserId]);
@@ -194,6 +199,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           body={giveBack ?? ([
             leftPence > 0 ? `Nobody claimed ${formatGBP(leftWithService)}. It goes on you.` : null,
             toCome > 0 ? `${formatGBP(toCome)} still to collect. People can still pay.` : null,
+            holdNote,
           ].filter(Boolean).join(' ') || 'Everyone has paid.')}
           ok="Close bill"
           busy={close.isPending}
@@ -334,7 +340,15 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         ) : null}
         {spent.fee ? (
           <Section title="Platform fee">
-            <Box><Row title={spent.fee.kind === 'hold' ? (spent.fee.releasedAt ? 'Hold released' : 'Hold on your card') : spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
+            {spent.fee.kind === 'hold' ? (
+              <Box>
+                {spent.fee.capturedAt
+                  ? <Row title="Taken from your hold" sub="Your guests pay it back" end={formatGBP(spent.fee.capturedPence ?? 0)} />
+                  : <Row title={spent.fee.releasedAt ? 'Hold released' : 'Hold on your card'} end={formatGBP(spent.fee.amountPence)} />}
+              </Box>
+            ) : (
+              <Box><Row title={spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
+            )}
           </Section>
         ) : spent.credit?.returnedAt ? (
           <Section title="Platform fee">

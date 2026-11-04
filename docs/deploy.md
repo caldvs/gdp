@@ -145,9 +145,9 @@ The workflow runs two checks once `cdk deploy` finishes:
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
   and IAM role, that the Stripe key works, that a hold can be placed and
   released (test mode only: a £1 `pm_card_visa` hold released by the same code
-  that releases a bill nobody joined, so each dev deploy leaves one cancelled
-  £1 hold in the Stripe sandbox, described *Deploy smoke test*; skipped with a
-  live key), Bedrock
+  that releases a bill nobody joined, and another with 66p taken as at close,
+  so each dev deploy leaves one cancelled £1 hold and one 66p payment in the
+  Stripe sandbox, described *Deploy smoke test*; skipped with a live key), Bedrock
   answers, Amazon Location can look up a UK place, and the SES sender is
   verified (and whether SES is still in the sandbox). Stripe, Bedrock and SES
   failing fail the run; Amazon Location only warns, because a failed lookup

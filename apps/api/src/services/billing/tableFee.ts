@@ -12,6 +12,9 @@ import type { Bill } from '../../types/bills.js';
  */
 export const HOLD_PENCE = 100;
 
+/** Stripe's smallest GBP charge: a guests' part under it isn't taken (#167). */
+export const STRIPE_MIN_PENCE = 30;
+
 export { parseEmailList } from '../../config/exemptEmails.js';
 
 export interface TableFee {
@@ -30,6 +33,9 @@ export interface TableFee {
   kind?: 'hold';
   /** Set once a hold was cancelled: nothing was taken. */
   releasedAt?: string;
+  /** What was taken from a hold at close: the guests' part, at most the hold (#167). */
+  capturedPence?: number;
+  capturedAt?: string;
   /** Set once the fee has gone back to the lead's card. */
   refundId?: string;
   refundedAt?: string;
@@ -106,6 +112,11 @@ export interface TableFeeStore {
   putIfAbsent(fee: TableFee): Promise<'recorded' | 'duplicate'>;
   /** Marks a hold released, once. `duplicate` if it already was, or there's no fee. */
   markReleased(billId: string, releasedAt: string): Promise<'recorded' | 'duplicate'>;
+  /** Records what was taken from a hold, once. `duplicate` if it already was settled. */
+  markCaptured(
+    billId: string,
+    capture: { capturedPence: number; capturedAt: string },
+  ): Promise<'recorded' | 'duplicate'>;
   /** Marks the fee refunded, once. `duplicate` if it already was, or there's no fee. */
   markRefunded(
     billId: string,
@@ -122,6 +133,9 @@ export type RefundOutcome =
   | 'no_fee'
   | 'already_refunded'
   | 'no_payment_intent';
+
+/** What `takeFromHold` did, for logs and tests. */
+export type CaptureOutcome = 'captured' | 'released' | 'lapsed' | 'no_hold' | 'already_settled';
 
 /** The parts of a session the refund policy looks at. */
 export interface ClosedSession {
@@ -218,6 +232,8 @@ export interface BillingSummary extends CreditInfo {
     /** `hold`: authorised, taken at close (`capturedPence`) or released. */
     kind?: 'hold';
     releasedAt?: string;
+    capturedPence?: number;
+    capturedAt?: string;
     refundedAt?: string;
   }>;
   credits: Array<{
@@ -515,13 +531,17 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         paidAt: f.paidAt,
         ...(f.kind ? { kind: f.kind } : {}),
         ...(f.releasedAt ? { releasedAt: f.releasedAt } : {}),
+        ...(f.capturedAt ? { capturedPence: f.capturedPence ?? 0, capturedAt: f.capturedAt } : {}),
         ...(f.refundedAt ? { refundedAt: f.refundedAt } : {}),
       }));
       return {
         creditsLeft: deps.credits && (!current || current.returnedAt) ? 1 : 0,
         nextCreditOn: nextCreditOn(month),
-        // A hold isn't a payment until it's taken at close (#167).
-        paidPence: fees.reduce((acc, f) => acc + (f.kind === 'hold' ? 0 : f.amountPence), 0),
+        // A hold is only paid for what was taken from it at close (#167).
+        paidPence: fees.reduce(
+          (acc, f) => acc + (f.kind === 'hold' ? (f.capturedPence ?? 0) : f.amountPence),
+          0,
+        ),
         refundedPence: fees.reduce((acc, f) => acc + (f.refundedAt ? f.amountPence : 0), 0),
         fees,
         credits: history.credits.map((c) => ({
@@ -564,7 +584,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       if (!fee || (fee.sessionId && fee.sessionId !== session.sessionId)) {
         return creditReturned ? 'credit_returned' : 'no_fee';
       }
-      if (fee.refundedAt || fee.releasedAt) return 'already_refunded';
+      if (fee.refundedAt || fee.releasedAt || fee.capturedAt) return 'already_refunded';
       if (fee.kind === 'hold') return releaseHold(fee);
       let paymentIntentId = fee.paymentIntentId;
       if (!paymentIntentId) {
@@ -594,6 +614,56 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         refundedAt: now().toISOString(),
       });
       return written === 'recorded' ? 'refunded' : 'already_refunded';
+    },
+
+    /**
+     * At close, with guests at the table (#167): takes what they owe of the
+     * platform fee from the hold that shared this session, at most the hold,
+     * and releases the rest. Under Stripe's 30p minimum (or when the lead
+     * binned the bill: pass 0) the hold is cancelled instead. Safe to call
+     * twice: the row records it, and Stripe's idempotency key stops a
+     * second capture if the row write is lost.
+     */
+    async takeFromHold(session: ClosedSession, guestsFeePence: number): Promise<CaptureOutcome> {
+      const fee = await deps.store.get(session.billId);
+      if (!fee || fee.kind !== 'hold' || fee.sessionId !== session.sessionId) return 'no_hold';
+      if (fee.capturedAt || fee.releasedAt || fee.refundedAt) return 'already_settled';
+      if (!fee.paymentIntentId) return 'no_hold';
+      const amount = Math.min(Math.max(0, guestsFeePence), fee.amountPence);
+      if (amount < STRIPE_MIN_PENCE) {
+        const released = await releaseHold(fee);
+        return released === 'released' ? 'released' : 'already_settled';
+      }
+      try {
+        await timed('stripe', 'paymentIntents.capture', () =>
+          deps.stripe.paymentIntents.capture(
+            fee.paymentIntentId!,
+            { amount_to_capture: amount },
+            { idempotencyKey: `table-fee-capture-${fee.checkoutSessionId}` },
+          ),
+        );
+      } catch (err) {
+        const e = err as { code?: string };
+        if (e.code !== 'payment_intent_unexpected_state') throw err;
+        // Already captured (a lost row write), or the hold lapsed or was cancelled.
+        const intent = await timed('stripe', 'paymentIntents.retrieve', () =>
+          deps.stripe.paymentIntents.retrieve(fee.paymentIntentId!),
+        );
+        if (intent.status !== 'succeeded') {
+          await deps.store.markReleased(fee.billId, now().toISOString());
+          return 'lapsed';
+        }
+        const written = await deps.store.markCaptured(fee.billId, {
+          capturedPence: intent.amount_received,
+          capturedAt: now().toISOString(),
+        });
+        return written === 'recorded' ? 'captured' : 'already_settled';
+      }
+      const written = await deps.store.markCaptured(fee.billId, {
+        capturedPence: amount,
+        capturedAt: now().toISOString(),
+      });
+      return written === 'recorded' ? 'captured' : 'already_settled';
     },
 
     /** Applies a verified Stripe event. Safe to receive the same event twice. */

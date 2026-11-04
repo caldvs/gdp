@@ -135,3 +135,86 @@ describe('table fee refund: nobody joined', () => {
     expect((await tableFeeStore.get(billId))?.refundedAt).toBeUndefined();
   });
 });
+
+describe('the £1 hold at close (#167)', () => {
+  beforeAll(async () => {
+    await ensureBillsBucket();
+  });
+
+  const holdStripe = () => {
+    const capture = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}));
+    const cancel = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}));
+    const stripe = {
+      paymentIntents: { capture, cancel, retrieve: vi.fn() },
+      refunds: { create: vi.fn() },
+      checkout: { sessions: { retrieve: vi.fn() } },
+    } as unknown as Stripe;
+    return { stripe, capture, cancel };
+  };
+
+  /** Shared on a £1 hold (no credits), and a guest has claimed the pizza (£14.50 of £28.50). */
+  async function heldTableWithGuest(stripe: Stripe) {
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(sampleParsedBill),
+      stripe,
+      creditStore: null,
+    });
+    const lead = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const bill = await createBillFor(app, lead);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(lead) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const { sessionId } = (await create.json()) as { sessionId: string };
+    await tableFeeStore.putIfAbsent({
+      billId: bill.billId,
+      userId: lead,
+      checkoutSessionId: `cs_${bill.billId}`,
+      paymentIntentId: `pi_${bill.billId}`,
+      kind: 'hold',
+      amountPence: 100,
+      paidAt: new Date().toISOString(),
+    });
+    await setPayoutFor(app, lead);
+    expect((await post(app, `/v1/sessions/${sessionId}/share`, lead)).status).toBe(200);
+    await post(app, `/v1/sessions/${sessionId}/join`, guest);
+    const pizza = bill.items.find((i) => i.name === 'Margherita Pizza')!;
+    const claim = await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [pizza.itemId] }),
+    });
+    expect(claim.status).toBe(200);
+    return { app, lead, sessionId, billId: bill.billId };
+  }
+
+  it('closing takes the guests’ part of the fee from the hold, once', async () => {
+    const { stripe, capture } = holdStripe();
+    const { app, lead, sessionId, billId } = await heldTableWithGuest(stripe);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    // floor(100 × 1450 ÷ 2850) = 50p
+    expect(capture).toHaveBeenCalledWith(
+      `pi_${billId}`,
+      { amount_to_capture: 50 },
+      { idempotencyKey: `table-fee-capture-cs_${billId}` },
+    );
+    expect(await tableFeeStore.get(billId)).toMatchObject({ capturedPence: 50 });
+
+    await post(app, `/v1/sessions/${sessionId}/close`, lead);
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('binning a bill guests joined releases the hold: nothing is taken', async () => {
+    const { stripe, capture, cancel } = holdStripe();
+    const { app, lead, sessionId, billId } = await heldTableWithGuest(stripe);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/abandon`, lead)).status).toBe(200);
+    expect(capture).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect((await tableFeeStore.get(billId))?.releasedAt).toBeDefined();
+  });
+});

@@ -1631,8 +1631,12 @@ components:
               kind:
                 type: string
                 enum: [hold]
-                description: A £1 hold, not counted in `paidPence` until it's taken at close.
+                description: A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`).
               releasedAt: { type: string, format: date-time }
+              capturedPence:
+                type: integer
+                description: What was taken from the hold at close, the guests' part (#167).
+              capturedAt: { type: string, format: date-time }
               refundedAt: { type: string, format: date-time }
         credits:
           type: array

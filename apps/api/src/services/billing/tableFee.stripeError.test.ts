@@ -9,6 +9,7 @@ const store: TableFeeStore = {
   get: () => Promise.resolve(null),
   putIfAbsent: () => Promise.resolve('recorded'),
   markReleased: () => Promise.resolve('recorded'),
+  markCaptured: () => Promise.resolve('recorded'),
   markRefunded: () => Promise.resolve('recorded'),
 };
 

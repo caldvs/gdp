@@ -46,6 +46,14 @@ const memoryStore = (): TableFeeStore & { rows: Map<string, TableFee> } => {
       rows.set(billId, { ...existing, releasedAt });
       return Promise.resolve('recorded' as const);
     },
+    markCaptured: (billId, capture) => {
+      const existing = rows.get(billId);
+      if (!existing || existing.capturedAt || existing.releasedAt) {
+        return Promise.resolve('duplicate' as const);
+      }
+      rows.set(billId, { ...existing, ...capture });
+      return Promise.resolve('recorded' as const);
+    },
     markRefunded: (billId, refund) => {
       const existing = rows.get(billId);
       if (!existing || existing.refundedAt) return Promise.resolve('duplicate' as const);
@@ -641,6 +649,125 @@ describe('hold release: nobody joined', () => {
   it('a hold is not counted as paid on the account until it is taken', async () => {
     const { service } = setup();
     expect(await service.summary(LEAD)).toMatchObject({ paidPence: 0 });
+  });
+});
+
+describe('take from the hold at close (#167)', () => {
+  const SESSION_ID = '0193ab12-0000-7000-8000-0000000000cc';
+  const hold: TableFee = {
+    billId: BILL_ID,
+    userId: LEAD.userId,
+    checkoutSessionId: 'cs_hold',
+    paymentIntentId: 'pi_hold',
+    kind: 'hold',
+    amountPence: 100,
+    paidAt: '2026-11-04T19:00:00.000Z',
+    sessionId: SESSION_ID,
+  };
+  const table = {
+    sessionId: SESSION_ID,
+    billId: BILL_ID,
+    creatorUserId: LEAD.userId,
+    participants: [{ userId: LEAD.userId }, { userId: 'guest' }],
+  };
+  const setup = (fee: TableFee | null = hold, credits?: CreditStore) => {
+    const store = memoryStore();
+    if (fee) store.rows.set(BILL_ID, fee);
+    const capture = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}));
+    const cancel = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}));
+    const retrieve = vi.fn(() => Promise.resolve({ status: 'succeeded', amount_received: 66 }));
+    const service = createTableFeeService({
+      stripe: { paymentIntents: { capture, cancel, retrieve } } as unknown as Stripe,
+      store,
+      getBill: () => Promise.resolve(bill(5_000)),
+      appBaseUrl: 'https://gdp.example',
+      ...(credits ? { credits } : {}),
+    });
+    return { store, service, capture, cancel, retrieve };
+  };
+
+  it('takes what the guests owe, once, and leaves nobody-joined handling alone', async () => {
+    const { service, store, capture } = setup();
+    expect(await service.takeFromHold(table, 66)).toBe('captured');
+    expect(capture).toHaveBeenCalledWith(
+      'pi_hold',
+      { amount_to_capture: 66 },
+      { idempotencyKey: 'table-fee-capture-cs_hold' },
+    );
+    expect(store.rows.get(BILL_ID)).toMatchObject({ capturedPence: 66 });
+    expect(await service.takeFromHold(table, 66)).toBe('already_settled');
+    expect(capture).toHaveBeenCalledTimes(1);
+    expect(await service.refundIfNobodyJoined(table)).toBe('guests_joined');
+  });
+
+  it('never takes more than the hold', async () => {
+    const { service, capture } = setup();
+    await service.takeFromHold(table, 250);
+    expect(capture.mock.calls[0]?.[1]).toEqual({ amount_to_capture: 100 });
+  });
+
+  it('releases the hold when the guests owe under 30p, or the bill was binned (0)', async () => {
+    for (const owed of [29, 0]) {
+      const { service, store, capture, cancel } = setup();
+      expect(await service.takeFromHold(table, owed)).toBe('released');
+      expect(capture).not.toHaveBeenCalled();
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(store.rows.get(BILL_ID)?.releasedAt).toBeDefined();
+    }
+  });
+
+  it('leaves alone a hold that shared another session, an old paid fee, or no fee', async () => {
+    const others: (TableFee | null)[] = [
+      { ...hold, sessionId: 'other' },
+      { ...hold, kind: undefined },
+      null,
+    ];
+    for (const fee of others) {
+      const { service, capture } = setup(fee);
+      expect(await service.takeFromHold(table, 66)).toBe('no_hold');
+      expect(capture).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a capture Stripe already made (a lost row write) is recorded, not repeated', async () => {
+    const { service, store, capture } = setup();
+    capture.mockRejectedValueOnce(
+      Object.assign(new Error('already'), { code: 'payment_intent_unexpected_state' }),
+    );
+    expect(await service.takeFromHold(table, 66)).toBe('captured');
+    expect(store.rows.get(BILL_ID)).toMatchObject({ capturedPence: 66 });
+  });
+
+  it('a hold that lapsed is recorded as released', async () => {
+    const { service, store, capture, retrieve } = setup();
+    capture.mockRejectedValueOnce(
+      Object.assign(new Error('canceled'), { code: 'payment_intent_unexpected_state' }),
+    );
+    retrieve.mockResolvedValueOnce({ status: 'canceled', amount_received: 0 });
+    expect(await service.takeFromHold(table, 66)).toBe('lapsed');
+    expect(store.rows.get(BILL_ID)?.releasedAt).toBeDefined();
+  });
+
+  it('other Stripe errors reach the caller (the route logs them; the next close retries)', async () => {
+    const { service, capture } = setup();
+    capture.mockRejectedValueOnce(new Error('network'));
+    await expect(service.takeFromHold(table, 66)).rejects.toThrow('network');
+  });
+
+  it('the account counts what was taken', async () => {
+    const credits: CreditStore = {
+      get: () => Promise.resolve(null),
+      markReturned: () => Promise.resolve('recorded'),
+      listForUser: () =>
+        Promise.resolve({
+          fees: [{ ...hold, capturedPence: 66, capturedAt: '2026-11-04T23:00:00.000Z' }],
+          credits: [],
+        }),
+    };
+    const { service } = setup(hold, credits);
+    const summary = await service.summary(LEAD);
+    expect(summary.paidPence).toBe(66);
+    expect(summary.fees[0]).toMatchObject({ kind: 'hold', capturedPence: 66 });
   });
 });
 

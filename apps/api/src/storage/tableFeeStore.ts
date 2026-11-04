@@ -111,6 +111,25 @@ export const tableFeeStore: TableFeeStore = {
     }
   },
 
+  async markCaptured(billId, capture) {
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: feePk(billId), sk: FEE_SK },
+          UpdateExpression: 'SET capturedPence = :p, capturedAt = :at',
+          ConditionExpression:
+            'attribute_exists(pk) AND attribute_not_exists(capturedAt) AND attribute_not_exists(releasedAt)',
+          ExpressionAttributeValues: { ':p': capture.capturedPence, ':at': capture.capturedAt },
+        }),
+      );
+      return 'recorded';
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return 'duplicate';
+      throw err;
+    }
+  },
+
   async markRefunded(billId, refund) {
     try {
       await ddb.send(

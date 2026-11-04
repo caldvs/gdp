@@ -92,14 +92,8 @@ const stripeCheck: Check = {
   },
 };
 
-/**
- * Smoke test for the hold, against real Stripe: a £1 sandbox hold (Stripe's
- * `pm_card_visa` test card), released by the same code that releases the
- * hold on a bill nobody joined. Proves the key can place and cancel holds.
- * The fee row is kept in memory, so the table isn't touched. Test mode only.
- */
-export async function holdRoundTrip(stripe: Stripe): Promise<string> {
-  const smokeId = `smoke-${Date.now()}`;
+/** A £1 sandbox hold on Stripe's `pm_card_visa` test card. */
+async function placeSmokeHold(stripe: Stripe, smokeId: string): Promise<Stripe.PaymentIntent> {
   const hold = await stripe.paymentIntents.create({
     amount: HOLD_PENCE,
     currency: 'gbp',
@@ -114,7 +108,11 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
   if (hold.status !== 'requires_capture') {
     throw new Error(`test hold ${hold.id} is ${hold.status}, not requires_capture`);
   }
+  return hold;
+}
 
+/** The real fee service over an in-memory row for one smoke-test hold. */
+function smokeService(stripe: Stripe, smokeId: string, hold: Stripe.PaymentIntent) {
   const rows = new Map<string, TableFee>();
   rows.set(smokeId, {
     billId: smokeId,
@@ -124,6 +122,7 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
     kind: 'hold',
     amountPence: HOLD_PENCE,
     paidAt: new Date().toISOString(),
+    sessionId: smokeId,
   });
   const store: TableFeeStore = {
     get: (billId) => Promise.resolve(rows.get(billId) ?? null),
@@ -134,6 +133,12 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
       rows.set(billId, { ...fee, releasedAt });
       return Promise.resolve('recorded');
     },
+    markCaptured: (billId, capture) => {
+      const fee = rows.get(billId);
+      if (!fee || fee.capturedAt || fee.releasedAt) return Promise.resolve('duplicate');
+      rows.set(billId, { ...fee, ...capture });
+      return Promise.resolve('recorded');
+    },
     markRefunded: () => Promise.resolve('duplicate'),
   };
   const fees = createTableFeeService({
@@ -142,6 +147,20 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
     getBill: () => Promise.resolve(null),
     appBaseUrl: env.APP_BASE_URL,
   });
+  return { rows, fees };
+}
+
+/**
+ * Smoke test for the hold, against real Stripe, through the same code the
+ * close and bin routes use: a £1 sandbox hold released as on a bill nobody
+ * joined, and another with 66p taken as the guests' part at close (#167).
+ * Proves the key can place, cancel and part-capture holds. The fee rows
+ * are kept in memory, so the table isn't touched. Test mode only.
+ */
+export async function holdRoundTrip(stripe: Stripe): Promise<string> {
+  const smokeId = `smoke-${Date.now()}`;
+  const hold = await placeSmokeHold(stripe, smokeId);
+  const { rows, fees } = smokeService(stripe, smokeId, hold);
   const session = {
     sessionId: smokeId,
     billId: smokeId,
@@ -155,7 +174,28 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
   const after = await stripe.paymentIntents.retrieve(hold.id);
   if (after.status !== 'canceled')
     throw new Error(`hold ${hold.id} is ${after.status}, not canceled`);
-  return `held ${hold.id} £1.00, released`;
+
+  // A table people joined: the guests' 66p is taken, the rest released.
+  const takeId = `${smokeId}-take`;
+  const second = await placeSmokeHold(stripe, takeId);
+  const take = smokeService(stripe, takeId, second);
+  const taken = await take.fees.takeFromHold(
+    {
+      ...session,
+      sessionId: takeId,
+      billId: takeId,
+      participants: [{ userId: takeId }, { userId: 'guest' }],
+    },
+    66,
+  );
+  if (taken !== 'captured') throw new Error(`capture outcome was ${taken}, not captured`);
+  const captured = await stripe.paymentIntents.retrieve(second.id);
+  if (captured.status !== 'succeeded' || captured.amount_received !== 66) {
+    throw new Error(
+      `hold ${second.id} is ${captured.status} with ${captured.amount_received}p, not 66p taken`,
+    );
+  }
+  return `held ${hold.id} £1.00, released; held ${second.id} £1.00, took £0.66`;
 }
 
 const holdCheck: Check = {

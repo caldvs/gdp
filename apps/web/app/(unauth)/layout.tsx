@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { Header } from '@/components/AppShell';
@@ -20,10 +20,11 @@ function UnauthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Arriving from a join link shows its own sign-in, so no header link then. */
+/** The homepage's links; not on a sign-in screen (or a redirect to one). */
 function FrontDoorHeader() {
   const from = useSearchParams().get('from');
-  return <Header wide signIn={!from} />;
+  const home = usePathname() === '/sign-in';
+  return <Header wide signIn={home && !from} />;
 }
 
 export default function UnauthLayout({ children }: { children: React.ReactNode }) {

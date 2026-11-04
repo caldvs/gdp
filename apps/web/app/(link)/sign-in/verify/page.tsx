@@ -48,7 +48,7 @@ export default function VerifyLinkPage() {
     return (
       <Page>
         <Title title="Link expired" />
-        <Button href="/sign-in" replace>Send a new link</Button>
+        <Button href="/sign-in/email" replace>Send a new link</Button>
       </Page>
     );
   }

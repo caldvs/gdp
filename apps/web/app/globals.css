@@ -319,7 +319,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .hdr__in--wide { max-width: calc(1120px + 2 * var(--gutter)); }
 /* ============ Front door (signed out, #133) ============
    The redesign board's H1 (phone) and H3 (desktop): headline, a join-code
-   bar, an example bill mid-split, sign-in, how it works, pricing. */
+   bar, an example bill mid-split, how it works, pricing. */
 .app:has(.home) { background: #fff; }
 .hdr__nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 .hdr__nav-link { display: none; align-items: center; min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; }
@@ -360,16 +360,6 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__pill--open { background: none; padding: 0; }
 .home__bubble { position: absolute; left: 12px; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; background: #fff; border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 6px 16px rgba(0,0,0,.12); font-size: 15px; font-weight: 600; }
 .home__bubble-tick { width: 32px; height: 32px; border-radius: 50%; background: var(--ok-bg); color: var(--ok-ink); display: inline-flex; align-items: center; justify-content: center; }
-
-/* Log in or sign up. */
-.home__login { width: 100%; max-width: 460px; border: 1px solid #dddddd; border-radius: 12px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,.08); overflow: hidden; scroll-margin-top: 24px; }
-.home__login-top { font-size: 16px; font-weight: 700; text-align: center; padding: 18px 24px; border-bottom: 1px solid var(--line); }
-.home__login-body { padding: 24px; }
-.home__login .field { position: relative; gap: 6px; }
-.home__login .field > label { position: absolute; top: 9px; left: 13px; font-size: 12px; font-weight: 400; color: var(--mute); pointer-events: none; }
-.home__login .input { height: 58px; padding: 22px 12px 6px; font-size: 16px; }
-.home__login .input::placeholder { color: transparent; }
-.home__login .field__hint { font-size: 13px; }
 
 /* How it works, on a grey band. */
 .home__band { background: var(--page); box-shadow: 0 0 0 100vmax var(--page); clip-path: inset(0 -100vmax); padding: 36px 0; }
@@ -414,13 +404,12 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__foot nav { display: flex; gap: 20px; }
 .home__foot a { color: var(--ink); display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 2px; }
 
-/* Phones follow H1: the bill, three steps, then sign-in; the rest is desktop's. */
+/* Phones follow H1: the bill, three steps; the rest is desktop's. */
 .home__desk, .home__desk-flex, .home__join, .home__bubble, .home__band, .home__pricing { display: none; }
 .home__example { padding-bottom: 0; }
 .home__steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .home__steps li { display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 600; }
 .home__steps .home__num { width: 28px; height: 28px; font-size: 14px; }
-.home__login { margin-top: -8px; }
 
 /* Phones: Join / Scan stay in reach. */
 .home__bar-note { text-align: center; font-size: 14px; color: var(--mute); }
@@ -442,7 +431,6 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
   .home__band { display: block; }
   .home__pricing { display: grid; }
   .home__example { padding-bottom: 60px; }
-  .home__login { margin-top: 0; }
   .home__pricing .home__sub { max-width: none; }
   .hdr__nav-link { display: inline-flex; }
   .hdr__link { height: 44px; padding: 0 18px; margin-left: 8px; border: 1px solid var(--ink); border-radius: 999px; font-size: 15px; text-decoration: none; }

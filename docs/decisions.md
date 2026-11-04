@@ -63,7 +63,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
   - Why: a per-head split charges whoever pays first more; a split by spend is fixed by the bill. A hold keeps the lead's upfront cost at nothing. Credits mean one Stripe fee for ten bills.
   - Everything up to the QR stays free (scan, check and edit the bill, bank details). **The server enforces it** (#139): `/share` needs a hold, an exempt lead or a credit, else 402 `TABLE_FEE_REQUIRED`. **One hold, one share**: a hold pays for the session it shared and no other.
   - Screens call it the *platform fee* (#128); code, routes and `TABLE_FEE_*` settings keep the old name.
-  - Built so far: the free monthly credit and the server check. The hold, guests' share, capture, sweep and credit packs follow #171's order.
+  - Built so far: the free monthly credit, the server check, the £1 hold (#165) and guests' share (#166). Capture, sweep and credit packs follow #171's order.
 
   See [table-fee.md](table-fee.md).
 

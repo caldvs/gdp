@@ -6,7 +6,7 @@ import { entitlementOp } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
-import { computeOwedForParticipant, paymentsOf, sentPence } from '../payments/ledger.js';
+import { computeOwedForParticipant, feeFor, paymentsOf, sentPence } from '../payments/ledger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import {
   SHARE_ACTIVITY_KEEP,
@@ -640,7 +640,8 @@ export const sessionService = {
 
     const updatedParticipants: Participant[] = session.participants.map((p) => ({
       ...p,
-      owedPence: owed.get(p.userId) ?? 0,
+      // Plus their part of the platform fee (#166).
+      owedPence: (owed.get(p.userId) ?? 0) + feeFor(bill, session, p),
     }));
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'paying' };

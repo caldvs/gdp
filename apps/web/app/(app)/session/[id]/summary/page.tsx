@@ -84,6 +84,7 @@ export default function SummaryPage() {
               <tbody>
                 {p.items.length === 0 ? <tr><td className="muted">Nothing claimed</td><td className="n" /></tr> : lines(p.items)}
                 {p.extrasPence > 0 ? <tr><td>Service</td><td className="n">{formatGBP(p.extrasPence)}</td></tr> : null}
+                {p.feePence > 0 ? <tr><td>Platform fee</td><td className="n">{formatGBP(p.feePence)}</td></tr> : null}
                 <tr className="t"><td>Total</td><td className="n">{formatGBP(p.totalPence)}</td></tr>
               </tbody>
             </table>

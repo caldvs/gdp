@@ -242,7 +242,7 @@ function Form({ onConfirmed }: { onConfirmed: () => void }) {
     <>
       <CheckoutForm options={{ layout: 'expanded' }} onConfirm={onConfirm} />
       {error ? <Notice tone="error" title="Payment didn’t go through.">{error}</Notice> : null}
-      <p className="muted small" style={{ textAlign: 'center' }}>A hold, nothing taken now · Released if nobody joins</p>
+      <p className="muted small" style={{ textAlign: 'center' }}>Nothing taken now · Your guests pay it back · Released if nobody joins</p>
     </>
   );
 }

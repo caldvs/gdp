@@ -10,7 +10,7 @@ import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
-import { extrasRate as billExtrasRate, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
+import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence } from '@gdp/core/lib/owed';
 import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
@@ -54,7 +54,9 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const hostFirst = firstName(host?.displayName);
   const subtotal = projectSubtotalPence(s, b, meUserId);
   const rate = billExtrasRate(b);
-  const owed = Math.round(subtotal * (1 + rate));
+  // Plus their part of the lead's platform fee hold (#166).
+  const fee = projectFeePence(s, b, meUserId);
+  const owed = Math.round(subtotal * (1 + rate)) + fee;
   // #121: after paying, what's left to send is the difference.
   const l = me ? ledger(me, owed) : null;
   const paidSome = !!l && l.sentPence > 0;
@@ -75,7 +77,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
       <ActionBar stack>
         {owed > 0 ? (
           <div className="actionbar__total">
-            <span className="muted">{paidSome ? `Paid ${formatGBP(l!.sentPence)} · still to pay` : `Your total${rate > 0 ? ' incl. service' : ''}`}</span>
+            <span className="muted">{paidSome ? `Paid ${formatGBP(l!.sentPence)} · still to pay` : totalLabel(rate > 0, fee > 0)}</span>
             <Pulse value={paidSome ? due : owed}><b data-testid="your-share">{formatGBP(paidSome ? due : owed)}</b></Pulse>
           </div>
         ) : null}
@@ -91,6 +93,12 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
       </ActionBar>
     </>
   );
+}
+
+/** "Your total incl. service and fee" */
+export function totalLabel(service: boolean, fee: boolean): string {
+  const parts = [service ? 'service' : null, fee ? 'fee' : null].filter(Boolean);
+  return parts.length > 0 ? `Your total incl. ${parts.join(' and ')}` : 'Your total';
 }
 
 /** "Shared 2 ways with Priya · 1 open" */
@@ -111,6 +119,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   const open = statuses.filter((x) => x.left > 0);
 
   const myOwed = me ? owedFor(s, b, me) : 0;
+  const myFee = me ? projectFeePence(s, b, me.userId) : 0;
   const l = me ? ledger(me, myOwed) : null;
   const due = l?.duePence ?? 0;
   const waitingPence = l?.waiting.reduce((a, e) => a + e.amountPence, 0) ?? 0;
@@ -147,7 +156,10 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
                 return <Row key={id} title={item.name} sub={splitSub(s, share, meUserId)} end={formatGBP(sharePence(item.unitPricePence, share.userIds, share.ways, meUserId))} />;
               })}
             </Box>
-            <Totals><TotalLine tone="total" k={b.serviceChargePence > 0 || b.taxPence > 0 ? 'Your total incl. service' : 'Your total'} v={formatGBP(myOwed)} /></Totals>
+            <Totals>
+              {myFee > 0 ? <TotalLine tone="mute" k="Platform fee" v={formatGBP(myFee)} /> : null}
+              <TotalLine tone="total" k={totalLabel(b.serviceChargePence > 0 || b.taxPence > 0, myFee > 0)} v={formatGBP(myOwed)} />
+            </Totals>
           </Section>
         ) : null}
 

@@ -111,23 +111,23 @@ export function withPayment(
 // some items may legitimately be unclaimed at pay time — so we use
 // the simpler ratio approach and accept slight rounding drift across
 // participants (a few pennies, well within manual-mode tolerance).
-export function computeOwedForParticipant(
-  bill: {
-    items: ReadonlyArray<{ itemId: string; unitPricePence: number }>;
-    subtotalPence: number;
-    serviceChargePence: number;
-    taxPence: number;
-  },
-  session: Session,
-  participant: Participant,
-): number {
+type OwedBill = {
+  items: ReadonlyArray<{ itemId: string; unitPricePence: number }>;
+  subtotalPence: number;
+  serviceChargePence: number;
+  taxPence: number;
+};
+
+/**
+ * A diner's items: whole-unit claims plus their part of each split. Share
+ * subtotal (ADR-0006): equal split, remainder pennies to the lowest userIds.
+ */
+export function itemsPenceFor(bill: OwedBill, session: Session, participant: Participant): number {
   let claimSub = 0;
   for (const id of participant.claimedItemIds) {
     const item = bill.items.find((it) => it.itemId === id);
     if (item) claimSub += item.unitPricePence;
   }
-  // Share subtotal (ADR-0006): equal split, remainder pennies go to
-  // the lowest-userId sharer.
   let shareSub = 0;
   for (const itemId of participant.sharedItemIds ?? []) {
     const item = bill.items.find((it) => it.itemId === itemId);
@@ -139,7 +139,41 @@ export function computeOwedForParticipant(
     const ways = session.shareSettings?.find((s) => s.itemId === itemId)?.ways ?? sharers.length;
     shareSub += splitShare(item.unitPricePence, sharers, ways).get(participant.userId) ?? 0;
   }
+  return claimSub + shareSub;
+}
+
+/** The platform fee this diner pays back to the lead (#166). The lead pays none. */
+export function feeFor(bill: OwedBill, session: Session, participant: Participant): number {
+  if (participant.userId === session.creatorUserId) return 0;
+  return feeSharePence(
+    session.platformFeePence ?? 0,
+    itemsPenceFor(bill, session, participant),
+    bill.subtotalPence,
+  );
+}
+
+export function computeOwedForParticipant(
+  bill: OwedBill,
+  session: Session,
+  participant: Participant,
+): number {
+  const items = itemsPenceFor(bill, session, participant);
   const extras = bill.serviceChargePence + bill.taxPence;
   const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
-  return Math.round((claimSub + shareSub) * (1 + extrasRate));
+  return Math.round(items * (1 + extrasRate)) + feeFor(bill, session, participant);
+}
+
+/**
+ * A guest's part of the lead's £1 hold (#166): the hold times their share
+ * of the bill's items, rounded down. Fixed by the bill, so it doesn't depend
+ * on who joins or pays first, and the guests' parts never add up to more
+ * than the hold. Mirrors feeSharePence in packages/core/src/lib/owed.ts.
+ */
+export function feeSharePence(
+  holdPence: number,
+  itemsPence: number,
+  billSubtotalPence: number,
+): number {
+  if (holdPence <= 0 || itemsPence <= 0 || billSubtotalPence <= 0) return 0;
+  return Math.floor((holdPence * Math.min(itemsPence, billSubtotalPence)) / billSubtotalPence);
 }

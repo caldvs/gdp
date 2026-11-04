@@ -1,7 +1,7 @@
 import type { components } from '../api';
 import { ledger } from './ledger';
 import { formatGBP } from './money';
-import { projectOwedPence, sharePence } from './owed';
+import { projectFeePence, projectOwedPence, sharePence } from './owed';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -23,6 +23,8 @@ export type PersonStatement = {
   items: StatementLine[];
   /** Service and tax on their items. */
   extrasPence: number;
+  /** Their part of the lead's platform fee hold (#166); 0 for the lead. */
+  feePence: number;
   totalPence: number;
 };
 
@@ -127,11 +129,13 @@ export function billStatement(
             ? 'part-paid'
             : 'not-paid';
     }
-    return { userId: p.userId, name: nameOf(p), status, items, extrasPence: totalPence - sum(items), totalPence };
+    const feePence = projectFeePence(s, b, p.userId);
+    return { userId: p.userId, name: nameOf(p), status, items, extrasPence: totalPence - sum(items) - feePence, feePence, totalPence };
   });
 
   const unclaimed = unclaimedItems(s, b);
-  const claimedTotal = people.reduce((a, p) => a + p.totalPence, 0);
+  // The bill's own money: the platform fee is on top of it.
+  const claimedTotal = people.reduce((a, p) => a + p.totalPence - p.feePence, 0);
   const unclaimedTotal = unclaimed.length > 0 ? Math.max(0, b.totalPence - claimedTotal) : 0;
 
   const payments: PaymentLine[] = [];
@@ -201,6 +205,7 @@ export function statementText(
     out.push('', `${p.name} · ${statusText(p.status)}`);
     for (const i of p.items) out.push(line(i.label, i.pence));
     if (p.extrasPence > 0) out.push(line('Service', p.extrasPence));
+    if (p.feePence > 0) out.push(line('Platform fee', p.feePence));
     out.push(line('Total', p.totalPence));
   }
   if (st.unclaimed.items.length > 0) {

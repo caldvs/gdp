@@ -3,7 +3,8 @@ import fc from 'fast-check';
 // The server's maths, imported by path: the client projection must agree
 // with what the API charges (ADR-0006).
 import { apportionByWeight, computeOwed, splitShare } from '../../../../apps/api/src/services/sessions/allocation';
-import { extrasRate, projectOwedPence, projectSubtotalPence, sharePence } from './owed';
+import { extrasRate, feeSharePence, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence } from './owed';
+import { computeOwedForParticipant, feeFor } from '../../../../apps/api/src/services/payments/ledger';
 import { billAndSession, split } from '../test/arbitraries';
 
 describe('sharePence (property)', () => {
@@ -190,5 +191,77 @@ describe('server allocation (property)', () => {
 
   it('extrasRate is zero for an empty bill', () => {
     expect(extrasRate({ subtotalPence: 0, serviceChargePence: 100, taxPence: 0 } as never)).toBe(0);
+  });
+});
+
+describe('platform fee: guests repay the £1 hold by what they ordered (#166, property)', () => {
+  // The API reads each split's ways from shareSettings; the client from shares.
+  const withHold = (session: { shares: { itemId: string; ways: number }[] }, lead: string, hold: number) =>
+    ({
+      ...session,
+      shareSettings: session.shares.map((sh) => ({ itemId: sh.itemId, ways: sh.ways })),
+      creatorUserId: lead,
+      platformFeePence: hold,
+    }) as never;
+  const serverParticipant = (session: { participants: { userId: string }[] }, userId: string) =>
+    ({ payment: { status: 'unpaid' }, ...session.participants.find((p) => p.userId === userId)! }) as never;
+
+  it('client and server agree on every guest’s part, and the lead pays none', () => {
+    fc.assert(
+      fc.property(billAndSession({ complete: false }), fc.integer({ min: 0, max: 500 }), ({ bill, session }, hold) => {
+        const lead = session.participants[0]!.userId;
+        const s = withHold(session, lead, hold);
+        for (const p of session.participants) {
+          const client = projectFeePence(s, bill as never, p.userId);
+          const server = feeFor(bill, s, serverParticipant(session, p.userId));
+          expect(client).toBe(server);
+          if (p.userId === lead) expect(client).toBe(0);
+          // And the owed totals agree to the penny once the fee is in.
+          expect(projectOwedPence(s, bill as never, p.userId)).toBe(
+            computeOwedForParticipant(bill, s, serverParticipant(session, p.userId)),
+          );
+        }
+      }),
+    );
+  });
+
+  it('the guests’ parts never add up to more than the hold', () => {
+    fc.assert(
+      fc.property(billAndSession(), fc.integer({ min: 0, max: 500 }), ({ bill, session }, hold) => {
+        const s = withHold(session, session.participants[0]!.userId, hold);
+        const total = session.participants.reduce((a, p) => a + projectFeePence(s, bill as never, p.userId), 0);
+        expect(total).toBeLessThanOrEqual(hold);
+      }),
+    );
+  });
+
+  it('a guest’s part doesn’t change when someone else joins or claims', () => {
+    fc.assert(
+      fc.property(billAndSession({ complete: false }), fc.uuid(), ({ bill, session }, newcomer) => {
+        fc.pre(session.participants.length >= 2 && !session.participants.some((p) => p.userId === newcomer));
+        const lead = session.participants[0]!.userId;
+        const guest = session.participants[1]!.userId;
+        const before = projectFeePence(withHold(session, lead, 100), bill as never, guest);
+        // A newcomer joins and claims the first item nobody holds a share of.
+        const free = bill.items.find((it) => !session.shares.some((sh) => sh.itemId === it.itemId));
+        const joined = {
+          ...session,
+          participants: [
+            ...session.participants,
+            { userId: newcomer, displayName: 'New', claimedItemIds: free ? [free.itemId] : [], sharedItemIds: [] },
+          ],
+        };
+        expect(projectFeePence(withHold(joined, lead, 100), bill as never, guest)).toBe(before);
+      }),
+    );
+  });
+
+  it('is the hold times their share of the items, rounded down', () => {
+    expect(feeSharePence(100, 1725, 10_400)).toBe(16);
+    expect(feeSharePence(100, 10_400, 10_400)).toBe(100);
+    expect(feeSharePence(100, 20_000, 10_400)).toBe(100);
+    expect(feeSharePence(0, 1725, 10_400)).toBe(0);
+    expect(feeSharePence(100, 0, 10_400)).toBe(0);
+    expect(feeSharePence(100, 1725, 0)).toBe(0);
   });
 });

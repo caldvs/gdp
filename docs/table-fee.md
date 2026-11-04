@@ -2,7 +2,9 @@
 
 The model is in [decisions](decisions.md) (*Pricing*, #171). Each lead gets **one free bill a month** (a *credit*). Without one, sharing puts a **£1 hold** on the lead's card before the QR (#165), in Stripe's embedded form (`ui_mode: "form"`): Apple Pay, Google Pay or card. Nothing is taken then. Card details never leave Stripe's iframe. Everything before the QR (scan, check, edit, bank details) stays free.
 
-Not built yet: guests paying the £1 back (#166), taking it from the hold at close (#167), the expiry sweep (#168) and credit packs (#169). Until #167, a hold on a bill people joined is neither taken nor released, and lapses after about 7 days.
+**Guests pay it back** (#166): sharing on a hold writes `platformFeePence` on the session, and each guest's bill adds *Platform fee* `floor(hold × their items ÷ the bill's items)` (`feeSharePence` in `ledger.ts` and core `owed.ts`, pinned by `owed.property.test.ts`). It's fixed by the bill, so it doesn't depend on who joins or pays first, and the guests' parts never add up to more than the hold. The lead pays none; it's in the guests' totals, payments, the lead's statement and the emailed report.
+
+Not built yet: taking it from the hold at close (#167), the expiry sweep (#168) and credit packs (#169). Until #167, a hold on a bill people joined is neither taken nor released, and lapses after about 7 days.
 
 The billing routes only exist when `STRIPE_SECRET_KEY` is set. Without it there's no fee and no credits: *Continue* on the bill goes straight to the QR, and the server shares without asking.
 
@@ -18,7 +20,7 @@ The web app sends the Checkout Session it just paid with the share (`{ checkoutS
 
 `GET /v1/billing/table-fee/<billId>` returns `free` (with `creditsLeft: 1` and `nextCreditOn`, the 1st of next month) when the credit is there, else `unpaid` with `creditsLeft: 0`. `GET /v1/billing/me` lists the lead's fees and credits (GSI1 `FEES#<userId>`) for the account page and the closed bill. Tests: `tests/integration/table-fee-share.test.ts`, and *monthly credit* in `tableFee.test.ts`.
 
-**Screens** (#128): with a credit, the bill's button is *Spend 1 credit & get QR code* over "1 credit left · you get 1 free each month", and the QR page says "1 credit spent · next credit 1 Dec". Without one, *Hold £1 & get QR code* over "Nothing taken now" leads to the fee page: "No credits left this month. Next one 1 Dec." with *Platform fee hold £1.00* as one row, then the form and "A hold, nothing taken now · Released if nobody joins". The QR page says "£1 hold · nothing taken now". The account shows *Credits* (n left) and *Fees paid* (with what was refunded). Then the QR fills in over about a second (#129); Copy link, Share and *Go to the bill* wait for it. Reduced motion shows it at once.
+**Screens** (#128): with a credit, the bill's button is *Spend 1 credit & get QR code* over "1 credit left · you get 1 free each month", and the QR page says "1 credit spent · next credit 1 Dec". Without one, *Hold £1 & get QR code* over "Nothing taken now · your guests pay it back" leads to the fee page: "No credits left this month. Next one 1 Dec." with *Platform fee hold £1.00* as one row, then the form and "Nothing taken now · Your guests pay it back · Released if nobody joins". The QR page says "£1 hold · nothing taken now". The account shows *Credits* (n left) and *Fees paid* (with what was refunded). Then the QR fills in over about a second (#129); Copy link, Share and *Go to the bill* wait for it. Reduced motion shows it at once.
 
 ## How it works
 
@@ -59,6 +61,7 @@ Test cards: `4242 4242 4242 4242` succeeds, `4000 0025 0000 3155` needs 3D Secur
 - [ ] At activation, Business details: public business name *Pay Me Back*, statement descriptor `PAYMEBACK.DEV` (what banks show). The sandbox can't set these until the account is activated.
 - [x] One free bill a month per lead (#139).
 - [x] The server requires the fee or the month's credit at `POST /v1/sessions/{id}/share` (#139).
-- [ ] Guests repay the £1 in proportion to what they ordered (#166), and it's taken from the hold at close (#167).
+- [x] Guests repay the £1 in proportion to what they ordered (#166).
+- [ ] It's taken from the hold at close (#167).
 - [x] Release the hold (or refund an old fee) when a bill is closed or abandoned before anyone joins, shown on the close screen and the account (#132, #165).
 - [ ] e2e: stub the form in `FakeApi` and cover pay → share.

@@ -88,6 +88,8 @@ export class FakeApi {
   pinnedBillVersion = 1;
   /** #64: how many the lead said are eating. */
   expectedDiners: number | undefined;
+  /** #166: the lead's £1 hold, which the guests pay back by what they ordered. */
+  platformFeePence: number | undefined;
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
@@ -95,8 +97,9 @@ export class FakeApi {
   /** #62: places GET /v1/venues/nearby returns (nearest first). */
   nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
-  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null } = {}) {
+  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; venue?: { name: string; address?: string } | null; platformFeePence?: number } = {}) {
     this.items = opts.items ?? items;
+    this.platformFeePence = opts.platformFeePence;
     const subtotal = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     this.serviceChargePence = Math.round(subtotal * (opts.serviceRate ?? 0));
     this.status = opts.status ?? 'claiming';
@@ -125,6 +128,7 @@ export class FakeApi {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
       ...(this.expectedDiners !== undefined ? { expectedDiners: this.expectedDiners } : {}),
+      ...(this.platformFeePence ? { platformFeePence: this.platformFeePence } : {}),
       ...(this.payoutCheck ? { payoutCheck: this.payoutCheck } : {}),
     };
   }
@@ -136,7 +140,9 @@ export class FakeApi {
     let sub = p.claimedItemIds.reduce((a, id) => a + unit(id), 0);
     for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil(unit(sh.itemId) / sh.ways);
     const b = this.bill;
-    return Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0)));
+    // #166: a guest's part of the hold, by what they ordered.
+    const fee = userId !== 'u-lead' && this.platformFeePence && sub > 0 ? Math.floor((this.platformFeePence * sub) / b.subtotalPence) : 0;
+    return Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0))) + fee;
   }
 
   /**

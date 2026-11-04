@@ -51,7 +51,7 @@ _Last updated 4 Nov 2026 (night)._
 
 **Top-ups (#121)** are built: a paid guest taps *I had something else*, claims more and pays the difference; the lead confirms each payment (*Says they've paid £x more*). Rules in [decisions](docs/decisions.md). Payments live as `payments[]` on the participant row (`src/services/payments/ledger.ts`, `packages/core/src/lib/ledger.ts`); old sessions with one `payment` read as one payment for what was owed.
 
-**Analysis cache**, designed in [docs/design/analysis-cache.md](docs/design/analysis-cache.md), not built. Callum to decide first: a global cache or one per user. Bills record the model that actually read them (`parsedFrom.parser`), so cache keys can use it.
+**Analysis cache** ([design](docs/design/analysis-cache.md)): step 1 is built, global (Callum, 4 Nov). `parseService.analyse` (both `/parse` and background reads) looks up `ANALYSIS#<sha256>` / `P#<model:version:promptHash>` (`analysisStore.ts`, 30-day `ttlAt`) before calling Bedrock; a hit builds a fresh bill (`parsedFrom.source: 'cache'`) and doesn't count against the daily read cap. Logs `bill.analysis.hit` / `.miss`. Not built: steps 2–3 (duplicate context, fork / *Start again*).
 
 **Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); #141 (Identity Center, security contact); #144 (separate prod account?); #115 (decision); #79 (Stripe live). Seven Dependabot PRs are open: merge or close them on GitHub.
 

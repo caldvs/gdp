@@ -975,7 +975,7 @@ export interface components {
             creditsLeft: 0 | 1;
             /** Format: date */
             nextCreditOn: string;
-            /** @description Every fee paid */
+            /** @description Every fee paid, refunded ones included */
             paidPence: number;
             refundedPence: number;
             fees: {

@@ -8,7 +8,7 @@ import {
   nextCreditOn,
   type CreditStore,
   type MonthlyCredit,
-  feeLookupKeyFor,
+  HOLD_PENCE,
   nobodyJoined,
   parseEmailList,
   type TableFee,
@@ -34,9 +34,16 @@ const memoryStore = (): TableFeeStore & { rows: Map<string, TableFee> } => {
       const existing = rows.get(fee.billId);
       const replaceable =
         !existing ||
-        (!!existing.refundedAt && existing.checkoutSessionId !== fee.checkoutSessionId);
+        ((!!existing.refundedAt || !!existing.releasedAt) &&
+          existing.checkoutSessionId !== fee.checkoutSessionId);
       if (!replaceable) return Promise.resolve('duplicate' as const);
       rows.set(fee.billId, fee);
+      return Promise.resolve('recorded' as const);
+    },
+    markReleased: (billId, releasedAt) => {
+      const existing = rows.get(billId);
+      if (!existing || existing.releasedAt) return Promise.resolve('duplicate' as const);
+      rows.set(billId, { ...existing, releasedAt });
       return Promise.resolve('recorded' as const);
     },
     markRefunded: (billId, refund) => {
@@ -52,35 +59,22 @@ const fakeStripe = () => {
   const create = vi.fn(() =>
     Promise.resolve({ id: 'cs_test_1', client_secret: 'cs_test_1_secret_x' }),
   );
-  const list = vi.fn(({ lookup_keys }: { lookup_keys: string[] }) =>
-    Promise.resolve({
-      data: [
-        {
-          id: `price_${lookup_keys[0]}`,
-          unit_amount: lookup_keys[0] === 'table_fee_3' ? 300 : 200,
-        },
-      ],
-    }),
-  );
   return {
-    stripe: { checkout: { sessions: { create } }, prices: { list } } as unknown as Stripe,
+    stripe: { checkout: { sessions: { create } } } as unknown as Stripe,
     create,
-    list,
   };
 };
 
-describe('feeLookupKeyFor', () => {
-  it('charges £2 up to £100 and £3 above it', () => {
-    expect(feeLookupKeyFor(0)).toBe('table_fee_2');
-    expect(feeLookupKeyFor(10_000)).toBe('table_fee_2');
-    expect(feeLookupKeyFor(10_001)).toBe('table_fee_3');
+describe('HOLD_PENCE', () => {
+  it('is £1 whatever the bill', () => {
+    expect(HOLD_PENCE).toBe(100);
   });
 });
 
 describe('checkoutSessionParams', () => {
   it('uses the Checkout Studio settings exactly', () => {
     const params = checkoutSessionParams({
-      priceId: 'price_x',
+      amountPence: 100,
       billId: BILL_ID,
       userId: LEAD.userId,
       returnUrl: 'http://localhost:8081/table-fee/x',
@@ -94,7 +88,19 @@ describe('checkoutSessionParams', () => {
       name_collection: { individual: { enabled: true, optional: true } },
       integration_identifier: 'custom_embedded_web_0001',
       mode: 'payment',
-      line_items: [{ price: 'price_x', quantity: 1 }],
+      line_items: [
+        {
+          price_data: {
+            currency: 'gbp',
+            unit_amount: 100,
+            product_data: { name: 'Platform fee' },
+          },
+          quantity: 1,
+        },
+      ],
+      // A hold, not a payment: taken (in part) or released at close.
+      payment_intent_data: { capture_method: 'manual' },
+      metadata: { kind: 'hold' },
     });
     // Only valid for subscriptions.
     expect(params).not.toHaveProperty('payment_method_collection');
@@ -103,8 +109,8 @@ describe('checkoutSessionParams', () => {
 });
 
 describe('tableFeeService.startCheckout', () => {
-  it('picks the £3 price for a bill over £100 and returns the client secret', async () => {
-    const { stripe, create, list } = fakeStripe();
+  it('holds £1 whatever the bill and returns the client secret', async () => {
+    const { stripe, create } = fakeStripe();
     const service = createTableFeeService({
       stripe,
       store: memoryStore(),
@@ -112,14 +118,12 @@ describe('tableFeeService.startCheckout', () => {
       appBaseUrl: 'https://gdp.example',
     });
     const result = await service.startCheckout({ caller: LEAD, billId: BILL_ID });
-    expect(result).toEqual({ clientSecret: 'cs_test_1_secret_x', amountPence: 300 });
-    expect(list).toHaveBeenCalledWith({ lookup_keys: ['table_fee_3'], active: true, limit: 1 });
+    expect(result).toEqual({ clientSecret: 'cs_test_1_secret_x', amountPence: 100 });
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        line_items: [{ price: 'price_table_fee_3', quantity: 1 }],
         customer_email: LEAD.email,
         client_reference_id: LEAD.userId,
-        metadata: { billId: BILL_ID, userId: LEAD.userId },
+        metadata: { billId: BILL_ID, userId: LEAD.userId, kind: 'hold' },
         return_url: `https://gdp.example/table-fee/${BILL_ID}?session_id={CHECKOUT_SESSION_ID}`,
       }),
     );
@@ -202,7 +206,7 @@ describe('exempt leads', () => {
     const { service: s } = service('someone-else@example.com');
     expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
       status: 'unpaid',
-      amountPence: 300,
+      amountPence: 100,
     });
     const noEmail = { userId: LEAD.userId, displayName: 'Callum' };
     expect(await s.status({ caller: noEmail, billId: BILL_ID })).toMatchObject({
@@ -292,6 +296,60 @@ describe('POST /webhooks/stripe', () => {
     expect(store.rows.size).toBe(0);
   });
 
+  it('records an authorised hold from the PaymentIntent, since its checkout completes unpaid', async () => {
+    const store = memoryStore();
+    const retrieve = vi.fn(() =>
+      Promise.resolve({ id: 'pi_1', status: 'requires_capture', amount_capturable: 100 }),
+    );
+    const tableFees = createTableFeeService({
+      stripe: { paymentIntents: { retrieve } } as unknown as Stripe,
+      store,
+      getBill: () => Promise.resolve(bill(5_000)),
+      appBaseUrl: 'https://gdp.example',
+    });
+    const event = (status: string) =>
+      ({
+        type: 'checkout.session.completed',
+        created: 1_793_478_000,
+        data: {
+          object: {
+            id: 'cs_hold',
+            status,
+            payment_status: 'unpaid',
+            payment_intent: 'pi_1',
+            metadata: { billId: BILL_ID, userId: LEAD.userId, kind: 'hold' },
+          },
+        },
+      }) as unknown as Stripe.Event;
+    expect(await tableFees.handleEvent(event('open'))).toBe('ignored');
+    expect(await tableFees.handleEvent(event('complete'))).toBe('applied');
+    expect(await tableFees.handleEvent(event('complete'))).toBe('duplicate');
+    expect(store.rows.get(BILL_ID)).toEqual({
+      billId: BILL_ID,
+      userId: LEAD.userId,
+      checkoutSessionId: 'cs_hold',
+      paymentIntentId: 'pi_1',
+      kind: 'hold',
+      amountPence: 100,
+      paidAt: new Date(1_793_478_000 * 1000).toISOString(),
+    });
+    expect(await tableFees.status({ caller: LEAD, billId: BILL_ID })).toEqual({
+      billId: BILL_ID,
+      status: 'held',
+      amountPence: 100,
+      heldAt: new Date(1_793_478_000 * 1000).toISOString(),
+    });
+
+    // A card that wasn't authorised records nothing.
+    retrieve.mockResolvedValueOnce({
+      id: 'pi_1',
+      status: 'requires_payment_method',
+      amount_capturable: 0,
+    });
+    store.rows.clear();
+    expect(await tableFees.handleEvent(event('complete'))).toBe('ignored');
+  });
+
   it('rejects a bad signature', async () => {
     const { store, send } = setup();
     const res = await send(JSON.stringify(completedEvent('paid')), 't=1,v1=bad');
@@ -328,7 +386,7 @@ describe('tableFeeService.status', () => {
     await expect(svc.status({ caller: LEAD, billId: BILL_ID })).resolves.toEqual({
       billId: BILL_ID,
       status: 'unpaid',
-      amountPence: 200,
+      amountPence: 100,
     });
     expect(retrieve).not.toHaveBeenCalled();
   });
@@ -478,10 +536,10 @@ describe('refund policy: nobody joined', () => {
     await service.refundIfNobodyJoined(leadOnly);
     expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
       status: 'unpaid',
-      amountPence: 300,
+      amountPence: 100,
     });
     await expect(service.startCheckout({ caller: LEAD, billId: BILL_ID })).resolves.toMatchObject({
-      amountPence: 300,
+      amountPence: 100,
     });
 
     // Stripe resending the refunded payment's webhook doesn't bring it back…
@@ -508,6 +566,81 @@ describe('refund policy: nobody joined', () => {
       status: 'paid',
     });
     expect(await service.refundIfNobodyJoined(leadOnly)).toBe('refunded');
+  });
+});
+
+describe('hold release: nobody joined', () => {
+  const SESSION_ID = '0193ab12-0000-7000-8000-0000000000bb';
+  const hold: TableFee = {
+    billId: BILL_ID,
+    userId: LEAD.userId,
+    checkoutSessionId: 'cs_hold',
+    paymentIntentId: 'pi_hold',
+    kind: 'hold',
+    amountPence: 100,
+    paidAt: '2026-11-04T19:00:00.000Z',
+  };
+  const leadOnly = {
+    sessionId: SESSION_ID,
+    billId: BILL_ID,
+    creatorUserId: LEAD.userId,
+    participants: [{ userId: LEAD.userId }],
+  };
+  const setup = (cancel = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}))) => {
+    const store = memoryStore();
+    store.rows.set(BILL_ID, hold);
+    const service = createTableFeeService({
+      stripe: { paymentIntents: { cancel } } as unknown as Stripe,
+      store,
+      getBill: () => Promise.resolve(bill(5_000)),
+      appBaseUrl: 'https://gdp.example',
+    });
+    return { store, service, cancel };
+  };
+
+  it('cancels the hold, once, so nothing is taken', async () => {
+    const { service, store, cancel } = setup();
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('released');
+    expect(cancel).toHaveBeenCalledWith(
+      'pi_hold',
+      { cancellation_reason: 'abandoned' },
+      { idempotencyKey: 'table-fee-release-cs_hold' },
+    );
+    expect(store.rows.get(BILL_ID)?.releasedAt).toMatch(/^\d{4}-/);
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('already_refunded');
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('a hold Stripe already cancelled (or that lapsed) is recorded as released', async () => {
+    const cancel = vi.fn(() =>
+      Promise.reject(
+        Object.assign(new Error('canceled'), { code: 'payment_intent_unexpected_state' }),
+      ),
+    );
+    const { service, store } = setup(cancel);
+    expect(await service.refundIfNobodyJoined(leadOnly)).toBe('released');
+    expect(store.rows.get(BILL_ID)?.releasedAt).toBeDefined();
+  });
+
+  it('a released hold no longer pays for the bill', async () => {
+    const { service } = setup();
+    await service.refundIfNobodyJoined(leadOnly);
+    expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+      amountPence: 100,
+    });
+  });
+
+  it('a hold that shared a session pays the guests’ part of it back (holdPence)', async () => {
+    const { service } = setup();
+    expect(
+      await service.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: SESSION_ID }),
+    ).toEqual({ kind: 'fee', billId: BILL_ID, sessionId: SESSION_ID, holdPence: 100 });
+  });
+
+  it('a hold is not counted as paid on the account until it is taken', async () => {
+    const { service } = setup();
+    expect(await service.summary(LEAD)).toMatchObject({ paidPence: 0 });
   });
 });
 
@@ -578,7 +711,7 @@ describe('monthly credit', () => {
     });
     expect(await service.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
       status: 'unpaid',
-      amountPence: 200,
+      amountPence: 100,
       creditsLeft: 0,
     });
     await expect(

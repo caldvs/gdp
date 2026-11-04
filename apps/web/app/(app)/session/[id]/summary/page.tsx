@@ -49,7 +49,8 @@ export default function SummaryPage() {
   const lead = s.participants.find((p) => p.userId === s.creatorUserId);
   const leadName = firstName(lead?.displayName, 'You');
   const st = billStatement(s, b, (p) => firstName(p.displayName, 'Guest'));
-  const fee = spent.fee && !spent.fee.refundedAt ? spent.fee.amountPence : undefined;
+  // A hold isn't a fee until it's taken at close (#167).
+  const fee = spent.fee && spent.fee.kind !== 'hold' && !spent.fee.refundedAt ? spent.fee.amountPence : undefined;
   const venue = b.venue?.name ?? s.venue?.name;
   const title = venue ? `Bill summary: ${venue}` : 'Bill summary';
   const when = new Date(s.createdAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' });

@@ -8,16 +8,20 @@ const LEAD = { userId: 'user-lead', displayName: 'Callum', email: 'callum@exampl
 const store: TableFeeStore = {
   get: () => Promise.resolve(null),
   putIfAbsent: () => Promise.resolve('recorded'),
+  markReleased: () => Promise.resolve('recorded'),
   markRefunded: () => Promise.resolve('recorded'),
 };
 
 describe('tableFeeService.startCheckout: Stripe errors (#155)', () => {
   it('a Stripe error reaches the client as a plain message, not Stripe’s own', async () => {
-    const stripeError = Object.assign(new Error('No such price: price_123 (secret detail)'), {
-      type: 'StripeInvalidRequestError',
-    });
+    const stripeError = Object.assign(
+      new Error('Invalid capture_method on price_123 (secret detail)'),
+      {
+        type: 'StripeInvalidRequestError',
+      },
+    );
     const stripe = {
-      prices: { list: () => Promise.reject(stripeError) },
+      checkout: { sessions: { create: () => Promise.reject(stripeError) } },
     } as unknown as Stripe;
     const service = createTableFeeService({
       stripe,

@@ -36,7 +36,9 @@ _Last updated 4 Nov 2026._
 
 ## Next up
 
-**Redesign** (board: the "Pay Me Back redesign" artifact, #127–#133): all six parts built. Left: guests repaying the platform fee (the board's "£1 added to each guest's share"), and renaming the Stripe product at live activation (#79).
+**Pricing** (#171, decided 4 Nov): free bill a month, credits 10 for £5, else a £1 hold the guests pay back by what they ordered ([decisions](docs/decisions.md)). Built: the decision write-up (#164) and the £1 hold at the QR, released when nobody joins (#165). Next, in order: guests' share (#166), take it from the hold at close (#167), the expiry sweep (#168), credit packs (#169), Stripe Dashboard tidy-up (#170). Until #167, a hold on a bill people joined is neither taken nor released and lapses after about 7 days (test only: prod has no Stripe key).
+
+**Redesign** (board: the "Pay Me Back redesign" artifact, #127–#133): all six parts built.
 
 **Environments rollout**, planned in the Claude project doc _environments-rollout-plan_: done bar Stripe live (#79) and the first Release. `paymeback.dev` serves Production and `test.paymeback.dev` the test Preview; `api.paymeback.dev` / `api.test.paymeback.dev` are the APIs (Vercel Production's `NEXT_PUBLIC_API_BASE_URL` now points at `api.paymeback.dev`, from the next Release). SES sends from `noreply@paymeback.dev`; prod alarms on SES bounce and complaint rates.
 
@@ -66,7 +68,6 @@ _Last updated 4 Nov 2026._
 - Accounts optional: guests join with just a name (needs API work).
 - The lead assigning items to other people.
 - Bill totals on `GET /v1/me/sessions`.
-- Guests repaying the platform fee. See [docs/table-fee.md](docs/table-fee.md).
 
 ## Housekeeping
 

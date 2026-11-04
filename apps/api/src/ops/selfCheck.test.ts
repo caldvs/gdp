@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type Stripe from 'stripe';
 import {
   isSelfCheckEvent,
-  refundRoundTrip,
+  holdRoundTrip,
   runSelfCheck,
   stripeKeyModeProblem,
   testAccountsProblem,
@@ -66,44 +66,49 @@ describe('testAccountsProblem', () => {
   });
 });
 
-describe('refundRoundTrip', () => {
-  const fake = (over: { paymentStatus?: string; refundStatus?: string } = {}) => {
+describe('holdRoundTrip', () => {
+  const fake = (over: { holdStatus?: string; afterStatus?: string } = {}) => {
     const piCreate = vi.fn((_params: object) =>
-      Promise.resolve({ id: 'pi_smoke', status: over.paymentStatus ?? 'succeeded' }),
+      Promise.resolve({ id: 'pi_smoke', status: over.holdStatus ?? 'requires_capture' }),
     );
-    const refundCreate = vi.fn((_params: object, _opts: object) =>
-      Promise.resolve({ id: 're_smoke' }),
+    const piCancel = vi.fn((_id: string, _params: object, _opts: object) =>
+      Promise.resolve({ id: 'pi_smoke', status: 'canceled' }),
     );
-    const refundRetrieve = vi.fn(() =>
-      Promise.resolve({ id: 're_smoke', status: over.refundStatus ?? 'succeeded', amount: 200 }),
+    const piRetrieve = vi.fn(() =>
+      Promise.resolve({ id: 'pi_smoke', status: over.afterStatus ?? 'canceled' }),
     );
     const stripe = {
-      paymentIntents: { create: piCreate },
-      refunds: { create: refundCreate, retrieve: refundRetrieve },
+      paymentIntents: { create: piCreate, cancel: piCancel, retrieve: piRetrieve },
     } as unknown as Stripe;
-    return { stripe, piCreate, refundCreate };
+    return { stripe, piCreate, piCancel };
   };
 
-  it('pays £2 with the test card and refunds it through the real refund code', async () => {
-    const { stripe, piCreate, refundCreate } = fake();
-    await expect(refundRoundTrip(stripe)).resolves.toMatch(/refunded re_smoke \(succeeded\)/);
+  it('holds £1 with the test card and releases it through the real release code', async () => {
+    const { stripe, piCreate, piCancel } = fake();
+    await expect(holdRoundTrip(stripe)).resolves.toMatch(/held pi_smoke £1.00, released/);
     expect(piCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ amount: 200, currency: 'gbp', payment_method: 'pm_card_visa' }),
-    );
-    expect(refundCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ payment_intent: 'pi_smoke' }),
       expect.objectContaining({
-        idempotencyKey: expect.stringMatching(/^table-fee-refund-/) as string,
+        amount: 100,
+        currency: 'gbp',
+        capture_method: 'manual',
+        payment_method: 'pm_card_visa',
+      }),
+    );
+    expect(piCancel).toHaveBeenCalledWith(
+      'pi_smoke',
+      expect.anything(),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(/^table-fee-release-/) as string,
       }),
     );
   });
 
-  it('fails when the payment or the refund does not go through', async () => {
-    await expect(
-      refundRoundTrip(fake({ paymentStatus: 'requires_action' }).stripe),
-    ).rejects.toThrow(/requires_action/);
-    await expect(refundRoundTrip(fake({ refundStatus: 'failed' }).stripe)).rejects.toThrow(
-      /failed/,
+  it('fails when the hold or the release does not go through', async () => {
+    await expect(holdRoundTrip(fake({ holdStatus: 'requires_action' }).stripe)).rejects.toThrow(
+      /requires_action/,
+    );
+    await expect(holdRoundTrip(fake({ afterStatus: 'requires_capture' }).stripe)).rejects.toThrow(
+      /not canceled/,
     );
   });
 });

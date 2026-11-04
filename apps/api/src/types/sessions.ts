@@ -143,6 +143,10 @@ export const SessionSchema = z.object({
   // How many people the lead expects at the table, lead included. Unset
   // until the lead says.
   expectedDiners: ExpectedDinersSchema.optional(),
+  // The hold that paid for the share (#165), which the guests pay back in
+  // proportion to what they ordered (#166). Absent when a credit, an exempt
+  // lead or Stripe being off paid for it.
+  platformFeePence: z.number().int().nonnegative().optional(),
   // The lead's device's fingerprint of the bank details it puts in the join
   // link (#151): PBKDF2 of the details salted with the session id, never the
   // details themselves (ADR-0002). Guests' apps check the link against it.

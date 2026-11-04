@@ -5,14 +5,12 @@ import { baseLogger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Bill } from '../../types/bills.js';
 
-/** Bills over £100 cost £3 to share; up to £100, £2. */
-export const FEE_THRESHOLD_PENCE = 10_000;
-
-/** Stripe price lookup keys, set up on the *Table fee* product in the Dashboard. */
-export type FeeLookupKey = 'table_fee_2' | 'table_fee_3';
-
-export const feeLookupKeyFor = (billTotalPence: number): FeeLookupKey =>
-  billTotalPence > FEE_THRESHOLD_PENCE ? 'table_fee_3' : 'table_fee_2';
+/**
+ * Sharing without a credit puts a £1 hold on the lead's card (decisions:
+ * Pricing, #165). Nothing is taken then; at close the platform takes what
+ * the guests owe from it and releases the rest.
+ */
+export const HOLD_PENCE = 100;
 
 export { parseEmailList } from '../../config/exemptEmails.js';
 
@@ -21,8 +19,17 @@ export interface TableFee {
   userId: string;
   checkoutSessionId: string;
   paymentIntentId?: string;
+  /** What was paid, or for a hold what was authorised. */
   amountPence: number;
+  /** When it was paid, or for a hold when it was authorised. */
   paidAt: string;
+  /**
+   * `hold`: a card hold (#165), taken from or released at close. Absent: a
+   * fee paid outright, from before holds.
+   */
+  kind?: 'hold';
+  /** Set once a hold was cancelled: nothing was taken. */
+  releasedAt?: string;
   /** Set once the fee has gone back to the lead's card. */
   refundId?: string;
   refundedAt?: string;
@@ -64,7 +71,8 @@ export interface CreditStore {
 
 /** What lets a share go ahead, written in the share's own transaction. */
 export type ShareEntitlement =
-  | { kind: 'fee'; billId: string; sessionId: string }
+  /** `holdPence`: a hold the guests pay back (absent for a fee paid outright). */
+  | { kind: 'fee'; billId: string; sessionId: string; holdPence?: number }
   | { kind: 'credit'; credit: MonthlyCredit }
   | { kind: 'waived' };
 
@@ -96,6 +104,8 @@ export interface TableFeeStore {
    * bill again), but never by its own, already refunded, Checkout Session.
    */
   putIfAbsent(fee: TableFee): Promise<'recorded' | 'duplicate'>;
+  /** Marks a hold released, once. `duplicate` if it already was, or there's no fee. */
+  markReleased(billId: string, releasedAt: string): Promise<'recorded' | 'duplicate'>;
   /** Marks the fee refunded, once. `duplicate` if it already was, or there's no fee. */
   markRefunded(
     billId: string,
@@ -106,6 +116,7 @@ export interface TableFeeStore {
 /** What `refundIfNobodyJoined` did, for logs and tests. */
 export type RefundOutcome =
   | 'refunded'
+  | 'released'
   | 'credit_returned'
   | 'guests_joined'
   | 'no_fee'
@@ -133,7 +144,7 @@ export const nobodyJoined = (session: ClosedSession): boolean =>
  * the Checkout Studio configuration and must stay as they are.
  */
 export const checkoutSessionParams = (input: {
-  priceId: string;
+  amountPence: number;
   billId: string;
   userId: string;
   email?: string;
@@ -149,11 +160,24 @@ export const checkoutSessionParams = (input: {
   integration_identifier: 'custom_embedded_web_0001',
   // ours
   mode: 'payment',
-  line_items: [{ price: input.priceId, quantity: 1 }],
+  line_items: [
+    {
+      price_data: {
+        currency: 'gbp',
+        unit_amount: input.amountPence,
+        product_data: { name: 'Platform fee' },
+      },
+      quantity: 1,
+    },
+  ],
   return_url: input.returnUrl,
   client_reference_id: input.userId,
-  metadata: { billId: input.billId, userId: input.userId },
-  payment_intent_data: { metadata: { billId: input.billId, userId: input.userId } },
+  metadata: { billId: input.billId, userId: input.userId, kind: 'hold' },
+  // A hold: authorised now, taken (in part) or released at close.
+  payment_intent_data: {
+    capture_method: 'manual',
+    metadata: { billId: input.billId, userId: input.userId, kind: 'hold' },
+  },
   ...(input.email ? { customer_email: input.email } : {}),
 });
 
@@ -177,6 +201,7 @@ export interface CreditInfo {
 
 export type TableFeeStatus =
   | { billId: string; status: 'paid'; amountPence: number; paidAt: string }
+  | { billId: string; status: 'held'; amountPence: number; heldAt: string }
   | ({ billId: string; status: 'unpaid'; amountPence: number } & Partial<CreditInfo>)
   | { billId: string; status: 'waived'; amountPence: 0 }
   | ({ billId: string; status: 'free'; amountPence: 0 } & CreditInfo);
@@ -190,6 +215,9 @@ export interface BillingSummary extends CreditInfo {
     sessionId?: string;
     amountPence: number;
     paidAt: string;
+    /** `hold`: authorised, taken at close (`capturedPence`) or released. */
+    kind?: 'hold';
+    releasedAt?: string;
     refundedAt?: string;
   }>;
   credits: Array<{
@@ -201,9 +229,9 @@ export interface BillingSummary extends CreditInfo {
   }>;
 }
 
-/** A fee that still buys a share: paid, not refunded, and not spent on another session. */
+/** A fee that still buys a share: paid or held, not refunded or released, and not spent on another session. */
 const usableFor = (fee: TableFee | null, sessionId: string | undefined): TableFee | null => {
-  if (!fee || fee.refundedAt) return null;
+  if (!fee || fee.refundedAt || fee.releasedAt) return null;
   if (fee.sessionId && fee.sessionId !== sessionId) return null;
   return fee;
 };
@@ -221,37 +249,21 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     return bill;
   };
 
-  const priceFor = async (bill: Bill): Promise<Stripe.Price> => {
-    const lookupKey = feeLookupKeyFor(bill.totalPence);
-    const prices = await timed('stripe', 'prices.list', () =>
-      deps.stripe.prices.list({ lookup_keys: [lookupKey], active: true, limit: 1 }),
-    );
-    const price = prices.data[0];
-    if (!price || price.unit_amount == null) {
-      throw new AppError(
-        'PAYMENT_PROVIDER_ERROR',
-        `No active Stripe price with lookup key ${lookupKey}`,
-      );
-    }
-    return price;
-  };
-
   const startCheckoutUnsafe = async (input: { caller: VerifiedCaller; billId: string }) => {
     const bill = await loadOwnBill(input.billId, input.caller);
     // A fee spent on an earlier share doesn't stop a new one.
     const existing = usableFor(await deps.store.get(bill.billId), undefined);
     if (existing) {
-      throw new AppError('TABLE_FEE_PAID', 'The fee for this bill is already paid');
+      throw new AppError('TABLE_FEE_PAID', 'This bill already has a hold');
     }
     if (isExempt(input.caller)) {
       throw new AppError('TABLE_FEE_WAIVED', 'No fee is due: this account is exempt');
     }
-    const price = await priceFor(bill);
     const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
     const session = await timed('stripe', 'checkout.sessions.create', () =>
       deps.stripe.checkout.sessions.create(
         checkoutSessionParams({
-          priceId: price.id,
+          amountPence: HOLD_PENCE,
           billId: bill.billId,
           userId: input.caller.userId,
           ...(input.caller.email ? { email: input.caller.email } : {}),
@@ -262,21 +274,43 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     if (!session.client_secret) {
       throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');
     }
-    return { clientSecret: session.client_secret, amountPence: price.unit_amount ?? 0 };
+    return { clientSecret: session.client_secret, amountPence: HOLD_PENCE };
   };
 
-  /** Records a paid Checkout Session for its bill. Safe to call twice. */
+  /**
+   * Records a completed Checkout Session for its bill: an authorised hold,
+   * or (from before holds) a paid fee. Safe to call twice.
+   */
   const recordPaid = async (
     session: Stripe.Checkout.Session,
     paidAt: string,
   ): Promise<'recorded' | 'duplicate' | 'ignored'> => {
     const billId = session.metadata?.billId;
     const userId = session.metadata?.userId;
-    if (session.payment_status !== 'paid' || !billId || !userId) return 'ignored';
+    if (!billId || !userId) return 'ignored';
     const paymentIntentId =
       typeof session.payment_intent === 'string'
         ? session.payment_intent
         : session.payment_intent?.id;
+    if (session.metadata?.kind === 'hold') {
+      // A hold's Checkout Session completes unpaid: the PaymentIntent says
+      // whether the card was authorised.
+      if (session.status !== 'complete' || !paymentIntentId) return 'ignored';
+      const intent = await timed('stripe', 'paymentIntents.retrieve', () =>
+        deps.stripe.paymentIntents.retrieve(paymentIntentId),
+      );
+      if (intent.status !== 'requires_capture') return 'ignored';
+      return deps.store.putIfAbsent({
+        billId,
+        userId,
+        checkoutSessionId: session.id,
+        paymentIntentId,
+        kind: 'hold',
+        amountPence: intent.amount_capturable,
+        paidAt,
+      });
+    }
+    if (session.payment_status !== 'paid') return 'ignored';
     return deps.store.putIfAbsent({
       billId,
       userId,
@@ -328,18 +362,26 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     if (fee) {
       return {
         month,
-        status: {
-          billId: bill.billId,
-          status: 'paid',
-          amountPence: fee.amountPence,
-          paidAt: fee.paidAt,
-        },
+        status:
+          fee.kind === 'hold'
+            ? {
+                billId: bill.billId,
+                status: 'held',
+                amountPence: fee.amountPence,
+                heldAt: fee.paidAt,
+              }
+            : {
+                billId: bill.billId,
+                status: 'paid',
+                amountPence: fee.amountPence,
+                paidAt: fee.paidAt,
+              },
       };
     }
     if (isExempt(input.caller)) {
       return { month, status: { billId: bill.billId, status: 'waived', amountPence: 0 } };
     }
-    const amountPence = feeLookupKeyFor(bill.totalPence) === 'table_fee_3' ? 300 : 200;
+    const amountPence = HOLD_PENCE;
     if (!deps.credits) {
       return { month, status: { billId: bill.billId, status: 'unpaid', amountPence } };
     }
@@ -365,6 +407,26 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
             nextCreditOn: next,
           },
     };
+  };
+
+  /** Cancels a hold: nothing is taken. Safe to call twice. */
+  const releaseHold = async (fee: TableFee): Promise<RefundOutcome> => {
+    if (!fee.paymentIntentId) return 'no_payment_intent';
+    try {
+      await timed('stripe', 'paymentIntents.cancel', () =>
+        deps.stripe.paymentIntents.cancel(
+          fee.paymentIntentId!,
+          { cancellation_reason: 'abandoned' },
+          { idempotencyKey: `table-fee-release-${fee.checkoutSessionId}` },
+        ),
+      );
+    } catch (err) {
+      // Already cancelled (or lapsed): nothing was taken either way.
+      const e = err as { code?: string };
+      if (e.code !== 'payment_intent_unexpected_state') throw err;
+    }
+    const written = await deps.store.markReleased(fee.billId, now().toISOString());
+    return written === 'recorded' ? 'released' : 'already_refunded';
   };
 
   return {
@@ -410,6 +472,14 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       checkoutSessionId?: string;
     }): Promise<ShareEntitlement> {
       const { status, month } = await resolve(input);
+      if (status.status === 'held') {
+        return {
+          kind: 'fee',
+          billId: input.billId,
+          sessionId: input.sessionId,
+          holdPence: status.amountPence,
+        };
+      }
       if (status.status === 'paid') {
         return { kind: 'fee', billId: input.billId, sessionId: input.sessionId };
       }
@@ -443,12 +513,15 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         ...(f.sessionId ? { sessionId: f.sessionId } : {}),
         amountPence: f.amountPence,
         paidAt: f.paidAt,
+        ...(f.kind ? { kind: f.kind } : {}),
+        ...(f.releasedAt ? { releasedAt: f.releasedAt } : {}),
         ...(f.refundedAt ? { refundedAt: f.refundedAt } : {}),
       }));
       return {
         creditsLeft: deps.credits && (!current || current.returnedAt) ? 1 : 0,
         nextCreditOn: nextCreditOn(month),
-        paidPence: fees.reduce((acc, f) => acc + f.amountPence, 0),
+        // A hold isn't a payment until it's taken at close (#167).
+        paidPence: fees.reduce((acc, f) => acc + (f.kind === 'hold' ? 0 : f.amountPence), 0),
         refundedPence: fees.reduce((acc, f) => acc + (f.refundedAt ? f.amountPence : 0), 0),
         fees,
         credits: history.credits.map((c) => ({
@@ -491,7 +564,8 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       if (!fee || (fee.sessionId && fee.sessionId !== session.sessionId)) {
         return creditReturned ? 'credit_returned' : 'no_fee';
       }
-      if (fee.refundedAt) return 'already_refunded';
+      if (fee.refundedAt || fee.releasedAt) return 'already_refunded';
+      if (fee.kind === 'hold') return releaseHold(fee);
       let paymentIntentId = fee.paymentIntentId;
       if (!paymentIntentId) {
         const cs = await timed('stripe', 'checkout.sessions.retrieve', () =>

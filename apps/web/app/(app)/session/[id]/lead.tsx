@@ -97,7 +97,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
   // Nobody joined: closing or deleting gives back what sharing cost (#132).
   const spent = useSpent(s.sessionId, guests.length === 0);
-  const giveBack = spent.fee && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
+  const giveBack = spent.fee?.kind === 'hold' && !spent.fee.releasedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} hold is released.`
+    : spent.fee && spent.fee.kind !== 'hold' && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
     : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
   const rate = extrasRate(b);
   const myOwed = projectOwedPence(s, b, meUserId);
@@ -332,7 +333,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         ) : null}
         {spent.fee ? (
           <Section title="Platform fee">
-            <Box><Row title={spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
+            <Box><Row title={spent.fee.kind === 'hold' ? (spent.fee.releasedAt ? 'Hold released' : 'Hold on your card') : spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
           </Section>
         ) : spent.credit?.returnedAt ? (
           <Section title="Platform fee">

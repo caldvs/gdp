@@ -145,17 +145,8 @@ export function itemsPenceFor(bill: OwedBill, session: Session, participant: Par
   return claimSub + shareSub;
 }
 
-/** The platform fee this diner pays back to the lead (#166). The lead pays none. */
-export function feeFor(bill: OwedBill, session: Session, participant: Participant): number {
-  if (participant.userId === session.creatorUserId) return 0;
-  return feeSharePence(
-    session.platformFeePence ?? 0,
-    itemsPenceFor(bill, session, participant),
-    bill.subtotalPence,
-  );
-}
-
-export function computeOwedForParticipant(
+/** What a diner owes before any round-up: their items plus their part of service and tax. */
+export function owedBeforeRoundUp(
   bill: OwedBill,
   session: Session,
   participant: Participant,
@@ -163,20 +154,29 @@ export function computeOwedForParticipant(
   const items = itemsPenceFor(bill, session, participant);
   const extras = bill.serviceChargePence + bill.taxPence;
   const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
-  return Math.round(items * (1 + extrasRate)) + feeFor(bill, session, participant);
+  return Math.round(items * (1 + extrasRate));
+}
+
+/** The round-up this diner pays the lead on top of their share. The lead pays none. */
+export function feeFor(bill: OwedBill, session: Session, participant: Participant): number {
+  if (participant.userId === session.creatorUserId) return 0;
+  return roundUpPence(session.platformFeePence ?? 0, owedBeforeRoundUp(bill, session, participant));
+}
+
+export function computeOwedForParticipant(
+  bill: OwedBill,
+  session: Session,
+  participant: Participant,
+): number {
+  return owedBeforeRoundUp(bill, session, participant) + feeFor(bill, session, participant);
 }
 
 /**
- * A guest's part of the lead's £1 hold (#166): the hold times their share
- * of the bill's items, rounded down. Fixed by the bill, so it doesn't depend
- * on who joins or pays first, and the guests' parts never add up to more
- * than the hold. Mirrors feeSharePence in packages/core/src/lib/owed.ts.
+ * A guest's round-up (4 Nov 2026): what takes what they owe up to the next
+ * whole pound, 0 when it's already a whole pound. Only on a bill shared on
+ * the lead's hold. Mirrors roundUpPence in packages/core/src/lib/owed.ts.
  */
-export function feeSharePence(
-  holdPence: number,
-  itemsPence: number,
-  billSubtotalPence: number,
-): number {
-  if (holdPence <= 0 || itemsPence <= 0 || billSubtotalPence <= 0) return 0;
-  return Math.floor((holdPence * Math.min(itemsPence, billSubtotalPence)) / billSubtotalPence);
+export function roundUpPence(holdPence: number, owedPence: number): number {
+  if (holdPence <= 0 || owedPence <= 0) return 0;
+  return (100 - (owedPence % 100)) % 100;
 }

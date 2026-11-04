@@ -3,7 +3,7 @@ import fc from 'fast-check';
 // The server's maths, imported by path: the client projection must agree
 // with what the API charges (ADR-0006).
 import { apportionByWeight, computeOwed, splitShare } from '../../../../apps/api/src/services/sessions/allocation';
-import { extrasRate, feeSharePence, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence } from './owed';
+import { extrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, roundUpPence, sharePence } from './owed';
 import { computeOwedForParticipant, feeFor } from '../../../../apps/api/src/services/payments/ledger';
 import { billAndSession, split, type GenSession } from '../test/arbitraries';
 
@@ -200,7 +200,7 @@ describe('server allocation (property)', () => {
   });
 });
 
-describe('platform fee: guests repay the £1 hold by what they ordered (#166, property)', () => {
+describe('round-ups: guests round what they owe up to the next pound (property)', () => {
   // The API reads each split's ways from shareSettings; the client from shares.
   const withHold = (session: { shares: { itemId: string; ways: number; units: number }[] }, lead: string, hold: number) =>
     ({
@@ -231,12 +231,17 @@ describe('platform fee: guests repay the £1 hold by what they ordered (#166, pr
     );
   });
 
-  it('the guests’ parts never add up to more than the hold', () => {
+  it('on a hold, every guest owes a whole pound, and a round-up is under £1', () => {
     fc.assert(
-      fc.property(billAndSession(), fc.integer({ min: 0, max: 500 }), ({ bill, session }, hold) => {
-        const s = withHold(session, session.participants[0]!.userId, hold);
-        const total = session.participants.reduce((a, p) => a + projectFeePence(s, bill as never, p.userId), 0);
-        expect(total).toBeLessThanOrEqual(hold);
+      fc.property(billAndSession(), ({ bill, session }) => {
+        const lead = session.participants[0]!.userId;
+        const s = withHold(session, lead, 100);
+        for (const p of session.participants) {
+          const fee = projectFeePence(s, bill as never, p.userId);
+          expect(fee).toBeGreaterThanOrEqual(0);
+          expect(fee).toBeLessThan(100);
+          if (p.userId !== lead) expect(projectOwedPence(s, bill as never, p.userId) % 100).toBe(0);
+        }
       }),
     );
   });
@@ -262,12 +267,11 @@ describe('platform fee: guests repay the £1 hold by what they ordered (#166, pr
     );
   });
 
-  it('is the hold times their share of the items, rounded down', () => {
-    expect(feeSharePence(100, 1725, 10_400)).toBe(16);
-    expect(feeSharePence(100, 10_400, 10_400)).toBe(100);
-    expect(feeSharePence(100, 20_000, 10_400)).toBe(100);
-    expect(feeSharePence(0, 1725, 10_400)).toBe(0);
-    expect(feeSharePence(100, 0, 10_400)).toBe(0);
-    expect(feeSharePence(100, 1725, 0)).toBe(0);
+  it('is what takes them up to the next whole pound, and nothing without a hold', () => {
+    expect(roundUpPence(100, 1240)).toBe(60);
+    expect(roundUpPence(100, 1299)).toBe(1);
+    expect(roundUpPence(100, 1200)).toBe(0);
+    expect(roundUpPence(0, 1240)).toBe(0);
+    expect(roundUpPence(100, 0)).toBe(0);
   });
 });

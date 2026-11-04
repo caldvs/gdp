@@ -16,6 +16,7 @@ import {
   ensureBillsBucket,
   fakeVerifier,
   makeAuth,
+  newIdempotencyKey,
   sampleParsedBill,
   setPayoutFor,
 } from './helpers.js';
@@ -188,24 +189,71 @@ describe('the £1 hold at close (#167)', () => {
       body: JSON.stringify({ claimedItemIds: [pizza.itemId] }),
     });
     expect(claim.status).toBe(200);
-    return { app, lead, sessionId, billId: bill.billId };
+    return { app, lead, guest, sessionId, billId: bill.billId };
   }
 
-  it('closing takes the guests’ part of the fee from the hold, once', async () => {
+  /** The guest pays the lead; returns the payment so the lead can confirm it. */
+  async function guestPays(app: ReturnType<typeof createApp>, sessionId: string, guest: string) {
+    const res = await app.request(`/v1/sessions/${sessionId}/payments`, {
+      method: 'POST',
+      headers: { 'idempotency-key': newIdempotencyKey(), ...makeAuth(guest) },
+    });
+    expect(res.status).toBe(201);
+    const { payment } = (await res.json()) as {
+      payment: { paymentId: string; amountPence: number };
+    };
+    return payment;
+  }
+
+  it('closing takes the round-ups of confirmed payments from the hold, once', async () => {
     const { stripe, capture } = holdStripe();
-    const { app, lead, sessionId, billId } = await heldTableWithGuest(stripe);
+    const { app, lead, guest, sessionId, billId } = await heldTableWithGuest(stripe);
+    const payment = await guestPays(app, sessionId, guest);
+    // Pizza £14.50 plus service is £16.31, rounded up to £17.00: a 69p round-up.
+    expect(payment.amountPence).toBe(1700);
+    const confirm = await app.request(`/v1/payments/${payment.paymentId}/confirm`, {
+      method: 'POST',
+      headers: makeAuth(lead),
+    });
+    expect(confirm.status).toBe(200);
 
     expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
-    // floor(100 × 1450 ÷ 2850) = 50p
     expect(capture).toHaveBeenCalledWith(
       `pi_${billId}`,
-      { amount_to_capture: 50 },
+      { amount_to_capture: 69 },
       { idempotencyKey: `table-fee-capture-cs_${billId}` },
     );
-    expect(await tableFeeStore.get(billId)).toMatchObject({ capturedPence: 50 });
+    expect(await tableFeeStore.get(billId)).toMatchObject({ capturedPence: 69 });
 
     await post(app, `/v1/sessions/${sessionId}/close`, lead);
     expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it('a lead who confirms nobody when guests say they’ve paid is charged the whole hold', async () => {
+    const { stripe, capture } = holdStripe();
+    const { app, lead, guest, sessionId, billId } = await heldTableWithGuest(stripe);
+    const payment = await guestPays(app, sessionId, guest);
+    const marked = await app.request(`/v1/payments/${payment.paymentId}/mark-paid`, {
+      method: 'POST',
+      headers: makeAuth(guest),
+    });
+    expect(marked.status).toBe(200);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    expect(capture).toHaveBeenCalledWith(
+      `pi_${billId}`,
+      { amount_to_capture: 100 },
+      { idempotencyKey: `table-fee-capture-cs_${billId}` },
+    );
+  });
+
+  it('nobody paid: the hold is released', async () => {
+    const { stripe, capture, cancel } = holdStripe();
+    const { app, lead, sessionId } = await heldTableWithGuest(stripe);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    expect(capture).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it('binning a bill guests joined releases the hold: nothing is taken', async () => {

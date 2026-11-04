@@ -6,7 +6,14 @@ import { entitlementOps } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
 import { computeOwed } from './allocation.js';
-import { computeOwedForParticipant, feeFor, paymentsOf, sentPence } from '../payments/ledger.js';
+import {
+  computeOwedForParticipant,
+  feeFor,
+  isSent,
+  paymentsOf,
+  roundUpPence,
+  sentPence,
+} from '../payments/ledger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import {
   SHARE_ACTIVITY_KEEP,
@@ -279,16 +286,23 @@ export const sessionService = {
   },
 
   /**
-   * What the guests owe of the platform fee, in total (#166, #167): taken
-   * from the lead's hold at close. Reads the stored session (with each
-   * split's ways) and the pinned bill. 0 when no hold paid for it.
+   * What the lead is charged from their hold (4 Nov 2026): the round-ups of
+   * the guests whose payment the lead confirmed. When guests say they've
+   * paid but the lead confirmed none, the whole hold. The caller caps it at
+   * the hold. Reads the stored session (with each split's ways) and the
+   * pinned bill. 0 when no hold paid for it.
    */
   async guestsFeePence(sessionId: string): Promise<number> {
     const session = await sessionStore.get(sessionId);
     if (!session?.platformFeePence) return 0;
     const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
     if (!bill) return 0;
-    return session.participants.reduce((acc, p) => acc + feeFor(bill, session, p), 0);
+    const guests = session.participants.filter((p) => p.userId !== session.creatorUserId);
+    const confirmed = guests.filter((p) => paymentsOf(p, 0).some((e) => e.status === 'succeeded'));
+    if (confirmed.length === 0 && guests.some((p) => paymentsOf(p, 0).some(isSent))) {
+      return session.platformFeePence;
+    }
+    return confirmed.reduce((acc, p) => acc + feeFor(bill, session, p), 0);
   },
 
   async join(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
@@ -717,8 +731,12 @@ export const sessionService = {
 
     const updatedParticipants: Participant[] = session.participants.map((p) => ({
       ...p,
-      // Plus their part of the platform fee (#166).
-      owedPence: (owed.get(p.userId) ?? 0) + feeFor(bill, session, p),
+      // Plus their round-up to the next whole pound.
+      owedPence:
+        (owed.get(p.userId) ?? 0) +
+        (p.userId === session.creatorUserId
+          ? 0
+          : roundUpPence(session.platformFeePence ?? 0, owed.get(p.userId) ?? 0)),
     }));
     const { participants: _, ...meta } = session;
     const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'paying' };

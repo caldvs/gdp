@@ -1,5 +1,5 @@
 import { apportionByWeight, splitShare } from './allocation.js';
-import { feeSharePence } from '../payments/ledger.js';
+import { roundUpPence } from '../payments/ledger.js';
 import type { Bill } from '../../types/bills.js';
 import type { Session, Participant } from '../../types/sessions.js';
 
@@ -117,7 +117,7 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
     const feePence =
       p.userId === session.creatorUserId
         ? 0
-        : feeSharePence(session.platformFeePence ?? 0, itemsPence, bill.subtotalPence);
+        : roundUpPence(session.platformFeePence ?? 0, itemsPence + extrasPence);
     return {
       userId: p.userId,
       displayName: p.displayName,
@@ -230,7 +230,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       t.push(`  ${l.name}${l.detail ? ` (${l.detail})` : ''}  ${money(l.pence)}`);
     if (d.lines.length === 0) t.push('  Nothing yet');
     t.push(`  Service and tax  ${money(d.extrasPence)}`);
-    if (d.feePence > 0) t.push(`  Platform fee  ${money(d.feePence)}`);
+    if (d.feePence > 0) t.push(`  Round-up  ${money(d.feePence)}`);
     t.push(`  Total  ${money(d.totalPence)} · ${paidText(d, report.leadName, forLead)}`, '');
   }
   if (forLead && report.unclaimed.length > 0) {
@@ -266,7 +266,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       lines +
       row('<span style="color:#6a6a6a">Service and tax</span>', money(d.extrasPence)) +
       (d.feePence > 0
-        ? row('<span style="color:#6a6a6a">Platform fee</span>', money(d.feePence))
+        ? row('<span style="color:#6a6a6a">Round-up</span>', money(d.feePence))
         : '') +
       row(
         `<b>${money(d.totalPence)}</b>`,

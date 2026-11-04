@@ -155,25 +155,26 @@ describe('a split covering several of a line', () => {
   });
 });
 
-describe('platform fee (#166)', () => {
-  it('adds each guest’s part of the hold to their total, and none to the lead’s', () => {
+describe('round-ups', () => {
+  it('rounds each guest up to the next whole pound on a hold, and not the lead', () => {
     const s = { ...session('claiming'), platformFeePence: 100 };
     const report = buildReport(s, bill, new Map());
     for (const d of report.diners) {
-      const expected = d.isLead ? 0 : Math.floor((100 * d.itemsPence) / bill.subtotalPence);
+      const before = d.itemsPence + d.extrasPence;
+      const expected = d.isLead || before === 0 ? 0 : (100 - (before % 100)) % 100;
       expect(d.feePence).toBe(expected);
       expect(d.totalPence).toBe(d.itemsPence + d.extrasPence + d.feePence);
     }
     const guest = report.diners.find((d) => !d.isLead && d.feePence > 0)!;
     const email = renderReportEmail(report, guest.userId);
-    expect(email.text).toContain(`Platform fee  £${(guest.feePence / 100).toFixed(2)}`);
-    expect(email.html).toContain('Platform fee');
+    expect(email.text).toContain(`Round-up  £${(guest.feePence / 100).toFixed(2)}`);
+    expect(email.html).toContain('Round-up');
   });
 
-  it('shows no fee line without a hold', () => {
+  it('shows no round-up without a hold', () => {
     const report = buildReport(session('claiming'), bill, new Map());
     expect(report.diners.every((d) => d.feePence === 0)).toBe(true);
-    expect(renderReportEmail(report, 'b').text).not.toContain('Platform fee');
+    expect(renderReportEmail(report, 'b').text).not.toContain('Round-up');
   });
 });
 

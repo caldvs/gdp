@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useOpenSignInLink } from '@gdp/core/api/hooks/useEmailSignIn';
+import { useDenySignInLink, useOpenSignInLink, useSignInLinkCode } from '@gdp/core/api/hooks/useEmailSignIn';
 import { takeReturnTo } from '@/lib/signInReturn';
 import { Button, Centre, Page, Spinner, Title } from '@/components/ui';
 
-type State = { kind: 'opening' } | { kind: 'signedIn'; next: string } | { kind: 'expired' };
+type State =
+  | { kind: 'opening' }
+  | { kind: 'confirm'; token: string; code: string }
+  | { kind: 'signedIn'; next: string }
+  | { kind: 'denied' }
+  | { kind: 'expired' };
 
 /** The token from `#t=…`, and the fragment wiped so it isn't left in history. */
 function takeToken(): string | null {
@@ -15,34 +20,69 @@ function takeToken(): string | null {
 }
 
 /**
- * Where an emailed sign-in link lands. Signs this tab in, and the tab that
- * asked carries on by itself, so this one just says to go back to it.
+ * Where an emailed sign-in link lands. First it asks whether the tab that
+ * asked shows the same number (#138), so a sign-in someone else started
+ * can't be finished by tapping a genuine email. Yes signs this tab in and
+ * the tab that asked carries on by itself; No cancels it.
  */
 export default function VerifyLinkPage() {
+  const linkCode = useSignInLinkCode();
   const openLink = useOpenSignInLink();
+  const deny = useDenySignInLink();
   const [state, setState] = useState<State>({ kind: 'opening' });
-  // A link works once: never send it twice (React re-runs effects in dev).
-  const sent = useRef(false);
+  // Read the fragment once (React re-runs effects in dev).
+  const started = useRef(false);
 
   useEffect(() => {
-    if (sent.current) return;
-    sent.current = true;
+    if (started.current) return;
+    started.current = true;
     const token = takeToken();
     if (!token) {
       setState({ kind: 'expired' });
       return;
     }
-    openLink.mutate(
+    linkCode.mutate(
       { token },
       {
-        onSuccess: () => setState({ kind: 'signedIn', next: takeReturnTo() }),
+        onSuccess: ({ code }) => setState({ kind: 'confirm', token, code }),
         onError: () => setState({ kind: 'expired' }),
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (state.kind === 'opening') return <Centre><Spinner label="Signing in" /></Centre>;
+  if (state.kind === 'opening') return <Centre><Spinner label="Opening link" /></Centre>;
+
+  if (state.kind === 'confirm') {
+    const { token, code } = state;
+    const yes = () =>
+      openLink.mutate(
+        { token, code },
+        {
+          onSuccess: () => setState({ kind: 'signedIn', next: takeReturnTo() }),
+          onError: () => setState({ kind: 'expired' }),
+        },
+      );
+    const no = () => deny.mutate({ token }, { onSettled: () => setState({ kind: 'denied' }) });
+    return (
+      <Page>
+        <Title title={`Signing in the tab showing ${code}?`} />
+        <div className="btn-row">
+          <Button tone="secondary" busy={deny.isPending} disabled={openLink.isPending} onClick={no}>No</Button>
+          <Button grow busy={openLink.isPending} disabled={deny.isPending} onClick={yes}>Yes</Button>
+        </div>
+      </Page>
+    );
+  }
+
+  if (state.kind === 'denied') {
+    return (
+      <Page>
+        <Title title="Not signed in" sub="Someone else asked. Ignore the email." />
+        <Button href="/sign-in" replace tone="secondary">Sign in</Button>
+      </Page>
+    );
+  }
 
   if (state.kind === 'expired') {
     return (

@@ -53,7 +53,7 @@ export default function AccountPage() {
           </Box>
         </Section>
       ) : null}
-      <Button tone="secondary" onClick={() => { void signOut().then(() => router.replace('/sign-in')); }}>Sign out</Button>
+      <Button tone="secondary" onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
     </Page>
   );
 }

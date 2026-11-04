@@ -18,6 +18,7 @@ import { ledger } from '@gdp/core/lib/ledger';
 import { monzoPayUrl, revolutPayUrl } from '@gdp/core/lib/quickPay';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
+import { usePayoutVerdict } from '@gdp/core/lib/usePayoutCheck';
 import { copyText } from '@/lib/clipboard';
 import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Notice, Page, Spinner, TickIcon, Title, firstName } from '@/components/ui';
 import { owedFor } from '../guest';
@@ -38,6 +39,9 @@ export default function PayPage() {
   const [copied, setCopied] = useState<string | null>(null);
 
   const s = session.data;
+  // #151: details from a link that don't match the lead's are never shown.
+  const verdict = usePayoutVerdict(id, payout.data, s?.payoutCheck);
+  const linkPayout = verdict === 'mismatch' || verdict === 'checking' ? null : payout.data;
   const mine = s?.participants.find((p) => p.userId === me.data?.userId);
   const isCreator = !!s && !!me.data && s.creatorUserId === me.data.userId;
   // #121: a guest may pay more than once; this page pays what's due now
@@ -76,10 +80,10 @@ export default function PayPage() {
   const amount = open?.amountPence ?? due;
   const waitingPence = lg.waiting.reduce((a, e) => a + e.amountPence, 0);
   // ADR-0002: the details the lead shared in the QR are the source of truth.
-  const bd = payout.data ?? instructions?.bankDetails;
+  const bd = linkPayout ?? (verdict === 'mismatch' ? undefined : instructions?.bankDetails);
   const reference = instructions?.reference ?? (open ? `gdp-${id.slice(0, 8)}` : undefined);
-  const monzo = payout.data?.monzoHandle ? monzoPayUrl(payout.data.monzoHandle, amount, reference) : null;
-  const revolut = payout.data?.revolutTag ? revolutPayUrl(payout.data.revolutTag) : null;
+  const monzo = linkPayout?.monzoHandle ? monzoPayUrl(linkPayout.monzoHandle, amount, reference) : null;
+  const revolut = linkPayout?.revolutTag ? revolutPayUrl(linkPayout.revolutTag) : null;
   const startError = initiate.error?.message;
 
   const copy = async (key: string, text: string) => {
@@ -113,7 +117,9 @@ export default function PayPage() {
                 <CopyRow k="Account no." v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
                 {reference ? <CopyRow k="Reference" v={reference} copied={copied === 'r'} onCopy={() => copy('r', reference)} /> : null}
               </Box>
-            ) : initiate.isPending ? (
+            ) : verdict === 'mismatch' ? (
+              <Notice tone="error" title={`These aren’t ${hostFirst}’s bank details.`}>Don’t pay them. Scan {hostFirst}’s own QR code.</Notice>
+            ) : initiate.isPending || verdict === 'checking' ? (
               <Spinner />
             ) : (
               <Notice title={`No bank details from ${hostFirst} yet.`}>Scan their QR code again with this phone.</Notice>

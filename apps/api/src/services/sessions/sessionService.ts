@@ -138,6 +138,28 @@ export const sessionService = {
     );
   },
 
+  /**
+   * The lead's device publishes its fingerprint of the bank details in its
+   * join link (#151), so guests' apps can tell if a link was altered. Lead
+   * only, while the bill is live.
+   */
+  async setPayoutCheck(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    payoutCheck: string;
+  }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    if (session.creatorUserId !== input.caller.userId) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
+    if (session.status === 'settled' || session.status === 'abandoned') {
+      throw new AppError('SESSION_INVALID_STATE', 'This bill is closed');
+    }
+    await sessionStore.setPayoutCheck(session.sessionId, input.payoutCheck);
+    return projectForCaller({ ...session, payoutCheck: input.payoutCheck }, input.caller.userId);
+  },
+
   async resolveByCode(input: { code: string }): Promise<{ sessionId: string }> {
     const resolved = await sessionStore.resolveJoinCode(input.code);
     if (!resolved) throw new AppError('NOT_FOUND', 'Code not found');

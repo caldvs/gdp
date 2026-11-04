@@ -31,6 +31,9 @@ export const UserSchema = z.object({
   payoutAccount: PayoutAccountSchema.optional(),
   createdAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime().optional(),
+  // Bumped by signing out everywhere (#155): session tokens minted with an
+  // older version stop working. Absent is 0.
+  tokenVersion: z.number().int().nonnegative().optional(),
 });
 export type User = z.infer<typeof UserSchema>;
 

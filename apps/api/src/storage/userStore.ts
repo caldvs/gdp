@@ -22,6 +22,41 @@ export const userStore = {
     return rest;
   },
 
+  /** The user's session token version (#155); 0 when there's no row or none set. */
+  async getTokenVersion(userId: string): Promise<number> {
+    const res = await ddb.send(
+      new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: userPk(userId), sk: userPk(userId) },
+        ProjectionExpression: 'tokenVersion',
+      }),
+    );
+    const v: unknown = res.Item?.tokenVersion;
+    return typeof v === 'number' ? v : 0;
+  },
+
+  /**
+   * Sign out everywhere (#155): every session token minted before this
+   * stops working. Returns the new version.
+   */
+  async bumpTokenVersion(userId: string): Promise<number> {
+    const res = await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: userPk(userId), sk: userPk(userId) },
+        UpdateExpression:
+          'ADD tokenVersion :one SET updatedAt = :now, userId = if_not_exists(userId, :uid)',
+        ExpressionAttributeValues: {
+          ':one': 1,
+          ':now': new Date().toISOString(),
+          ':uid': userId,
+        },
+        ReturnValues: 'UPDATED_NEW',
+      }),
+    );
+    return (res.Attributes?.tokenVersion as number | undefined) ?? 1;
+  },
+
   /**
    * Create or update the basic profile fields (email, displayName, etc.)
    * on a user row without disturbing other fields like payoutAccount.

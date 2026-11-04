@@ -1,10 +1,12 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { SignInRateLimited, signInLinkStore } from '../../storage/signInLinkStore.js';
 import { authIdentityStore } from '../../storage/authIdentityStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { mintSessionToken } from './sessionToken.js';
+import { rateKeyForEmail } from './rateKey.js';
+import { emailHash } from '../../logging/emailHash.js';
 import { isTestAccountEmail, TEST_ACCOUNT_DOMAIN } from './testAccounts.js';
 import type { EmailSender } from '../email/sender.js';
 import type { Logger } from '../../logging/logger.js';
@@ -27,6 +29,13 @@ const TOKEN_RE = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{43})$/;
 const parseToken = (raw: string): { linkId: string; hash: string } | null => {
   const m = TOKEN_RE.exec(raw);
   return m ? { linkId: m[1]!, hash: sha256(m[2]!) } : null;
+};
+
+const RATE_LIMIT_MESSAGES: Record<SignInRateLimited['reason'], string> = {
+  'too-soon': 'We’ve just sent a link. Check your email, or try again in a moment.',
+  'too-many': 'Too many links for this address. Wait a few minutes and try again.',
+  ip: 'Too many sign-in links from here. Try again later.',
+  global: 'Sign-in is busy. Try again in a few minutes.',
 };
 
 export interface EmailSignInServiceDeps {
@@ -61,23 +70,21 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     email: string;
     /** Where the link points: the web app's origin, e.g. https://paymeback.dev. */
     appBaseUrl: string;
-  }): Promise<{ requestId: string; send: () => Promise<void> }> {
+    /** The caller's IP address, for the per-IP limit (#146). Unknown locally. */
+    sourceIp?: string;
+  }): Promise<{ requestId: string; code: string; send: () => Promise<void> }> {
     if (!isValidEmail(input.email)) {
       throw new AppError('INVALID_INPUT', 'Email is not in a valid shape');
     }
     const email = input.email.trim();
     try {
-      await signInLinkStore.reserveSend(email);
+      await signInLinkStore.reserveSend(rateKeyForEmail(email), input.sourceIp);
     } catch (err) {
       if (err instanceof SignInRateLimited) {
         deps.logger?.warn({ event: 'signin.rate_limited', reason: err.reason }, 'Link refused');
-        throw new AppError(
-          'RATE_LIMITED',
-          err.reason === 'too-soon'
-            ? 'We’ve just sent a link. Check your email, or try again in a moment.'
-            : 'Too many links for this address. Wait a few minutes and try again.',
-          { retryAfterSeconds: err.retryAfterSeconds },
-        );
+        throw new AppError('RATE_LIMITED', RATE_LIMIT_MESSAGES[err.reason], {
+          retryAfterSeconds: err.retryAfterSeconds,
+        });
       }
       throw err;
     }
@@ -85,11 +92,14 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     const linkId = secret(16);
     const linkSecret = secret(32);
     const requestSecret = secret(32);
+    // The number the asking tab shows and the link's page asks about (#138).
+    const code = String(randomInt(10, 100));
     await signInLinkStore.create({
       linkId,
       email,
       linkHash: sha256(linkSecret),
       requestHash: sha256(requestSecret),
+      code,
     });
     // The token rides in the fragment, which browsers never send to a
     // server, so it stays out of access and proxy logs.
@@ -101,28 +111,59 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
         subject: 'Sign in to paymeback.dev',
         category: 'sign-in',
         body: {
-          text: `Sign in to paymeback.dev:\n\n${link}\n\nThe link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.`,
-          html: `<p><a href="${link}" style="display:inline-block;padding:12px 20px;background:#d42a55;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a></p><p>Or open this link: <a href="${link}">${link}</a></p><p>The link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.</p>`,
+          text: `Sign in to paymeback.dev:\n\n${link}\n\nThis signs in the tab or device that asked, which shows the number ${code}. The link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.`,
+          html: `<p><a href="${link}" style="display:inline-block;padding:12px 20px;background:#d42a55;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600;">Sign in</a></p><p>Or open this link: <a href="${link}">${link}</a></p><p>This signs in the tab or device that asked, which shows the number <b>${code}</b>. The link works once and expires in ${minutes} minutes. If you didn't ask for it, ignore this email.</p>`,
         },
       });
-    deps.logger?.info({ event: 'signin.start', email }, 'Sign-in link issued');
-    return { requestId: `${linkId}.${requestSecret}`, send };
+    deps.logger?.info(
+      { event: 'signin.start', emailHash: emailHash(email) },
+      'Sign-in link issued',
+    );
+    return { requestId: `${linkId}.${requestSecret}`, code, send };
   },
 
   /**
-   * The emailed link was opened: sign that tab in. Works once, before it
-   * expires. Every failure is AUTH_INVALID, so they can't be told apart.
+   * The emailed link was opened: the number its request's tab shows, for
+   * the person to check before going on (#138). Spends nothing.
+   * AUTH_INVALID for a used, denied, expired or wrong link.
    */
-  async openLink(input: { token: string }): Promise<SignInResult> {
+  async peekLink(input: { token: string }): Promise<{ code: string }> {
     const parsed = parseToken(input.token);
-    const record = parsed ? await signInLinkStore.approve(parsed.linkId, parsed.hash) : null;
+    const record = parsed ? await signInLinkStore.peek(parsed.linkId, parsed.hash) : null;
+    if (!record) throw new AppError('AUTH_INVALID', 'Link expired');
+    return { code: record.code };
+  },
+
+  /**
+   * The person confirmed the number matches: sign this tab in, and let the
+   * tab that asked collect its session. Works once, before it expires, and
+   * only with the request's number. Every failure is AUTH_INVALID, so they
+   * can't be told apart.
+   */
+  async openLink(input: { token: string; code: string }): Promise<SignInResult> {
+    const parsed = parseToken(input.token);
+    const record = parsed
+      ? await signInLinkStore.approve(parsed.linkId, parsed.hash, input.code)
+      : null;
     if (!record) throw new AppError('AUTH_INVALID', 'Link expired');
     const result = await signInByEmail(record.email, deps.jwtSecret);
     deps.logger?.info(
-      { event: 'signin.link.ok', userId: result.user.userId, email: record.email },
+      { event: 'signin.link.ok', userId: result.user.userId },
       'Sign-in link opened',
     );
     return result;
+  },
+
+  /**
+   * The number doesn't match, so someone else asked: nobody is signed in
+   * by this request. Quietly fine for a link that's already used or gone.
+   */
+  async denyLink(input: { token: string }): Promise<void> {
+    const parsed = parseToken(input.token);
+    if (!parsed) return;
+    if (await signInLinkStore.deny(parsed.linkId, parsed.hash)) {
+      deps.logger?.warn({ event: 'signin.link.denied' }, 'Sign-in refused at the link');
+    }
   },
 
   /**
@@ -160,7 +201,7 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     if (!isValidEmail(email) || !deps.exemptEmails?.has(email)) return null;
     const result = await signInByEmail(email, deps.jwtSecret);
     deps.logger?.warn(
-      { event: 'auth.exempt_sign_in', userId: result.user.userId, email },
+      { event: 'auth.exempt_sign_in', userId: result.user.userId },
       'Exempt sign-in (no link)',
     );
     return result;
@@ -179,7 +220,7 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     const email = input.email.trim().toLowerCase();
     const result = await signInByEmail(email, deps.jwtSecret);
     deps.logger?.warn(
-      { event: 'auth.dev_sign_in', userId: result.user.userId, email },
+      { event: 'auth.dev_sign_in', userId: result.user.userId },
       'Dev sign-in (no link)',
     );
     return result;
@@ -200,7 +241,7 @@ export const createEmailSignInService = (deps: EmailSignInServiceDeps) => ({
     }
     const result = await signInByEmail(email, deps.jwtSecret);
     deps.logger?.warn(
-      { event: 'auth.test_sign_in', userId: result.user.userId, email },
+      { event: 'auth.test_sign_in', userId: result.user.userId },
       'Test account sign-in (no link)',
     );
     return result;
@@ -212,10 +253,12 @@ async function signInByEmail(email: string, jwtSecret: Uint8Array): Promise<Sign
   const existing = await authIdentityStore.getByEmail(email);
   let userId: string;
   let displayName: string;
+  let tokenVersion = 0;
   if (existing) {
     userId = existing.userId;
     const user = await userStore.get(userId);
     displayName = user?.displayName ?? defaultDisplayName(email);
+    tokenVersion = user?.tokenVersion ?? 0;
   } else {
     userId = uuidv7();
     displayName = defaultDisplayName(email);
@@ -223,7 +266,10 @@ async function signInByEmail(email: string, jwtSecret: Uint8Array): Promise<Sign
     await authIdentityStore.putByEmail({ email, userId, createdAt: now });
     await userStore.putProfile({ userId, email, displayName });
   }
-  const token = await mintSessionToken({ userId, email, name: displayName }, jwtSecret);
+  const token = await mintSessionToken(
+    { userId, email, name: displayName, tokenVersion },
+    jwtSecret,
+  );
   return { token, user: { userId, email, displayName } };
 }
 

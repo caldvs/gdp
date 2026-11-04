@@ -10,6 +10,7 @@ import { useBill } from '@gdp/core/api/hooks/useBill';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
+import { usePayoutVerdict, usePublishPayoutCheck } from '@gdp/core/lib/usePayoutCheck';
 import { SHARED_LINK_TTL_MS } from '@gdp/core/lib/qrPayload';
 import { copyText } from '@/lib/clipboard';
 import { JoinQr, useJoinUrl, useQrBuilt } from '@/components/JoinQr';
@@ -29,7 +30,11 @@ export default function SharePage() {
   const isHost = !!session.data && session.data.creatorUserId === me.data?.userId;
   const ownPayout = usePayoutAccount();
   const fromLink = useSessionPayout(id);
-  const payout = isHost ? ownPayout.data ?? null : fromLink.data;
+  // #151: the lead's device tells the session what its link's details hash
+  // to; a guest passes on only details that match it.
+  usePublishPayoutCheck(session.data, ownPayout.data ?? null, isHost);
+  const verdict = usePayoutVerdict(id, fromLink.data, session.data?.payoutCheck);
+  const payout = isHost ? ownPayout.data ?? null : verdict === 'mismatch' ? null : fromLink.data;
   const qrUrl = useJoinUrl(session.data?.joinCode, payout);
   const linkUrl = useJoinUrl(session.data?.joinCode, payout, SHARED_LINK_TTL_MS);
   const [copied, setCopied] = useState(false);

@@ -1,6 +1,7 @@
 import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
 import type { EmailSender, SendEmailInput } from './sender.js';
 import type { Logger } from '../../logging/logger.js';
+import { emailHash } from '../../logging/emailHash.js';
 import { timed } from '../../logging/timed.js';
 
 export interface SesEmailSenderConfig {
@@ -50,7 +51,7 @@ export class SesEmailSender implements EmailSender {
         {
           event: 'email.sent',
           provider: this.provider,
-          to: input.to,
+          toHash: emailHash(input.to),
           category: input.category,
           messageId: out.MessageId,
         },
@@ -58,7 +59,12 @@ export class SesEmailSender implements EmailSender {
       );
     } catch (err) {
       this.config.logger?.error(
-        { event: 'email.send_failed', provider: this.provider, to: input.to, err },
+        {
+          event: 'email.send_failed',
+          provider: this.provider,
+          toHash: emailHash(input.to),
+          err,
+        },
         'email send failed',
       );
       throw err;

@@ -103,12 +103,19 @@ paths:
         Emails a sign-in link, `<web app>/sign-in/verify#t=<token>`. The
         token is in the fragment, so it never reaches a server log. It works
         once and expires in 15 minutes. The link points at the calling
-        origin when it's on the allow-list (test.paymeback.dev, previews),
-        otherwise at `APP_BASE_URL`. At most one link every 30 seconds and
-        5 every 15 minutes per address (429 otherwise).
+        origin only when it is exactly one of the server's listed bases
+        (dev: test.paymeback.dev, localhost), otherwise at `APP_BASE_URL`;
+        prod always uses `APP_BASE_URL`. At most one link every 30 seconds
+        and 5 every 15 minutes per address (counted without `+tags` or Gmail
+        dots), 20 an hour per IP address, and 1000 an hour in all (429
+        otherwise).
 
         Returns `requestId`, a secret the asking tab keeps and passes to
-        `POST /v1/auth/email/requests` until the link has been opened.
+        `POST /v1/auth/email/requests` until the link has been opened, and
+        `code`, a two-digit number the asking tab shows. The link's page
+        shows the same number and asks the person to confirm it before
+        signing anyone in, so a request someone else started can't be
+        completed by accident.
 
         The response is the same whether or not the address has an
         account, so addresses can't be enumerated. Email delivery failures
@@ -139,6 +146,10 @@ paths:
                   requestId:
                     type: string
                     description: Everyone but exempt addresses. Secret; keep it in the tab that asked.
+                  code:
+                    type: string
+                    pattern: '^[0-9]{2}$'
+                    description: Everyone but exempt addresses. The number the asking tab shows; not a secret.
                   token: { type: string, description: 'Exempt addresses only: the session JWT.' }
                   user:
                     type: object
@@ -152,25 +163,24 @@ paths:
         '429':
           description: |
             `RATE_LIMITED`: a link was sent to this address less than 30
-            seconds ago, or 5 have been sent in the last 15 minutes.
+            seconds ago, 5 have been sent in the last 15 minutes, 20 this
+            hour from this IP address, or 1000 this hour in all.
             `details.retryAfterSeconds` says when to try again.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/auth/email/link:
+  /v1/auth/email/link/code:
     post:
       tags: [identity]
-      operationId: openEmailSignInLink
+      operationId: getEmailSignInLinkCode
       security: []
-      summary: Sign in with the token from an emailed link
+      summary: The number an emailed link's request shows
       description: |
-        Called by the tab the link opened. Looks up (or creates) the
-        account for the link's email and mints a session JWT. Also marks
-        the request approved, so the tab that asked signs in too.
-
-        Works once, within 15 minutes. Any failure (used, expired, wrong
-        or unknown token) is `401 AUTH_INVALID`, so they can't be told apart.
+        Called by the tab the link opened, before anything else: returns
+        the two-digit number the tab that asked is showing, for the person
+        to check. Changes nothing. A used, denied, expired, wrong or
+        unknown token is `401 AUTH_INVALID`.
       requestBody:
         required: true
         content:
@@ -180,6 +190,81 @@ paths:
               required: [token]
               properties:
                 token: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: The number.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code]
+                properties:
+                  code: { type: string, pattern: '^[0-9]{2}$' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: The link was used already, expired, or isn't one we sent (`AUTH_INVALID`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/email/link/deny:
+    post:
+      tags: [identity]
+      operationId: denyEmailSignInLink
+      security: []
+      summary: Refuse an emailed link whose number isn't yours
+      description: |
+        The person says the number isn't the one on their screen, so
+        someone else asked: the request can no longer sign anyone in, and
+        the tab that asked sees `expired`. Always `200 {ok: true}`, even for
+        a used or unknown link.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Done.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/auth/email/link:
+    post:
+      tags: [identity]
+      operationId: openEmailSignInLink
+      security: []
+      summary: Sign in with the token from an emailed link
+      description: |
+        Called by the tab the link opened, once the person has confirmed
+        the number (`code`) matches the one the asking tab shows. Looks up
+        (or creates) the account for the link's email and mints a session
+        JWT. Also marks the request approved, so the tab that asked signs
+        in too.
+
+        Works once, within 15 minutes, and only with the request's number.
+        Any failure (used, denied, expired, wrong or unknown token, wrong
+        number) is `401 AUTH_INVALID`, so they can't be told apart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, code]
+              properties:
+                token: { type: string, maxLength: 200 }
+                code: { type: string, pattern: '^[0-9]{2}$' }
       responses:
         '200':
           description: Signed in. Token is good for 30 days.
@@ -304,6 +389,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/sign-out:
+    post:
+      tags: [identity]
+      operationId: signOutEverywhere
+      summary: Sign out everywhere
+      description: |
+        Ends every session token this user holds, on every device: tokens
+        minted before this call get `401 AUTH_INVALID` from then on. The
+        web app's Sign out calls it.
+      responses:
+        '200':
+          description: Signed out everywhere.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -663,7 +770,10 @@ paths:
       tags: [sessions]
       operationId: resolveJoinCode
       summary: Resolve a 6-character join code to a session ID
-      description: Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
+      description: |
+        Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
+        At most 30 lookups per user every 10 minutes (429 `RATE_LIMITED` with
+        `details.retryAfterSeconds`), so codes can't cheaply be guessed.
       requestBody:
         required: true
         content:
@@ -683,6 +793,11 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404':
           description: Code not found, expired, or attached to a non-claiming session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429':
+          description: Too many codes tried (`RATE_LIMITED`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -781,6 +896,45 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Session is not in `setup`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/payout-check:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    put:
+      tags: [sessions]
+      operationId: setSessionPayoutCheck
+      summary: The lead publishes a fingerprint of the bank details in their join link
+      description: |
+        The lead's device sends `payoutCheck`, a PBKDF2 fingerprint of the bank
+        details it puts in the join link's `#p=` fragment, salted with the session
+        id. The details themselves never reach the server (ADR-0002). Guests' apps
+        recompute it from the link and warn when it doesn't match, so a re-posted
+        link with someone else's details is caught (#151). Lead only, until the
+        bill is closed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [payoutCheck]
+              additionalProperties: false
+              properties:
+                payoutCheck: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: The session, with `payoutCheck`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The bill is closed (`SESSION_INVALID_STATE`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1785,6 +1939,13 @@ components:
           description: |
             How many people the lead said are eating, lead included. Shown as
             "3 of 4 joined"; never used in the money maths. Absent until set.
+        payoutCheck:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            The lead's fingerprint of the bank details in their join link (#151),
+            set with `PUT /v1/sessions/{sessionId}/payout-check`. Absent until the
+            lead's device sends one.
         shares:
           type: array
           description: |
@@ -2001,6 +2162,7 @@ components:
         items:
           type: array
           minItems: 1
+          maxItems: 200
           items:
             type: object
             required: [name, unitPricePence, quantity, category]
@@ -2009,21 +2171,21 @@ components:
                 type: string
                 format: uuid
                 description: Provide existing itemId to preserve identity; omit for a new item
-              name: { type: string, minLength: 1 }
-              unitPricePence: { type: integer, format: int64, minimum: 0 }
-              quantity: { type: integer, minimum: 1 }
+              name: { type: string, minLength: 1, maxLength: 200 }
+              unitPricePence: { type: integer, format: int64, minimum: 0, maximum: 10000000 }
+              quantity: { type: integer, minimum: 1, maximum: 999 }
               category: { type: string, enum: [food, drink, other] }
               course: { type: string, enum: [starter, main, side, dessert] }
-        taxPence: { type: integer, format: int64, minimum: 0 }
-        serviceChargePence: { type: integer, format: int64, minimum: 0 }
+        taxPence: { type: integer, format: int64, minimum: 0, maximum: 10000000 }
+        serviceChargePence: { type: integer, format: int64, minimum: 0, maximum: 10000000 }
         venue:
           type: object
           required: [name]
           description: Set to override the parsed venue; absent keeps whatever the bill has.
           properties:
             name: { type: string, minLength: 1, maxLength: 80 }
-            placeId: { type: string }
-            address: { type: string }
+            placeId: { type: string, maxLength: 200 }
+            address: { type: string, maxLength: 300 }
 
     NearbyVenue:
       type: object
@@ -2081,6 +2243,7 @@ components:
       properties:
         claimedItemIds:
           type: array
+          maxItems: 200
           items: { type: string, format: uuid }
           description: Replaces the caller's full claim list; deduplicated server-side
 

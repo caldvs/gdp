@@ -317,9 +317,6 @@ function CheckBill() {
         ) : (
           <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
         )}
-        {/* Where the venue is: the full address when the lookup matched it,
-            else what the bill printed. Lets the lead catch a wrong branch. */}
-        {b.venue?.address && (venueName.trim() || b.venue.name) === b.venue.name ? <span className="title__addr small">{b.venue.address}</span> : null}
       </>
     );
   // No printed total to check against (a cut-off photo, usually). Only

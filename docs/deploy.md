@@ -34,9 +34,9 @@ Vercel Production has no Stripe key until Stripe goes live (#79), so it shows no
 | --- | --- |
 | `paymeback.dev` | Vercel Production |
 | `www.paymeback.dev` | 308 to `paymeback.dev` |
-| `test.paymeback.dev` | Vercel Preview, branch `preview` (push to it to put something there) |
-| `api.paymeback.dev` | `GdpBackendProd` (custom domain on API Gateway) |
-| `api.test.paymeback.dev` | `GdpBackendDev` |
+| `test.paymeback.dev` | Vercel Preview, branch `preview` (push to it to put something there); its builds call `api.test.paymeback.dev` |
+| `api.paymeback.dev` | `GdpBackendProd` (custom domain on API Gateway; CNAME to `d-pujffkifc1…`) |
+| `api.test.paymeback.dev` | `GdpBackendDev` (CNAME to `d-b8lxm0scy5…`) |
 
 **API domains (once per environment).** CDK can't validate a certificate in
 Vercel DNS, so this part is by hand:
@@ -134,7 +134,9 @@ step 1 from your Mac.
 The workflow runs two checks once `cdk deploy` finishes:
 
 - **Smoke test** (`scripts/smoke.ts`): health, readiness, the auth gate and
-  the docs, over HTTPS.
+  the docs, over HTTPS, through the stack's custom domain
+  (`ApiDomainUrlOutput`: `api.paymeback.dev`, `api.test.paymeback.dev`) when it
+  has one, so a broken DNS record or certificate fails the deploy.
 - **Dependency check** (`scripts/deps-check.ts`): invokes the deployed
   function with `{"gdpSelfCheck":true}` so it checks, with its own config
   and IAM role, that the Stripe key works and both fee prices exist, that a

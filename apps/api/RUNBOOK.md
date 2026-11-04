@@ -62,6 +62,10 @@ To roll back, check out the last good commit and run `npm run deploy:dev -w apps
 
 DynamoDB throttled at least one request. The table is on-demand, so this means a sudden burst. The _DDB throttles_ panel shows the operation. One hot key (a join code or image hash being hammered) points at abuse rather than load.
 
+### ses-reputation
+
+Prod only (`gdp-ses-bounce-rate`, `gdp-ses-complaint-rate`): the account's SES bounce rate is over 4% or its complaint rate over 0.08%. SES reviews accounts at 5% / 0.1% and can pause sending, which stops sign-in links everywhere (dev and prod share the account). Check SES → Reputation metrics and the sign-in logs (`signin.rate_limited`, many sends to random addresses suggests someone spraying `/email/start`). The per-IP and global sign-in limits (#146) are the first line of defence.
+
 ## Common problems
 
 ### Bills won't read

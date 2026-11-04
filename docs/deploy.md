@@ -185,10 +185,10 @@ deploys instead (#124):
 
 - **Test:** pushes to main deploy nothing. Every hour (at :17) **Test Deploy**
   (`test-deploy.yml`) takes the newest commit on main whose `gate` passed,
-  compares it with the `test-live` tag (what test runs now) and deploys only
+  compares it with the last `test` deployment (Settings → Environments; what test runs now) and deploys only
   what changed: the dev API (API Deploy, `dev`) for `apps/api`, and for
   `apps/web` or `packages` a Vercel Preview build (Preview env vars: the dev
-  API) aliased to `test.paymeback.dev`. Then it moves `test-live`. A quiet
+  API) aliased to `test.paymeback.dev`. Then it records a `test` deployment. A quiet
   hour deploys nothing, so test costs at most 24 Vercel deploys a day. Run it
   by hand to deploy now (`force` redeploys both). If a deploy fails the tag
   stays put and the next hour retries, so fix main.
@@ -196,12 +196,12 @@ deploys instead (#124):
   blank means latest). It refuses a commit whose `gate` didn't pass, deploys
   the prod API (`GdpBackendProd`; the `prod` environment's reviewer approves),
   stops if the smoke test or dependency check fails, then builds and deploys
-  paymeback.dev from the same commit and tags it `release-YYYY-MM-DD-n` with
+  paymeback.dev from the same commit and records it as a `live` deployment named `release-YYYY-MM-DD-n` (GitHub deployments, not tags: the Actions token can't create a tag on a commit that changed a workflow) with
   a summary of what changed since the last release. The prod API never
   deploys any other way, so the live site can't get ahead of the API it
   needs.
 - **Rollback:** the web app with Vercel's Instant Rollback (no build); the
-  API by running Release on the previous release tag's commit.
+  API by running Release on the previous `live` deployment's commit.
 - Vercel cost: one deploy per web push plus one per release.
 
 `NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back

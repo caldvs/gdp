@@ -7,11 +7,12 @@ name: Test Deploy
 #
 # - Picks the newest commit on main whose CI `gate` passed (a commit still in
 #   CI waits for the next hour).
-# - Compares it with the `test-live` tag (what test runs now) and deploys only
+# - Compares it with the last `test` deployment (Settings → Environments; what
+#   test runs now) and deploys only
 #   the parts that changed: the API for apps/api, the web app for apps/web or
 #   packages. Nothing new → nothing deploys, so a quiet hour costs nothing.
-# - Moves `test-live` once everything it deployed succeeded. A failure leaves
-#   the tag, so the next hour tries again; fix main.
+# - Records a `test` deployment once everything it deployed succeeded. A
+#   failure records nothing, so the next hour tries again; fix main.
 # - Run it by hand (Actions → Test Deploy → Run workflow) to deploy now;
 #   `force` redeploys both parts even if nothing changed.
 
@@ -39,6 +40,7 @@ jobs:
     permissions:
       contents: read
       checks: read
+      deployments: read
     outputs:
       sha: ${{ steps.pick.outputs.sha }}
       api: ${{ steps.pick.outputs.api }}
@@ -48,7 +50,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Newest green commit, and what changed since test-live
+      - name: Newest green commit, and what changed since test
         id: pick
         env:
           GH_TOKEN: ${{ github.token }}
@@ -65,7 +67,7 @@ jobs:
             echo "api=false" >>"$GITHUB_OUTPUT"; echo "web=false" >>"$GITHUB_OUTPUT"
             exit 0
           fi
-          live=$(git rev-parse --verify -q "refs/tags/test-live^{commit}" || true)
+          live=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=test&per_page=1" --jq '.[0].sha // empty')
           api=false; web=false
           if [ "$FORCE" = "true" ] || [ -z "$live" ]; then
             api=true; web=true
@@ -73,7 +75,7 @@ jobs:
             if ! git merge-base --is-ancestor "$live" "$sha"; then
               # test runs something newer than the newest green commit (main
               # went red since). Leave it.
-              echo "test-live (${live::7}) is ahead of ${sha::7}; nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "test (${live::7}) is ahead of ${sha::7}; nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
               echo "api=false" >>"$GITHUB_OUTPUT"; echo "web=false" >>"$GITHUB_OUTPUT"
               exit 0
             fi
@@ -129,8 +131,8 @@ jobs:
             "https://api.vercel.com/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID" | jq -r '.alias // .'
           echo "test.paymeback.dev → $url (${SHA::7})" | tee -a "$GITHUB_STEP_SUMMARY"
 
-  mark:
-    name: move test-live
+  record:
+    name: record the test deployment
     needs: [pick, api, web]
     # Something deployed and nothing failed (a part with no changes skips).
     if: >-
@@ -140,12 +142,16 @@ jobs:
       && needs.web.result != 'failure' && needs.web.result != 'cancelled'
     runs-on: ubuntu-24.04
     permissions:
-      contents: write
+      deployments: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Tag what test now runs
+      # A GitHub deployment, not a tag: GitHub refuses a tag from this token
+      # on a commit that changed a workflow file.
+      - name: Record what test now runs
         env:
           SHA: ${{ needs.pick.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git tag -f test-live "$SHA"
-          git push -f origin refs/tags/test-live
+          id=$(jq -n --arg sha "$SHA" '{ref: $sha, environment: "test", auto_merge: false, required_contexts: [], description: "Test Deploy"}' \
+            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success \
+            -f environment_url=https://test.paymeback.dev >/dev/null

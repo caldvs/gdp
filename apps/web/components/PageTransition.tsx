@@ -8,13 +8,14 @@ import '@/app/transitions.css';
  * Page changes: the old page fades out and the new one fades in while
  * rising 8px. Keyed by path, so every navigation is an exit and an enter.
  * The header sits outside it and the action bar has its own name, so both
- * stay still. Styles: app/transitions.css.
+ * stay still. It's the page's `<main>`, so a screen's ActionBar (a sibling
+ * of its Page) is inside the landmark too. Styles: app/transitions.css.
  */
 export function PageTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   return (
     <ViewTransition key={pathname} enter="page-in" exit="page-out" default="none">
-      <div className="vt-page">{children}</div>
+      <main className="vt-page">{children}</main>
     </ViewTransition>
   );
 }

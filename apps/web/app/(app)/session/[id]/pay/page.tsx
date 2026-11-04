@@ -116,9 +116,9 @@ export default function PayPage() {
         />
         {done ? null : (
           <>
-            <div className="pay-total"><span>You pay {hostFirst}</span><b>{formatGBP(amount)}</b></div>
+            <h2 className="pay-total"><span>You pay {hostFirst}</span><b>{formatGBP(amount)}</b></h2>
             {bd ? (
-              <Box>
+              <Box list label="Bank details">
                 <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />
                 <CopyRow k="Sort code" v={fmtSort(bd.sortCode)} copied={copied === 's'} onCopy={() => copy('s', bd.sortCode)} />
                 <CopyRow k="Account no." v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />

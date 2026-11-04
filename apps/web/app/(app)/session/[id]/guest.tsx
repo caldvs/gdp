@@ -147,7 +147,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
 
         {me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? (
           <Section title="You had">
-            <Box>
+            <Box list>
               {[...new Set(me.claimedItemIds)].map((id) => {
                 const item = b.items.find((x) => x.itemId === id);
                 if (!item) return null;
@@ -171,7 +171,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
 
         {sentPayments.length > 1 || (sentPayments.length === 1 && mustPay) ? (
           <Section title="Your payments">
-            <Box>
+            <Box list>
               {sentPayments.map((e) => (
                 <Row key={e.paymentId} title={formatGBP(e.amountPence)} end={e.status === 'succeeded' ? <Badge tone="ok">Confirmed</Badge> : <Badge>Waiting for {hostFirst}</Badge>} />
               ))}
@@ -181,7 +181,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
 
         {!closed && open.length > 0 ? (
           <Section title="Still to claim">
-            <Box>{open.map((st) => <ItemLine key={st.item.itemId} st={st} />)}</Box>
+            <Box list>{open.map((st) => <ItemLine key={st.item.itemId} st={st} />)}</Box>
           </Section>
         ) : null}
 

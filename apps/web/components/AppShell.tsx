@@ -8,13 +8,14 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { stashJoinFragment } from '@/lib/joinFragment';
-import { Button, Centre, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
+import { Button, CentreMain, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
 import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
-export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void; menuOpen?: boolean; wide?: boolean; /** The front door: How it works, Pricing and Sign in. */ signIn?: boolean }) {
+export function Header({ onMenu, menuOpen, wide, signIn, inMenu }: { onMenu?: () => void; menuOpen?: boolean; wide?: boolean; /** The front door: How it works, Pricing and Sign in. */ signIn?: boolean; /** In the menu panel: a plain div, so the page keeps one banner. */ inMenu?: boolean }) {
+  const Tag = inMenu ? 'div' : 'header';
   return (
-    <header className="hdr">
+    <Tag className="hdr">
       <div className={wide ? 'hdr__in hdr__in--wide' : 'hdr__in'}>
         <Link href="/" className="brand">
           <span className="brand__mark" aria-hidden><span className="brand__roll"><span>£</span><span>€</span><span>$</span><span>¥</span><span>£</span></span></span>
@@ -33,7 +34,7 @@ export function Header({ onMenu, menuOpen, wide, signIn }: { onMenu?: () => void
           </button>
         ) : null}
       </div>
-    </header>
+    </Tag>
   );
 }
 
@@ -74,17 +75,23 @@ function Menu({ email, guest, closing, onClose, onClosed }: { email?: string; /*
       aria-label="Menu"
       onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget) onClosed(); }}
     >
-      <Header onMenu={onClose} menuOpen />
+      <Header onMenu={onClose} menuOpen inMenu />
       <nav className="menu__nav" aria-label="Main">
-        {guest ? (
-          <Link ref={first} href={`/session/${guest.sessionId}`} className="menu__item" aria-current={pathname.startsWith(`/session/${guest.sessionId}`) ? 'page' : undefined} onClick={onClosed}>
-            This bill
-          </Link>
-        ) : MENU.map((m, i) => m === null ? <div key={i} className="menu__div" /> : (
-          <Link key={m.href} ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClosed}>
-            {m.label}
-          </Link>
-        ))}
+        <ul className="menu__list">
+          {guest ? (
+            <li>
+              <Link ref={first} href={`/session/${guest.sessionId}`} className="menu__item" aria-current={pathname.startsWith(`/session/${guest.sessionId}`) ? 'page' : undefined} onClick={onClosed}>
+                This bill
+              </Link>
+            </li>
+          ) : MENU.map((m, i) => m === null ? <li key={i} className="menu__div" aria-hidden /> : (
+            <li key={m.href}>
+              <Link ref={i === 0 ? first : undefined} href={m.href} className="menu__item" aria-current={pathname === m.href ? 'page' : undefined} onClick={onClosed}>
+                {m.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
       </nav>
       <div className="menu__foot">
         <div className="menu__foot-in">
@@ -145,13 +152,14 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   let body: ReactNode = children;
   if (unauthenticated && publicPath) body = children;
-  else if (me.isPending || unauthenticated) body = <Centre><Spinner /></Centre>;
+  else if (me.isPending || unauthenticated) body = <CentreMain><Spinner /></CentreMain>;
   else if (me.isError) {
     body = (
-      <Centre>
+      <CentreMain>
+        <h1 className="vh">Can’t reach Pay Me Back</h1>
         <Notice tone="error" title="Can’t reach Pay Me Back.">{me.error.message}</Notice>
         <Button tone="secondary" small onClick={() => me.refetch()}>Try again</Button>
-      </Centre>
+      </CentreMain>
     );
   }
 

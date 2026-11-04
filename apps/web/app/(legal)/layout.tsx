@@ -8,14 +8,14 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
     <div className="app">
       <Header />
       <PageTransition>
-        <main className="page legal">
+        <div className="page legal">
           {children}
           <nav className="legal__nav" aria-label="Legal">
             <Link href="/terms">Terms</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/refunds">Refunds</Link>
           </nav>
-        </main>
+        </div>
       </PageTransition>
     </div>
   );

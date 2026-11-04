@@ -31,7 +31,7 @@ export default function HistoryPage() {
       {sessions.isError ? <Notice tone="error">{sessions.error.message}</Notice> : null}
       {sessions.isSuccess && list.length === 0 ? <p className="muted">Nothing here yet.</p> : null}
       {list.length > 0 ? (
-        <Box>
+        <Box list label="Bills">
           {list.map((s) => (
             <RowLink
               key={s.sessionId}

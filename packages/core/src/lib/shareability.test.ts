@@ -13,7 +13,7 @@ describe('isLikelyShareable', () => {
     expect(isLikelyShareable(item(name))).toBe(false),
   );
 
-  it('never for multi-quantity lines (those are claimed per unit)', () => {
-    expect(isLikelyShareable(item('Bottle of prosecco', 2, 'drink'))).toBe(false);
+  it('also for lines with more than one (some of them can be split)', () => {
+    expect(isLikelyShareable(item('Bottle of prosecco', 2, 'drink'))).toBe(true);
   });
 });

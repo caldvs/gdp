@@ -63,30 +63,11 @@ export function useSetClaims(sessionId: string) {
       if (previous && me) {
         qc.setQueryData<Session>(['session', sessionId], {
           ...previous,
+          // Claims never touch splits: the API refuses a claim on a split
+          // quantity-1 item, and on a longer line the split keeps its units.
           participants: previous.participants.map((p) =>
-            p.userId === me.userId
-              ? {
-                  ...p,
-                  claimedItemIds,
-                  // ADR-0006 mutual exclusion: claiming an item drops
-                  // it from this user's share set if they were sharing
-                  // it. Mirror that so the optimistic state matches.
-                  sharedItemIds: p.sharedItemIds.filter(
-                    (id) => !claimedItemIds.includes(id),
-                  ),
-                }
-              : p,
+            p.userId === me.userId ? { ...p, claimedItemIds } : p,
           ),
-          // Likewise prune the session.shares view so the row flips out
-          // of share-mode immediately for everyone if this user was the
-          // last sharer.
-          shares: (previous.shares ?? [])
-            .map((sh) =>
-              claimedItemIds.includes(sh.itemId)
-                ? { ...sh, userIds: sh.userIds.filter((id) => id !== me.userId) }
-                : sh,
-            )
-            .filter((sh) => sh.userIds.length > 0),
         });
       }
       return { previous };
@@ -110,16 +91,18 @@ export function useSetClaims(sessionId: string) {
 // (fetch is stubbed there, so onSuccess never lands).
 export function useAddShare(sessionId: string) {
   const qc = useQueryClient();
-  // `ways` (how many people shared it) is only used when starting a split.
-  return useMutation<Session, ApiError, { itemId: string; ways?: number }, { previous?: Session }>({
+  // `ways` (how many people shared it) and `units` (how many of a longer
+  // line) are only used when starting a split. Pass `units` for any line
+  // with more than one of something, so the optimistic view knows.
+  return useMutation<Session, ApiError, { itemId: string; ways?: number; units?: number }, { previous?: Session }>({
     mutationFn: (body) =>
       api<Session>(`/v1/sessions/${sessionId}/shares`, { method: 'POST', body }),
-    onMutate: async ({ itemId, ways }) => {
+    onMutate: async ({ itemId, ways, units }) => {
       await qc.cancelQueries({ queryKey: ['session', sessionId] });
       const previous = qc.getQueryData<Session>(['session', sessionId]);
       const me = qc.getQueryData<User>(['me']);
       if (previous && me) {
-        qc.setQueryData<Session>(['session', sessionId], applyAddShare(previous, itemId, me.userId, ways));
+        qc.setQueryData<Session>(['session', sessionId], applyAddShare(previous, itemId, me.userId, ways, units));
       }
       return { previous };
     },
@@ -191,9 +174,14 @@ export function useSetShareWays(sessionId: string) {
 
 // Pure transforms — exported for tests later if needed. The server is
 // the source of truth; these mirror its behaviour for the optimistic
-// window only (mutual exclusion with claims, dedup on re-add, prune
-// empty share sets).
-function applyAddShare(session: Session, itemId: string, userId: string, ways?: number): Session {
+// window only (dedup on re-add, prune empty share sets).
+export function applyAddShare(
+  session: Session,
+  itemId: string,
+  userId: string,
+  ways?: number,
+  units?: number,
+): Session {
   const shares = [...(session.shares ?? [])];
   const idx = shares.findIndex((sh) => sh.itemId === itemId);
   if (idx >= 0) {
@@ -204,15 +192,18 @@ function applyAddShare(session: Session, itemId: string, userId: string, ways?: 
       shares[idx] = { ...existing, userIds, ways: Math.max(existing.ways, userIds.length) };
     }
   } else {
-    // #130: splitting something someone else claimed makes their claim
-    // their spot in the split.
-    const claimer = session.participants.find(
-      (p) => p.userId !== userId && p.claimedItemIds.includes(itemId),
-    );
+    // #130: splitting a quantity-1 dish someone else claimed makes their
+    // claim their spot in the split. A longer line's split (`units` given)
+    // takes unclaimed units and leaves claims alone.
+    const claimer =
+      units === undefined
+        ? session.participants.find((p) => p.userId !== userId && p.claimedItemIds.includes(itemId))
+        : undefined;
     shares.push({
       itemId,
       userIds: claimer ? [claimer.userId, userId] : [userId],
       ways: Math.max(ways ?? 2, 2),
+      units: units ?? 1,
       activity: [],
     });
     if (claimer) {
@@ -234,9 +225,6 @@ function applyAddShare(session: Session, itemId: string, userId: string, ways?: 
     p.userId === userId
       ? {
           ...p,
-          // ADR-0006 mutual exclusion: starting/joining a share drops
-          // any unit claims this user had on the same item.
-          claimedItemIds: p.claimedItemIds.filter((id) => id !== itemId),
           sharedItemIds: p.sharedItemIds.includes(itemId)
             ? p.sharedItemIds
             : [...p.sharedItemIds, itemId],

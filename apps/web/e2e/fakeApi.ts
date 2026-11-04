@@ -28,7 +28,7 @@ function aggregate(entries: Entry[]): Payment {
   if (paid) return { status: 'succeeded', paymentId: paid.paymentId, paidAt: paid.paidAt! };
   return { status: 'unpaid' };
 }
-type Share = { itemId: string; userIds: string[]; ways: number; activity: unknown[] };
+type Share = { itemId: string; userIds: string[]; ways: number; /** How many of the line (1 when absent). */ units?: number; activity: unknown[] };
 type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string };
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
@@ -138,7 +138,7 @@ export class FakeApi {
     const p = this.participants.find((x) => x.userId === userId)!;
     const unit = (id: string) => this.items.find((i) => i.itemId === id)?.unitPricePence ?? 0;
     let sub = p.claimedItemIds.reduce((a, id) => a + unit(id), 0);
-    for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil(unit(sh.itemId) / sh.ways);
+    for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil((unit(sh.itemId) * (sh.units ?? 1)) / sh.ways);
     const b = this.bill;
     // #166: a guest's part of the hold, by what they ordered.
     const fee = userId !== 'u-lead' && this.platformFeePence && sub > 0 ? Math.floor((this.platformFeePence * sub) / b.subtotalPence) : 0;
@@ -329,7 +329,9 @@ export class FakeApi {
       const next = body().claimedItemIds as string[];
       for (const it of this.items) {
         const mine = next.filter((id) => id === it.itemId).length;
-        const others = this.participants.filter((p) => p.userId !== user.userId).reduce((a, p) => a + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
+        const sh = this.shares.find((x) => x.itemId === it.itemId && x.userIds.length > 0);
+        const split = sh ? (sh.units ?? 1) : 0;
+        const others = split + this.participants.filter((p) => p.userId !== user.userId).reduce((a, p) => a + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
         if (mine + others > it.quantity) return err('SESSION_INVALID_STATE', `Only ${it.quantity - others} of "${it.name}" left to claim`, 409, { itemId: it.itemId });
       }
       const before = me.claimedItemIds;
@@ -337,7 +339,8 @@ export class FakeApi {
       return json(this.session());
     }
     if (path === `/v1/sessions/${SID}/shares` && method === 'POST') {
-      const { itemId, ways } = body() as { itemId: string; ways?: number };
+      const { itemId, ways, units } = body() as { itemId: string; ways?: number; units?: number };
+      const line = this.items.find((i) => i.itemId === itemId)!;
       const existing = this.shares.find((s) => s.itemId === itemId);
       if (existing) {
         const full = existing.userIds.length >= existing.ways;
@@ -348,6 +351,12 @@ export class FakeApi {
           existing.userIds.push(user.userId);
           existing.ways = Math.max(existing.ways, existing.userIds.length);
         }
+      } else if (line.quantity > 1) {
+        // Some of a longer line: taken from what nobody has claimed.
+        const left = line.quantity - this.participants.reduce((a, p) => a + p.claimedItemIds.filter((id) => id === itemId).length, 0);
+        const n = units ?? left;
+        if (n < 1 || n > left) return err('SESSION_INVALID_STATE', `Only ${left} of "${line.name}" left to split`, 409, { itemId });
+        this.shares.push({ itemId, userIds: [user.userId], ways: Math.max(ways ?? 2, 2), units: n, activity: [] });
       } else {
         // #130: splitting something someone else claimed makes their claim
         // their spot in the split, unless they've paid.
@@ -360,9 +369,9 @@ export class FakeApi {
           claimer.claimedItemIds = claimer.claimedItemIds.filter((id) => id !== itemId);
           claimer.sharedItemIds.push(itemId);
         }
-        this.shares.push({ itemId, userIds: claimer ? [claimer.userId, user.userId] : [user.userId], ways: Math.max(ways ?? 2, 2), activity: [] });
+        this.shares.push({ itemId, userIds: claimer ? [claimer.userId, user.userId] : [user.userId], ways: Math.max(ways ?? 2, 2), units: 1, activity: [] });
       }
-      me.claimedItemIds = me.claimedItemIds.filter((id) => id !== itemId);
+      if (line.quantity === 1) me.claimedItemIds = me.claimedItemIds.filter((id) => id !== itemId);
       if (!me.sharedItemIds.includes(itemId)) me.sharedItemIds.push(itemId);
       return json(this.session());
     }

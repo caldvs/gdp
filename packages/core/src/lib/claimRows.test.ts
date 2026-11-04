@@ -74,3 +74,30 @@ describe('claimRows', () => {
     expect(hasPaid({ payment: { status: 'self_paid' } } as never)).toBe(false);
   });
 });
+
+describe('claimRows: a split covering some of a longer line', () => {
+  const b = {
+    billId: 'b2',
+    items: [{ itemId: 'rioja', name: 'Rioja', unitPricePence: 2400, quantity: 4, category: 'drink' }],
+  } as never;
+  const s = {
+    participants: [
+      { userId: 'tom', claimedItemIds: ['rioja'], sharedItemIds: ['rioja'], payment: unpaid },
+      { userId: 'priya', claimedItemIds: [], sharedItemIds: ['rioja'], payment: unpaid },
+    ],
+    shares: [{ itemId: 'rioja', userIds: ['tom', 'priya'], ways: 3, units: 2, activity: [] }],
+  } as never;
+
+  it('shows the split, then the rest of the line, each with its own key and count', () => {
+    const rows = claimRows(s, b, 'priya');
+    expect(rows.map((r) => [r.key, r.kind, r.group, r.count, r.mine, r.left])).toEqual([
+      ['rioja:split', 'share', 'yours', 2, 1, 1],
+      ['rioja', 'multi', 'open', 2, 0, 1],
+    ]);
+  });
+
+  it('drops the claim row once the split covers the whole line', () => {
+    const whole = { ...(s as object), shares: [{ itemId: 'rioja', userIds: ['tom'], ways: 2, units: 4, activity: [] }] } as never;
+    expect(claimRows(whole, b, 'tom').map((r) => r.key)).toEqual(['rioja:split']);
+  });
+});

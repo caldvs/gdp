@@ -8,7 +8,7 @@ type Share = NonNullable<Session['shares']>[number];
 
 /**
  * One bill line and who has it. `left` is the units nobody has claimed; a
- * split counts as one unit taken (v1 splits are quantity-1 items only).
+ * split counts as its units taken (one, unless it covers more of a line).
  */
 export type ItemStatus = { item: BillItem; left: number; mine: number; who: string[]; share?: Share };
 
@@ -38,7 +38,7 @@ export function itemStatuses(
   for (const p of s.participants) for (const id of p.claimedItemIds) add(id, p);
   for (const sh of s.shares ?? []) {
     if (sh.userIds.length === 0) continue;
-    taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + 1);
+    taken.set(sh.itemId, (taken.get(sh.itemId) ?? 0) + (sh.units ?? 1));
     const names = sh.userIds.map((uid) =>
       uid === meUserId ? 'you' : nameOf(s.participants.find((p) => p.userId === uid)),
     );
@@ -58,9 +58,9 @@ export function itemStatuses(
 }
 
 /**
- * What the lead's "I'll cover these" takes: every unclaimed unit that isn't
- * in a split (an item is claimed or split, never both; the API refuses a
- * claim on a shared item). `claimedItemIds` is the lead's new full claim
+ * What the lead's "I'll cover these" takes: every unclaimed unit outside a
+ * split (`left` already leaves out a split's units; the API refuses a claim
+ * on a split quantity-1 item). `claimedItemIds` is the lead's new full claim
  * list, one entry per unit, ready for a single setClaims call.
  */
 export function coverLeftovers(
@@ -69,7 +69,8 @@ export function coverLeftovers(
   myClaimedItemIds: readonly string[],
 ): { lines: ItemStatus[]; pence: number; claimedItemIds: string[] } {
   const sharedIds = new Set(s.participants.flatMap((p) => p.sharedItemIds ?? []));
-  const lines = statuses.filter((x) => x.left > 0 && !sharedIds.has(x.item.itemId) && !x.share);
+  const splitOne = (x: ItemStatus) => x.item.quantity === 1 && (!!x.share || sharedIds.has(x.item.itemId));
+  const lines = statuses.filter((x) => x.left > 0 && !splitOne(x));
   return {
     lines,
     pence: lines.reduce((acc, x) => acc + x.item.unitPricePence * x.left, 0),

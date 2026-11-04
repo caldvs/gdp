@@ -365,3 +365,33 @@ describe('computeOwed with ways', () => {
     ).toThrow('CLAIMS_INCOMPLETE');
   });
 });
+
+describe('computeOwed with a split covering several of a line', () => {
+  // 4 bottles at £20: 2 split three ways, 2 claimed one each.
+  const wine = billOf([item('w', 2000, 4)], 0, 400);
+  const people = [
+    { userId: 'a', claimedItemIds: ['w'], sharedItemIds: ['w'] },
+    { userId: 'b', claimedItemIds: ['w'], sharedItemIds: ['w'] },
+    { userId: 'c', claimedItemIds: [], sharedItemIds: ['w'] },
+  ];
+  const ways = new Map([['w', 3]]);
+  const units = new Map([['w', 2]]);
+
+  it('divides the split’s units by its ways and adds the claims', () => {
+    const owed = computeOwed(wine, people, ways, units);
+    // £40 three ways: 1334, 1333, 1333; a and b also have a £20 bottle.
+    // c's service: 400 × 1333 / 8000, rounded down by largest remainder.
+    expect(owed.get('c')).toBe(1333 + 66);
+    expect(owed.get('a')).toBe(1334 + 2000 + 167);
+    expect(sumValues(owed)).toBe(wine.totalPence);
+  });
+
+  it('is incomplete while a unit is neither claimed nor in the split', () => {
+    const fewer = [people[0]!, { ...people[1]!, claimedItemIds: [] }, people[2]!];
+    expect(() => computeOwed(wine, fewer, ways, units)).toThrow('CLAIMS_INCOMPLETE');
+  });
+
+  it('counts an old split with no units as one of the line', () => {
+    expect(() => computeOwed(wine, people, ways)).toThrow('CLAIMS_INCOMPLETE');
+  });
+});

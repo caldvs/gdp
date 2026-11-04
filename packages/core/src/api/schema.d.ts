@@ -601,16 +601,20 @@ export interface paths {
          *     someone in the split has already paid). Spots nobody has taken are
          *     unclaimed.
          *
-         *     Only items with `quantity: 1` are shareable, and an item is in
-         *     exactly one mode session-wide — claim-mode (unit claims via
-         *     `/claims`) or share-mode.
+         *     On a line with more than one of something the split covers
+         *     `units` of it (default: every unit nobody has claimed), and each
+         *     sharer owes unitPrice × units / ways. The rest of the line can
+         *     still be claimed one at a time. A quantity-1 item is in exactly one
+         *     mode session-wide — claim-mode (unit claims via `/claims`) or
+         *     share-mode.
          *
          *     Splitting an item someone else has claimed (#130) turns their claim
          *     into their spot in a new split with the caller, `ways` (default 2),
          *     at once: they're told, not asked. The split's `activity` records it
          *     as `split`, `fromUserId` the former claimer.
          *
-         *     - `409 ITEM_NOT_SHAREABLE` if the item has quantity > 1,
+         *     - `409 SESSION_INVALID_STATE` if `units` is more than is left
+         *       unclaimed on the line,
          *     - `409 CLAIM_SHARE_CONFLICT` if the caller has claimed it
          *       themselves (remove the claim first), or
          *     - `409 SHARE_PAID` if the person who claimed it has paid.
@@ -1403,10 +1407,15 @@ export interface components {
                 userIds: string[];
                 /**
                  * @description How many people the item is divided between. Each sharer
-                 *     owes unitPrice / ways; `ways - userIds.length` spots are
-                 *     still open.
+                 *     owes unitPrice × units / ways; `ways - userIds.length` spots
+                 *     are still open.
                  */
                 ways: number;
+                /**
+                 * @description How many of the line the split covers (1 when absent). The
+                 *     rest of the line is claimed one unit at a time.
+                 */
+                units?: number;
                 /** @description Recent changes to this split, oldest first (last 10). */
                 activity: components["schemas"]["ShareActivity"][];
             }[];
@@ -2639,6 +2648,12 @@ export interface operations {
                     itemId: string;
                     /** @description How many people shared the item. Only read when starting the split. */
                     ways?: number;
+                    /**
+                     * @description How many of a multi-quantity line the split covers. Only read
+                     *     when starting the split; defaults to every unit nobody has
+                     *     claimed. Always 1 on a quantity-1 line.
+                     */
+                    units?: number;
                 };
             };
         };
@@ -2656,8 +2671,8 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /**
-             * @description Session is not in setup/claiming, item has quantity > 1
-             *     (`ITEM_NOT_SHAREABLE`), the caller has claimed it
+             * @description Session is not in setup/claiming or there aren't `units` left
+             *     unclaimed (`SESSION_INVALID_STATE`), the caller has claimed it
              *     (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
              *     has paid or the person who claimed it has paid (`SHARE_PAID`),
              *     or a concurrent edit kept winning

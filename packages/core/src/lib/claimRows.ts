@@ -13,10 +13,17 @@ type Share = NonNullable<Session['shares']>[number];
 export type ClaimGroup = 'yours' | 'open' | 'others';
 
 export type ClaimRow = {
+  /** Unique per row: the itemId, or `<itemId>:split` for a longer line's split. */
+  key: string;
   item: BillItem;
   group: ClaimGroup;
   /** `multi`: several of one thing, claimed one portion at a time. */
   kind: 'multi' | 'single' | 'share';
+  /**
+   * How many of the line this row is about: the split's units (share), the
+   * units outside any split (multi), else 1.
+   */
+  count: number;
   /** Portions I've claimed (multi, single). */
   mine: number;
   /** Portions nobody has claimed (multi, single); open spots (share). */
@@ -36,10 +43,16 @@ export type ClaimRow = {
 export const hasPaid = (p: Participant): boolean =>
   p.payment.status === 'pending' || p.payment.status === 'succeeded';
 
-/** Every bill line, in bill order, with its group and who has it. */
+/**
+ * Every bill line, in bill order, with its group and who has it. A line
+ * with more than one of something that has a split shows as two rows: the
+ * split (its units), then the rest, claimed one at a time.
+ */
 export function claimRows(s: Session, b: Bill, meUserId: string): ClaimRow[] {
-  return b.items.map((item) => {
+  return b.items.flatMap((item): ClaimRow[] => {
     const share = s.shares?.find((x) => x.itemId === item.itemId && x.userIds.length > 0);
+    const multi = item.quantity > 1;
+    const out: ClaimRow[] = [];
     if (share) {
       const others = share.userIds
         .filter((u) => u !== meUserId)
@@ -47,17 +60,22 @@ export function claimRows(s: Session, b: Bill, meUserId: string): ClaimRow[] {
         .filter((p): p is Participant => !!p);
       const inShare = share.userIds.includes(meUserId);
       const left = Math.max(0, share.ways - share.userIds.length);
-      return {
+      out.push({
+        key: multi ? `${item.itemId}:split` : item.itemId,
         item,
         kind: 'share',
+        count: share.units ?? 1,
         group: inShare ? 'yours' : left > 0 ? 'open' : 'others',
         mine: inShare ? 1 : 0,
         left,
         others,
         share,
         canSplit: !inShare && left === 0 && !others.some(hasPaid),
-      };
+      });
+      if (!multi) return out;
     }
+    const count = item.quantity - (share ? (share.units ?? 1) : 0);
+    if (count <= 0) return out;
     let mine = 0;
     let taken = 0;
     const others: Participant[] = [];
@@ -68,16 +86,19 @@ export function claimRows(s: Session, b: Bill, meUserId: string): ClaimRow[] {
       if (p.userId === meUserId) mine = n;
       else others.push(p);
     }
-    const left = Math.max(0, item.quantity - taken);
-    const kind = item.quantity > 1 ? 'multi' : 'single';
-    return {
+    const left = Math.max(0, count - taken);
+    const kind = multi ? 'multi' : 'single';
+    out.push({
+      key: item.itemId,
       item,
       kind,
+      count,
       group: mine > 0 ? 'yours' : left > 0 ? 'open' : 'others',
       mine,
       left,
       others,
       canSplit: kind === 'single' && mine === 0 && left === 0 && !others.some(hasPaid),
-    };
+    });
+    return out;
   });
 }

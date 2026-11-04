@@ -79,6 +79,33 @@ describe('billStatement', () => {
   });
 });
 
+describe('billStatement: a split covering several of a line', () => {
+  it('names how many it covers and leaves the rest of the line unclaimed', () => {
+    const b = {
+      billId: 'b2',
+      items: [{ itemId: 'rioja', name: 'Rioja', unitPricePence: 2400, quantity: 3, category: 'drink' }],
+      subtotalPence: 7200,
+      serviceChargePence: 0,
+      taxPence: 0,
+      totalPence: 7200,
+    } as never;
+    const s = {
+      creatorUserId: 'lead',
+      participants: [
+        { userId: 'lead', displayName: 'Callum', claimedItemIds: [], sharedItemIds: ['rioja'], payment: { status: 'self_paid' } },
+        { userId: 'sam', displayName: 'Sam', claimedItemIds: [], sharedItemIds: ['rioja'], payment: { status: 'unpaid' } },
+      ],
+      shares: [{ itemId: 'rioja', userIds: ['lead', 'sam'], ways: 3, units: 2, activity: [] }],
+    } as never;
+    const st = billStatement(s, b, (p) => p.displayName);
+    expect(st.people[1]!.items).toEqual([{ label: '2 × Rioja (1 of 3 ways)', pence: 1600 }]);
+    expect(st.unclaimed.items).toEqual([
+      { label: '2 × Rioja (1 of 3 ways)', pence: 1600 },
+      { label: 'Rioja (1 of 3)', pence: 2400 },
+    ]);
+  });
+});
+
 describe('statementText', () => {
   it('reads like the emailed report', () => {
     const st = billStatement(session, bill, (p) => p.displayName);

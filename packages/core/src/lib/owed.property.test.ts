@@ -5,7 +5,13 @@ import fc from 'fast-check';
 import { apportionByWeight, computeOwed, splitShare } from '../../../../apps/api/src/services/sessions/allocation';
 import { extrasRate, feeSharePence, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence } from './owed';
 import { computeOwedForParticipant, feeFor } from '../../../../apps/api/src/services/payments/ledger';
-import { billAndSession, split } from '../test/arbitraries';
+import { billAndSession, split, type GenSession } from '../test/arbitraries';
+
+/** Each split's ways and units, the way the API reads them from shareSettings. */
+const splits = (session: GenSession): [Map<string, number>, Map<string, number>] => [
+  new Map(session.shares.map((s) => [s.itemId, s.ways])),
+  new Map(session.shares.map((s) => [s.itemId, s.units])),
+];
 
 describe('sharePence (property)', () => {
   it('gives each person the floor or ceiling of price ÷ ways', () => {
@@ -78,7 +84,7 @@ describe('client and server agree (property)', () => {
         const server = computeOwed(
           { ...bill, serviceChargePence: 0, taxPence: 0, totalPence: bill.subtotalPence },
           session.participants,
-          new Map(session.shares.map((s) => [s.itemId, s.ways])),
+          ...splits(session),
         );
         for (const p of session.participants) {
           expect(projectSubtotalPence(session as never, bill as never, p.userId)).toBe(server.get(p.userId));
@@ -92,7 +98,7 @@ describe('client and server agree (property)', () => {
     // service and tax separately by largest remainder (±1p each).
     fc.assert(
       fc.property(billAndSession(), ({ bill, session }) => {
-        const server = computeOwed(bill, session.participants, new Map(session.shares.map((s) => [s.itemId, s.ways])));
+        const server = computeOwed(bill, session.participants, ...splits(session));
         for (const p of session.participants) {
           const projected = projectOwedPence(session as never, bill as never, p.userId);
           expect(Math.abs(projected - server.get(p.userId)!)).toBeLessThanOrEqual(2);
@@ -106,7 +112,7 @@ describe('server allocation (property)', () => {
   it('a complete bill is charged to the penny', () => {
     fc.assert(
       fc.property(billAndSession(), ({ bill, session }) => {
-        const owed = computeOwed(bill, session.participants, new Map(session.shares.map((s) => [s.itemId, s.ways])));
+        const owed = computeOwed(bill, session.participants, ...splits(session));
         const sum = [...owed.values()].reduce((a, b) => a + b, 0);
         expect(sum).toBe(bill.totalPence);
         for (const v of owed.values()) expect(v).toBeGreaterThanOrEqual(0);
@@ -120,11 +126,11 @@ describe('server allocation (property)', () => {
         const shareByItem = new Map(session.shares.map((s) => [s.itemId, s]));
         const open = bill.items.filter((it) => {
           const sh = shareByItem.get(it.itemId);
-          if (sh) return sh.userIds.length < sh.ways;
+          if (sh && sh.userIds.length < sh.ways) return true;
           const claimed = session.participants.reduce((n, p) => n + p.claimedItemIds.filter((id) => id === it.itemId).length, 0);
-          return claimed < it.quantity;
+          return claimed + (sh?.units ?? 0) < it.quantity;
         });
-        const run = () => computeOwed(bill, session.participants, new Map(session.shares.map((s) => [s.itemId, s.ways])));
+        const run = () => computeOwed(bill, session.participants, ...splits(session));
         if (open.length === 0) {
           expect(run).not.toThrow();
           return;
@@ -148,8 +154,8 @@ describe('server allocation (property)', () => {
         fc.pre(claimable.length > 0);
         const item = claimable[pickItem % claimable.length]!;
         const person = session.participants[pickPerson % session.participants.length]!;
-        const ways = new Map(session.shares.map((s) => [s.itemId, s.ways]));
-        const before = computeOwed(bill, session.participants, ways).get(person.userId)!;
+        const maps = splits(session);
+        const before = computeOwed(bill, session.participants, ...maps).get(person.userId)!;
         const bigger = {
           ...bill,
           items: bill.items.map((it) => (it.itemId === item.itemId ? { ...it, quantity: it.quantity + 1 } : it)),
@@ -159,7 +165,7 @@ describe('server allocation (property)', () => {
         const after = computeOwed(
           bigger,
           session.participants.map((p) => (p.userId === person.userId ? { ...p, claimedItemIds: [...p.claimedItemIds, item.itemId] } : p)),
-          ways,
+          ...maps,
         ).get(person.userId)!;
         // Service and tax are re-apportioned, so allow their rounding (±1p each).
         expect(after).toBeGreaterThanOrEqual(before + item.unitPricePence - 2);
@@ -196,10 +202,10 @@ describe('server allocation (property)', () => {
 
 describe('platform fee: guests repay the £1 hold by what they ordered (#166, property)', () => {
   // The API reads each split's ways from shareSettings; the client from shares.
-  const withHold = (session: { shares: { itemId: string; ways: number }[] }, lead: string, hold: number) =>
+  const withHold = (session: { shares: { itemId: string; ways: number; units: number }[] }, lead: string, hold: number) =>
     ({
       ...session,
-      shareSettings: session.shares.map((sh) => ({ itemId: sh.itemId, ways: sh.ways })),
+      shareSettings: session.shares.map((sh) => ({ itemId: sh.itemId, ways: sh.ways, units: sh.units })),
       creatorUserId: lead,
       platformFeePence: hold,
     }) as never;

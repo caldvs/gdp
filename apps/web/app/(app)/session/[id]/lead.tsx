@@ -15,7 +15,7 @@ import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
-import { extrasRate, projectFeePence, projectOwedPence, sharePence } from '@gdp/core/lib/owed';
+import { extrasRate, projectFeePence, projectOwedPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
   ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowButton, RowLink, Section, TabPanel, Tabs, Title, TotalLine, Totals, firstName,
@@ -227,8 +227,9 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 function openPence(r: ClaimRow): number {
   const share = r.share;
   if (share) {
-    const taken = share.userIds.reduce((acc, u) => acc + sharePence(r.item.unitPricePence, share.userIds, share.ways, u), 0);
-    return Math.max(0, r.item.unitPricePence - taken);
+    const price = splitPricePence(r.item, share);
+    const taken = share.userIds.reduce((acc, u) => acc + sharePence(price, share.userIds, share.ways, u), 0);
+    return Math.max(0, price - taken);
   }
   return r.item.unitPricePence * r.left;
 }
@@ -247,7 +248,7 @@ function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: Cla
   const me = s.participants.find((p) => p.userId === meUserId);
   const take = (r: ClaimRow) => {
     if (!me || leaving) return;
-    setLeaving(r.item.itemId);
+    setLeaving(r.key);
     const last = rows.length === 1;
     const done = { onSuccess: () => { if (last) onClose(); }, onSettled: () => setLeaving(null) };
     setTimeout(() => {
@@ -260,9 +261,9 @@ function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: Cla
     <Dialog id="left-t" title="Not claimed" onClose={onClose} actions={<Button tone="secondary" onClick={onClose}>Close</Button>}>
       <Box>
         {rows.map((r) => (
-          <div key={r.item.itemId} className={`claim${leaving === r.item.itemId ? ' leaving' : ''}`}>
+          <div key={r.key} className={`claim${leaving === r.key ? ' leaving' : ''}`}>
             <span className="row__main">
-              <span className="row__title">{r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.item.name}</span>
+              <span className="row__title">{r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.kind === 'share' && r.count > 1 ? `${r.count} × ${r.item.name}` : r.item.name}</span>
               <span className="row__sub">{formatGBP(openPence(r))}</span>
             </span>
             <Button tone="secondary" small className="claim__btn" disabled={!!leaving} onClick={() => take(r)} aria-label={`Claim ${r.item.name}`}>Claim</Button>

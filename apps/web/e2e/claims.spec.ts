@@ -52,6 +52,32 @@ test('#130: a 3× line is claimed one portion at a time, never more than were or
   expect(api.participants.find((p) => p.userId === 'u-sam')!.claimedItemIds).toEqual([]);
 });
 
+test('some of a 3× line can be split: the split gets its own row and the rest is claimed one at a time', async ({ browser }) => {
+  const api = new FakeApi();
+  const sam = await diner(browser, api, users.sam);
+  const tom = await diner(browser, api, users.tom);
+
+  await sam.getByRole('button', { name: 'Split some Espresso Martini' }).click();
+  const sheet = sam.getByRole('dialog', { name: 'Split Espresso Martini' });
+  await expect(sheet.getByText('How many?')).toBeVisible();
+  // Every one nobody has claimed, to start with.
+  await expect(sheet.getByRole('button', { name: 'More Espresso Martini' })).toBeDisabled();
+  await sheet.getByRole('button', { name: 'Fewer Espresso Martini' }).click();
+  await expect(sheet).toContainText('2 × Espresso Martini, £26.00');
+  await sheet.getByRole('button', { name: '£13.00 each' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(group(sam, 'Yours').filter({ hasText: '2 × Espresso Martini' })).toContainText('split 2 ways · 1 open');
+  await expect(group(sam, 'Still to claim').filter({ hasText: '1 × Espresso Martini' })).toContainText('£13.00 each · 1 left');
+  await expect(sam.getByTestId('your-share')).toHaveText('£13.00');
+
+  // Tom takes the open spot and the last one.
+  await tom.getByRole('button', { name: 'Join the split for Espresso Martini' }).click(POLL);
+  await tom.getByRole('button', { name: 'Claim one Espresso Martini' }).click();
+  await expect(tom.getByTestId('your-share')).toHaveText('£26.00');
+  expect(api.shares).toEqual([expect.objectContaining({ itemId: items[4]!.itemId, ways: 2, units: 2, userIds: ['u-sam', 'u-tom'] })]);
+  expect(api.participants.find((p) => p.userId === 'u-tom')!.claimedItemIds).toEqual([items[4]!.itemId]);
+});
+
 test('#130, #177: claiming one thing ticks its row in place; tapping again puts it back', async ({ browser }) => {
   const api = new FakeApi();
   const sam = await diner(browser, api, users.sam);

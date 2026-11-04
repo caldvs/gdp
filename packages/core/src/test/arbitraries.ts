@@ -6,7 +6,7 @@
 import fc from 'fast-check';
 
 export type GenItem = { itemId: string; name: string; unitPricePence: number; quantity: number; category: 'food' | 'drink' };
-export type GenShare = { itemId: string; userIds: string[]; ways: number; activity: [] };
+export type GenShare = { itemId: string; userIds: string[]; ways: number; units: number; activity: [] };
 export type GenParticipant = { userId: string; displayName: string; claimedItemIds: string[]; sharedItemIds: string[] };
 export type GenBill = {
   billId: string;
@@ -74,16 +74,20 @@ export const billAndSession = ({ complete = true }: { complete?: boolean } = {})
       const items: GenItem[] = plans.map((plan: ItemPlan, i) => {
         const itemId = itemIds[i]!;
         const leaveGap = gaps[i] ?? false;
-        // v1: only quantity-1 items can be split.
+        // A split covers `units` of its line; the rest is claimed one at a time.
         if (plan.shared && people.length > 1) {
+          const units = 1 + (plan.picks[1]! % plan.quantity);
           const ways = 2 + (plan.picks[0]! % (people.length - 1));
           const members = [...new Set(plan.picks.map((n) => people[n % people.length]!))].slice(0, ways);
           // Fill the split from the front of the list if picks repeated.
           for (const p of people) if (members.length < ways && !members.includes(p)) members.push(p);
           const taken = leaveGap ? members.slice(0, Math.max(1, members.length - 1)) : members;
-          shares.push({ itemId, userIds: taken, ways, activity: [] });
+          shares.push({ itemId, userIds: taken, ways, units, activity: [] });
           for (const uid of taken) participants.find((p) => p.userId === uid)!.sharedItemIds.push(itemId);
-          return { itemId, name: `Item ${i + 1}`, unitPricePence: plan.price, quantity: 1, category: 'food' };
+          for (let u = 0; u < plan.quantity - units; u++) {
+            participants[plan.picks[(u + 2) % plan.picks.length]! % people.length]!.claimedItemIds.push(itemId);
+          }
+          return { itemId, name: `Item ${i + 1}`, unitPricePence: plan.price, quantity: plan.quantity, category: 'food' };
         }
         const claimed = leaveGap ? plan.quantity - 1 : plan.quantity;
         for (let u = 0; u < claimed; u++) {

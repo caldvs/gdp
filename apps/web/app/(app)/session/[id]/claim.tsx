@@ -8,6 +8,8 @@
  * their Your items tab (#131). Several of one thing are claimed a portion
  * at a time, never more than were ordered; someone else's dish can be
  * split with them at once (they're told, not asked: docs/decisions.md).
+ * Some of several (2 of 4 bottles) can be split too: the split gets its
+ * own row above the rest of the line.
  */
 import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
@@ -15,7 +17,7 @@ import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp
 import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { formatGBP } from '@gdp/core/lib/money';
-import { sharePence } from '@gdp/core/lib/owed';
+import { sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import { AvatarStack, Button, Dialog, Notice, TickIcon, TotalLine, Totals, firstName } from '@/components/ui';
 
 const itemStatuses = (s: Session, b: Bill, meUserId: string) => coreItemStatuses(s, b, meUserId, (p) => firstName(p?.displayName));
@@ -44,7 +46,9 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   // Splitting someone else's dish: confirm first (G2.3).
   const [confirming, setConfirming] = useState<ClaimRow | null>(null);
   // Starting a split of something nobody has, or changing how many ways.
-  const [waysSheet, setWaysSheet] = useState<{ item: BillItem; ways: number; share?: Share } | null>(null);
+  // `units`/`maxUnits`: how many of a longer line it covers, and how many
+  // are free to split.
+  const [waysSheet, setWaysSheet] = useState<{ item: BillItem; ways: number; units: number; maxUnits: number; share?: Share } | null>(null);
   // #123: an item a tap just lost the race for.
   const [raceLost, setRaceLost] = useState<string | null>(null);
 
@@ -81,22 +85,30 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const err = claimErr ?? (addShare.error && !confirming ? shareError(addShare.error) : undefined) ?? removeShare.error?.message;
 
   const render = (r: ClaimRow) => {
-    const { item, kind, mine, left, others, share } = r;
+    const { item, kind, mine, left, others, share, count } = r;
     const names = others.map(nameOf);
     const unit = formatGBP(item.unitPricePence);
-    const title = kind === 'multi' ? `${item.quantity} × ${item.name}` : item.name;
+    const title = (kind === 'multi' || count > 1) ? `${count} × ${item.name}` : item.name;
+    // A longer line with no split yet can have some of it split.
+    const splitLink = kind === 'multi' && left > 0 && !s.shares?.some((x) => x.itemId === item.itemId && x.userIds.length > 0) ? (
+      <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: 2, units: left, maxUnits: left })} aria-label={`Split some ${item.name}`}>Split</button>
+    ) : null;
     // In Yours, only someone splitting my dish is news; the rest was my doing.
     const flash = changes.get(item.itemId)?.text;
     const change = r.group === 'yours' && !flash?.startsWith('Split with') ? undefined : flash;
-    const key = item.itemId;
+    const key = r.key;
     const row = (note: string, action?: ReactNode) => (
       <ClaimItem key={key} group={r.group} title={title} names={names} note={change ?? note} action={action} changed={!!change} />
     );
 
     if (r.group === 'yours') {
       if (kind === 'multi') {
-        return row(`${unit} each · ${left > 0 ? `${left} left` : 'all claimed'}`,
-          <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} />);
+        return row(`${unit} each · ${left > 0 ? `${left} left` : 'all claimed'}`, (
+          <>
+            {splitLink}
+            <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} />
+          </>
+        ));
       }
       if (kind === 'single') {
         // Where Claim was, so the row doesn't shift: tap again to put it back.
@@ -106,11 +118,11 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           </Button>
         ));
       }
-      const each = sharePence(item.unitPricePence, share!.userIds, share!.ways, meUserId);
+      const each = sharePence(splitPricePence(item, share!), share!.userIds, share!.ways, meUserId);
       const note = [formatGBP(each), names.length ? `split with ${listNames(names)}` : `split ${share!.ways} ways`, left ? `${left} open` : null].filter(Boolean).join(' · ');
       return row(note, (
         <>
-          <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: share!.ways, share })} aria-label={`Change how many ways ${item.name} is split`}>{share!.ways} ways</button>
+          <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: share!.ways, units: count, maxUnits: count, share })} aria-label={`Change how many ways ${item.name} is split`}>{share!.ways} ways</button>
           <button type="button" className="link-btn" disabled={busy} onClick={() => removeShare.mutate({ itemId: item.itemId })} aria-label={`Stop splitting ${item.name}`}>Remove</button>
         </>
       ));
@@ -118,17 +130,21 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 
     if (r.group === 'open') {
       if (kind === 'share') {
-        const each = sharePence(item.unitPricePence, share!.userIds, share!.ways, meUserId);
+        const each = sharePence(splitPricePence(item, share!), share!.userIds, share!.ways, meUserId);
         return row(`${formatGBP(each)} each · ${left} open`,
           <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => addShare.mutate({ itemId: item.itemId })} aria-label={`Join the split for ${item.name}`}>Join</Button>);
       }
       if (kind === 'multi') {
-        return row(`${unit} each · ${left} left`,
-          <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => claimOne(item)} aria-label={`Claim one ${item.name}`}>Claim</Button>);
+        return row(`${unit} each · ${left} left`, (
+          <>
+            {splitLink}
+            <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => claimOne(item)} aria-label={`Claim one ${item.name}`}>Claim</Button>
+          </>
+        ));
       }
       return row(unit, (
         <>
-          <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: 2 })} aria-label={`Split ${item.name}`}>Split</button>
+          <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: 2, units: 1, maxUnits: 1 })} aria-label={`Split ${item.name}`}>Split</button>
           <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => claimOne(item)} aria-label={`Claim ${item.name}`}>Claim</Button>
         </>
       ));
@@ -168,15 +184,18 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         <SplitSheet
           item={waysSheet.item}
           ways={waysSheet.ways}
+          units={waysSheet.units}
+          maxUnits={waysSheet.share ? undefined : waysSheet.maxUnits}
           min={Math.max(2, waysSheet.share?.userIds.length ?? 1)}
           busy={addShare.isPending || setWays.isPending}
-          error={setWays.error ? shareError(setWays.error) : undefined}
+          error={setWays.error ? shareError(setWays.error) : addShare.error && !confirming ? shareError(addShare.error) : undefined}
           onChange={(ways) => setWaysSheet({ ...waysSheet, ways })}
+          onUnits={(units) => setWaysSheet({ ...waysSheet, units })}
           onCancel={() => { startTransition(() => setWaysSheet(null)); setWays.reset(); }}
           onOk={() => {
             const done = () => startTransition(() => setWaysSheet(null));
             if (waysSheet.share) setWays.mutate({ itemId: waysSheet.item.itemId, ways: waysSheet.ways }, { onSuccess: done });
-            else addShare.mutate({ itemId: waysSheet.item.itemId, ways: waysSheet.ways }, { onSuccess: done });
+            else addShare.mutate({ itemId: waysSheet.item.itemId, ways: waysSheet.ways, ...(waysSheet.item.quantity > 1 && { units: waysSheet.units }) }, { onSuccess: done });
           }}
         />
       ) : null}
@@ -234,21 +253,39 @@ export function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: 
   );
 }
 
-export function SplitSheet({ item, ways, min, busy, error, onChange, onCancel, onOk }: {
-  item: BillItem; ways: number; min: number; busy: boolean; error?: string; onChange: (n: number) => void; onCancel: () => void; onOk: () => void;
+export function SplitSheet({ item, ways, min, units = 1, maxUnits, busy, error, onChange, onUnits, onCancel, onOk }: {
+  item: BillItem; ways: number; min: number;
+  /** How many of the line (several of one thing), and how many can be split; no maxUnits → fixed. */
+  units?: number; maxUnits?: number;
+  busy: boolean; error?: string; onChange: (n: number) => void; onUnits?: (n: number) => void; onCancel: () => void; onOk: () => void;
 }) {
+  const price = item.unitPricePence * units;
   return (
     <Dialog
       title={`Split ${item.name}`}
       onClose={onCancel}
       actions={
         <>
-          <Button busy={busy} onClick={onOk}>{formatGBP(Math.ceil(item.unitPricePence / ways))} each</Button>
+          <Button busy={busy} onClick={onOk}>{formatGBP(Math.ceil(price / ways))} each</Button>
           <Button tone="secondary" onClick={onCancel}>Cancel</Button>
         </>
       }
     >
-      <p className="muted">{formatGBP(item.unitPricePence)} between how many people, including you?</p>
+      {maxUnits !== undefined && maxUnits > 1 && onUnits ? (
+        <>
+          <p className="muted">How many?</p>
+          <div className="ways">
+            <span className="stepper">
+              <button type="button" aria-label={`Fewer ${item.name}`} disabled={units <= 1} onClick={() => onUnits(units - 1)}>−</button>
+            </span>
+            <b aria-live="polite">{units}</b>
+            <span className="stepper">
+              <button type="button" aria-label={`More ${item.name}`} disabled={units >= maxUnits} onClick={() => onUnits(units + 1)}>+</button>
+            </span>
+          </div>
+        </>
+      ) : null}
+      <p className="muted">{units > 1 ? `${units} × ${item.name}, ${formatGBP(price)}` : formatGBP(price)} between how many people, including you?</p>
       <div className="ways">
         <span className="stepper">
           <button type="button" aria-label="Fewer people" disabled={ways <= min} onClick={() => onChange(ways - 1)}>−</button>
@@ -285,9 +322,10 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
 }) {
   const { item, share, others } = row;
   const who = listNames(others.map(nameOf)) || 'them';
+  const price = share ? splitPricePence(item, share) : item.unitPricePence;
   const mine = share
-    ? sharePence(item.unitPricePence, share.userIds, share.ways + 1, meUserId)
-    : sharePence(item.unitPricePence, others.map((p) => p.userId), 2, meUserId);
+    ? sharePence(price, share.userIds, share.ways + 1, meUserId)
+    : sharePence(price, others.map((p) => p.userId), 2, meUserId);
   return (
     <Dialog
       id="split-confirm-t"
@@ -301,7 +339,7 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
       }
     >
       <Totals>
-        <TotalLine tone="mute" k={item.name} v={formatGBP(item.unitPricePence)} />
+        <TotalLine tone="mute" k={row.count > 1 ? `${row.count} × ${item.name}` : item.name} v={formatGBP(price)} />
         <TotalLine tone="total" k="Your share" v={formatGBP(mine)} />
       </Totals>
       <p className="muted">{who} will see you’re sharing it.</p>

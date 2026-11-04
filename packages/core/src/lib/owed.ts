@@ -5,7 +5,8 @@ type Bill = components['schemas']['Bill'];
 
 /**
  * What a diner owes before the server has fixed `owedPence`: whole-unit
- * claims, plus shared items split by the number of ways (ADR-0006), then service + tax pro rata.
+ * claims, plus each split's units of its line divided by the number of ways (ADR-0006), then
+ * service + tax pro rata.
  * Mirrors paymentService.computeOwedForParticipant on the backend.
  */
 export function projectSubtotalPence(session: Session, bill: Bill, userId: string): number {
@@ -18,24 +19,29 @@ export function projectSubtotalPence(session: Session, bill: Bill, userId: strin
     if (!sh.userIds.includes(userId)) return acc;
     const item = bill.items.find((x) => x.itemId === sh.itemId);
     if (!item) return acc;
-    return acc + sharePence(item.unitPricePence, sh.userIds, sh.ways ?? sh.userIds.length, userId);
+    return acc + sharePence(splitPricePence(item, sh), sh.userIds, sh.ways ?? sh.userIds.length, userId);
   }, 0);
   return claimSub + shareSub;
 }
 
+/** What a split costs in all: its units of the line (1 on older splits). */
+export function splitPricePence(item: { unitPricePence: number }, share: { units?: number }): number {
+  return item.unitPricePence * (share.units ?? 1);
+}
+
 /**
- * One person's part of a shared item: the price divided into `ways`
+ * One person's part of a split: its price (see splitPricePence) divided into `ways`
  * equal spots, the leftover pennies going one each to the people in the
  * split in userId order. Spots nobody has taken yet aren't anyone's.
  * Mirrors splitShare in the API. Pass a userId not in the split to get
  * what joining would cost.
  */
-export function sharePence(unitPricePence: number, userIds: readonly string[], ways: number, userId: string): number {
+export function sharePence(pricePence: number, userIds: readonly string[], ways: number, userId: string): number {
   const inSplit = userIds.includes(userId);
   const members = inSplit ? userIds : [...userIds, userId];
   const n = Math.max(ways, members.length);
-  const base = Math.floor(unitPricePence / n);
-  const remainder = unitPricePence - base * n;
+  const base = Math.floor(pricePence / n);
+  const remainder = pricePence - base * n;
   const rank = [...members].sort().indexOf(userId);
   return base + (rank < remainder ? 1 : 0);
 }

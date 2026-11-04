@@ -1449,7 +1449,7 @@ components:
       properties:
         creditsLeft: { type: integer, enum: [0, 1] }
         nextCreditOn: { type: string, format: date }
-        paidPence: { type: integer, description: Every fee paid, refunded ones included }
+        paidPence: { type: integer, description: 'Every fee paid, refunded ones included' }
         refundedPence: { type: integer }
         fees:
           type: array

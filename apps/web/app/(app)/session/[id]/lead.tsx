@@ -21,6 +21,7 @@ import {
   ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowButton, RowLink, Section, TabPanel, Tabs, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
+import { useTableFeed } from '@/components/useTableFeed';
 import { billTitle } from '@/components/PageTransition';
 import { itemStatuses } from './guest';
 import { ClaimList } from './claim';
@@ -116,11 +117,13 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const leftPence = left.reduce((acc, r) => acc + openPence(r), 0);
   const leftWithService = Math.round(leftPence * (1 + rate));
   const myItems = rows.filter((r) => r.group === 'yours').map((r) => r.item.name);
+  const feed = useTableFeed(s.participants, s.creatorUserId, (p) => owedFor(s, b, p));
 
   return (
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
+        <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${s.participants.length} ${s.participants.length === 1 ? 'person' : 'people'}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />} />
         <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
 
@@ -319,10 +322,12 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p) - projectFeePence(s, b, p.userId), 0));
   const unclaimed = itemStatuses(s, b, s.creatorUserId).filter((x) => x.left > 0);
   const spent = useSpent(s.sessionId);
+  const feed = useTableFeed(s.participants, s.creatorUserId, (p) => owedFor(s, b, p));
   return (
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
+        <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Bill closed" aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
         {outstanding.length === 0
           ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>

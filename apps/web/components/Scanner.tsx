@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { useStartBillRead } from '@gdp/core/api/hooks/useBillRead';
 import { setPendingRead } from '@gdp/core/lib/pendingRead';
+import { duplicateRoute } from '@gdp/core/lib/duplicateRoute';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
 import { ActionBar, Button, Page, Title } from './ui';
 import { Camera, hasLiveCamera } from './Camera';
@@ -106,7 +107,8 @@ export function useScanner() {
     if (start.isSuccess && start.data) {
       const result = start.data;
       if (result.kind === 'duplicate') {
-        router.replace(`/confirm-bill/${result.billId}`);
+        // Back to that bill: its table if it's in a session, else Review bill.
+        router.replace(duplicateRoute(result.billId, result.context));
       } else {
         // The photo URL is handed to the reading page, so it isn't revoked here.
         if (photo) stashPhoto(result.read.readId, photo.uri);

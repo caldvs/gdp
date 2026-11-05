@@ -3,6 +3,7 @@ import { api, ApiError, type components } from '../index';
 import { uuidv7 } from '../../lib/idempotency';
 import type { ProcessedImage } from '../../lib/image';
 import { skipCacheField } from '../../lib/skipReadCache';
+import type { DuplicateContext } from '../../lib/duplicateRoute';
 
 type UploadRequest = components['schemas']['UploadRequest'];
 type UploadSlot = components['schemas']['UploadSlot'];
@@ -10,8 +11,8 @@ type UploadDuplicate = components['schemas']['UploadDuplicate'];
 export type BillRead = components['schemas']['BillRead'];
 
 export type StartReadResult =
-  /** This photo was read before: open that bill. */
-  | { kind: 'duplicate'; billId: string }
+  /** This photo was read before: go back to that bill (`duplicateRoute`). */
+  | { kind: 'duplicate'; billId: string; context?: DuplicateContext }
   /** Reading in the background: poll `useBillRead(read.readId)`. */
   | { kind: 'reading'; read: BillRead; uploadId: string };
 
@@ -38,7 +39,8 @@ export function useStartBillRead() {
       });
 
       if (slotOrDup.status === 'duplicate') {
-        return { kind: 'duplicate', billId: slotOrDup.billId };
+        const { status: _status, billId, ...context } = slotOrDup;
+        return { kind: 'duplicate', billId, context };
       }
 
       // Raw PUT to S3 — bypass our fetcher (no auth header, no JSON body)

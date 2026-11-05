@@ -40,7 +40,7 @@ test('on a hold, guests round what they owe up to the next pound', async ({ brow
   await expect(sam.getByText('Round-up', { exact: true })).toBeVisible();
   await expect(sam.getByText('£0.75')).toBeVisible();
 
-  await expect(lead.getByText('Says they’ve paid £18.00')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £18\.00/)).toBeVisible(POLL);
 });
 
 test('with no hold (a credit, or Stripe off) guests pay just their bill', async ({ browser }) => {

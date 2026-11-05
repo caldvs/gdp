@@ -23,6 +23,19 @@ async function symbolAt(page: Page, ms: number): Promise<string | null> {
   }, ms);
 }
 
+/** Fonts loaded and the page's own entrance (fade and rise) finished. */
+async function settled(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      document.getAnimations()
+        // Endless ones (the coin itself, a spinner) never finish.
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    );
+  });
+}
+
 test.describe('motion allowed', () => {
   test.use({ reducedMotion: 'no-preference' });
 
@@ -33,10 +46,12 @@ test.describe('motion allowed', () => {
     await expect(roll).toBeVisible();
     const running = await roll.evaluate((el) => el.getAnimations().map((a) => a.playState));
     expect(running).toEqual(['running']);
-    expect(await symbolAt(page, 1000)).toBe('£');
-    expect(await symbolAt(page, 4300)).toBe('€');
-    expect(await symbolAt(page, 5000)).toBe('$');
-    expect(await symbolAt(page, 7000)).toBe('¥');
+    await settled(page);
+    // Polled: on a busy runner the page can still be moving into place.
+    await expect.poll(() => symbolAt(page, 1000)).toBe('£');
+    await expect.poll(() => symbolAt(page, 4300)).toBe('€');
+    await expect.poll(() => symbolAt(page, 5000)).toBe('$');
+    await expect.poll(() => symbolAt(page, 7000)).toBe('¥');
   });
 });
 
@@ -49,6 +64,7 @@ test.describe('reduced motion', () => {
     const roll = page.locator('.brand__roll');
     await expect(roll).toBeVisible();
     expect(await roll.evaluate((el) => el.getAnimations().length)).toBe(0);
-    expect(await symbolAt(page, 0)).toBe('£');
+    await settled(page);
+    await expect.poll(() => symbolAt(page, 0)).toBe('£');
   });
 });

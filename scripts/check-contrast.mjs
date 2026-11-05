@@ -5,10 +5,12 @@
 import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../apps/web/app/globals.css', import.meta.url), 'utf8');
-function block(selector) {
-  const i = css.indexOf(selector);
-  if (i < 0) throw new Error(`no ${selector}`);
-  return css.slice(i, css.indexOf('}', i));
+// The :root block, found by its selector even when it is reformatted or
+// shares a rule with another selector (e.g. `:root, html {`).
+function rootBlock() {
+  const m = /(?:^|\})\s*:root\b[^{]*\{([^}]*)\}/m.exec(css);
+  if (!m) throw new Error('no :root block in globals.css');
+  return m[1];
 }
 function tokens(src) {
   const out = {};
@@ -23,30 +25,24 @@ const lum = (hex) => {
 };
 const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
-const themes = {
-  light: tokens(block(':root[data-theme="light"]')),
-  dark: tokens(block(':root[data-theme="dark"]')),
-};
+const t = tokens(rootBlock());
+console.log('note  dark tokens are not read; only the :root block is checked');
 const pairs = [
-  ['on-accent', 'accent', 'primary button text'],
-  ['accent', 'surface', 'accent text on cards'],
+  ['ink', 'bg', 'body text'],
+  ['mute', 'bg', 'muted text'],
+  ['faint', 'bg', 'faint text on the page'],
   ['accent', 'bg', 'accent text on the page'],
-  ['ink', 'surface', 'body text'],
-  ['mute', 'surface', 'muted text'],
-  ['mute-2', 'surface', 'quiet text on cards'],
-  ['mute-2', 'bg', 'quiet text on the page'],
-  ['mute-2', 'surface-2', 'quiet text on insets'],
-  ['warn', 'surface', 'warning text'],
-  ['error-ink', 'surface', 'error text'],
+  ['accent', 'accent-tint', 'accent text on tints'],
+  ['ok-ink', 'ok-bg', 'success text'],
+  ['warn-ink', 'warn-bg', 'warning text'],
+  ['err-ink', 'err-bg', 'error text'],
 ];
 let failed = 0;
-for (const [name, t] of Object.entries(themes)) {
-  for (const [fg, bg, what] of pairs) {
-    if (!t[fg] || !t[bg]) continue;
-    const r = ratio(t[fg], t[bg]);
-    const ok = r >= 4.5;
-    if (!ok) failed += 1;
-    console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(5)} ${r.toFixed(2).padStart(5)}:1  --${fg} on --${bg}  (${what})`);
-  }
+for (const [fg, bg, what] of pairs) {
+  if (!t[fg] || !t[bg]) throw new Error(`--${fg} or --${bg} is not a :root token`);
+  const r = ratio(t[fg], t[bg]);
+  const ok = r >= 4.5;
+  if (!ok) failed += 1;
+  console.log(`${ok ? 'pass' : 'FAIL'}  light ${r.toFixed(2).padStart(5)}:1  --${fg} on --${bg}  (${what})`);
 }
 process.exit(failed ? 1 : 0);

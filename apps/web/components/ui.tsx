@@ -205,11 +205,23 @@ export function Stats({ items }: { items: { k: string; v: string; warn?: boolean
 type Tone = 'primary' | 'secondary' | 'danger' | 'text';
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { href?: string; replace?: boolean; tone?: Tone; small?: boolean; busy?: boolean; grow?: boolean };
 
-export function Button({ href, replace, tone = 'primary', small, busy, grow, className, children, disabled, type, ...rest }: BtnProps) {
+export function Button({ href, replace, tone = 'primary', small, busy, grow, className, children, disabled, type, onClick, ...rest }: BtnProps) {
   const cls = cx('btn', `btn--${tone}`, small && 'btn--sm', grow && 'grow', className);
   if (href && !disabled) return <Link href={href} replace={replace} className={cls}>{children}</Link>;
+  // Busy isn't `disabled`: a disabled button drops focus to <body>, so the
+  // keyboard user is lost while it saves. It's aria-disabled and ignores
+  // clicks (and Enter submitting its form) instead.
+  const waiting = busy && !disabled;
   return (
-    <button type={type ?? 'button'} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
+    <button
+      type={type ?? 'button'}
+      className={cls}
+      disabled={disabled}
+      aria-disabled={waiting || undefined}
+      aria-busy={busy || undefined}
+      onClick={waiting ? (e) => e.preventDefault() : onClick}
+      {...rest}
+    >
       {/* #196: the spinner replaces the label on screen but not its name. */}
       {busy ? <><span className={cx('spin', tone === 'primary' && 'spin--light')} aria-hidden /><span className="vh">{children}</span></> : children}
     </button>

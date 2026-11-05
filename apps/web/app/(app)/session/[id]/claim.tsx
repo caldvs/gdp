@@ -384,6 +384,7 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
   return (
     <Dialog
       id="split-confirm-t"
+      describedBy="split-confirm-d"
       title={`Split the ${item.name.toLowerCase()} with ${who}?`}
       onClose={onCancel}
       actions={
@@ -397,7 +398,7 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
         <TotalLine tone="mute" k={row.count > 1 ? `${row.count} × ${item.name}` : item.name} v={formatGBP(price)} />
         <TotalLine tone="total" k="Your share" v={formatGBP(mine)} />
       </Totals>
-      <p className="muted">{who} will see you’re sharing it.</p>
+      <p id="split-confirm-d" className="muted">{who} will see you’re sharing it.</p>
       {error ? <Notice tone="error">{error}</Notice> : null}
     </Dialog>
   );

@@ -10,9 +10,19 @@ export const RESUMED_PARAM = 'resumed';
  * (docs/design/analysis-cache.md, step 2): the bill's table when it's in a
  * session (setup, claiming, paying, or settled: the closed bill), else
  * Review bill, saying they've picked up where they left off when it was
- * amended. Older APIs send no context: Review bill.
+ * amended. Older APIs send no context: Review bill. A settled bill first
+ * asks Open or Start again (`settledSession`); Open comes here.
  */
 export function duplicateRoute(billId: string, ctx?: DuplicateContext): string {
   if (ctx?.session && ctx.session.status !== 'abandoned') return `/session/${ctx.session.sessionId}`;
   return ctx?.amended ? `/confirm-bill/${billId}?${RESUMED_PARAM}=1` : `/confirm-bill/${billId}`;
+}
+
+/**
+ * The settled session when the photo's bill was split and closed: the app
+ * asks "You split this at …" with Open (the closed bill) or Start again (a
+ * new bill, `useForkBill`) before going anywhere (step 3).
+ */
+export function settledSession(ctx?: DuplicateContext): string | undefined {
+  return ctx?.session?.status === 'settled' ? ctx.session.sessionId : undefined;
 }

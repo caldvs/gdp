@@ -1,6 +1,6 @@
 # Design: caching bill analysis by image
 
-_Status: step 1 (analysis cache) built 4 Nov 2026; step 2 (duplicate context) built 5 Nov 2026, with settled bills opening the closed bill until step 3's sheet; steps 3–4 not built. Owner: Callum. Written for the next agent to implement._
+_Status: step 1 (analysis cache) built 4 Nov 2026; step 2 (duplicate context) and step 3 (settled sheet + fork) built 5 Nov 2026; step 4 (backfill) not built. Owner: Callum. Written for the next agent to implement._
 
 _Since this was written, bills are read by Claude Sonnet on Bedrock (crop to the receipt, then read), synchronously (`POST /v1/bills/parse`) or in the background (`POST /v1/bills/reads`). Both go through `parseService.parse`, where the cache sits (`analyse()`). Bedrock's fingerprint hashes every prompt it sends (find-the-receipt, parts note, the bill prompt)._
 
@@ -118,7 +118,7 @@ The duplicate response carries enough for the client to route:
 | No session, never amended               | `/confirm-bill/<id>`                                                   | none                                         |
 | No session, amended                     | `/confirm-bill/<id>`                                                   | small notice: "Picked up where you left off" |
 | Session `setup` / `claiming` / `paying` | `/session/<id>` (the lead's table)                                     | none — they're back at the table             |
-| Session `settled`                       | sheet: "You split this at Gennaro on Tue" → **Open** / **Start again** (step 3; until then `/session/<id>`, the closed bill) |                                              |
+| Session `settled`                       | sheet: "You split this at Gennaro on Tue 3 Nov" → **Open** (`/session/<id>`, the closed bill) / **Start again** (fork `latest`, then Review bill for the new bill) |                                              |
 | Session `abandoned` (lock released)     | `/confirm-bill/<id>` (latest version)                                  | "Picked up where you left off"               |
 
 **Start again** = `POST /v1/bills/{billId}/fork` with `{ from: 'latest' | 'analysis' }`:
@@ -142,7 +142,7 @@ Build as small PRs, each with tests.
 
 1. **Analysis cache (API only).** _Built 4 Nov 2026 (`storage/analysisStore.ts`, `analyse()` in `parseService.ts`)._ `BillParser.fingerprint`; `analysisStore` (`get`, `putIfAbsent`); `parseService` steps 2–3; `parsedFrom.source: 'parser' | 'cache'` and `analysedAt` (optional fields, OpenAPI + `npm run gen:api`). Structured log events `bill.analysis.hit` / `.miss` with fingerprint. No client change.
 2. **Duplicate context.** _Built 5 Nov 2026 (`duplicateContext.ts`; `duplicateRoute` in `packages/core/src/lib/`). `/parse` returns it as `duplicate` on the bill (`ParsedBill`) and background reads as `duplicate` on the read. The notice shows only when the bill was amended. Settled bills open `/session/<id>` until step 3._ Extend `UploadDuplicate` with `versionNumber`, `amended`, `session?`. Same shape from `/parse` step 1. Client (`useUploadAndParse` + camera page) routes per the table; add the "Picked up where you left off" notice on the check sheet.
-3. **Settled repeat + fork.** `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
+3. **Settled repeat + fork.** _Built 5 Nov 2026 (`forkService.ts`; `useForkBill`, `settledSession` and `SettledRepeat` in the web app, shown by the scanner and the reading page). The app only uses `from: 'latest'`; `analysis` is there for a later re-read option._ `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
 4. **(Optional) backfill.** One-off script seeding `ANALYSIS#` rows from existing `V#001` items where `parsedFrom.parserVersion` matches the current version. Probably not worth it; the cache warms itself.
 
 ~~Also worth fixing alongside (2): `close` should probably release `BILLLOCK` like `abandon` does.~~ Already done (b1a487e, tested in `rules-and-races.test.ts` "closing a bill"): close releases the lock, the lead can amend or share the bill again, and the closed session keeps its pinned version.

@@ -33,6 +33,8 @@ type Item = { itemId: string; name: string; unitPricePence: number; quantity: nu
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
+/** The new bill Start again makes (POST /v1/bills/{BID}/fork). */
+export const FORK_BID = '0193ab12-0001-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
 /** What the fake /email/start hands the asking tab, and the code it emails. */
 export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
@@ -76,6 +78,8 @@ export class FakeApi {
    * other tests can send the same photo again.
    */
   rememberPhotos = false;
+  /** Start again was used: the photo now opens FORK_BID. */
+  forked = false;
   /** Whether the bill has been put in a session (POST /v1/sessions). */
   billInSession = false;
   private readPhotos = new Set<string>();
@@ -133,6 +137,16 @@ export class FakeApi {
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
       ...(this.venue ? { venue: this.venue } : {}),
       createdAt: '2026-10-31T12:00:00.000Z',
+    };
+  }
+
+  /** What Start again made: the latest version as a new bill, new item ids. */
+  get forkedBill() {
+    const b = this.bill;
+    return {
+      ...b, billId: FORK_BID, versionNumber: 1,
+      items: b.items.map((it, i) => ({ ...it, itemId: `00000000-0000-4000-8000-${String(800 + i).padStart(12, '0')}` })),
+      parsedFrom: { ...b.parsedFrom, forkedFrom: { billId: BID, versionNumber: b.versionNumber } },
     };
   }
 
@@ -280,6 +294,9 @@ export class FakeApi {
     // ---- bills
     if (path === '/v1/bills/uploads' && this.rememberPhotos) {
       const sha = body().sha256 as string;
+      if (this.readPhotos.has(sha) && this.forked) {
+        return json({ status: 'duplicate', billId: FORK_BID, versionNumber: 1, amended: false });
+      }
       if (this.readPhotos.has(sha)) {
         const live = this.billInSession && this.status !== 'abandoned';
         return json({
@@ -322,6 +339,14 @@ export class FakeApi {
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
+    // Start again: a new bill copying the latest version; the old split stays as it was.
+    if (path === `/v1/bills/${BID}/fork` && method === 'POST') {
+      if (user.userId !== 'u-lead') return err('BILL_NOT_FOUND', 'Bill not found', 404);
+      this.forked = true;
+      return json(this.forkedBill, 201);
+    }
+    if (path === `/v1/bills/${FORK_BID}` && method === 'GET' && this.forked) return json(this.forkedBill);
+    if (path === `/v1/bills/${FORK_BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
 
     // ---- sessions
     if (path === '/v1/sessions' && method === 'POST') {

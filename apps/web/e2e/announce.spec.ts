@@ -95,3 +95,28 @@ test('#198: the summary’s Copied and Emailed are announced', async ({ browser,
     await expect(lead.getByRole('status').filter({ hasText: /^Copied$/ })).toHaveCount(1);
   }
 });
+
+test('#204: the Close and Delete dialogs are described by what they say', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/session/${SID}`);
+  await lead.getByRole('button', { name: 'Close bill' }).click();
+  const dialog = lead.getByRole('dialog', { name: 'Close the bill?' });
+  await expect(dialog).toHaveAccessibleDescription(/It goes on you\./);
+  await dialog.getByRole('button', { name: 'Not yet' }).click();
+
+  await lead.getByRole('button', { name: 'Delete this bill' }).click();
+  await expect(lead.getByRole('dialog', { name: 'Delete this bill?' })).toHaveAccessibleDescription('This can’t be undone.');
+});
+
+test('#204: the saved account number is read as "account ending", not dots', async ({ browser }) => {
+  const page = await diner(browser, new FakeApi(), users.lead, '/payout-account?returnTo=%2Faccount');
+  await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);
+  await page.getByLabel('Sort code').fill(LEAD_BANK.sortCode);
+  await page.getByLabel('Account number').fill(LEAD_BANK.accountNumber);
+  await page.getByRole('button', { name: 'Save and continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
+  const bank = page.getByRole('link', { name: /^Bank details/ });
+  await expect(bank).toHaveAccessibleName(/04-06-68 · account ending 9660/);
+  await expect(bank).not.toHaveAccessibleName(/·{4}/);
+  await expect(bank).toContainText('····9660');
+});

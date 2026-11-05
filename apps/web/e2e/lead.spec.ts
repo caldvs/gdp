@@ -31,7 +31,9 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   // Fix the calamari's price and make it two.
   await lead.getByRole('button', { name: 'Edit Calamari' }).click();
   await lead.getByLabel('Price each').fill('20.00');
-  await lead.getByRole('button', { name: 'One more' }).click();
+  // #204: the stepper says which item.
+  await expect(lead.getByRole('button', { name: 'One fewer Calamari' })).toBeDisabled();
+  await lead.getByRole('button', { name: 'One more Calamari' }).click();
   await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByText('£40.00')).toBeVisible();
 

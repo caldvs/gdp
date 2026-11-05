@@ -277,8 +277,9 @@ export function Diners({ people, hostId, meId }: { people: { userId: string; dis
 /** A modal panel: bottom sheet on phones, centred box on wider screens.
  * It rises in on mount; it drops away if the caller closes it inside
  * startTransition. A native `<dialog>` (useModal): focus moves in, Tab stays
- * in, Escape and a tap outside close it, and focus goes back after. */
-export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string }) {
+ * in, Escape and a tap outside close it, and focus goes back after.
+ * `describedBy`: the id of the element in `children` that says what the dialog is asking. */
+export function Dialog({ title, children, actions, onClose, id = 'dialog-t', describedBy }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string; describedBy?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   useModal(ref, onClose);
   return (
@@ -289,7 +290,7 @@ export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: {
         <div className="dialog-overlay" aria-hidden />
       </ViewTransition>
       <ViewTransition exit="sheet-out" default="none">
-        <dialog ref={ref} className="dialog" aria-labelledby={id} tabIndex={-1}>
+        <dialog ref={ref} className="dialog" aria-labelledby={id} aria-describedby={describedBy} tabIndex={-1}>
           <h2 id={id} className="dialog__t">{title}</h2>
           {children}
           <div className="dialog__actions">{actions}</div>

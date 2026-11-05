@@ -231,6 +231,17 @@ export const sessionStore = {
    * keep reading a bill after its lock is released.
    */
   async userHasSessionForBill(userId: string, billId: string): Promise<boolean> {
+    return (await sessionStore.sessionsForBill(userId, billId)).length > 0;
+  },
+
+  /**
+   * The sessions for this bill the user has a participant row in, newest
+   * first (sessionIds are UUIDv7), with who led each and its status.
+   */
+  async sessionsForBill(
+    userId: string,
+    billId: string,
+  ): Promise<Array<Pick<Session, 'sessionId' | 'status' | 'creatorUserId'>>> {
     const sessionIds: string[] = [];
     let start: Record<string, unknown> | undefined;
     do {
@@ -250,6 +261,7 @@ export const sessionStore = {
       start = page.LastEvaluatedKey;
     } while (start);
 
+    const found: Array<Pick<Session, 'sessionId' | 'status' | 'creatorUserId'>> = [];
     for (let i = 0; i < sessionIds.length; i += 100) {
       const chunk = sessionIds.slice(i, i + 100);
       const res = await ddb.send(
@@ -257,14 +269,22 @@ export const sessionStore = {
           RequestItems: {
             [TABLE_NAME]: {
               Keys: chunk.map((id) => ({ pk: sessionPk(id), sk: META_SK })),
-              ProjectionExpression: 'billId',
+              ProjectionExpression: 'billId, sessionId, #status, creatorUserId',
+              ExpressionAttributeNames: { '#status': 'status' },
             },
           },
         }),
       );
-      if ((res.Responses?.[TABLE_NAME] ?? []).some((m) => m.billId === billId)) return true;
+      for (const m of res.Responses?.[TABLE_NAME] ?? []) {
+        if (m.billId !== billId) continue;
+        found.push({
+          sessionId: m.sessionId as string,
+          status: m.status as Session['status'],
+          creatorUserId: m.creatorUserId as string,
+        });
+      }
     }
-    return false;
+    return found.sort((a, b) => (a.sessionId < b.sessionId ? 1 : -1));
   },
 
   async resolveJoinCode(code: string): Promise<{ sessionId: string } | null> {

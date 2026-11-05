@@ -54,6 +54,7 @@ const readView = (read: BillRead) => ({
   readId: read.readId,
   status: read.status,
   ...(read.billId ? { billId: read.billId } : {}),
+  ...(read.duplicate ? { duplicate: read.duplicate } : {}),
   ...(read.error ? { error: read.error } : {}),
 });
 
@@ -101,7 +102,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     async (c) => {
       const { userId } = callerOf(c);
       const { uploadId, skipCache } = c.req.valid('json');
-      const bill = await parseService.parse({
+      const { bill, duplicate } = await parseService.parse({
         userId,
         uploadId,
         requestId: c.var.requestId,
@@ -109,7 +110,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
         venueResolver: deps.venueResolver,
         skipCache: deps.allowSkipCache && skipCache === true,
       });
-      return c.json(bill);
+      return c.json({ ...bill, ...(duplicate ? { duplicate } : {}) });
     },
   );
 

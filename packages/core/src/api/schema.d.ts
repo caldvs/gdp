@@ -228,8 +228,8 @@ export interface paths {
         /**
          * Request a pre-signed S3 PUT URL for a bill image
          * @description Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
-         *     If the hash is already mapped to a parsed bill, returns `{ status: "duplicate", billId }` and
-         *     no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+         *     If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
+         *     with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
          *     scoped permissions (specific key, content-length cap, PUT only).
          */
         post: operations["requestBillUpload"];
@@ -1590,6 +1590,26 @@ export interface components {
              * @description An existing bill matched the supplied image hash; do not upload again
              */
             billId: string;
+            versionNumber: number;
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
+        };
+        /** @description Where the uploader's own bill for a photo they've sent before stands, resolved at request time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or the bill's table when `session` is set. */
+        DuplicateContext: {
+            /** @description The bill's latest version */
+            versionNumber: number;
+            /** @description `versionNumber > 1`: the lead has changed it */
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
+        };
+        /** @description The bill's live session (setup, claiming or paying: it holds the bill), else the lead's newest session for it when that one is settled. Absent when there's none or it was abandoned. */
+        DuplicateSession: {
+            /** Format: uuid */
+            sessionId: string;
+            status: components["schemas"]["SessionStatus"];
+        };
+        ParsedBill: components["schemas"]["Bill"] & {
+            duplicate?: components["schemas"]["DuplicateContext"];
         };
         ParseRequest: {
             /** Format: uuid */
@@ -1607,6 +1627,8 @@ export interface components {
              * @description Set when `done`
              */
             billId?: string;
+            /** @description Set when `done` and the photo was this user's own bill from before */
+            duplicate?: components["schemas"]["DuplicateContext"];
             /** @description Set when `failed`. `code` is one of the API's error codes. */
             error?: {
                 code: string;
@@ -2131,13 +2153,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Parsed bill */
+            /** @description Parsed bill. When the photo is one this user read before, their own latest version of that bill, with `duplicate` saying where it stands. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Bill"];
+                    "application/json": components["schemas"]["ParsedBill"];
                 };
             };
             400: components["responses"]["BadRequest"];

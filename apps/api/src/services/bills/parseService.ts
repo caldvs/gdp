@@ -8,6 +8,7 @@ import { analysisStore, type Analysis } from '../../storage/analysisStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
+import { duplicateContext, type DuplicateContext } from './duplicateContext.js';
 import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
 import {
   PARSE_BUDGET_MS,
@@ -19,6 +20,9 @@ import {
 import type { VenueResolver } from './venueResolver.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** The bill for an upload; `duplicate` when it's the uploader's own bill from before. */
+export type ParseResult = { bill: Bill; duplicate?: DuplicateContext };
 
 export const parseService = {
   async parse(input: {
@@ -34,7 +38,7 @@ export const parseService = {
      * new bill takes over the photo's hash index; the old bill is untouched.
      */
     skipCache?: boolean;
-  }): Promise<Bill> {
+  }): Promise<ParseResult> {
     // One budget for the whole read, started now so the S3 fetch counts.
     const signal = AbortSignal.timeout(input.budgetMs ?? PARSE_BUDGET_MS);
     const key = uploadKey(input.userId, input.uploadId);
@@ -78,9 +82,9 @@ export const parseService = {
             parsedFrom: { ...bill.parsedFrom, uploadId: input.uploadId },
           };
           await billStore.putVersion(adopted);
-          return adopted;
+          return { bill: adopted, duplicate: await duplicateContext(input.userId, adopted) };
         }
-        return bill;
+        return { bill, duplicate: await duplicateContext(input.userId, bill) };
       }
       // Index pointed somewhere we can't read — partial write or external
       // mutation. Don't silently re-parse: that would overwrite the index
@@ -132,7 +136,7 @@ export const parseService = {
     await billStore.putVersion(bill, {
       indexImageHash: { userId: input.userId, sha256 },
     });
-    return bill;
+    return { bill };
   },
 };
 

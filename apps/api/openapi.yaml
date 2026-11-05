@@ -362,8 +362,8 @@ paths:
       summary: Request a pre-signed S3 PUT URL for a bill image
       description: |
         Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
-        If the hash is already mapped to a parsed bill, returns `{ status: "duplicate", billId }` and
-        no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+        If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
+        with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
         scoped permissions (specific key, content-length cap, PUT only).
       requestBody:
         required: true
@@ -407,10 +407,12 @@ paths:
             schema: { $ref: '#/components/schemas/ParseRequest' }
       responses:
         '200':
-          description: Parsed bill
+          description: >-
+            Parsed bill. When the photo is one this user read before, their own latest version of
+            that bill, with `duplicate` saying where it stands.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Bill' }
+              schema: { $ref: '#/components/schemas/ParsedBill' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404':
@@ -2183,13 +2185,46 @@ components:
 
     UploadDuplicate:
       type: object
-      required: [status, billId]
+      required: [status, billId, versionNumber, amended]
       properties:
         status: { type: string, const: duplicate }
         billId:
           type: string
           format: uuid
           description: An existing bill matched the supplied image hash; do not upload again
+        versionNumber: { type: integer, minimum: 1 }
+        amended: { type: boolean }
+        session: { $ref: '#/components/schemas/DuplicateSession' }
+
+    DuplicateContext:
+      type: object
+      description: >-
+        Where the uploader's own bill for a photo they've sent before stands, resolved at request
+        time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or
+        the bill's table when `session` is set.
+      required: [versionNumber, amended]
+      properties:
+        versionNumber: { type: integer, minimum: 1, description: The bill's latest version }
+        amended: { type: boolean, description: '`versionNumber > 1`: the lead has changed it' }
+        session: { $ref: '#/components/schemas/DuplicateSession' }
+
+    DuplicateSession:
+      type: object
+      description: >-
+        The bill's live session (setup, claiming or paying: it holds the bill), else the lead's
+        newest session for it when that one is settled. Absent when there's none or it was
+        abandoned.
+      required: [sessionId, status]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+
+    ParsedBill:
+      allOf:
+        - $ref: '#/components/schemas/Bill'
+        - type: object
+          properties:
+            duplicate: { $ref: '#/components/schemas/DuplicateContext' }
 
     ParseRequest:
       type: object
@@ -2212,6 +2247,9 @@ components:
           type: string
           format: uuid
           description: Set when `done`
+        duplicate:
+          $ref: '#/components/schemas/DuplicateContext'
+          description: Set when `done` and the photo was this user's own bill from before
         error:
           type: object
           description: Set when `failed`. `code` is one of the API's error codes.

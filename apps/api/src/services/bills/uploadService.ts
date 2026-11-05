@@ -3,6 +3,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v7 as uuidv7 } from 'uuid';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
+import { duplicateContext, type DuplicateContext } from './duplicateContext.js';
 
 export interface UploadSlot {
   status: 'new';
@@ -12,10 +13,7 @@ export interface UploadSlot {
   maxBytes: number;
 }
 
-export interface UploadDuplicate {
-  status: 'duplicate';
-  billId: string;
-}
+export type UploadDuplicate = { status: 'duplicate'; billId: string } & DuplicateContext;
 
 export type UploadResult = UploadSlot | UploadDuplicate;
 
@@ -37,8 +35,15 @@ export const uploadService = {
     const existing = input.skipCache
       ? null
       : await billStore.findByImageHash(input.userId, input.sha256);
-    if (existing) {
-      return { status: 'duplicate', billId: existing.billId };
+    // A pointer to a bill that's gone is treated as new: /parse decides
+    // what to do with it once it has the real bytes.
+    const bill = existing ? await billStore.getLatest(existing.billId) : null;
+    if (bill) {
+      return {
+        status: 'duplicate',
+        billId: bill.billId,
+        ...(await duplicateContext(input.userId, bill)),
+      };
     }
 
     const uploadId = uuidv7();

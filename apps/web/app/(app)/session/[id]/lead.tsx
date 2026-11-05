@@ -270,7 +270,7 @@ function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: Cla
               <span className="row__title">{r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.kind === 'share' && r.count > 1 ? `${r.count} × ${r.item.name}` : r.item.name}</span>
               <span className="row__sub">{formatGBP(openPence(r))}</span>
             </span>
-            <Button tone="secondary" small className="claim__btn" disabled={!!leaving} onClick={() => take(r)} aria-label={`Claim ${r.item.name}`}>Claim</Button>
+            <Button tone="secondary" small className="claim__btn" disabled={!!leaving} onClick={() => take(r)} aria-label={`Claim ${r.item.name}, ${formatGBP(openPence(r))}`}>Claim</Button>
           </div>
         ))}
       </Box>

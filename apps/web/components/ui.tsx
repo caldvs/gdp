@@ -210,7 +210,8 @@ export function Button({ href, replace, tone = 'primary', small, busy, grow, cla
   if (href && !disabled) return <Link href={href} replace={replace} className={cls}>{children}</Link>;
   return (
     <button type={type ?? 'button'} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <span className={cx('spin', tone === 'primary' && 'spin--light')} aria-hidden /> : children}
+      {/* #196: the spinner replaces the label on screen but not its name. */}
+      {busy ? <><span className={cx('spin', tone === 'primary' && 'spin--light')} aria-hidden /><span className="vh">{children}</span></> : children}
     </button>
   );
 }

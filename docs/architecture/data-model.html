@@ -111,7 +111,7 @@ ul.plain strong { color: var(--ink); }
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 2376" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, bill analysis cache, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 2394" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, bill analysis cache, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -122,10 +122,10 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M190.0,222 L190.0,264" marker-end="url(#ah)"/>
 <text x="200.0" y="249" text-anchor="start">userId</text>
 </g>
-<g class="edge "><path d="M570.0,222 L570.0,264" marker-end="url(#ah)"/>
-<text x="580.0" y="249" text-anchor="start">billId</text>
+<g class="edge "><path d="M570.0,240 L570.0,282" marker-end="url(#ah)"/>
+<text x="580.0" y="267" text-anchor="start">billId</text>
 </g>
-<g class="edge "><path d="M460,600 L460,558" marker-end="url(#ah)"/>
+<g class="edge "><path d="M460,618 L460,576" marker-end="url(#ah)"/>
 </g>
 <g class="edge "><path d="M790,151.0 L732,151.0" marker-end="url(#ah)"/>
 <text x="760.0" y="143.0" text-anchor="middle">billId</text>
@@ -139,8 +139,8 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M950.0,782 L950.0,740" marker-end="url(#ah)"/>
 <text x="960.0" y="765" text-anchor="start">sessionId</text>
 </g>
-<g class="edge dashed"><path d="M804,558 L760,558 L760,578 L380,578 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
-<text x="610.0" y="571" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
+<g class="edge dashed"><path d="M804,558 L760,558 L760,596 L380,596 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
+<text x="610.0" y="589" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
 </g>
 <g class="edge "><path d="M1112,520 L1168,520" marker-end="url(#ah)" marker-start="url(#ah)"/>
 <text x="1140.0" y="512" text-anchor="middle">ids</text>
@@ -212,8 +212,8 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="104" y="1042">KEY#{Idempotency-Key}</text>
 <line class="rule" x1="48" y1="1056" x2="332" y2="1056"/>
 <text class="t-attr" x="48" y="1074">stored status + response body</text>
-<rect class="node" x="410" y="80" width="320" height="142" rx="10"/>
-<rect class="band band-bill" x="410" y="80" width="6" height="142" rx="3"/>
+<rect class="node" x="410" y="80" width="320" height="160" rx="10"/>
+<rect class="band band-bill" x="410" y="80" width="6" height="160" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
 <rect class="chip-none" x="666.4" y="93" width="49.599999999999994" height="20" rx="10"/>
 <text class="t-chip" x="691.2" y="107" text-anchor="middle">No TTL</text>
@@ -224,140 +224,141 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="428" y1="168" x2="712" y2="168"/>
 <text class="t-attr" x="428" y="186">billId</text>
 <text class="t-attr" x="428" y="204">dedupes a repeat photo per user</text>
-<rect class="node" x="410" y="266" width="320" height="290" rx="10"/>
-<rect class="band band-bill" x="410" y="266" width="6" height="290" rx="3"/>
-<text class="t-title" x="428" y="293">Bill</text>
-<rect class="chip-none" x="666.4" y="279" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="293" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="318">pk</text>
-<text class="t-key" x="484" y="318">BILL#{billId}</text>
-<text class="t-keylab" x="428" y="340">sk</text>
-<text class="t-key" x="484" y="340">V#001, V#002 … (immutable)</text>
-<text class="t-keylab" x="428" y="362">sk</text>
-<text class="t-key" x="484" y="362">LATEST (mirror of newest)</text>
-<line class="rule" x1="428" y1="376" x2="712" y2="376"/>
-<text class="t-attr" x="428" y="394">versionNumber, creatorUserId, currency GBP</text>
-<text class="t-attr" x="428" y="412">items[] { itemId, name, unitPricePence,</text>
-<text class="t-attr" x="428" y="430">  quantity, category, course }</text>
-<text class="t-attr" x="428" y="448">subtotalPence, taxPence,</text>
-<text class="t-attr" x="428" y="466">  serviceChargePence, totalPence</text>
-<text class="t-attr" x="428" y="484">venue { name, address, placeId, lat, lng }</text>
-<text class="t-attr" x="428" y="502">parsedFrom { imageHash, parser,</text>
-<text class="t-attr" x="428" y="520">  parserVersion, parsedAt, uploadId,</text>
-<text class="t-attr" x="428" y="538">  source parser|cache, analysedAt }</text>
-<rect class="node" x="410" y="600" width="320" height="236" rx="10"/>
-<rect class="band band-bill" x="410" y="600" width="6" height="236" rx="3"/>
-<text class="t-title" x="428" y="627">Table fee</text>
-<rect class="chip-none" x="666.4" y="613" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="627" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="652">pk</text>
-<text class="t-key" x="484" y="652">FEE#{billId}</text>
-<text class="t-keylab" x="428" y="674">sk</text>
-<text class="t-key" x="484" y="674">FEE (current)</text>
-<text class="t-keylab" x="428" y="696">sk</text>
-<text class="t-key" x="484" y="696">FEE#{csId} (replaced)</text>
-<line class="rule" x1="428" y1="710" x2="712" y2="710"/>
-<text class="t-attr" x="428" y="728">kind hold: £1 card hold (#165), amount,</text>
-<text class="t-attr" x="428" y="746">  capturedPence at close or releasedAt</text>
-<text class="t-attr" x="428" y="764">sessionId: the one share it paid for</text>
-<text class="t-attr" x="428" y="782">  (set in the share transaction)</text>
-<text class="t-attr" x="428" y="800">kept as a tax record</text>
-<text class="t-attr" x="428" y="818">GSI1PK FEES#{userId} · GSI1SK paidAt</text>
-<rect class="node" x="410" y="880" width="320" height="196" rx="10"/>
-<rect class="band band-bill" x="410" y="880" width="6" height="196" rx="3"/>
-<text class="t-title" x="428" y="907">Monthly credit</text>
-<rect class="chip-none" x="666.4" y="893" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="907" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="932">pk</text>
-<text class="t-key" x="484" y="932">CREDIT#{userId}#{yyyy-mm}</text>
-<text class="t-keylab" x="428" y="954">sk</text>
-<text class="t-key" x="484" y="954">CREDIT</text>
-<line class="rule" x1="428" y1="968" x2="712" y2="968"/>
-<text class="t-attr" x="428" y="986">one free bill a month (UK time)</text>
-<text class="t-attr" x="428" y="1004">sessionId, billId, claimedAt: put in the</text>
-<text class="t-attr" x="428" y="1022">  share transaction if unclaimed</text>
-<text class="t-attr" x="428" y="1040">returnedAt: nobody joined, spend again</text>
-<text class="t-attr" x="428" y="1058">GSI1PK FEES#{userId} · GSI1SK claimedAt</text>
-<rect class="node" x="410" y="1120" width="320" height="200" rx="10"/>
-<rect class="band band-bill" x="410" y="1120" width="6" height="200" rx="3"/>
-<text class="t-title" x="428" y="1147">Bought credits</text>
-<rect class="chip-none" x="666.4" y="1133" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="1147" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="1172">pk</text>
-<text class="t-key" x="484" y="1172">CREDITS#{userId}</text>
-<text class="t-keylab" x="428" y="1194">sk</text>
-<text class="t-key" x="484" y="1194">BALANCE · BUY#{csId}</text>
-<text class="t-keylab" x="428" y="1216">sk</text>
-<text class="t-key" x="484" y="1216">SPEND# / RETURN#{sessionId}</text>
-<line class="rule" x1="428" y1="1230" x2="712" y2="1230"/>
-<text class="t-attr" x="428" y="1248">balance: spent in the share transaction</text>
-<text class="t-attr" x="428" y="1266">  (conditional: never below 0, #169)</text>
-<text class="t-attr" x="428" y="1284">BUY#: a pack, 10 credits for £5, once</text>
-<text class="t-attr" x="428" y="1302">  per Checkout Session (tax record)</text>
-<rect class="node" x="410" y="1364" width="320" height="178" rx="10"/>
-<rect class="band band-bill" x="410" y="1364" width="6" height="178" rx="3"/>
-<text class="t-title" x="428" y="1391">Pending hold</text>
-<rect class="chip-none" x="666.4" y="1377" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="1391" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="1416">pk</text>
-<text class="t-key" x="484" y="1416">HOLDQ#{billId}</text>
-<text class="t-keylab" x="428" y="1438">sk</text>
-<text class="t-key" x="484" y="1438">HOLDQ</text>
-<line class="rule" x1="428" y1="1452" x2="712" y2="1452"/>
-<text class="t-attr" x="428" y="1470">billId, sessionId, heldAt: put in the</text>
-<text class="t-attr" x="428" y="1488">  share transaction with the hold (#168)</text>
-<text class="t-attr" x="428" y="1506">GSI1PK HOLDS · GSI1SK heldAt: the daily</text>
-<text class="t-attr" x="428" y="1524">  sweep; cleared once settled</text>
-<rect class="node" x="410" y="1586" width="320" height="178" rx="10"/>
-<rect class="band band-bill" x="410" y="1586" width="6" height="178" rx="3"/>
-<text class="t-title" x="428" y="1613">Bill analysis</text>
-<rect class="chip-ttl" x="659.8" y="1599" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="687.9" y="1613" text-anchor="middle">30 days</text>
-<text class="t-keylab" x="428" y="1638">pk</text>
-<text class="t-key" x="484" y="1638">ANALYSIS#{sha256}</text>
-<text class="t-keylab" x="428" y="1660">sk</text>
-<text class="t-key" x="484" y="1660">P#{model:version:promptHash}</text>
-<line class="rule" x1="428" y1="1674" x2="712" y2="1674"/>
-<text class="t-attr" x="428" y="1692">parsed: what the parser read, venue</text>
-<text class="t-attr" x="428" y="1710">parser, parserVersion, analysedAt</text>
-<text class="t-attr" x="428" y="1728">no user id: shared by the exact bytes</text>
-<text class="t-attr" x="428" y="1746">put if absent; failed reads never written</text>
-<rect class="node" x="410" y="1808" width="320" height="142" rx="10"/>
-<rect class="band band-bill" x="410" y="1808" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="1835">Venue lookup</text>
-<rect class="chip-none" x="666.4" y="1821" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="1835" text-anchor="middle">No TTL</text>
-<text class="t-keylab" x="428" y="1860">pk</text>
-<text class="t-key" x="484" y="1860">VENUEQ#{name+address key}</text>
-<text class="t-keylab" x="428" y="1882">sk</text>
-<text class="t-key" x="484" y="1882">same as pk</text>
-<line class="rule" x1="428" y1="1896" x2="712" y2="1896"/>
-<text class="t-attr" x="428" y="1914">Amazon Location answer, or no match</text>
-<text class="t-attr" x="428" y="1932">source = amazon-location</text>
-<rect class="node" x="410" y="1994" width="320" height="142" rx="10"/>
-<rect class="band band-bill" x="410" y="1994" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="2021">Bill read</text>
-<rect class="chip-ttl" x="673.0" y="2007" width="43.0" height="20" rx="10"/>
-<text class="t-chip" x="694.5" y="2021" text-anchor="middle">1 day</text>
-<text class="t-keylab" x="428" y="2046">pk</text>
-<text class="t-key" x="484" y="2046">READ#{readId}</text>
-<text class="t-keylab" x="428" y="2068">sk</text>
-<text class="t-key" x="484" y="2068">READ</text>
-<line class="rule" x1="428" y1="2082" x2="712" y2="2082"/>
-<text class="t-attr" x="428" y="2100">userId, uploadId, status reading|done|failed</text>
-<text class="t-attr" x="428" y="2118">billId when done, error when failed</text>
-<rect class="node" x="410" y="2180" width="320" height="142" rx="10"/>
-<rect class="band band-bill" x="410" y="2180" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="2207">Read quota</text>
-<rect class="chip-ttl" x="666.4" y="2193" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="2207" text-anchor="middle">2 days</text>
-<text class="t-keylab" x="428" y="2232">pk</text>
-<text class="t-key" x="484" y="2232">READQ#{userId}</text>
-<text class="t-keylab" x="428" y="2254">sk</text>
-<text class="t-key" x="484" y="2254">D#{utc day}</text>
-<line class="rule" x1="428" y1="2268" x2="712" y2="2268"/>
-<text class="t-attr" x="428" y="2286">reads: model reads today (max 20)</text>
-<text class="t-attr" x="428" y="2304">cached photos don&#x27;t count (#145)</text>
+<text class="t-attr" x="428" y="222">Start again (fork) moves it to the new bill</text>
+<rect class="node" x="410" y="284" width="320" height="290" rx="10"/>
+<rect class="band band-bill" x="410" y="284" width="6" height="290" rx="3"/>
+<text class="t-title" x="428" y="311">Bill</text>
+<rect class="chip-none" x="666.4" y="297" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="311" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="336">pk</text>
+<text class="t-key" x="484" y="336">BILL#{billId}</text>
+<text class="t-keylab" x="428" y="358">sk</text>
+<text class="t-key" x="484" y="358">V#001, V#002 … (immutable)</text>
+<text class="t-keylab" x="428" y="380">sk</text>
+<text class="t-key" x="484" y="380">LATEST (mirror of newest)</text>
+<line class="rule" x1="428" y1="394" x2="712" y2="394"/>
+<text class="t-attr" x="428" y="412">versionNumber, creatorUserId, currency GBP</text>
+<text class="t-attr" x="428" y="430">items[] { itemId, name, unitPricePence,</text>
+<text class="t-attr" x="428" y="448">  quantity, category, course }</text>
+<text class="t-attr" x="428" y="466">subtotalPence, taxPence,</text>
+<text class="t-attr" x="428" y="484">  serviceChargePence, totalPence</text>
+<text class="t-attr" x="428" y="502">venue { name, address, placeId, lat, lng }</text>
+<text class="t-attr" x="428" y="520">parsedFrom { imageHash, parser,</text>
+<text class="t-attr" x="428" y="538">  parserVersion, parsedAt, uploadId,</text>
+<text class="t-attr" x="428" y="556">  source parser|cache, analysedAt }</text>
+<rect class="node" x="410" y="618" width="320" height="236" rx="10"/>
+<rect class="band band-bill" x="410" y="618" width="6" height="236" rx="3"/>
+<text class="t-title" x="428" y="645">Table fee</text>
+<rect class="chip-none" x="666.4" y="631" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="645" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="670">pk</text>
+<text class="t-key" x="484" y="670">FEE#{billId}</text>
+<text class="t-keylab" x="428" y="692">sk</text>
+<text class="t-key" x="484" y="692">FEE (current)</text>
+<text class="t-keylab" x="428" y="714">sk</text>
+<text class="t-key" x="484" y="714">FEE#{csId} (replaced)</text>
+<line class="rule" x1="428" y1="728" x2="712" y2="728"/>
+<text class="t-attr" x="428" y="746">kind hold: £1 card hold (#165), amount,</text>
+<text class="t-attr" x="428" y="764">  capturedPence at close or releasedAt</text>
+<text class="t-attr" x="428" y="782">sessionId: the one share it paid for</text>
+<text class="t-attr" x="428" y="800">  (set in the share transaction)</text>
+<text class="t-attr" x="428" y="818">kept as a tax record</text>
+<text class="t-attr" x="428" y="836">GSI1PK FEES#{userId} · GSI1SK paidAt</text>
+<rect class="node" x="410" y="898" width="320" height="196" rx="10"/>
+<rect class="band band-bill" x="410" y="898" width="6" height="196" rx="3"/>
+<text class="t-title" x="428" y="925">Monthly credit</text>
+<rect class="chip-none" x="666.4" y="911" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="925" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="950">pk</text>
+<text class="t-key" x="484" y="950">CREDIT#{userId}#{yyyy-mm}</text>
+<text class="t-keylab" x="428" y="972">sk</text>
+<text class="t-key" x="484" y="972">CREDIT</text>
+<line class="rule" x1="428" y1="986" x2="712" y2="986"/>
+<text class="t-attr" x="428" y="1004">one free bill a month (UK time)</text>
+<text class="t-attr" x="428" y="1022">sessionId, billId, claimedAt: put in the</text>
+<text class="t-attr" x="428" y="1040">  share transaction if unclaimed</text>
+<text class="t-attr" x="428" y="1058">returnedAt: nobody joined, spend again</text>
+<text class="t-attr" x="428" y="1076">GSI1PK FEES#{userId} · GSI1SK claimedAt</text>
+<rect class="node" x="410" y="1138" width="320" height="200" rx="10"/>
+<rect class="band band-bill" x="410" y="1138" width="6" height="200" rx="3"/>
+<text class="t-title" x="428" y="1165">Bought credits</text>
+<rect class="chip-none" x="666.4" y="1151" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="1165" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="1190">pk</text>
+<text class="t-key" x="484" y="1190">CREDITS#{userId}</text>
+<text class="t-keylab" x="428" y="1212">sk</text>
+<text class="t-key" x="484" y="1212">BALANCE · BUY#{csId}</text>
+<text class="t-keylab" x="428" y="1234">sk</text>
+<text class="t-key" x="484" y="1234">SPEND# / RETURN#{sessionId}</text>
+<line class="rule" x1="428" y1="1248" x2="712" y2="1248"/>
+<text class="t-attr" x="428" y="1266">balance: spent in the share transaction</text>
+<text class="t-attr" x="428" y="1284">  (conditional: never below 0, #169)</text>
+<text class="t-attr" x="428" y="1302">BUY#: a pack, 10 credits for £5, once</text>
+<text class="t-attr" x="428" y="1320">  per Checkout Session (tax record)</text>
+<rect class="node" x="410" y="1382" width="320" height="178" rx="10"/>
+<rect class="band band-bill" x="410" y="1382" width="6" height="178" rx="3"/>
+<text class="t-title" x="428" y="1409">Pending hold</text>
+<rect class="chip-none" x="666.4" y="1395" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="1409" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="1434">pk</text>
+<text class="t-key" x="484" y="1434">HOLDQ#{billId}</text>
+<text class="t-keylab" x="428" y="1456">sk</text>
+<text class="t-key" x="484" y="1456">HOLDQ</text>
+<line class="rule" x1="428" y1="1470" x2="712" y2="1470"/>
+<text class="t-attr" x="428" y="1488">billId, sessionId, heldAt: put in the</text>
+<text class="t-attr" x="428" y="1506">  share transaction with the hold (#168)</text>
+<text class="t-attr" x="428" y="1524">GSI1PK HOLDS · GSI1SK heldAt: the daily</text>
+<text class="t-attr" x="428" y="1542">  sweep; cleared once settled</text>
+<rect class="node" x="410" y="1604" width="320" height="178" rx="10"/>
+<rect class="band band-bill" x="410" y="1604" width="6" height="178" rx="3"/>
+<text class="t-title" x="428" y="1631">Bill analysis</text>
+<rect class="chip-ttl" x="659.8" y="1617" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="687.9" y="1631" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="428" y="1656">pk</text>
+<text class="t-key" x="484" y="1656">ANALYSIS#{sha256}</text>
+<text class="t-keylab" x="428" y="1678">sk</text>
+<text class="t-key" x="484" y="1678">P#{model:version:promptHash}</text>
+<line class="rule" x1="428" y1="1692" x2="712" y2="1692"/>
+<text class="t-attr" x="428" y="1710">parsed: what the parser read, venue</text>
+<text class="t-attr" x="428" y="1728">parser, parserVersion, analysedAt</text>
+<text class="t-attr" x="428" y="1746">no user id: shared by the exact bytes</text>
+<text class="t-attr" x="428" y="1764">put if absent; failed reads never written</text>
+<rect class="node" x="410" y="1826" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="1826" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="1853">Venue lookup</text>
+<rect class="chip-none" x="666.4" y="1839" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="1853" text-anchor="middle">No TTL</text>
+<text class="t-keylab" x="428" y="1878">pk</text>
+<text class="t-key" x="484" y="1878">VENUEQ#{name+address key}</text>
+<text class="t-keylab" x="428" y="1900">sk</text>
+<text class="t-key" x="484" y="1900">same as pk</text>
+<line class="rule" x1="428" y1="1914" x2="712" y2="1914"/>
+<text class="t-attr" x="428" y="1932">Amazon Location answer, or no match</text>
+<text class="t-attr" x="428" y="1950">source = amazon-location</text>
+<rect class="node" x="410" y="2012" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="2012" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="2039">Bill read</text>
+<rect class="chip-ttl" x="673.0" y="2025" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="694.5" y="2039" text-anchor="middle">1 day</text>
+<text class="t-keylab" x="428" y="2064">pk</text>
+<text class="t-key" x="484" y="2064">READ#{readId}</text>
+<text class="t-keylab" x="428" y="2086">sk</text>
+<text class="t-key" x="484" y="2086">READ</text>
+<line class="rule" x1="428" y1="2100" x2="712" y2="2100"/>
+<text class="t-attr" x="428" y="2118">userId, uploadId, status reading|done|failed</text>
+<text class="t-attr" x="428" y="2136">billId when done, error when failed</text>
+<rect class="node" x="410" y="2198" width="320" height="142" rx="10"/>
+<rect class="band band-bill" x="410" y="2198" width="6" height="142" rx="3"/>
+<text class="t-title" x="428" y="2225">Read quota</text>
+<rect class="chip-ttl" x="666.4" y="2211" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="2225" text-anchor="middle">2 days</text>
+<text class="t-keylab" x="428" y="2250">pk</text>
+<text class="t-key" x="484" y="2250">READQ#{userId}</text>
+<text class="t-keylab" x="428" y="2272">sk</text>
+<text class="t-key" x="484" y="2272">D#{utc day}</text>
+<line class="rule" x1="428" y1="2286" x2="712" y2="2286"/>
+<text class="t-attr" x="428" y="2304">reads: model reads today (max 20)</text>
+<text class="t-attr" x="428" y="2322">cached photos don&#x27;t count (#145)</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>

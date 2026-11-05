@@ -41,31 +41,7 @@ export const parseService = {
   }): Promise<ParseResult> {
     // One budget for the whole read, started now so the S3 fetch counts.
     const signal = AbortSignal.timeout(input.budgetMs ?? PARSE_BUDGET_MS);
-    const key = uploadKey(input.userId, input.uploadId);
-
-    let bytes: Uint8Array;
-    try {
-      const obj = await s3.send(new GetObjectCommand({ Bucket: BILLS_BUCKET, Key: key }));
-      if (!obj.Body) {
-        throw new AppError('NOT_FOUND', 'Upload has no body');
-      }
-      bytes = await obj.Body.transformToByteArray();
-    } catch (err) {
-      if (err instanceof NoSuchKey) {
-        throw new AppError('NOT_FOUND', 'Upload not found or expired');
-      }
-      if (err instanceof AppError) throw err;
-      const errName = err instanceof Error ? err.name : '';
-      if (errName === 'NoSuchKey' || errName === 'NotFound') {
-        throw new AppError('NOT_FOUND', 'Upload not found or expired');
-      }
-      throw err;
-    }
-
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new AppError('INVALID_INPUT', 'Image exceeds 5MB limit');
-    }
-
+    const bytes = await uploadBytes(input.userId, input.uploadId);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
 
     const existing = input.skipCache ? null : await billStore.findByImageHash(input.userId, sha256);
@@ -140,6 +116,34 @@ export const parseService = {
   },
 };
 
+/** The photo the user uploaded, checked against the size limit. */
+export async function uploadBytes(userId: string, uploadId: string): Promise<Uint8Array> {
+  const key = uploadKey(userId, uploadId);
+  let bytes: Uint8Array;
+  try {
+    const obj = await s3.send(new GetObjectCommand({ Bucket: BILLS_BUCKET, Key: key }));
+    if (!obj.Body) {
+      throw new AppError('NOT_FOUND', 'Upload has no body');
+    }
+    bytes = await obj.Body.transformToByteArray();
+  } catch (err) {
+    if (err instanceof NoSuchKey) {
+      throw new AppError('NOT_FOUND', 'Upload not found or expired');
+    }
+    if (err instanceof AppError) throw err;
+    const errName = err instanceof Error ? err.name : '';
+    if (errName === 'NoSuchKey' || errName === 'NotFound') {
+      throw new AppError('NOT_FOUND', 'Upload not found or expired');
+    }
+    throw err;
+  }
+
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new AppError('INVALID_INPUT', 'Image exceeds 5MB limit');
+  }
+  return bytes;
+}
+
 /**
  * What the parser read from these bytes, and the venue looked up from it:
  * from the analysis cache when this photo was read before by a parser with
@@ -148,7 +152,7 @@ export const parseService = {
  * docs/design/analysis-cache.md: before the read becomes a bill anyone can
  * amend. `skipCache` (local testing) reads again. Failed reads aren't cached.
  */
-async function analyse(input: {
+export async function analyse(input: {
   userId: string;
   requestId: string;
   parser: BillParser;
@@ -210,7 +214,7 @@ async function analyse(input: {
   return { ...analysis, source: 'parser' };
 }
 
-function buildBillV1(args: {
+export function buildBillV1(args: {
   parsed: ParsedBillFromImage;
   venue: Venue | undefined;
   userId: string;

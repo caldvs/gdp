@@ -8,7 +8,7 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { stashJoinFragment } from '@/lib/joinFragment';
-import { Button, CentreMain, CloseIcon, MenuIcon, Notice, Spinner } from './ui';
+import { Button, CentreMain, CloseIcon, Dialog, MenuIcon, Notice, Spinner } from './ui';
 import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
@@ -122,7 +122,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [router]);
   // Guests (#183) never sign in, so they're never signed out for being idle.
   const guestSessionId = me.data?.guestSessionId;
-  useIdleSignOut(!!me.data && !guestSessionId, goToSignIn);
+  const idle = useIdleSignOut(!!me.data && !guestSessionId, goToSignIn);
 
   const status = me.error instanceof ApiError ? me.error.status : 0;
   const unauthenticated = me.isError && (status === 401 || status === 403);
@@ -168,6 +168,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       <TestBar />
       <Header onMenu={me.data ? () => setMenu('open') : undefined} />
       {body}
+      {idle.warning ? (
+        // Two minutes before the idle sign-out (#200, WCAG 2.2.1). Closing it counts as still being here.
+        <Dialog id="idle-t" title="Still there?" onClose={idle.stay} actions={<Button onClick={idle.stay} autoFocus>Stay signed in</Button>}>
+          <p className="muted">You’ll be signed out within 2 minutes.</p>
+        </Dialog>
+      ) : null}
       {menu !== 'closed' ? <Menu email={me.data?.email} guest={guestSessionId ? { sessionId: guestSessionId, name: me.data?.displayName ?? 'Guest' } : undefined} closing={menu === 'closing'} onClose={close} onClosed={closed} /> : null}
     </div>
   );

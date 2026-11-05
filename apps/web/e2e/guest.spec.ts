@@ -7,7 +7,9 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 import { CODE, FakeApi, SID, SIGN_IN_CODE, items, users, type User } from './fakeApi';
 import { fragmentFor, payoutCheckFor, LEAD_BANK } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 
 async function ctxFor(browser: Browser, api: FakeApi, user: User, opts: Parameters<FakeApi['attach']>[2] = {}): Promise<{ ctx: BrowserContext; page: Page }> {
   // Clipboard permissions only exist in Chromium; WebKit rejects them.

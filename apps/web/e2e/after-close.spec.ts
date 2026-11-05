@@ -6,7 +6,9 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { CODE, FakeApi, SID, fragmentFor, items, users, type User } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 
 async function open(browser: Browser, api: FakeApi, user: User, to: string, atTable = true): Promise<Page> {
   const ctx = await browser.newContext();

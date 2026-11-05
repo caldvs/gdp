@@ -176,7 +176,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .btn--text-danger { color: var(--err-ink); }
 /* 44px tap target; the negative margin keeps the line the height it was. */
 .link-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; display: inline-flex; align-items: center; min-height: 44px; margin-block: -6px; }
-.link-btn:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+.link-btn:disabled, .link-btn[aria-disabled='true'] { color: var(--faint); text-decoration: none; cursor: default; }
 
 /* In the page flow (#181): at the bottom of a short screen, after the content on a long one. */
 .actionbar { margin-top: auto; background: var(--page); padding: 8px var(--gutter) calc(16px + env(safe-area-inset-bottom)); }
@@ -214,7 +214,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .check input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .stepper button { width: 44px; height: 44px; border: 0; background: none; font-size: 20px; cursor: pointer; color: var(--ink); }
-.stepper button:disabled { color: var(--faint); cursor: default; }
+.stepper button:disabled, .stepper button[aria-disabled='true'] { color: var(--faint); cursor: default; }
 .stepper span { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 /* ---------- Feedback ---------- */

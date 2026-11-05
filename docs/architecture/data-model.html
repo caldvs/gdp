@@ -107,11 +107,11 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>22</b> item types</span><span><b>1</b> GSI</span><span><b>12</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>21</b> item types</span><span><b>1</b> GSI</span><span><b>11</b> expiring types</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 2562" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, bill analysis cache, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 2376" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, bill analysis cache, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -336,40 +336,28 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="428" y="1932">source = amazon-location</text>
 <rect class="node" x="410" y="1994" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="1994" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="2021">Nearby places</text>
-<rect class="chip-ttl" x="659.8" y="2007" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="687.9" y="2021" text-anchor="middle">30 days</text>
+<text class="t-title" x="428" y="2021">Bill read</text>
+<rect class="chip-ttl" x="673.0" y="2007" width="43.0" height="20" rx="10"/>
+<text class="t-chip" x="694.5" y="2021" text-anchor="middle">1 day</text>
 <text class="t-keylab" x="428" y="2046">pk</text>
-<text class="t-key" x="484" y="2046">NEARQ#{lat|lng to 3 dp}</text>
+<text class="t-key" x="484" y="2046">READ#{readId}</text>
 <text class="t-keylab" x="428" y="2068">sk</text>
-<text class="t-key" x="484" y="2068">same as pk</text>
+<text class="t-key" x="484" y="2068">READ</text>
 <line class="rule" x1="428" y1="2082" x2="712" y2="2082"/>
-<text class="t-attr" x="428" y="2100">places [{ placeId, name, address, lat, lng }]</text>
-<text class="t-attr" x="428" y="2118">rounded cell only; never who asked</text>
+<text class="t-attr" x="428" y="2100">userId, uploadId, status reading|done|failed</text>
+<text class="t-attr" x="428" y="2118">billId when done, error when failed</text>
 <rect class="node" x="410" y="2180" width="320" height="142" rx="10"/>
 <rect class="band band-bill" x="410" y="2180" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="2207">Bill read</text>
-<rect class="chip-ttl" x="673.0" y="2193" width="43.0" height="20" rx="10"/>
-<text class="t-chip" x="694.5" y="2207" text-anchor="middle">1 day</text>
+<text class="t-title" x="428" y="2207">Read quota</text>
+<rect class="chip-ttl" x="666.4" y="2193" width="49.599999999999994" height="20" rx="10"/>
+<text class="t-chip" x="691.2" y="2207" text-anchor="middle">2 days</text>
 <text class="t-keylab" x="428" y="2232">pk</text>
-<text class="t-key" x="484" y="2232">READ#{readId}</text>
+<text class="t-key" x="484" y="2232">READQ#{userId}</text>
 <text class="t-keylab" x="428" y="2254">sk</text>
-<text class="t-key" x="484" y="2254">READ</text>
+<text class="t-key" x="484" y="2254">D#{utc day}</text>
 <line class="rule" x1="428" y1="2268" x2="712" y2="2268"/>
-<text class="t-attr" x="428" y="2286">userId, uploadId, status reading|done|failed</text>
-<text class="t-attr" x="428" y="2304">billId when done, error when failed</text>
-<rect class="node" x="410" y="2366" width="320" height="142" rx="10"/>
-<rect class="band band-bill" x="410" y="2366" width="6" height="142" rx="3"/>
-<text class="t-title" x="428" y="2393">Read quota</text>
-<rect class="chip-ttl" x="666.4" y="2379" width="49.599999999999994" height="20" rx="10"/>
-<text class="t-chip" x="691.2" y="2393" text-anchor="middle">2 days</text>
-<text class="t-keylab" x="428" y="2418">pk</text>
-<text class="t-key" x="484" y="2418">READQ#{userId}</text>
-<text class="t-keylab" x="428" y="2440">sk</text>
-<text class="t-key" x="484" y="2440">D#{utc day}</text>
-<line class="rule" x1="428" y1="2454" x2="712" y2="2454"/>
-<text class="t-attr" x="428" y="2472">reads: model reads today (max 20)</text>
-<text class="t-attr" x="428" y="2490">cached photos don&#x27;t count (#145)</text>
+<text class="t-attr" x="428" y="2286">reads: model reads today (max 20)</text>
+<text class="t-attr" x="428" y="2304">cached photos don&#x27;t count (#145)</text>
 <rect class="node" x="790" y="80" width="320" height="142" rx="10"/>
 <rect class="band band-sess" x="790" y="80" width="6" height="142" rx="3"/>
 <text class="t-title" x="808" y="107">Bill lock</text>

@@ -98,8 +98,6 @@ export class FakeApi {
   private printedTotalPence: number | undefined;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
   private venue: { name: string; address?: string; placeId?: string } | undefined;
-  /** #62: places GET /v1/venues/nearby returns (nearest first). */
-  nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
   constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; printedTotalPence?: number; venue?: { name: string; address?: string } | null; platformFeePence?: number } = {}) {
     this.items = opts.items ?? items;
@@ -304,7 +302,6 @@ export class FakeApi {
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
 
     // ---- sessions
-    if (path === '/v1/venues/nearby' && method === 'GET') return json({ venues: this.nearby });
     if (path === '/v1/sessions' && method === 'POST') {
       this.status = 'setup';
       const n = body().expectedDiners as number | undefined;

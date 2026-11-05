@@ -74,7 +74,6 @@ y = place(1, y, 'Bought credits', 'bill', 'No TTL', [('pk', 'CREDITS#{userId}'),
 y = place(1, y, 'Pending hold', 'bill', 'No TTL', [('pk', 'HOLDQ#{billId}'), ('sk', 'HOLDQ')], ['billId, sessionId, heldAt: put in the', '  share transaction with the hold (#168)', 'GSI1PK HOLDS · GSI1SK heldAt: the daily', '  sweep; cleared once settled']) + GAP
 y = place(1, y, 'Bill analysis', 'bill', '30 days', [('pk', 'ANALYSIS#{sha256}'), ('sk', 'P#{model:version:promptHash}')], ['parsed: what the parser read, venue', 'parser, parserVersion, analysedAt', 'no user id: shared by the exact bytes', 'put if absent; failed reads never written']) + GAP
 y = place(1, y, 'Venue lookup', 'bill', 'No TTL', [('pk', 'VENUEQ#{name+address key}'), ('sk', 'same as pk')], ['Amazon Location answer, or no match', 'source = amazon-location']) + GAP
-y = place(1, y, 'Nearby places', 'bill', '30 days', [('pk', 'NEARQ#{lat|lng to 3 dp}'), ('sk', 'same as pk')], ['places [{ placeId, name, address, lat, lng }]', 'rounded cell only; never who asked']) + GAP
 y = place(1, y, 'Bill read', 'bill', '1 day', [('pk', 'READ#{readId}'), ('sk', 'READ')], ['userId, uploadId, status reading|done|failed', 'billId when done, error when failed']) + GAP
 y = place(1, y, 'Read quota', 'bill', '2 days', [('pk', 'READQ#{userId}'), ('sk', 'D#{utc day}')], ['reads: model reads today (max 20)', 'cached photos don\'t count (#145)']) + GAP
 col2_end = y

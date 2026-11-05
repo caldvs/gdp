@@ -260,12 +260,11 @@ class GdpBackendStack extends cdk.Stack {
     );
     billsBucket.grantReadWrite(fn);
 
-    // Venue lookup (src/services/bills/locationVenueResolver.ts) and nearby
-    // places (src/services/venues/nearbyVenues.ts): Amazon Location Service
-    // Places, which has no resources of its own.
+    // Venue lookup (src/services/bills/locationVenueResolver.ts): Amazon
+    // Location Service Places, which has no resources of its own.
     fn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['geo-places:SearchText', 'geo-places:SearchNearby'],
+        actions: ['geo-places:SearchText'],
         resources: [`arn:aws:geo-places:${this.region}::provider/default`],
       }),
     );

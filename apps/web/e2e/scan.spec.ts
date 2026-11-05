@@ -6,7 +6,7 @@
  */
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import path from 'node:path';
-import { FakeApi, SID, users } from './fakeApi';
+import { BID, FakeApi, FORK_BID, SID, users } from './fakeApi';
 
 const PHOTO = path.join(__dirname, 'fixtures', 'bill.jpg');
 
@@ -153,4 +153,52 @@ test('the same photo again, once the bill is at a table, opens the lead’s tabl
   await expect(page).toHaveURL(new RegExp(`/session/${SID}$`), { timeout: 15_000 });
   await expect(page.getByRole('tab', { name: 'The table' })).toBeVisible();
   expect(s3Puts(api)).toBe(1);
+});
+
+/** A photo read, put at a table and settled; then the same photo again. */
+async function settledRepeat(browser: Browser) {
+  const api = new FakeApi({ status: 'setup' });
+  api.rememberPhotos = true;
+  const page = await lead(browser, api, 'denied');
+  await scanFile(page);
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  api.billInSession = true;
+  api.status = 'settled';
+
+  await page.goto('/');
+  await scanFile(page);
+  const sheet = page.getByRole('dialog', { name: 'You split this at Gennaro on Sat 31 Oct' });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  return { api, page, sheet };
+}
+
+test('the same photo again, once the bill is settled, asks Open or Start again', async ({ browser }) => {
+  const { api, sheet } = await settledRepeat(browser);
+  await expect(sheet.getByRole('button', { name: 'Start again' })).toBeVisible();
+  await expect(sheet.getByRole('link', { name: 'Open' })).toBeVisible();
+  expect(s3Puts(api)).toBe(1);
+  expect(api.forked).toBe(false);
+});
+
+test('Start again on a settled bill opens a fresh Review bill, and the photo then opens it', async ({ browser }) => {
+  const { api, page, sheet } = await settledRepeat(browser);
+  await sheet.getByRole('button', { name: 'Start again' }).click();
+  await expect(page).toHaveURL(new RegExp(`/confirm-bill/${FORK_BID}$`), { timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(page.getByText('Picked up where you left off')).toHaveCount(0);
+  const fork = api.requests.find((r) => r.path === `/v1/bills/${BID}/fork`);
+  expect(JSON.parse(fork!.body!)).toEqual({ from: 'latest' });
+  // The old split is left as it was.
+  expect(api.status).toBe('settled');
+
+  await page.goto('/');
+  await scanFile(page);
+  await expect(page).toHaveURL(new RegExp(`/confirm-bill/${FORK_BID}$`), { timeout: 15_000 });
+});
+
+test('Open on a settled bill opens the closed bill', async ({ browser }) => {
+  const { api, page, sheet } = await settledRepeat(browser);
+  await sheet.getByRole('link', { name: 'Open' }).click();
+  await expect(page).toHaveURL(new RegExp(`/session/${SID}$`), { timeout: 15_000 });
+  expect(api.forked).toBe(false);
 });

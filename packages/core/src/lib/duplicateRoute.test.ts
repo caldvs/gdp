@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { duplicateRoute } from './duplicateRoute';
+import { duplicateRoute, settledSession } from './duplicateRoute';
 
 const B = 'bill-1';
 const S = 'sess-1';
@@ -23,5 +23,20 @@ describe('duplicateRoute', () => {
 
   it('opens Review bill when the API sent no context', () => {
     expect(duplicateRoute(B)).toBe('/confirm-bill/bill-1');
+  });
+});
+
+describe('settledSession', () => {
+  it('is the session when it was settled', () => {
+    expect(settledSession({ versionNumber: 1, amended: false, session: { sessionId: S, status: 'settled' } })).toBe(S);
+  });
+
+  it.each(['setup', 'claiming', 'paying', 'abandoned'] as const)('is nothing when the session is %s', (status) => {
+    expect(settledSession({ versionNumber: 1, amended: false, session: { sessionId: S, status } })).toBeUndefined();
+  });
+
+  it('is nothing without a session or context', () => {
+    expect(settledSession({ versionNumber: 1, amended: false })).toBeUndefined();
+    expect(settledSession()).toBeUndefined();
   });
 });

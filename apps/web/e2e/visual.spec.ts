@@ -72,7 +72,7 @@ test('review the bill', async ({ page }) => {
 test('the lead’s table', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.lead, `/session/${SID}`);
-  await expect(page.getByText('Says they’ve paid')).toBeVisible();
+  await expect(page.getByText(/^Says they’ve paid/)).toBeVisible();
   await expect(page).toHaveScreenshot('lead-table.png', shot);
 });
 

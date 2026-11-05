@@ -38,7 +38,7 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
 
   // The closed bill isn't polled; the lead comes back to it and confirms.
   await lead.reload();
-  await expect(lead.getByText('Says they’ve paid £17.25')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
 });

@@ -51,7 +51,7 @@ test('menu → account → sign out → the front door, and a deep link afterwar
   await lead.getByRole('button', { name: 'Open menu' }).click();
   await lead.getByRole('link', { name: 'Account' }).click();
   await expect(lead.getByRole('heading', { name: 'Account' })).toBeVisible();
-  await expect(lead.getByText('callum@example.com')).toBeVisible();
+  await expect(lead.getByText('Callum Davies · callum@example.com')).toBeVisible();
   await lead.getByRole('button', { name: 'Sign out' }).click();
   await expect(lead).toHaveURL(/\/sign-in$/);
   expect(await lead.evaluate(() => localStorage.getItem('gdp.idToken'))).toBeNull();

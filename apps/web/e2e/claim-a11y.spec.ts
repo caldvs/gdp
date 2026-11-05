@@ -71,13 +71,23 @@ test('#196: a busy button keeps its name', async ({ browser }) => {
   const tom = await diner(browser, api, users.tom);
   const release = await hold(tom, 'shares');
 
+  let posts = 0;
+  tom.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/shares')) posts++; });
   await tom.getByRole('button', { name: 'Split Calamari with Priya' }).click();
-  const ok = tom.getByRole('dialog').getByRole('button', { name: 'Split it' });
-  await ok.click();
+  const dialog = tom.getByRole('dialog');
+  await expect(dialog).toHaveAccessibleDescription('Priya will see you’re sharing it.');
+  const ok = dialog.getByRole('button', { name: 'Split it' });
+  await ok.focus();
+  await tom.keyboard.press('Enter');
   await expect(ok).toHaveAttribute('aria-busy', 'true');
   await expect(ok).toHaveAccessibleName('Split it');
+  // Busy, not disabled: focus stays put, and pressing again sends nothing more.
+  await expect(ok).toHaveAttribute('aria-disabled', 'true');
+  await expect(ok).toBeFocused();
+  await tom.keyboard.press('Enter');
   release();
-  await expect(tom.getByRole('dialog')).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  expect(posts).toBe(1);
 });
 
 test('#199: claim buttons say the price; taken rows say who by', async ({ browser }) => {

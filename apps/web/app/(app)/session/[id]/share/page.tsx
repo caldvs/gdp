@@ -75,7 +75,7 @@ export default function SharePage() {
             {built ? (
               <div className="code-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <div className="qr-hint">Point a phone camera here</div>
-                <div className="small muted">Scanning is the only way in.</div>
+                <div className="small muted">Works until the bill’s closed.</div>
               </div>
             ) : (
               <div className="code-wait" role="status">Making your QR code…</div>

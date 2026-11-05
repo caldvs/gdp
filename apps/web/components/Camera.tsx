@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState, type Ref } from 'react';
 import { cropFor, type Crop } from '@gdp/core/lib/cameraCrop';
-import { CloseIcon } from './ui';
+import { CloseIcon, useModal } from './ui';
 
 const GalleryIcon = () => (
   <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></svg>
@@ -39,6 +39,9 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
   const [state, setState] = useState<'starting' | 'live' | 'denied'>('starting');
   const [torch, setTorch] = useState<boolean | null>(null); // null: no torch
   const [taking, setTaking] = useState(false);
+  // A native modal <dialog>: the page behind is inert, Escape closes, focus comes back.
+  const dialog = useRef<HTMLDialogElement>(null);
+  useModal(dialog, onClose);
 
   useEffect(() => {
     let stopped = false;
@@ -102,7 +105,7 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
   };
 
   return (
-    <div className="cam" role="dialog" aria-modal="true" aria-label="Scan a bill">
+    <dialog ref={dialog} className="cam" aria-label="Scan a bill" tabIndex={-1}>
       <video ref={video} className="cam__video" playsInline muted autoPlay aria-hidden="true" />
       {state === 'denied' ? (
         <div className="cam__off">
@@ -130,7 +133,7 @@ export function Camera({ onPhoto, onClose, onLibrary, onSystemCamera }: {
         </button>
         <span className="cam__btn cam__btn--sq cam__btn--blank" aria-hidden="true" />
       </div>
-    </div>
+    </dialog>
   );
 }
 

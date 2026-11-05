@@ -82,10 +82,19 @@ describe('read runner', () => {
 
   it('records the bill when the read works, with the longer background budget', async () => {
     const read = await started();
-    parse.mockResolvedValue({ billId: 'b1' });
+    parse.mockResolvedValue({ bill: { billId: 'b1' } });
     await createReadRunner(deps)({ ...job, readId: read.readId });
     expect(store.get(read.readId)).toMatchObject({ status: 'done', billId: 'b1' });
+    expect(store.get(read.readId)?.duplicate).toBeUndefined();
     expect(parse.mock.calls[0]?.[0]).toMatchObject({ budgetMs: BACKGROUND_READ_BUDGET_MS });
+  });
+
+  it("records where the uploader's own bill stands when the photo was read before", async () => {
+    const read = await started();
+    const duplicate = { versionNumber: 2, amended: true };
+    parse.mockResolvedValue({ bill: { billId: 'b1' }, duplicate });
+    await createReadRunner(deps)({ ...job, readId: read.readId });
+    expect(store.get(read.readId)).toMatchObject({ status: 'done', billId: 'b1', duplicate });
   });
 
   it('records the error when the read fails', async () => {

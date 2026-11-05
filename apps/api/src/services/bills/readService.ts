@@ -39,7 +39,7 @@ export const createReadRunner =
         'Bill read finished',
       );
     try {
-      const bill = await parseService.parse({
+      const { bill, duplicate } = await parseService.parse({
         userId: job.userId,
         uploadId: job.uploadId,
         requestId: job.requestId,
@@ -48,7 +48,11 @@ export const createReadRunner =
         budgetMs: BACKGROUND_READ_BUDGET_MS,
         skipCache: job.skipCache,
       });
-      await readStore.finish(job.readId, { status: 'done', billId: bill.billId });
+      await readStore.finish(job.readId, {
+        status: 'done',
+        billId: bill.billId,
+        ...(duplicate ? { duplicate } : {}),
+      });
       finished('done');
     } catch (err) {
       const error =

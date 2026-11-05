@@ -4,10 +4,10 @@ import {
   TransactWriteCommand,
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
-import { ddb, TABLE_NAME } from './ddb.js';
+import { batchGetAll, ddb, TABLE_NAME } from './ddb.js';
 import { sessionStore } from './sessionStore.js';
 import type { Bill } from '../types/bills.js';
-import type { Participant, Session } from '../types/sessions.js';
+import type { Participant, Session, ShareSettings } from '../types/sessions.js';
 
 const SESSION_TTL_DAYS = 30;
 const ttlEpochSeconds = (): number =>
@@ -20,6 +20,16 @@ const hashPk = (userId: string, sha256: string) => `IMGHASH#${userId}#${sha256}`
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const META_SK = 'META';
 const partSk = (userId: string) => `PART#${userId}`;
+
+/** What GET /v1/me/sessions reads of a bill version. */
+export type SummaryBill = Pick<
+  Bill,
+  'items' | 'subtotalPence' | 'serviceChargePence' | 'taxPence' | 'totalPence'
+>;
+export const summaryBillKey = (billId: string, versionNumber: number): string =>
+  `${billId}#${versionNumber}`;
+export const summarySplitKey = (sessionId: string, itemId: string): string =>
+  `${sessionId}#${itemId}`;
 
 export const billStore = {
   /**
@@ -79,6 +89,65 @@ export const billStore = {
     );
     if (!result.Item) return null;
     return stripKeys(result.Item) as Bill;
+  },
+
+  /**
+   * For the list of a user's sessions (GET /v1/me/sessions): the pinned
+   * bill versions and the split rows the caller is in, in one BatchGet,
+   * with only what the money maths needs.
+   */
+  async getVersionsAndSplits(input: {
+    bills: ReadonlyArray<{ billId: string; versionNumber: number }>;
+    splits: ReadonlyArray<{ sessionId: string; itemId: string }>;
+  }): Promise<{
+    bills: Map<string, SummaryBill>;
+    splits: Map<string, ShareSettings>;
+  }> {
+    const keys = new Map<string, { pk: string; sk: string }>();
+    for (const b of input.bills) {
+      const key = { pk: billPk(b.billId), sk: versionSk(b.versionNumber) };
+      keys.set(`${key.pk}|${key.sk}`, key);
+    }
+    for (const s of input.splits) {
+      const key = { pk: sessionPk(s.sessionId), sk: `SHARE#${s.itemId}` };
+      keys.set(`${key.pk}|${key.sk}`, key);
+    }
+    const bills = new Map<string, SummaryBill>();
+    const splits = new Map<string, ShareSettings>();
+    if (keys.size === 0) return { bills, splits };
+    const names = [
+      'pk',
+      'sk',
+      'items',
+      'subtotalPence',
+      'serviceChargePence',
+      'taxPence',
+      'totalPence',
+      'itemId',
+      'ways',
+      'units',
+      'userIds',
+      'version',
+    ];
+    const rows = await batchGetAll([...keys.values()], {
+      expression: names.map((n) => `#${n}`).join(', '),
+      names: Object.fromEntries(names.map((n) => [`#${n}`, n])),
+    });
+    for (const row of rows) {
+      const { pk, sk, ...rest } = row as { pk: string; sk: string };
+      if (pk.startsWith('BILL#')) {
+        bills.set(
+          summaryBillKey(pk.slice('BILL#'.length), Number(sk.slice(2))),
+          rest as SummaryBill,
+        );
+      } else if (pk.startsWith('SESS#')) {
+        splits.set(summarySplitKey(pk.slice('SESS#'.length), sk.slice('SHARE#'.length)), {
+          activity: [],
+          ...rest,
+        } as unknown as ShareSettings);
+      }
+    }
+    return { bills, splits };
   },
 
   async findByImageHash(userId: string, sha256: string): Promise<{ billId: string } | null> {

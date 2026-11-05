@@ -1545,6 +1545,14 @@ export interface components {
             role: "lead" | "diner";
             /** @description The caller's locked-in share, present once the session has been locked into paying. */
             myOwedPence?: number;
+            /** @description The total of the bill version the session is pinned to. */
+            billTotalPence?: number;
+            /**
+             * @description The caller's part of the bill now: their claims and splits plus their part of service
+             *     and tax, and a guest's round-up (what the bill page shows them). `myOwedPence` once
+             *     claims are locked. Absent with `billTotalPence` if the bill version can't be read.
+             */
+            mySharePence?: number;
             /** @enum {string} */
             myPaymentStatus: "unpaid" | "self_paid" | "pending" | "succeeded" | "failed";
         };

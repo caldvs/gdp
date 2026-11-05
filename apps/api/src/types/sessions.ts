@@ -122,6 +122,11 @@ export const ShareSettingsSchema = z.object({
   // How many of the line the split covers. Absent on splits from before
   // multi-quantity splits, which always covered one.
   units: UnitsSchema.optional(),
+  // Who is in the split, copied from the participant rows (their
+  // sharedItemIds are the truth) in the same write, so GET /v1/me/sessions
+  // can work out a sharer's part without reading every participant.
+  // Absent on splits from before 5 Nov 2026.
+  userIds: z.array(z.string()).optional(),
   version: z.number().int().min(1),
   activity: z.array(ShareActivitySchema),
 });

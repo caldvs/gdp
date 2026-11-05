@@ -116,11 +116,11 @@ function PayoutForm() {
             <>
               <div className="field">
                 <label htmlFor="m">Monzo username</label>
-                <div className="money"><span>monzo.me/</span><input id="m" className="input" style={{ paddingLeft: 104 }} value={monzo} onChange={(e) => setMonzo(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
+                <div className="input affix"><span>monzo.me/</span><input id="m" value={monzo} onChange={(e) => setMonzo(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
               </div>
               <div className="field">
                 <label htmlFor="r">Revolut username</label>
-                <div className="money"><span>revolut.me/</span><input id="r" className="input" style={{ paddingLeft: 112 }} value={revolut} onChange={(e) => setRevolut(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
+                <div className="input affix"><span>revolut.me/</span><input id="r" value={revolut} onChange={(e) => setRevolut(e.target.value)} autoCapitalize="none" autoCorrect="off" /></div>
               </div>
             </>
           )}

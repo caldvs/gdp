@@ -60,6 +60,7 @@ if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$hash" ]; then
 fi
 
 step npm run test:scripts
+step npm run check:contrast
 
 if [ "$api" = true ]; then
   (

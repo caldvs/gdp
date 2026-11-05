@@ -250,9 +250,10 @@ export function EmailCodeFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
             enterKeyHint="go"
             disabled={expired || verify.isPending}
             aria-invalid={!!codeError}
-            aria-describedby={codeError ? 'code-err' : undefined}
+            aria-describedby={[codeError ? 'code-err' : '', expired ? '' : 'code-life'].filter(Boolean).join(' ') || undefined}
           />
           {codeError ? <div id="code-err" className="field__err" role="alert">{codeError}</div> : null}
+          {expired ? null : <div id="code-life" className="field__hint">Works for 15 minutes.</div>}
         </div>
         {expired ? null : <Button type="submit" busy={verify.isPending}>Continue</Button>}
       </form>

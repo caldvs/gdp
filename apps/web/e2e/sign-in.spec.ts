@@ -11,6 +11,8 @@ async function askForCode(page: Page, path = '/sign-in/email') {
   await page.getByLabel('Email').fill('sam@example.com');
   await page.locator('form:has(#email) button[type="submit"]').click();
   await expect(page.getByLabel('Code sent to sam@example.com')).toBeFocused();
+  // How long it lasts is said, and read out with the field (#203).
+  await expect(page.getByLabel('Code sent to sam@example.com')).toHaveAccessibleDescription(/Works for 15 minutes/);
 }
 
 async function newPage(browser: import('@playwright/test').Browser) {

@@ -379,30 +379,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/venues/nearby": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Food and drink places near a position
-         * @description Up to 5 food and drink places within about 300 m, nearest first, from
-         *     Amazon Location. Results are cached by the position rounded to 3
-         *     decimal places; the caller's own position is never stored and is
-         *     logged rounded at most. An empty list when nothing is near, when the
-         *     search fails, or locally (no venue lookup).
-         */
-        get: operations["nearbyVenues"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/sessions": {
         parameters: {
             query?: never;
@@ -1667,15 +1643,6 @@ export interface components {
                 address?: string;
             };
         };
-        NearbyVenue: {
-            /** @description Amazon Location place ID */
-            placeId: string;
-            name: string;
-            /** @description Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom" */
-            address?: string;
-            /** @description Metres from the position asked about */
-            distanceM: number;
-        };
         CreateSessionRequest: {
             /** Format: uuid */
             billId: string;
@@ -2372,33 +2339,6 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-        };
-    };
-    nearbyVenues: {
-        parameters: {
-            query: {
-                lat: number;
-                lng: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Nearby places, nearest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        venues: components["schemas"]["NearbyVenue"][];
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
         };
     };
     createSession: {

@@ -99,11 +99,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Pay Me Back architecture</h1>
-    <div class="stats"><span><b>48</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
+    <div class="stats"><span><b>47</b> endpoints</span><span><b>8</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1373" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 48 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venues and nearby places), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1373" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 47 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venue lookup), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -278,35 +278,29 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="846" y="637"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
 <text class="t-ep" x="846" y="655"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
 <text class="t-ep" x="846" y="673"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="698" width="230" height="56" rx="7"/>
-<text class="t-inner" x="846" y="719">Venues</text>
-<text class="t-base" x="1052" y="719" text-anchor="end">/v1/venues</text>
-<text class="t-ep" x="846" y="739"><tspan class="m m-get">GET</tspan><tspan x="902">/nearby</tspan></text>
-<rect class="inner" x="834" y="764" width="230" height="384" rx="7"/>
-<text class="t-inner" x="846" y="785">Services</text>
-<text class="t-base" x="1052" y="785" text-anchor="end">src/services</text>
-<text class="t-mono" x="846" y="808">auth</text>
-<text class="t-sub" x="846" y="825">emailOtp, sessionToken (JWT)</text>
-<text class="t-mono" x="846" y="848">bills</text>
-<text class="t-sub" x="846" y="865">upload, parse, amend, image</text>
-<text class="t-mono" x="846" y="888">bills</text>
-<text class="t-sub" x="846" y="905">parser, venueResolver</text>
-<text class="t-mono" x="846" y="928">sessions</text>
-<text class="t-sub" x="846" y="945">allocation, joinCode, report</text>
-<text class="t-mono" x="846" y="968">payments</text>
-<text class="t-sub" x="846" y="985">paymentService, ledger</text>
-<text class="t-mono" x="846" y="1008">billing</text>
-<text class="t-sub" x="846" y="1025">tableFee</text>
-<text class="t-mono" x="846" y="1048">venues</text>
-<text class="t-sub" x="846" y="1065">nearbyVenues</text>
-<text class="t-mono" x="846" y="1088">email</text>
-<text class="t-sub" x="846" y="1105">sender (SES or console)</text>
-<text class="t-mono" x="846" y="1128">storage</text>
-<text class="t-sub" x="846" y="1145">one store per entity</text>
-<rect class="inner" x="576" y="1158" width="488" height="124" rx="7"/>
-<text class="t-inner" x="588" y="1180">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1202">Parser: Bedrock · fixture</text>
-<text class="t-mono" x="588" y="1220">Email: SES · console     Venue: Location · none</text>
+<rect class="inner" x="834" y="698" width="230" height="440" rx="7"/>
+<text class="t-inner" x="846" y="719">Services</text>
+<text class="t-base" x="1052" y="719" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="742">auth</text>
+<text class="t-sub" x="846" y="759">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="782">bills</text>
+<text class="t-sub" x="846" y="799">upload, parse, amend, image</text>
+<text class="t-mono" x="846" y="822">bills</text>
+<text class="t-sub" x="846" y="839">parser, venueResolver</text>
+<text class="t-mono" x="846" y="862">sessions</text>
+<text class="t-sub" x="846" y="879">allocation, joinCode, report</text>
+<text class="t-mono" x="846" y="902">payments</text>
+<text class="t-sub" x="846" y="919">paymentService, ledger</text>
+<text class="t-mono" x="846" y="942">billing</text>
+<text class="t-sub" x="846" y="959">tableFee</text>
+<text class="t-mono" x="846" y="982">email</text>
+<text class="t-sub" x="846" y="999">sender (SES or console)</text>
+<text class="t-mono" x="846" y="1022">storage</text>
+<text class="t-sub" x="846" y="1039">one store per entity</text>
+<rect class="inner" x="576" y="1148" width="488" height="134" rx="7"/>
+<text class="t-inner" x="588" y="1170">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1192">Parser: Bedrock · fixture</text>
+<text class="t-mono" x="588" y="1210">Email: SES · console     Venue: Location · none</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>
@@ -325,7 +319,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="1166" y="365">Guest payments to the lead</text>
 <text class="t-mono" x="1166" y="384">FEE# CREDIT(S)# HOLDQ#</text>
 <text class="t-sub" x="1166" y="401">Platform fee holds, credits</text>
-<text class="t-mono" x="1166" y="420">IDMP# KEY#  VENUEQ# NEARQ#</text>
+<text class="t-mono" x="1166" y="420">IDMP# KEY#  VENUEQ#</text>
 <text class="t-sub" x="1166" y="437">Idempotency, venue lookups</text>
 <rect class="node" x="1150" y="479" width="220" height="88" rx="10"/>
 <text class="t-title" x="1166" y="507">Amazon SES</text>
@@ -349,7 +343,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="1166" y="964">venue name and address</text>
 <rect class="node" x="1150" y="993" width="220" height="60" rx="10"/>
 <text class="t-title" x="1166" y="1021">Amazon Location</text>
-<text class="t-sub" x="1166" y="1043">Venue lookup, nearby places</text>
+<text class="t-sub" x="1166" y="1043">Venue lookup</text>
 <rect class="node" x="1150" y="1067" width="220" height="96" rx="10"/>
 <text class="t-title" x="1166" y="1095">S3</text>
 <text class="t-sub" x="1166" y="1117">gdp-bills-raw-{env}</text>

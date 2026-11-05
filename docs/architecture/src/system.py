@@ -140,7 +140,6 @@ y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/payments')]) + 10
-y = group(BX, y, BW, 'Venues', '/v1/venues', [('GET', '/nearby')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
@@ -149,7 +148,6 @@ svc = [
     ('sessions', 'allocation, joinCode, report'),
     ('payments', 'paymentService, ledger'),
     ('billing', 'tableFee'),
-    ('venues', 'nearbyVenues'),
     ('email', 'sender (SES or console)'),
     ('storage', 'one store per entity'),
 ]
@@ -182,14 +180,14 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
-                   ('FEE# CREDIT(S)# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
+                   ('FEE# CREDIT(S)# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge: daily hold', 'sweep invokes the Lambda'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
-c4card('location', 'Amazon Location', ['Venue lookup, nearby places'])
+c4card('location', 'Amazon Location', ['Venue lookup'])
 c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
 
 # ---- Column 5 externals at gap y's

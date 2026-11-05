@@ -6,7 +6,7 @@
  */
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import path from 'node:path';
-import { FakeApi, users } from './fakeApi';
+import { FakeApi, SID, users } from './fakeApi';
 
 const PHOTO = path.join(__dirname, 'fixtures', 'bill.jpg');
 
@@ -109,4 +109,48 @@ test('All in? Retake discards the photo without uploading; Use photo uploads onc
   await page.getByRole('button', { name: 'Use photo' }).click();
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   expect(uploads(api)).toBe(1);
+});
+
+// docs/design/analysis-cache.md, step 2: a photo sent before goes back to its bill.
+const s3Puts = (api: FakeApi) => api.requests.filter((r) => r.method === 'PUT' && r.path.startsWith('/v1/_s3/')).length;
+
+async function scanFile(page: Page) {
+  await page.locator('input[capture]').setInputFiles(PHOTO);
+  await page.getByRole('button', { name: 'Use photo' }).click();
+}
+
+test('the same photo again, after the bill was changed, opens Review bill where they left off', async ({ browser }) => {
+  const api = new FakeApi({ status: 'setup' });
+  api.rememberPhotos = true;
+  const page = await lead(browser, api, 'denied');
+
+  await scanFile(page);
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Picked up where you left off')).toHaveCount(0);
+  api.pinnedBillVersion = 2; // the lead fixed a line
+
+  await page.goto('/');
+  await scanFile(page);
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('Picked up where you left off')).toBeVisible();
+  expect(uploads(api)).toBe(2);
+  expect(s3Puts(api)).toBe(1);
+});
+
+test('the same photo again, once the bill is at a table, opens the lead’s table', async ({ browser }) => {
+  const api = new FakeApi({ status: 'setup' });
+  api.rememberPhotos = true;
+  const page = await lead(browser, api, 'denied');
+
+  await scanFile(page);
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  // Shared: guests are claiming.
+  api.billInSession = true;
+  api.status = 'claiming';
+
+  await page.goto('/');
+  await scanFile(page);
+  await expect(page).toHaveURL(new RegExp(`/session/${SID}$`), { timeout: 15_000 });
+  await expect(page.getByRole('tab', { name: 'The table' })).toBeVisible();
+  expect(s3Puts(api)).toBe(1);
 });

@@ -12,6 +12,7 @@ import { useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
+import { RESUMED_PARAM } from '@gdp/core/lib/duplicateRoute';
 import {
   ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalEdit, TotalLine, Totals,
 } from '@/components/ui';
@@ -75,8 +76,11 @@ export default function ConfirmBillPage() {
  */
 function CheckBill() {
   const { billId } = useParams<{ billId: string }>();
-  const sessionId = useSearchParams().get('sessionId') ?? undefined;
+  const params = useSearchParams();
+  const sessionId = params.get('sessionId') ?? undefined;
   const isMidSession = !!sessionId;
+  // A photo sent before, of a bill the lead had already changed.
+  const resumed = !isMidSession && params.get(RESUMED_PARAM) === '1';
   const router = useRouter();
   const queryClient = useQueryClient();
   const bill = useBill(billId);
@@ -334,6 +338,8 @@ function CheckBill() {
       <Page sub>
         {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
         <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={editing === 'venue' ? undefined : sub} />
+
+        {resumed ? <Notice title="Picked up where you left off" /> : null}
 
         {editing === 'venue' ? (
           <VenueEditor value={venueName} onChange={setVenueName} onDone={() => setEditing(null)} />

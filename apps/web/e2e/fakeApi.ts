@@ -70,6 +70,16 @@ export class FakeApi {
   /** Set to hold every read at `reading` until it's cleared. */
   holdReads = false;
   private reads = new Map<string, { polls: number; error?: { code: string; message: string; details?: Record<string, unknown> } }>();
+  /**
+   * Answer an upload of a photo already read as `duplicate`, with where the
+   * bill stands (docs/design/analysis-cache.md, step 2). Off by default, so
+   * other tests can send the same photo again.
+   */
+  rememberPhotos = false;
+  /** Whether the bill has been put in a session (POST /v1/sessions). */
+  billInSession = false;
+  private readPhotos = new Set<string>();
+  private lastPhoto: string | undefined;
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in with the emailed code (and so pass /v1/me). */
@@ -268,6 +278,17 @@ export class FakeApi {
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 
     // ---- bills
+    if (path === '/v1/bills/uploads' && this.rememberPhotos) {
+      const sha = body().sha256 as string;
+      if (this.readPhotos.has(sha)) {
+        const live = this.billInSession && this.status !== 'abandoned';
+        return json({
+          status: 'duplicate', billId: BID, versionNumber: this.pinnedBillVersion, amended: this.pinnedBillVersion > 1,
+          ...(live ? { session: { sessionId: SID, status: this.status } } : {}),
+        });
+      }
+      this.lastPhoto = sha;
+    }
     if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://localhost:9000/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
     if (path === '/v1/bills/reads' && method === 'POST') {
@@ -283,6 +304,7 @@ export class FakeApi {
       r.polls += 1;
       if (this.holdReads || r.polls <= this.readPolls) return json({ readId, status: 'reading' });
       if (r.error) return json({ readId, status: 'failed', error: r.error });
+      if (this.lastPhoto) this.readPhotos.add(this.lastPhoto);
       return json({ readId, status: 'done', billId: BID });
     }
     if (path === '/v1/bills/parse') {
@@ -304,6 +326,7 @@ export class FakeApi {
     // ---- sessions
     if (path === '/v1/sessions' && method === 'POST') {
       this.status = 'setup';
+      this.billInSession = true;
       const n = body().expectedDiners as number | undefined;
       this.expectedDiners = n;
       return json(this.session(), 201);

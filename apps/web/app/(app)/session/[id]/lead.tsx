@@ -440,6 +440,7 @@ function Confirm({ title, body, ok, danger, busy, error, onOk, onCancel }: {
   return (
     <Dialog
       id="confirm-t"
+      describedBy="confirm-d"
       title={title}
       onClose={onCancel}
       actions={
@@ -449,7 +450,7 @@ function Confirm({ title, body, ok, danger, busy, error, onOk, onCancel }: {
         </>
       }
     >
-      <p className="muted">{body}</p>
+      <p id="confirm-d" className="muted">{body}</p>
       {error ? <Notice tone="error">{error}</Notice> : null}
     </Dialog>
   );

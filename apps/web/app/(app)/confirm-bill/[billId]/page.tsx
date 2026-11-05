@@ -465,9 +465,9 @@ function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove, doneL
         <div className="field" style={{ flex: 'none' }}>
           <span className="field__label">Quantity</span>
           <div className="stepper" style={{ height: 52 }}>
-            <button type="button" aria-label="One fewer" disabled={item.quantity <= minQty} onClick={() => onChange({ quantity: Math.max(minQty, item.quantity - 1) })}>−</button>
+            <button type="button" aria-label={`One fewer${item.name.trim() ? ` ${item.name.trim()}` : ''}`} disabled={item.quantity <= minQty} onClick={() => onChange({ quantity: Math.max(minQty, item.quantity - 1) })}>−</button>
             <span aria-live="polite">{item.quantity}</span>
-            <button type="button" aria-label="One more" onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
+            <button type="button" aria-label={`One more${item.name.trim() ? ` ${item.name.trim()}` : ''}`} onClick={() => onChange({ quantity: item.quantity + 1 })}>+</button>
           </div>
         </div>
       </div>

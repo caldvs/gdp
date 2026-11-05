@@ -148,6 +148,7 @@ export default function PayPage() {
       {confirming && open ? (
         <Dialog
           id="paid-t"
+          describedBy="paid-d"
           title="Are you sure you’ve paid?"
           onClose={() => setConfirming(false)}
           actions={(
@@ -157,7 +158,7 @@ export default function PayPage() {
             </>
           )}
         >
-          <p className="muted">Only once {formatGBP(amount)} has left your account. {hostFirst} checks it’s arrived.</p>
+          <p id="paid-d" className="muted">Only once {formatGBP(amount)} has left your account. {hostFirst} checks it’s arrived.</p>
         </Dialog>
       ) : null}
     </>

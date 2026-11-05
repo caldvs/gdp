@@ -379,6 +379,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bills/{billId}/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: components["parameters"]["BillId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start again with a new bill for the same photo
+         * @description A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
+         *     `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
+         *     copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
+         *     from what the current parser read off the photo: the cached read when there is one, else a
+         *     new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
+         *     index moves to the new bill, so sending the photo again opens it. The old bill and its
+         *     sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
+         */
+        post: operations["forkBill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions": {
         parameters: {
             query?: never;
@@ -1311,6 +1339,12 @@ export interface components {
                  * @description When the read this bill came from was made. Absent on bills from before the cache.
                  */
                 analysedAt?: string;
+                /** @description Set on a bill made by Start again (`POST /v1/bills/{billId}/fork`): the bill and version it came from. */
+                forkedFrom?: {
+                    /** Format: uuid */
+                    billId: string;
+                    versionNumber: number;
+                };
             };
             venue?: components["schemas"]["Venue"];
             /** Format: uuid */
@@ -1616,6 +1650,14 @@ export interface components {
             uploadId: string;
             /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
             skipCache?: boolean;
+        };
+        ForkBillRequest: {
+            /**
+             * @description `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what the current parser reads off the photo.
+             * @default latest
+             * @enum {string}
+             */
+            from: "latest" | "analysis";
         };
         BillRead: {
             /** Format: uuid */
@@ -2354,6 +2396,75 @@ export interface operations {
              *     claims (`CLAIMS_EXCEED_QUANTITY`).
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    forkBill: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                billId: components["parameters"]["BillId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkBillRequest"];
+            };
+        };
+        responses: {
+            /** @description The new bill */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bill"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Bill not found, or (`from: analysis`) its photo is no longer available */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["IdempotencyConflict"];
+            /** @description Reading the photo again failed (`from: analysis`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Upstream parser provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the photo again ran out of time (PARSE_TIMEOUT) */
+            504: {
                 headers: {
                     [name: string]: unknown;
                 };

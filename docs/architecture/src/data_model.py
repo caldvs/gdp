@@ -63,7 +63,7 @@ col1_end = y
 
 # ---- Column 2: bills
 y = 80
-y = place(1, y, 'Image hash index', 'bill', 'No TTL', [('pk', 'IMGHASH#{userId}#{sha256}'), ('sk', 'same as pk')], ['billId', 'dedupes a repeat photo per user']) + GAP
+y = place(1, y, 'Image hash index', 'bill', 'No TTL', [('pk', 'IMGHASH#{userId}#{sha256}'), ('sk', 'same as pk')], ['billId', 'dedupes a repeat photo per user', 'Start again (fork) moves it to the new bill']) + GAP
 y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#001, V#002 … (immutable)'), ('sk', 'LATEST (mirror of newest)')],
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
            'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',

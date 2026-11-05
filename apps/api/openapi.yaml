@@ -576,6 +576,59 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/bills/{billId}/fork:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    post:
+      tags: [bills]
+      operationId: forkBill
+      summary: Start again with a new bill for the same photo
+      description: |
+        A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
+        `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
+        copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
+        from what the current parser read off the photo: the cached read when there is one, else a
+        new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
+        index moves to the new bill, so sending the photo again opens it. The old bill and its
+        sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForkBillRequest' }
+      responses:
+        '201':
+          description: The new bill
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bill' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 'Bill not found, or (`from: analysis`) its photo is no longer available'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '422':
+          description: 'Reading the photo again failed (`from: analysis`)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502':
+          description: Upstream parser provider error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '504':
+          description: Reading the photo again ran out of time (PARSE_TIMEOUT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions:
     post:
       tags: [sessions]
@@ -1859,6 +1912,13 @@ components:
               type: string
               format: date-time
               description: When the read this bill came from was made. Absent on bills from before the cache.
+            forkedFrom:
+              type: object
+              description: 'Set on a bill made by Start again (`POST /v1/bills/{billId}/fork`): the bill and version it came from.'
+              required: [billId, versionNumber]
+              properties:
+                billId: { type: string, format: uuid }
+                versionNumber: { type: integer, minimum: 1 }
         venue: { $ref: '#/components/schemas/Venue' }
         previousVersionId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
@@ -2236,6 +2296,17 @@ components:
           description: >-
             Local API only (ignored elsewhere): read the photo with the model again even if it was
             read before. The new bill replaces the old one as this photo's bill.
+
+    ForkBillRequest:
+      type: object
+      properties:
+        from:
+          type: string
+          enum: [latest, analysis]
+          default: latest
+          description: >-
+            `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what
+            the current parser reads off the photo.
 
     BillRead:
       type: object

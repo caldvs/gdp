@@ -65,8 +65,9 @@ h1, h2, p { margin: 0; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 48px; font-family: var(--display); font-size: 24px; font-weight: 400; letter-spacing: .01em; text-transform: uppercase; color: #fff; }
 .brand:hover { text-decoration: none; }
 /* The logo: a coin whose £ rolls to €, $ and ¥ and back. Still under reduced motion. */
-.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: var(--sky); font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
-.brand__roll { display: block; animation: brand-roll 8s cubic-bezier(.6,0,.2,1) infinite; }
+.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: var(--sky); font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; clip-path: circle(50%); isolation: isolate; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
+/* iOS Safari can drop a transform animated under a rounded overflow clip (#178): clip with clip-path and give the roll its own layer. */
+.brand__roll { display: block; will-change: transform; animation: brand-roll 8s cubic-bezier(.6,0,.2,1) infinite; }
 .brand__roll span { display: block; height: 32px; }
 @keyframes brand-roll { 0%, 40% { transform: none; } 48%, 58% { transform: translateY(-32px); } 66%, 76% { transform: translateY(-64px); } 84%, 94% { transform: translateY(-96px); } 100% { transform: translateY(-128px); } }
 @media (prefers-reduced-motion: reduce) { .brand__roll { animation: none; } }

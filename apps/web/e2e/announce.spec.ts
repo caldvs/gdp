@@ -46,3 +46,52 @@ test('#197: a failed save of bank details moves focus to the first wrong field',
   await expect(sort).toBeFocused();
   await expect(sort).toHaveAccessibleDescription('Six digits');
 });
+
+test('#198: the lead hears who joins and who says they’ve paid', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/session/${SID}`);
+  const feed = lead.getByTestId('table-feed');
+  await expect(lead.getByRole('tab', { name: 'The table' })).toBeVisible();
+  await expect(feed).toHaveAttribute('aria-live', 'polite');
+  await expect(feed).toHaveText('');
+
+  api.join(users.sam);
+  await expect(feed).toHaveText('Sam joined.', POLL);
+
+  const sam = api.participants[1]!;
+  sam.claimedItemIds = [items[1]!.itemId];
+  sam.payment = { status: 'pending', paymentId: 'pay-u-sam', payerClaimedPaidAt: '2026-10-31T12:30:00Z' };
+  await expect(feed).toHaveText('Sam says they’ve paid £22.50.', POLL);
+});
+
+test('#198: the QR page says who has just joined', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/session/${SID}/share`);
+  const feed = lead.getByTestId('table-feed');
+  await expect(lead.getByText('People appear here as they join.')).toBeVisible();
+  await expect(feed).toHaveText('');
+  api.join(users.tom);
+  await expect(feed).toHaveText('Tom joined.', POLL);
+});
+
+test('#198: copying a bank detail is announced', async ({ browser, browserName }) => {
+  test.skip(browserName !== 'chromium', 'copying needs Chromium clipboard permissions');
+  const api = new FakeApi();
+  const sam = await diner(browser, api, users.sam, `/join/${CODE}#p=${fragmentFor()}`, { clipboard: true });
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click(POLL);
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  await sam.getByRole('button', { name: 'Copy sort code' }).click();
+  await expect(sam.getByRole('status').filter({ hasText: 'Sort code copied' })).toHaveCount(1);
+});
+
+test('#198: the summary’s Copied and Emailed are announced', async ({ browser, browserName }) => {
+  const chromium = browserName === 'chromium';
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead, `/session/${SID}/summary`, { clipboard: chromium });
+  await lead.getByRole('button', { name: 'Email this' }).click();
+  await expect(lead.getByRole('status').filter({ hasText: /^Emailed$/ })).toHaveCount(1);
+  if (chromium) {
+    await lead.getByRole('button', { name: 'Copy as text' }).click();
+    await expect(lead.getByRole('status').filter({ hasText: /^Copied$/ })).toHaveCount(1);
+  }
+});

@@ -141,6 +141,8 @@ export default function SummaryPage() {
             {copied ? 'Copied' : 'Copy as text'}
           </Button>
         </div>
+        {/* #198: the buttons' new words aren't reliably read out; this is. */}
+        <div className="vh" role="status">{copied ? 'Copied' : report.isSuccess ? 'Emailed' : ''}</div>
         {report.isError ? <Notice tone="error">{report.error.message}</Notice> : null}
         {copied === false ? <Notice tone="error">Couldn’t copy. Select the text instead.</Notice> : null}
       </div>

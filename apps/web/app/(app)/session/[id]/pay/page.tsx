@@ -110,6 +110,8 @@ export default function PayPage() {
     <>
       <Page sub>
         {done ? (me.data?.guestSessionId ? null : <BackLink href="/">Bills</BackLink>) : <BackLink href={`/session/${id}`}>Your items</BackLink>}
+        {/* #198: the tick on the row isn't read out; this is. */}
+        <div className="vh" role="status">{copied ? `${COPIED[copied] ?? 'Detail'} copied` : ''}</div>
         <Title
           title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst}`}
           sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to confirm.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid. By bank transfer.` : 'By bank transfer. Tap a detail to copy it.'}
@@ -161,6 +163,8 @@ export default function PayPage() {
     </>
   );
 }
+
+const COPIED: Record<string, string> = { n: 'Name', s: 'Sort code', a: 'Account number', r: 'Reference' };
 
 function CopyRow({ k, v, copied, onCopy }: { k: string; v: string; copied: boolean; onCopy: () => void }) {
   return (

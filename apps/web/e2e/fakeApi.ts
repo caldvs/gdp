@@ -160,6 +160,13 @@ export class FakeApi {
     };
   }
 
+  /** This bill's row on /v1/me/sessions gets its total and the caller's share, unless the test set them. */
+  private withTotals(s: Record<string, unknown>, userId: string): Record<string, unknown> {
+    if (s.sessionId !== SID) return s;
+    const inIt = this.participants.some((p) => p.userId === userId);
+    return { billTotalPence: this.bill.totalPence, ...(inIt ? { mySharePence: this.owed(userId) } : {}), ...s };
+  }
+
   /** What each participant owes, the way the app projects it. */
   owed(userId: string): number {
     const p = this.participants.find((x) => x.userId === userId)!;
@@ -288,7 +295,7 @@ export class FakeApi {
       return json({ token: 'guest-token', session: this.session() }, 201);
     }
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
-    if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
+    if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions.map((s) => this.withTotals(s, user.userId)) });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 
     // ---- bills

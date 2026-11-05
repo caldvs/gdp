@@ -7,7 +7,7 @@ import {
   UpdateCommand,
   type TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
-import { ddb, TABLE_NAME } from './ddb.js';
+import { batchGetAll, ddb, TABLE_NAME } from './ddb.js';
 import type { Session, Participant, ShareSettings } from '../types/sessions.js';
 
 const SESSION_TTL_DAYS = 30;
@@ -36,6 +36,18 @@ function participantItem(sessionId: string, ttlAt: number, p: Participant) {
     GSI1SK: sessionId,
     ...p,
   };
+}
+
+function stripParticipantKeys(row: object): Participant {
+  const {
+    pk: _pk,
+    sk: _sk,
+    GSI1PK: _g1pk,
+    GSI1SK: _g1sk,
+    ttlAt: _ttl,
+    ...rest
+  } = row as Record<string, unknown>;
+  return rest as Participant;
 }
 
 // Fields that live elsewhere (split settings have their own rows; shares
@@ -517,6 +529,8 @@ export const sessionStore = {
         role: 'lead' | 'diner';
         myOwedPence?: number;
         myPaymentStatus: Participant['payment']['status'];
+        /** The caller's own row, for the totals; not part of the response. */
+        me?: Participant;
       }
     >
   > {
@@ -541,17 +555,11 @@ export const sessionStore = {
       .filter((id): id is string => !!id);
     if (sessionIds.length === 0) return [];
 
-    const metaRes = await ddb.send(
-      new BatchGetCommand({
-        RequestItems: {
-          [TABLE_NAME]: {
-            Keys: sessionIds.map((id) => ({ pk: sessionPk(id), sk: META_SK })),
-          },
-        },
-      }),
+    const metaRows = await batchGetAll(
+      sessionIds.map((id) => ({ pk: sessionPk(id), sk: META_SK })),
     );
     const metaBySessionId = new Map<string, Omit<Session, 'participants'>>();
-    for (const raw of metaRes.Responses?.[TABLE_NAME] ?? []) {
+    for (const raw of metaRows) {
       // ttlAt is storage-only (epoch seconds for DynamoDB TTL).
       const { pk: _pk, sk: _sk, GSI1PK: _g1pk, GSI1SK: _g1sk, ttlAt: _ttl, ...rest } = raw;
       const meta = rest as Omit<Session, 'participants'>;
@@ -576,6 +584,7 @@ export const sessionStore = {
           role: meta.creatorUserId === userId ? ('lead' as const) : ('diner' as const),
           ...(partRow?.owedPence !== undefined ? { myOwedPence: partRow.owedPence } : {}),
           myPaymentStatus: partRow?.payment.status ?? ('unpaid' as const),
+          ...(partRow ? { me: stripParticipantKeys(partRow) } : {}),
         };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);

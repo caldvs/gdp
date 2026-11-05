@@ -140,6 +140,95 @@ describe('GET /v1/me/sessions', () => {
     expect(body.sessions).toHaveLength(2);
   });
 
+  it('carries the bill total and each person’s share: claims, a split and service', async () => {
+    // 751 split two ways leaves a penny over: it goes to the lower userId
+    // (the lead here), so the guest's part needs the split's other member.
+    const parsed = {
+      ...sampleParsedBill,
+      items: [
+        { name: 'Margherita Pizza', unitPricePence: 1450, quantity: 1, category: 'food' as const },
+        { name: 'Pint of IPA', unitPricePence: 650, quantity: 1, category: 'drink' as const },
+        { name: 'Tiramisu', unitPricePence: 751, quantity: 1, category: 'food' as const },
+      ],
+      serviceChargePence: 356,
+      totalPence: 3207,
+    };
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(parsed),
+    });
+    const lead = `a-lead-${uuidv7()}`;
+    const guest = `b-guest-${uuidv7()}`;
+    const bill = await createBillFor(app, lead);
+    const [pizza, ipa, tiramisu] = bill.items.map((it) => it.itemId);
+    const post = (user: string, path: string, body?: unknown) =>
+      app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...makeAuth(user) },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+      });
+    const created = (await (await post(lead, '/v1/sessions', { billId: bill.billId })).json()) as {
+      sessionId: string;
+    };
+    const sid = created.sessionId;
+    expect(
+      (await post(lead, `/v1/sessions/${sid}/claims`, { claimedItemIds: [pizza] })).status,
+    ).toBe(200);
+    expect((await post(lead, `/v1/sessions/${sid}/share`)).status).toBe(200);
+    expect((await post(guest, `/v1/sessions/${sid}/join`)).status).toBe(200);
+    expect(
+      (await post(guest, `/v1/sessions/${sid}/claims`, { claimedItemIds: [ipa] })).status,
+    ).toBe(200);
+    expect(
+      (await post(lead, `/v1/sessions/${sid}/shares`, { itemId: tiramisu, ways: 2 })).status,
+    ).toBe(200);
+    expect((await post(guest, `/v1/sessions/${sid}/shares`, { itemId: tiramisu })).status).toBe(
+      200,
+    );
+
+    const mine = async (user: string) => {
+      const res = await app.request('/v1/me/sessions', { headers: makeAuth(user) });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        sessions: Array<{ sessionId: string; billTotalPence?: number; mySharePence?: number }>;
+      };
+      return body.sessions.find((s) => s.sessionId === sid);
+    };
+    // Lead: 1450 + 376 of the split, plus service pro rata (356 / 2851).
+    expect(await mine(lead)).toMatchObject({ billTotalPence: 3207, mySharePence: 2054 });
+    // Guest: 650 + 375, plus service.
+    expect(await mine(guest)).toMatchObject({ billTotalPence: 3207, mySharePence: 1153 });
+
+    // The guest leaves the split: their spot reopens, the lead keeps their part.
+    await app.request(`/v1/sessions/${sid}/shares/${tiramisu}`, {
+      method: 'DELETE',
+      headers: makeAuth(guest),
+    });
+    expect((await mine(guest))?.mySharePence).toBe(Math.round((650 * 3207) / 2851));
+    expect((await mine(lead))?.mySharePence).toBe(Math.round(((1450 + 376) * 3207) / 2851));
+  });
+
+  it('a locked bill gives the locked share', async () => {
+    const app = buildApp();
+    const lead = `lead-${uuidv7()}`;
+    const diner = `diner-${uuidv7()}`;
+    const { sessionId } = await buildPayingSession(app, lead, [diner]);
+    for (const user of [lead, diner]) {
+      const res = await app.request('/v1/me/sessions', { headers: makeAuth(user) });
+      const body = (await res.json()) as {
+        sessions: Array<{
+          sessionId: string;
+          billTotalPence?: number;
+          mySharePence?: number;
+          myOwedPence?: number;
+        }>;
+      };
+      const s = body.sessions.find((x) => x.sessionId === sessionId);
+      expect(s?.billTotalPence).toBe(sampleParsedBill.totalPence);
+      expect(s?.mySharePence).toBe(s?.myOwedPence);
+    }
+  });
+
   it('rejects unauthenticated callers', async () => {
     const app = buildApp();
     const res = await app.request('/v1/me/sessions');

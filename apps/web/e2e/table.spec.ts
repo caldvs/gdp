@@ -55,7 +55,7 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await expect(tom.getByTestId('your-share')).toHaveText('£11.25');
 
   // Sam, still watching the table, sees Tom in the split (polling).
-  await expect(sam.getByText('Tom').first()).toBeVisible({ timeout: 10_000 });
+  await expect(sam.getByText('Tom').first()).toBeVisible({ timeout: 15_000 });
 
   // --- Lead closes. Tom hasn't paid yet; the close sheet says so.
   await lead.getByRole('button', { name: 'Close bill' }).click();
@@ -65,5 +65,5 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   expect(api.status).toBe('settled');
 
   // Tom can still pay after the close.
-  await expect(tom.getByRole('link', { name: 'Pay Callum £11.25' })).toBeVisible({ timeout: 10_000 });
+  await expect(tom.getByRole('link', { name: 'Pay Callum £11.25' })).toBeVisible({ timeout: 15_000 });
 });

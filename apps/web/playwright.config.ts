@@ -6,6 +6,8 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
+  // Multi-person tests wait on several polls; CI's WebKit runs are slow.
+  timeout: process.env.CI ? 60_000 : 30_000,
   use: { baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8081', trace: 'on-first-retry' },
   projects: [
     { name: 'mobile', use: { ...devices['iPhone 13'] } },

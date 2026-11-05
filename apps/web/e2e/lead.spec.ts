@@ -6,7 +6,9 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import path from 'node:path';
 import { FakeApi, LEAD_BANK, SID, items, users, type User } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 const PHOTO = path.join(__dirname, 'fixtures', 'bill.jpg');
 
 async function diner(browser: Browser, api: FakeApi, user: User, goto = `/session/${SID}`): Promise<Page> {

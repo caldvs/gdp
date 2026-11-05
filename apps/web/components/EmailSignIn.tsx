@@ -220,7 +220,7 @@ export function EmailCodeFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
             aria-invalid={!!emailError}
             aria-describedby={emailError ? 'email-err' : devAvailable || hint ? 'email-hint' : undefined}
           />
-          {emailError ? <div id="email-err" className="field__err">{emailError}</div> : devAvailable || hint ? (
+          {emailError ? <div id="email-err" className="field__err" role="alert">{emailError}</div> : devAvailable || hint ? (
             <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no code needed.' : 'Weâ€™ll email you a code. No password.'}</div>
           ) : null}
         </div>

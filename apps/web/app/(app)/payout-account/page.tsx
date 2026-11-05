@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePayoutAccount, useSavePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { isPayoutAccountRemembered } from '@gdp/core/lib/payoutAccount';
@@ -42,6 +42,13 @@ function PayoutForm() {
   const [tried, setTried] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  // #197: a failed save moves focus to the first field that's wrong, once
+  // it's marked invalid, so its error is read out with it.
+  const form = useRef<HTMLFormElement>(null);
+  const [failedSaves, setFailedSaves] = useState(0);
+  useEffect(() => {
+    if (failedSaves > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [failedSaves]);
 
   useEffect(() => {
     if (hydrated) return;
@@ -66,7 +73,7 @@ function PayoutForm() {
   const onSave = async () => {
     setTried(true);
     setSubmitError(null);
-    if (!name.trim() || digits(sort, 6).length !== 6 || digits(account, 8).length !== 8) return;
+    if (!name.trim() || digits(sort, 6).length !== 6 || digits(account, 8).length !== 8) { setFailedSaves((n) => n + 1); return; }
     try {
       await save({
         sortCode: digits(sort, 6),
@@ -91,7 +98,7 @@ function PayoutForm() {
       <Page sub>
         <BackLink href={back}>Back</BackLink>
         <Title title="Bank details" sub="Where friends send your money. It goes in the QR code; we never see it." />
-        <form id="payout" onSubmit={(e) => { e.preventDefault(); void onSave(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <form ref={form} id="payout" onSubmit={(e) => { e.preventDefault(); void onSave(); }} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div className="field">
             <label htmlFor="n">Name on the account</label>
             <input id="n" className={cls(nameErr)} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" autoCapitalize="words" disabled={DEMO_MODE} autoFocus={!name} aria-invalid={!!nameErr} aria-describedby={nameErr ? 'n-err' : undefined} />

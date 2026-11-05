@@ -103,7 +103,7 @@ test('bank details', async ({ page }) => {
 
 test('the lead’s table and the close dialog', async ({ page }) => {
   await open(page, busyTable(), users.lead, `/session/${SID}`);
-  await expect(page.getByText('Says they’ve paid')).toBeVisible();
+  await expect(page.getByText(/^Says they’ve paid/)).toBeVisible();
   await audit(page);
   await page.getByRole('button', { name: 'Close bill' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

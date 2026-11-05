@@ -33,7 +33,7 @@ export default function BillsPage() {
           <Section title="Open">
             <CardList>
               {open.map((s) => (
-                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} card strong title={venue(s)} sub={openSub(s)} end={openBadge(s)} />
+                <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} card strong title={venue(s)} sub={openSub(s)} end={openEnd(s)} />
               ))}
             </CardList>
           </Section>
@@ -64,24 +64,32 @@ export default function BillsPage() {
 function venue(s: SessionSummary): string {
   return s.venue?.name ?? (s.role === 'lead' ? 'Your bill' : 'A bill you joined');
 }
+/** What the caller had: their share now, or what was locked in on older bills. */
+function shareOf(s: SessionSummary): number | undefined {
+  return s.mySharePence ?? s.myOwedPence;
+}
+/** A guest's row names the whole bill; the host's shows it on the right. */
+function billOf(s: SessionSummary): string {
+  return s.role !== 'lead' && s.billTotalPence !== undefined ? ` · ${formatGBP(s.billTotalPence)} bill` : '';
+}
 function pastSub(s: SessionSummary): string {
   const when = formatWhen(s.createdAt);
   if (s.status === 'abandoned') return `${when} · ${s.role === 'lead' ? 'you deleted it' : 'the host deleted it'}`;
-  return `${when} · ${s.role === 'lead' ? 'you hosted' : 'you joined'}`;
+  return `${when} · ${s.role === 'lead' ? 'you hosted' : 'you joined'}${billOf(s)}`;
 }
 function pastEnd(s: SessionSummary) {
   if (s.status === 'abandoned') return <Badge>Deleted</Badge>;
-  return s.myOwedPence !== undefined && s.role !== 'lead' ? formatGBP(s.myOwedPence) : undefined;
+  const pence = s.role === 'lead' ? s.billTotalPence : shareOf(s);
+  return pence !== undefined ? formatGBP(pence) : undefined;
 }
 function openSub(s: SessionSummary): string {
   const when = formatWhen(s.createdAt);
-  if (s.role !== 'lead') return `${when} · you joined`;
+  if (s.role !== 'lead') return `${when} · you joined${billOf(s)}`;
   return s.status === 'setup' ? `${when} · not shared yet` : `${when} · you’re collecting`;
 }
-function openBadge(s: SessionSummary) {
-  if (s.role !== 'lead') {
-    if (s.myPaymentStatus === 'succeeded') return <Badge tone="ok">Paid</Badge>;
-    return s.myOwedPence !== undefined ? <Badge tone="warn">You owe {formatGBP(s.myOwedPence)}</Badge> : undefined;
-  }
-  return undefined;
+function openEnd(s: SessionSummary) {
+  if (s.role === 'lead') return s.billTotalPence !== undefined ? formatGBP(s.billTotalPence) : undefined;
+  if (s.myPaymentStatus === 'succeeded') return <Badge tone="ok">Paid</Badge>;
+  const owe = shareOf(s);
+  return owe ? <Badge tone="warn">You owe {formatGBP(owe)}</Badge> : undefined;
 }

@@ -19,6 +19,12 @@ describe('createBillParser', () => {
     expect(p.model).toBe('eu.model');
   });
 
+  it('fingerprints the model, version and prompts for the analysis cache', () => {
+    const p = new BedrockBillParser('eu.model', 'eu-west-2');
+    expect(p.fingerprint).toMatch(new RegExp(`^eu\\.model:${p.version}:[0-9a-f]{8}$`));
+    expect(new BedrockBillParser('eu.other', 'eu-west-2').fingerprint).not.toBe(p.fingerprint);
+  });
+
   it('fails clearly without a Bedrock model', async () => {
     const p = createBillParser({ region: 'eu-west-2' });
     expect(p.model).toBe('none');

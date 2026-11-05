@@ -65,6 +65,8 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm run test:scripts
+      # The Sky tokens against WCAG AA (#207).
+      - run: npm run check:contrast
 
   api:
     name: api • lint • typecheck • unit • build

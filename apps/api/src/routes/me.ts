@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
 import { callerOf } from '../context/caller.js';
 import { AppError } from '../errors/AppError.js';
-import { sessionStore } from '../storage/sessionStore.js';
+import { listMySessions } from '../services/sessions/mySessions.js';
 import { userStore } from '../storage/userStore.js';
 import { z } from 'zod';
 import { SetPayoutAccountRequestSchema } from '../types/users.js';
@@ -74,8 +74,7 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier): Hono => {
         ? Math.min(parsed, MAX_HISTORY_LIMIT)
         : DEFAULT_HISTORY_LIMIT;
 
-    const summaries = await sessionStore.listForUser(userId, limit);
-    return c.json({ sessions: summaries });
+    return c.json({ sessions: await listMySessions(userId, limit) });
   });
 
   return r;

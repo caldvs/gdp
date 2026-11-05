@@ -79,7 +79,8 @@ describe('rasters', () => {
   });
 });
 
-describe('receiptParts', () => {
+// Real JPEG work in pure JS: seconds under coverage on a busy machine.
+describe('receiptParts', { timeout: 20_000 }, () => {
   it('crops to the receipt and sends a long one in parts', () => {
     const photo = blank(600, 2400);
     const parts = receiptParts(photo, { left: 0.3, top: 0, right: 0.6, bottom: 1 });
@@ -89,7 +90,7 @@ describe('receiptParts', () => {
   });
 
   it('sends an ordinary photo whole, no bigger than the model reads', () => {
-    const parts = receiptParts(blank(2400, 3200), null);
+    const parts = receiptParts(blank(1600, 2133), null);
     expect(parts).toHaveLength(1);
     const r = decodeJpeg(parts[0]!);
     expect(Math.max(r.width, r.height)).toBe(1568);

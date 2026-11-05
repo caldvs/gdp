@@ -1,11 +1,6 @@
 import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 import { GetAccountCommand, GetEmailIdentityCommand, SESv2Client } from '@aws-sdk/client-sesv2';
-import {
-  GeoPlacesClient,
-  SearchNearbyCommand,
-  SearchTextCommand,
-} from '@aws-sdk/client-geo-places';
-import { FOOD_AND_DRINK, NEARBY_RADIUS_M } from '../services/venues/nearbyVenues.js';
+import { GeoPlacesClient, SearchTextCommand } from '@aws-sdk/client-geo-places';
 import Stripe from 'stripe';
 import { env } from '../config/env.js';
 import {
@@ -317,42 +312,11 @@ const testAccountsCheck: Check = {
   },
 };
 
-const nearbyCheck: Check = {
-  name: 'Amazon Location (nearby places)',
-  // No nearby places means the scan screen asks for a name, so it only warns.
-  required: false,
-  run: async () => {
-    if (env.VENUE_LOOKUP !== 'amazon-location') throw skip('VENUE_LOOKUP is none');
-    const client = new GeoPlacesClient({ region: env.AWS_REGION });
-    try {
-      // Same call the app makes (food and drink, 300 m), around Piccadilly
-      // Gardens. SingleUse: not stored, so billed at the lower rate.
-      const out = await client.send(
-        new SearchNearbyCommand({
-          QueryPosition: [-2.2367, 53.4808],
-          QueryRadius: NEARBY_RADIUS_M,
-          MaxResults: 1,
-          Filter: { IncludeCategories: FOOD_AND_DRINK },
-          IntendedUse: 'SingleUse',
-        }),
-        { abortSignal: AbortSignal.timeout(TIMEOUT_MS) },
-      );
-      const top = out.ResultItems?.[0];
-      if (!top) throw new Error('no food or drink place near Piccadilly Gardens');
-      return `found "${top.Title ?? top.PlaceId ?? '?'}" ${top.Distance ?? '?'} m away`;
-    } catch (err) {
-      const e = err as { name?: string; message?: string };
-      throw new Error(`${e.name ?? 'error'}: ${e.message ?? ''}`.slice(0, 300), { cause: err });
-    }
-  },
-};
-
 export const CHECKS: readonly Check[] = [
   stripeCheck,
   holdCheck,
   bedrockCheck,
   venueCheck,
-  nearbyCheck,
   sesCheck,
   testAccountsCheck,
 ];

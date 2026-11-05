@@ -11,6 +11,7 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { usePayoutVerdict, usePublishPayoutCheck } from '@gdp/core/lib/usePayoutCheck';
 import { JoinQr, useJoinUrl, useQrBuilt } from '@/components/JoinQr';
+import { useTableFeed } from '@/components/useTableFeed';
 import { ActionBar, BackLink, Button, Centre, Diners, Notice, Page, Section, Spinner, Title, firstName } from '@/components/ui';
 
 /**
@@ -39,6 +40,8 @@ export default function SharePage() {
   const built = useQrBuilt(!!fresh, qrUrl);
   const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY && (fresh === 'fee' || fresh === 'credit') });
   const feePaid = fresh === 'fee' ? billing.data?.fees.find((f) => f.sessionId === id) : undefined;
+  // #198: say who's just joined.
+  const feed = useTableFeed(session.data?.participants, session.data?.creatorUserId ?? '');
 
   if (session.isPending || me.isPending) return <Centre><Spinner /></Centre>;
   if (session.isError) return <Centre><Notice tone="error" title="Couldn’t load the bill.">{session.error.message}</Notice></Centre>;
@@ -72,7 +75,7 @@ export default function SharePage() {
             {built ? (
               <div className="code-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <div className="qr-hint">Point a phone camera here</div>
-                <div className="small muted">Scanning is the only way in.</div>
+                <div className="small muted">Works until the bill’s closed.</div>
               </div>
             ) : (
               <div className="code-wait" role="status">Making your QR code…</div>
@@ -80,6 +83,7 @@ export default function SharePage() {
           </div>
         )}
 
+        <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
         <Section title={`At the table · ${s.participants.length}`}>
           <Diners people={s.participants} hostId={s.creatorUserId} meId={me.data?.userId} />
           {s.participants.length <= 1 ? <p className="small muted">People appear here as they join.</p> : null}

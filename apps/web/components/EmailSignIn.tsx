@@ -220,7 +220,7 @@ export function EmailCodeFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
             aria-invalid={!!emailError}
             aria-describedby={emailError ? 'email-err' : devAvailable || hint ? 'email-hint' : undefined}
           />
-          {emailError ? <div id="email-err" className="field__err">{emailError}</div> : devAvailable || hint ? (
+          {emailError ? <div id="email-err" className="field__err" role="alert">{emailError}</div> : devAvailable || hint ? (
             <div id="email-hint" className="field__hint">{devAvailable ? 'Local dev: no code needed.' : 'Weâ€™ll email you a code. No password.'}</div>
           ) : null}
         </div>
@@ -250,9 +250,10 @@ export function EmailCodeFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
             enterKeyHint="go"
             disabled={expired || verify.isPending}
             aria-invalid={!!codeError}
-            aria-describedby={codeError ? 'code-err' : undefined}
+            aria-describedby={[codeError ? 'code-err' : '', expired ? '' : 'code-life'].filter(Boolean).join(' ') || undefined}
           />
           {codeError ? <div id="code-err" className="field__err" role="alert">{codeError}</div> : null}
+          {expired ? null : <div id="code-life" className="field__hint">Works for 15 minutes.</div>}
         </div>
         {expired ? null : <Button type="submit" busy={verify.isPending}>Continue</Button>}
       </form>

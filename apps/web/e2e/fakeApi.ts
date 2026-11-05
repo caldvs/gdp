@@ -33,6 +33,8 @@ type Item = { itemId: string; name: string; unitPricePence: number; quantity: nu
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
+/** The new bill Start again makes (POST /v1/bills/{BID}/fork). */
+export const FORK_BID = '0193ab12-0001-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
 /** What the fake /email/start hands the asking tab, and the code it emails. */
 export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
@@ -70,6 +72,18 @@ export class FakeApi {
   /** Set to hold every read at `reading` until it's cleared. */
   holdReads = false;
   private reads = new Map<string, { polls: number; error?: { code: string; message: string; details?: Record<string, unknown> } }>();
+  /**
+   * Answer an upload of a photo already read as `duplicate`, with where the
+   * bill stands (docs/design/analysis-cache.md, step 2). Off by default, so
+   * other tests can send the same photo again.
+   */
+  rememberPhotos = false;
+  /** Start again was used: the photo now opens FORK_BID. */
+  forked = false;
+  /** Whether the bill has been put in a session (POST /v1/sessions). */
+  billInSession = false;
+  private readPhotos = new Set<string>();
+  private lastPhoto: string | undefined;
   /** Requests the app made, for assertions like "the fragment never left the browser". */
   requests: { method: string; path: string; body: string | null }[] = [];
   /** Users who have signed in with the emailed code (and so pass /v1/me). */
@@ -98,8 +112,6 @@ export class FakeApi {
   private printedTotalPence: number | undefined;
   /** #63: the venue the parser found, or the lead's own choice once amended. */
   private venue: { name: string; address?: string; placeId?: string } | undefined;
-  /** #62: places GET /v1/venues/nearby returns (nearest first). */
-  nearby: { placeId: string; name: string; address?: string; distanceM: number }[] = [];
 
   constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeApi['status']; leadClaims?: string[]; noPrintedTotal?: boolean; printedTotalPence?: number; venue?: { name: string; address?: string } | null; platformFeePence?: number } = {}) {
     this.items = opts.items ?? items;
@@ -128,6 +140,16 @@ export class FakeApi {
     };
   }
 
+  /** What Start again made: the latest version as a new bill, new item ids. */
+  get forkedBill() {
+    const b = this.bill;
+    return {
+      ...b, billId: FORK_BID, versionNumber: 1,
+      items: b.items.map((it, i) => ({ ...it, itemId: `00000000-0000-4000-8000-${String(800 + i).padStart(12, '0')}` })),
+      parsedFrom: { ...b.parsedFrom, forkedFrom: { billId: BID, versionNumber: b.versionNumber } },
+    };
+  }
+
   session() {
     return {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
@@ -136,6 +158,13 @@ export class FakeApi {
       ...(this.platformFeePence ? { platformFeePence: this.platformFeePence } : {}),
       ...(this.payoutCheck ? { payoutCheck: this.payoutCheck } : {}),
     };
+  }
+
+  /** This bill's row on /v1/me/sessions gets its total and the caller's share, unless the test set them. */
+  private withTotals(s: Record<string, unknown>, userId: string): Record<string, unknown> {
+    if (s.sessionId !== SID) return s;
+    const inIt = this.participants.some((p) => p.userId === userId);
+    return { billTotalPence: this.bill.totalPence, ...(inIt ? { mySharePence: this.owed(userId) } : {}), ...s };
   }
 
   /** What each participant owes, the way the app projects it. */
@@ -266,10 +295,24 @@ export class FakeApi {
       return json({ token: 'guest-token', session: this.session() }, 201);
     }
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
-    if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions });
+    if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions.map((s) => this.withTotals(s, user.userId)) });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
 
     // ---- bills
+    if (path === '/v1/bills/uploads' && this.rememberPhotos) {
+      const sha = body().sha256 as string;
+      if (this.readPhotos.has(sha) && this.forked) {
+        return json({ status: 'duplicate', billId: FORK_BID, versionNumber: 1, amended: false });
+      }
+      if (this.readPhotos.has(sha)) {
+        const live = this.billInSession && this.status !== 'abandoned';
+        return json({
+          status: 'duplicate', billId: BID, versionNumber: this.pinnedBillVersion, amended: this.pinnedBillVersion > 1,
+          ...(live ? { session: { sessionId: SID, status: this.status } } : {}),
+        });
+      }
+      this.lastPhoto = sha;
+    }
     if (path === '/v1/bills/uploads') return json({ status: 'new', uploadId: 'up-1', url: 'http://localhost:9000/v1/_s3/up-1', expiresAt: '2099-01-01T00:00:00Z', maxBytes: 10_000_000 });
     if (path === '/v1/_s3/up-1') return route.fulfill({ status: 200, body: '' });
     if (path === '/v1/bills/reads' && method === 'POST') {
@@ -285,6 +328,7 @@ export class FakeApi {
       r.polls += 1;
       if (this.holdReads || r.polls <= this.readPolls) return json({ readId, status: 'reading' });
       if (r.error) return json({ readId, status: 'failed', error: r.error });
+      if (this.lastPhoto) this.readPhotos.add(this.lastPhoto);
       return json({ readId, status: 'done', billId: BID });
     }
     if (path === '/v1/bills/parse') {
@@ -302,11 +346,19 @@ export class FakeApi {
       return json(this.bill);
     }
     if (path === `/v1/bills/${BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
+    // Start again: a new bill copying the latest version; the old split stays as it was.
+    if (path === `/v1/bills/${BID}/fork` && method === 'POST') {
+      if (user.userId !== 'u-lead') return err('BILL_NOT_FOUND', 'Bill not found', 404);
+      this.forked = true;
+      return json(this.forkedBill, 201);
+    }
+    if (path === `/v1/bills/${FORK_BID}` && method === 'GET' && this.forked) return json(this.forkedBill);
+    if (path === `/v1/bills/${FORK_BID}/image-url`) return err('IMAGE_UNAVAILABLE', 'n/a', 404);
 
     // ---- sessions
-    if (path === '/v1/venues/nearby' && method === 'GET') return json({ venues: this.nearby });
     if (path === '/v1/sessions' && method === 'POST') {
       this.status = 'setup';
+      this.billInSession = true;
       const n = body().expectedDiners as number | undefined;
       this.expectedDiners = n;
       return json(this.session(), 201);

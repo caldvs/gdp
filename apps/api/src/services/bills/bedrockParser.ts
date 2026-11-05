@@ -16,6 +16,7 @@ import {
   type Raster,
 } from './receiptImages.js';
 import {
+  fingerprintOf,
   parseTimeout,
   type BillParser,
   type ParseOptions,
@@ -38,6 +39,7 @@ const VERSION = 'v9';
  */
 export class BedrockBillParser implements BillParser {
   readonly version = VERSION;
+  readonly fingerprint: string;
   private readonly client: BedrockRuntimeClient;
 
   constructor(
@@ -45,6 +47,8 @@ export class BedrockBillParser implements BillParser {
     region: string,
   ) {
     this.client = new BedrockRuntimeClient({ region });
+    // Every prompt the read sends, so editing any of them reads photos afresh.
+    this.fingerprint = fingerprintOf(model, VERSION, FIND_RECEIPT_PROMPT, partsNote(0), PROMPT);
   }
 
   async parse(
@@ -175,6 +179,7 @@ export const createBillParser = (cfg: { bedrockModelId?: string; region: string 
   return {
     model: 'none',
     version: 'v0',
+    fingerprint: 'none:v0:00000000',
     parse: () =>
       Promise.reject(
         new AppError(

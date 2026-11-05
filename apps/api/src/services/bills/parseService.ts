@@ -4,9 +4,11 @@ import { v7 as uuidv7 } from 'uuid';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { ReadQuotaExceeded, readQuotaStore } from '../../storage/readQuotaStore.js';
+import { analysisStore, type Analysis } from '../../storage/analysisStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
+import { duplicateContext, type DuplicateContext } from './duplicateContext.js';
 import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
 import {
   PARSE_BUDGET_MS,
@@ -18,6 +20,9 @@ import {
 import type { VenueResolver } from './venueResolver.js';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** The bill for an upload; `duplicate` when it's the uploader's own bill from before. */
+export type ParseResult = { bill: Bill; duplicate?: DuplicateContext };
 
 export const parseService = {
   async parse(input: {
@@ -33,34 +38,10 @@ export const parseService = {
      * new bill takes over the photo's hash index; the old bill is untouched.
      */
     skipCache?: boolean;
-  }): Promise<Bill> {
+  }): Promise<ParseResult> {
     // One budget for the whole read, started now so the S3 fetch counts.
     const signal = AbortSignal.timeout(input.budgetMs ?? PARSE_BUDGET_MS);
-    const key = uploadKey(input.userId, input.uploadId);
-
-    let bytes: Uint8Array;
-    try {
-      const obj = await s3.send(new GetObjectCommand({ Bucket: BILLS_BUCKET, Key: key }));
-      if (!obj.Body) {
-        throw new AppError('NOT_FOUND', 'Upload has no body');
-      }
-      bytes = await obj.Body.transformToByteArray();
-    } catch (err) {
-      if (err instanceof NoSuchKey) {
-        throw new AppError('NOT_FOUND', 'Upload not found or expired');
-      }
-      if (err instanceof AppError) throw err;
-      const errName = err instanceof Error ? err.name : '';
-      if (errName === 'NoSuchKey' || errName === 'NotFound') {
-        throw new AppError('NOT_FOUND', 'Upload not found or expired');
-      }
-      throw err;
-    }
-
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new AppError('INVALID_INPUT', 'Image exceeds 5MB limit');
-    }
-
+    const bytes = await uploadBytes(input.userId, input.uploadId);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
 
     const existing = input.skipCache ? null : await billStore.findByImageHash(input.userId, sha256);
@@ -77,9 +58,9 @@ export const parseService = {
             parsedFrom: { ...bill.parsedFrom, uploadId: input.uploadId },
           };
           await billStore.putVersion(adopted);
-          return adopted;
+          return { bill: adopted, duplicate: await duplicateContext(input.userId, adopted) };
         }
-        return bill;
+        return { bill, duplicate: await duplicateContext(input.userId, bill) };
       }
       // Index pointed somewhere we can't read — partial write or external
       // mutation. Don't silently re-parse: that would overwrite the index
@@ -90,32 +71,20 @@ export const parseService = {
       );
     }
 
-    // Only reads that reach the model count against the daily quota (#145).
-    try {
-      await readQuotaStore.reserve(input.userId);
-    } catch (err) {
-      if (err instanceof ReadQuotaExceeded) {
-        throw new AppError(
-          'RATE_LIMITED',
-          `You've read ${readQuotaStore.READS_PER_DAY} bills today. Try again tomorrow.`,
-          { retryAfterSeconds: err.retryAfterSeconds },
-        );
-      }
-      throw err;
-    }
-
-    const parsed = await input.parser.parse(bytes, input.requestId, { signal });
-    const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
+    const analysis = await analyse({ ...input, bytes, sha256, signal });
     const bill = BillSchema.parse(
       buildBillV1({
-        parsed,
-        venue,
+        parsed: analysis.parsed,
+        venue: analysis.venue,
         userId: input.userId,
         uploadId: input.uploadId,
         sha256,
-        readBy: readByOf(input.parser, parsed),
+        readBy: analysis.readBy,
+        source: analysis.source,
+        analysedAt: analysis.analysedAt,
       }),
     );
+    const { parsed } = analysis;
 
     // Sanity-check: the printed total on the receipt should match what
     // we computed from items + tax + service. A discrepancy usually
@@ -143,17 +112,117 @@ export const parseService = {
     await billStore.putVersion(bill, {
       indexImageHash: { userId: input.userId, sha256 },
     });
-    return bill;
+    return { bill };
   },
 };
 
-function buildBillV1(args: {
+/** The photo the user uploaded, checked against the size limit. */
+export async function uploadBytes(userId: string, uploadId: string): Promise<Uint8Array> {
+  const key = uploadKey(userId, uploadId);
+  let bytes: Uint8Array;
+  try {
+    const obj = await s3.send(new GetObjectCommand({ Bucket: BILLS_BUCKET, Key: key }));
+    if (!obj.Body) {
+      throw new AppError('NOT_FOUND', 'Upload has no body');
+    }
+    bytes = await obj.Body.transformToByteArray();
+  } catch (err) {
+    if (err instanceof NoSuchKey) {
+      throw new AppError('NOT_FOUND', 'Upload not found or expired');
+    }
+    if (err instanceof AppError) throw err;
+    const errName = err instanceof Error ? err.name : '';
+    if (errName === 'NoSuchKey' || errName === 'NotFound') {
+      throw new AppError('NOT_FOUND', 'Upload not found or expired');
+    }
+    throw err;
+  }
+
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new AppError('INVALID_INPUT', 'Image exceeds 5MB limit');
+  }
+  return bytes;
+}
+
+/**
+ * What the parser read from these bytes, and the venue looked up from it:
+ * from the analysis cache when this photo was read before by a parser with
+ * the same fingerprint (anyone's upload: the row holds no user id), else
+ * from the parser, then cached. This is the caching point in
+ * docs/design/analysis-cache.md: before the read becomes a bill anyone can
+ * amend. `skipCache` (local testing) reads again. Failed reads aren't cached.
+ */
+export async function analyse(input: {
+  userId: string;
+  requestId: string;
+  parser: BillParser;
+  venueResolver: VenueResolver;
+  skipCache?: boolean;
+  bytes: Uint8Array;
+  sha256: string;
+  signal: AbortSignal;
+}): Promise<Analysis & { source: 'parser' | 'cache' }> {
+  const { fingerprint } = input.parser;
+  const log = { fingerprint, requestId: input.requestId };
+  if (!input.skipCache) {
+    const cached = await analysisStore.get(input.sha256, fingerprint);
+    if (cached) {
+      baseLogger.info(
+        { event: 'bill.analysis.hit', ...log, analysedAt: cached.analysedAt },
+        'Bill read from the analysis cache',
+      );
+      return { ...cached, source: 'cache' };
+    }
+  }
+  baseLogger.info(
+    { event: 'bill.analysis.miss', ...log, ...(input.skipCache ? { skipped: true } : {}) },
+    'Bill not in the analysis cache',
+  );
+
+  // Only reads that reach the model count against the daily quota (#145).
+  try {
+    await readQuotaStore.reserve(input.userId);
+  } catch (err) {
+    if (err instanceof ReadQuotaExceeded) {
+      throw new AppError(
+        'RATE_LIMITED',
+        `You've read ${readQuotaStore.READS_PER_DAY} bills today. Try again tomorrow.`,
+        { retryAfterSeconds: err.retryAfterSeconds },
+      );
+    }
+    throw err;
+  }
+
+  const result = await input.parser.parse(input.bytes, input.requestId, { signal: input.signal });
+  const { readBy: _readBy, ...parsed } = result;
+  const venue = parsed.venue ? await input.venueResolver.resolve(parsed.venue) : undefined;
+  const analysis: Analysis = {
+    parsed,
+    ...(venue ? { venue } : {}),
+    readBy: readByOf(input.parser, result),
+    analysedAt: new Date().toISOString(),
+  };
+  // A cache write that fails costs a read next time, not this bill.
+  await analysisStore
+    .putIfAbsent(input.sha256, fingerprint, analysis)
+    .catch((err: unknown) =>
+      baseLogger.error(
+        { event: 'bill.analysis.unsaved', ...log, err },
+        'Could not save the bill analysis',
+      ),
+    );
+  return { ...analysis, source: 'parser' };
+}
+
+export function buildBillV1(args: {
   parsed: ParsedBillFromImage;
   venue: Venue | undefined;
   userId: string;
   uploadId: string;
   sha256: string;
   readBy: ReadBy;
+  source: 'parser' | 'cache';
+  analysedAt: string;
 }): Bill {
   const items: BillItem[] = mergeRepeatedLines(args.parsed.items).map((it) => ({
     itemId: uuidv7(),
@@ -188,6 +257,8 @@ function buildBillV1(args: {
       parserVersion: args.readBy.version,
       parsedAt: new Date().toISOString(),
       uploadId: args.uploadId,
+      source: args.source,
+      analysedAt: args.analysedAt,
     },
     ...(args.venue ? { venue: args.venue } : {}),
     createdAt: new Date().toISOString(),

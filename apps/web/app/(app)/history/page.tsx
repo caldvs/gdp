@@ -39,7 +39,7 @@ export default function HistoryPage() {
               vt={billTitle(s.sessionId)}
               tall
               title={s.venue?.name ?? (s.role === 'lead' ? 'Your bill' : 'A bill you joined')}
-              sub={`${formatWhen(s.createdAt)} · ${s.role === 'lead' ? 'hosted' : 'joined'}${s.status === 'abandoned' ? ' · deleted' : ''}`}
+              sub={sub(s)}
               end={<Side s={s} />}
             />
           ))}
@@ -49,9 +49,25 @@ export default function HistoryPage() {
   );
 }
 
+const isOpen = (s: SessionSummary) => s.status === 'setup' || s.status === 'claiming' || s.status === 'paying';
+
+/** When · hosted or joined · open or deleted; a guest's also names the whole bill. */
+function sub(s: SessionSummary): string {
+  const parts = [formatWhen(s.createdAt), s.role === 'lead' ? 'hosted' : 'joined'];
+  if (s.status === 'abandoned') parts.push('deleted');
+  else {
+    if (s.role === 'lead' && isOpen(s)) parts.push('open');
+    if (s.role !== 'lead' && s.billTotalPence !== undefined) parts.push(`${formatGBP(s.billTotalPence)} bill`);
+  }
+  return parts.join(' · ');
+}
+
+/** The host sees the bill's total; a guest sees their share, ticked once paid. */
 function Side({ s }: { s: SessionSummary }) {
-  if (s.role === 'lead') return <span className="muted">{s.status === 'settled' ? 'Closed' : s.status === 'abandoned' ? '' : 'Open'}</span>;
-  if (s.myPaymentStatus === 'succeeded' && s.myOwedPence !== undefined) return <Badge tone="ok">Paid {formatGBP(s.myOwedPence)}</Badge>;
-  if (s.myOwedPence !== undefined) return <span>{formatGBP(s.myOwedPence)}</span>;
-  return null;
+  if (s.status === 'abandoned') return null;
+  if (s.role === 'lead') return s.billTotalPence !== undefined ? <span>{formatGBP(s.billTotalPence)}</span> : null;
+  const share = s.mySharePence ?? s.myOwedPence;
+  if (share === undefined) return null;
+  if (s.myPaymentStatus === 'succeeded') return <Badge tone="ok">Paid {formatGBP(share)}</Badge>;
+  return <span>{formatGBP(share)}</span>;
 }

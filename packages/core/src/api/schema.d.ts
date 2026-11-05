@@ -228,8 +228,8 @@ export interface paths {
         /**
          * Request a pre-signed S3 PUT URL for a bill image
          * @description Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
-         *     If the hash is already mapped to a parsed bill, returns `{ status: "duplicate", billId }` and
-         *     no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+         *     If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
+         *     with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
          *     scoped permissions (specific key, content-length cap, PUT only).
          */
         post: operations["requestBillUpload"];
@@ -379,24 +379,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/venues/nearby": {
+    "/v1/bills/{billId}/fork": {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                billId: components["parameters"]["BillId"];
+            };
             cookie?: never;
         };
-        /**
-         * Food and drink places near a position
-         * @description Up to 5 food and drink places within about 300 m, nearest first, from
-         *     Amazon Location. Results are cached by the position rounded to 3
-         *     decimal places; the caller's own position is never stored and is
-         *     logged rounded at most. An empty list when nothing is near, when the
-         *     search fails, or locally (no venue lookup).
-         */
-        get: operations["nearbyVenues"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Start again with a new bill for the same photo
+         * @description A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
+         *     `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
+         *     copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
+         *     from what the current parser read off the photo: the cached read when there is one, else a
+         *     new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
+         *     index moves to the new bill, so sending the photo again opens it. The old bill and its
+         *     sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
+         */
+        post: operations["forkBill"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1323,6 +1327,24 @@ export interface components {
                  * @description Original upload identifier; absent on bills parsed before this field was retained.
                  */
                 uploadId?: string;
+                /**
+                 * @description Where this bill's read came from: the parser, or the analysis
+                 *     cache (the same image read before by the same parser
+                 *     fingerprint, by anyone). Absent on bills from before the cache.
+                 * @enum {string}
+                 */
+                source?: "parser" | "cache";
+                /**
+                 * Format: date-time
+                 * @description When the read this bill came from was made. Absent on bills from before the cache.
+                 */
+                analysedAt?: string;
+                /** @description Set on a bill made by Start again (`POST /v1/bills/{billId}/fork`): the bill and version it came from. */
+                forkedFrom?: {
+                    /** Format: uuid */
+                    billId: string;
+                    versionNumber: number;
+                };
             };
             venue?: components["schemas"]["Venue"];
             /** Format: uuid */
@@ -1523,6 +1545,14 @@ export interface components {
             role: "lead" | "diner";
             /** @description The caller's locked-in share, present once the session has been locked into paying. */
             myOwedPence?: number;
+            /** @description The total of the bill version the session is pinned to. */
+            billTotalPence?: number;
+            /**
+             * @description The caller's part of the bill now: their claims and splits plus their part of service
+             *     and tax, and a guest's round-up (what the bill page shows them). `myOwedPence` once
+             *     claims are locked. Absent with `billTotalPence` if the bill version can't be read.
+             */
+            mySharePence?: number;
             /** @enum {string} */
             myPaymentStatus: "unpaid" | "self_paid" | "pending" | "succeeded" | "failed";
         };
@@ -1602,12 +1632,40 @@ export interface components {
              * @description An existing bill matched the supplied image hash; do not upload again
              */
             billId: string;
+            versionNumber: number;
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
+        };
+        /** @description Where the uploader's own bill for a photo they've sent before stands, resolved at request time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or the bill's table when `session` is set. */
+        DuplicateContext: {
+            /** @description The bill's latest version */
+            versionNumber: number;
+            /** @description `versionNumber > 1`: the lead has changed it */
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
+        };
+        /** @description The bill's live session (setup, claiming or paying: it holds the bill), else the lead's newest session for it when that one is settled. Absent when there's none or it was abandoned. */
+        DuplicateSession: {
+            /** Format: uuid */
+            sessionId: string;
+            status: components["schemas"]["SessionStatus"];
+        };
+        ParsedBill: components["schemas"]["Bill"] & {
+            duplicate?: components["schemas"]["DuplicateContext"];
         };
         ParseRequest: {
             /** Format: uuid */
             uploadId: string;
             /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
             skipCache?: boolean;
+        };
+        ForkBillRequest: {
+            /**
+             * @description `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what the current parser reads off the photo.
+             * @default latest
+             * @enum {string}
+             */
+            from: "latest" | "analysis";
         };
         BillRead: {
             /** Format: uuid */
@@ -1619,6 +1677,8 @@ export interface components {
              * @description Set when `done`
              */
             billId?: string;
+            /** @description Set when `done` and the photo was this user's own bill from before */
+            duplicate?: components["schemas"]["DuplicateContext"];
             /** @description Set when `failed`. `code` is one of the API's error codes. */
             error?: {
                 code: string;
@@ -1654,15 +1714,6 @@ export interface components {
                 placeId?: string;
                 address?: string;
             };
-        };
-        NearbyVenue: {
-            /** @description Amazon Location place ID */
-            placeId: string;
-            name: string;
-            /** @description Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom" */
-            address?: string;
-            /** @description Metres from the position asked about */
-            distanceM: number;
         };
         CreateSessionRequest: {
             /** Format: uuid */
@@ -2152,13 +2203,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Parsed bill */
+            /** @description Parsed bill. When the photo is one this user read before, their own latest version of that bill, with `duplicate` saying where it stands. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Bill"];
+                    "application/json": components["schemas"]["ParsedBill"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -2362,31 +2413,73 @@ export interface operations {
             };
         };
     };
-    nearbyVenues: {
+    forkBill: {
         parameters: {
-            query: {
-                lat: number;
-                lng: number;
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
-            header?: never;
-            path?: never;
+            path: {
+                billId: components["parameters"]["BillId"];
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkBillRequest"];
+            };
+        };
         responses: {
-            /** @description Nearby places, nearest first */
-            200: {
+            /** @description The new bill */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        venues: components["schemas"]["NearbyVenue"][];
-                    };
+                    "application/json": components["schemas"]["Bill"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description Bill not found, or (`from: analysis`) its photo is no longer available */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["IdempotencyConflict"];
+            /** @description Reading the photo again failed (`from: analysis`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Upstream parser provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the photo again ran out of time (PARSE_TIMEOUT) */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     createSession: {

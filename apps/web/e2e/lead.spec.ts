@@ -6,7 +6,9 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import path from 'node:path';
 import { FakeApi, LEAD_BANK, SID, items, users, type User } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 const PHOTO = path.join(__dirname, 'fixtures', 'bill.jpg');
 
 async function diner(browser: Browser, api: FakeApi, user: User, goto = `/session/${SID}`): Promise<Page> {
@@ -31,7 +33,9 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   // Fix the calamari's price and make it two.
   await lead.getByRole('button', { name: 'Edit Calamari' }).click();
   await lead.getByLabel('Price each').fill('20.00');
-  await lead.getByRole('button', { name: 'One more' }).click();
+  // #204: the stepper says which item.
+  await expect(lead.getByRole('button', { name: 'One fewer Calamari' })).toBeDisabled();
+  await lead.getByRole('button', { name: 'One more Calamari' }).click();
   await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByText('£40.00')).toBeVisible();
 
@@ -46,6 +50,7 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
   await expect(lead.getByText('Point a phone camera here')).toBeVisible();
+  await expect(lead.getByText('Works until the bill’s closed.')).toBeVisible();
   await expect(lead.getByText('K7Q2MX')).toHaveCount(0);
   // The amend went through with the edited line.
   const amend = api.requests.find((r) => r.path.endsWith('/amend'));
@@ -111,10 +116,11 @@ test('no venue on the photo: asked once before Review bill; the name typed is sa
   await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
   expect(api.bill.venue?.name).toBe('The Dog & Partridge');
 });
 
-test('no venue, skipped: not asked again in this tab, and it can still be added', async ({ browser }) => {
+test('#65 no venue, skipped: not asked again in this tab; a “Where was this?” field on Review bill saves it', async ({ browser }) => {
   const api = new FakeApi({ venue: null });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
@@ -122,8 +128,36 @@ test('no venue, skipped: not asked again in this tab, and it can still be added'
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
   await lead.reload();
   await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Add venue' }).click();
-  await expect(lead.getByLabel('Venue')).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Add venue' })).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
+
+  const field = lead.getByLabel('Where was this?');
+  await expect(field).toBeVisible();
+  await expect(field).toHaveAccessibleDescription('Not on the photo. Shown to everyone.');
+  await field.fill('The Dog & Partridge');
+  await field.press('Enter');
+
+  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
+  await expect(lead.getByRole('button', { name: 'Change venue' })).toBeVisible();
+  expect(api.bill.venue?.name).toBe('The Dog & Partridge');
+});
+
+test('#65 the “Where was this?” field saves when it’s left, and an empty one saves nothing', async ({ browser }) => {
+  const api = new FakeApi({ venue: null });
+  const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
+
+  await lead.getByRole('button', { name: 'Skip' }).click();
+  const field = lead.getByLabel('Where was this?');
+  await field.focus();
+  await field.blur();
+  await expect(field).toBeVisible();
+  expect(api.bill.venue?.name).toBeUndefined();
+
+  await field.fill('Gusto');
+  await field.blur();
+  await expect(lead.getByText(/^Gusto · 5 items/)).toBeVisible();
+  expect(api.bill.venue?.name).toBe('Gusto');
 });
 
 test('#107 lines the reader was unsure of are checked one at a time, then Review bill', async ({ browser }) => {

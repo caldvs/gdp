@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useBillRead, useRetryBillRead } from '@gdp/core/api/hooks/useBillRead';
 import { clearPendingRead, getPendingRead, setPendingRead, type PendingRead } from '@gdp/core/lib/pendingRead';
+import { duplicateRoute, settledSession } from '@gdp/core/lib/duplicateRoute';
 import { humanizeReadError, humanizeScanError, useScanner } from '@/components/Scanner';
 import { ReadingFailed, ReadingWait, photoFor, stashPhoto, useSlow } from '@/components/Reading';
 import { Button } from '@/components/ui';
+import { SettledRepeat } from '@/components/SettledRepeat';
 
 /**
  * Waits for a background read (POST /v1/bills/reads) on R2: the photo being
@@ -30,11 +32,15 @@ export default function ReadingPage() {
   const photo = photoFor(readId);
 
   const billId = read.data?.status === 'done' ? read.data.billId : undefined;
+  // A photo read before: back to that bill, wherever it's got to.
+  const duplicate = read.data?.duplicate;
+  // Already split and closed: Open or Start again first.
+  const settled = settledSession(duplicate);
   useEffect(() => {
     if (!billId || pending === undefined) return;
     if (mine) setPendingRead({ ...mine, billId });
-    router.replace(`/confirm-bill/${billId}`);
-  }, [billId, mine, pending, router]);
+    if (!settled) router.replace(duplicateRoute(billId, duplicate));
+  }, [billId, duplicate, mine, pending, router, settled]);
 
   // A new photo taken from here: the scanner's own screens take over.
   if (scanner.screen) return <>{scanner.inputs}{scanner.screen}</>;
@@ -77,6 +83,9 @@ export default function ReadingPage() {
         since={mine?.startedAt}
         actions={<Button tone="secondary" href="/">Back to bills</Button>}
       />
+      {billId && settled ? (
+        <SettledRepeat billId={billId} sessionId={settled} onClose={() => { clearPendingRead(readId); router.replace('/'); }} />
+      ) : null}
     </>
   );
 }

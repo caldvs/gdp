@@ -128,7 +128,7 @@ y = 308
 y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
 y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify'), ('POST', '/test-sign-in')]) + 10
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('POST', '/sign-out'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
-y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend')]) + 10
+y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend'), ('POST', '/{billId}/fork')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('POST', '/credit-packs'), ('GET', '/credit-packs/{cs}'), ('GET', '/me')]) + 10
 y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe')]) + 10
@@ -140,16 +140,14 @@ y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/payments')]) + 10
-y = group(BX, y, BW, 'Venues', '/v1/venues', [('GET', '/nearby')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
-    ('bills', 'upload, parse, amend, image'),
+    ('bills', 'upload, parse, amend, fork, image'),
     ('bills', 'parser, venueResolver'),
     ('sessions', 'allocation, joinCode, report'),
     ('payments', 'paymentService, ledger'),
     ('billing', 'tableFee'),
-    ('venues', 'nearbyVenues'),
     ('email', 'sender (SES or console)'),
     ('storage', 'one store per entity'),
 ]
@@ -179,17 +177,17 @@ text(C4X + 16, ddb_y + 28, 'DynamoDB', 't-title')
 text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
-for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ#', 'Bills, photo dedupe, reads'),
+for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
-                   ('FEE# CREDIT(S)# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ# NEARQ#', 'Idempotency, venue lookups')]:
+                   ('FEE# CREDIT(S)# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
 c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge: daily hold', 'sweep invokes the Lambda'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
-c4card('location', 'Amazon Location', ['Venue lookup, nearby places'])
+c4card('location', 'Amazon Location', ['Venue lookup'])
 c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
 
 # ---- Column 5 externals at gap y's

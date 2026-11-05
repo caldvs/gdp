@@ -6,7 +6,9 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { FakeApi, SID, users, type User } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 
 async function at(browser: Browser, api: FakeApi, user: User): Promise<Page> {
   const ctx = await browser.newContext();
@@ -29,7 +31,7 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £17.25.')).toBeVisible(POLL);
 
-  await expect(lead.getByText('Says they’ve paid £17.25')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
   await expect(sam.getByText('Callum got your £17.25.')).toBeVisible(POLL);
 
@@ -54,7 +56,7 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await expect(sam.getByRole('heading', { name: 'Your payments' })).toBeVisible();
 
   // The lead sees the second payment and confirms it like the first.
-  await expect(lead.getByText('Says they’ve paid £22.50 more')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £22\.50 more/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £22.50' }).click();
   await expect(sam.getByText('Callum got your £39.75.')).toBeVisible(POLL);
   await expect(sam.getByRole('heading', { name: 'All square' })).toBeVisible();
@@ -79,9 +81,9 @@ test('a top-up can go before the lead has confirmed the first', async ({ browser
   await expect(sam.getByText('You’ve sent £39.75.')).toBeVisible(POLL);
 
   // Two to confirm, oldest first.
-  await expect(lead.getByText('Says they’ve paid £17.25 (2 to confirm)')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £17\.25 \(2 to confirm\)/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
-  await expect(lead.getByText('Says they’ve paid £22.50 more')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £22\.50 more/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £22.50' }).click();
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
 });

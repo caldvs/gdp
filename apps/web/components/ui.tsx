@@ -5,7 +5,7 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import { Children, ViewTransition, isValidElement, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Children, ViewTransition, isValidElement, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -205,12 +205,25 @@ export function Stats({ items }: { items: { k: string; v: string; warn?: boolean
 type Tone = 'primary' | 'secondary' | 'danger' | 'text';
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { href?: string; replace?: boolean; tone?: Tone; small?: boolean; busy?: boolean; grow?: boolean };
 
-export function Button({ href, replace, tone = 'primary', small, busy, grow, className, children, disabled, type, ...rest }: BtnProps) {
+export function Button({ href, replace, tone = 'primary', small, busy, grow, className, children, disabled, type, onClick, ...rest }: BtnProps) {
   const cls = cx('btn', `btn--${tone}`, small && 'btn--sm', grow && 'grow', className);
   if (href && !disabled) return <Link href={href} replace={replace} className={cls}>{children}</Link>;
+  // Busy isn't `disabled`: a disabled button drops focus to <body>, so the
+  // keyboard user is lost while it saves. It's aria-disabled and ignores
+  // clicks (and Enter submitting its form) instead.
+  const waiting = busy && !disabled;
   return (
-    <button type={type ?? 'button'} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <span className={cx('spin', tone === 'primary' && 'spin--light')} aria-hidden /> : children}
+    <button
+      type={type ?? 'button'}
+      className={cls}
+      disabled={disabled}
+      aria-disabled={waiting || undefined}
+      aria-busy={busy || undefined}
+      onClick={waiting ? (e) => e.preventDefault() : onClick}
+      {...rest}
+    >
+      {/* #196: the spinner replaces the label on screen but not its name. */}
+      {busy ? <><span className={cx('spin', tone === 'primary' && 'spin--light')} aria-hidden /><span className="vh">{children}</span></> : children}
     </button>
   );
 }
@@ -275,22 +288,116 @@ export function Diners({ people, hostId, meId }: { people: { userId: string; dis
 
 /** A modal panel: bottom sheet on phones, centred box on wider screens.
  * It rises in on mount; it drops away if the caller closes it inside
- * startTransition. */
-export function Dialog({ title, children, actions, onClose, id = 'dialog-t' }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string }) {
+ * startTransition. A native `<dialog>` (useModal): focus moves in, Tab stays
+ * in, Escape and a tap outside close it, and focus goes back after.
+ * `describedBy`: the id of the element in `children` that says what the dialog is asking. */
+export function Dialog({ title, children, actions, onClose, id = 'dialog-t', describedBy }: { title: ReactNode; children?: ReactNode; actions: ReactNode; onClose: () => void; id?: string; describedBy?: string }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useModal(ref, onClose);
   return (
     <>
+      {/* The dim behind the sheet, kept as its own element so it can fade out
+          on close. Taps outside land on the dialog's ::backdrop (useModal). */}
       <ViewTransition exit="scrim-out" default="none">
-        <div className="dialog-overlay" onClick={onClose} aria-hidden />
+        <div className="dialog-overlay" aria-hidden />
       </ViewTransition>
       <ViewTransition exit="sheet-out" default="none">
-        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby={id} onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
+        <dialog ref={ref} className="dialog" aria-labelledby={id} aria-describedby={describedBy} tabIndex={-1}>
           <h2 id={id} className="dialog__t">{title}</h2>
           {children}
           <div className="dialog__actions">{actions}</div>
-        </div>
+        </dialog>
       </ViewTransition>
     </>
   );
+}
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Opens a `<dialog>` with showModal() while the component is mounted: the
+ * page behind goes inert, focus moves to the dialog itself (so screen
+ * readers read its name, and no button is pressed by accident), Tab wraps
+ * inside it, Escape and a tap outside call onClose, and on unmount focus
+ * goes back to what had it before (or, when that's gone, to a control with
+ * the same name on the new screen, like Scan a bill after the camera).
+ */
+export function useModal(ref: RefObject<HTMLDialogElement | null>, onClose: () => void) {
+  const close = useRef(onClose);
+  useLayoutEffect(() => { close.current = onClose; });
+  useLayoutEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    const back = opener();
+    if (!d.open) d.showModal();
+    d.focus({ preventScroll: true });
+
+    const onCancel = (e: Event) => {
+      // Chrome won't let a page block Escape twice without a tap in between;
+      // then the dialog closes itself and onNativeClose catches it.
+      if (!e.cancelable) return;
+      e.preventDefault();
+      close.current();
+    };
+    const onNativeClose = () => close.current();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const all = [...d.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+      if (all.length === 0) { e.preventDefault(); return; }
+      const first = all[0]!, last = all[all.length - 1]!;
+      const at = document.activeElement;
+      if (e.shiftKey && (at === first || at === d)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+    };
+    // A tap on the backdrop is a click on the dialog, outside its box.
+    const onClick = (e: MouseEvent) => {
+      if (e.target !== d) return;
+      const r = d.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) close.current();
+    };
+    d.addEventListener('cancel', onCancel);
+    d.addEventListener('close', onNativeClose);
+    d.addEventListener('keydown', onKey);
+    d.addEventListener('click', onClick);
+    return () => {
+      d.removeEventListener('cancel', onCancel);
+      d.removeEventListener('close', onNativeClose);
+      d.removeEventListener('keydown', onKey);
+      d.removeEventListener('click', onClick);
+      if (d.open) d.close();
+      refocus(back);
+    };
+  }, [ref]);
+}
+
+// The control that opened a dialog. Usually it still has focus, but Safari
+// doesn't focus buttons on tap, and the camera replaces the screen it was
+// opened from, so the last control clicked (Enter and Space click too) stands in.
+let lastClick: { el: HTMLElement; at: number } | null = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const el = e.target instanceof Element ? e.target.closest('a, button, input, select, textarea, [role="button"]') : null;
+    if (el instanceof HTMLElement) lastClick = { el, at: Date.now() };
+  }, true);
+}
+function opener(): HTMLElement | null {
+  const a = document.activeElement;
+  if (a instanceof HTMLElement && a !== document.body) return a;
+  return lastClick && Date.now() - lastClick.at < 2000 ? lastClick.el : null;
+}
+
+/** Focus `el` again; if it's gone, the same kind of control with the same
+ * name once the new screen is in. */
+function refocus(el: HTMLElement | null) {
+  if (!el) return;
+  if (el.isConnected) { el.focus({ preventScroll: true }); return; }
+  const name = (el.getAttribute('aria-label') ?? el.textContent ?? '').trim();
+  if (!name) return;
+  setTimeout(() => {
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const like = [...document.querySelectorAll<HTMLElement>(el.tagName)].find((x) => (x.getAttribute('aria-label') ?? x.textContent ?? '').trim() === name);
+    like?.focus({ preventScroll: true });
+  }, 0);
 }
 
 /* ---------- Feedback ---------- */

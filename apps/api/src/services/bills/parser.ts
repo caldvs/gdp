@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { AppError } from '../../errors/AppError.js';
 import { BillItemCategory, BillItemCourse } from '../../types/bills.js';
@@ -92,6 +93,11 @@ export type ParseOptions = {
 export interface BillParser {
   readonly model: string;
   readonly version: string;
+  /**
+   * `model:version:promptHash`. Keys the analysis cache: a new model,
+   * version or prompt reads a photo afresh instead of reusing an old read.
+   */
+  readonly fingerprint: string;
   parse(image: Uint8Array, requestId: string, opts?: ParseOptions): Promise<ParseResult>;
 }
 
@@ -114,3 +120,11 @@ export const parseTimeout = (who: string) =>
 /** The model and version to record on a bill for this parse. */
 export const readByOf = (parser: BillParser, result: ParseResult): ReadBy =>
   result.readBy ?? { model: parser.model, version: parser.version };
+
+/** The first 8 hex characters of the prompts' SHA-256: part of a parser's fingerprint. */
+export const promptHash = (...prompts: string[]): string =>
+  createHash('sha256').update(prompts.join('\n')).digest('hex').slice(0, 8);
+
+/** A parser's fingerprint: `model:version:promptHash`. */
+export const fingerprintOf = (model: string, version: string, ...prompts: string[]): string =>
+  `${model}:${version}:${promptHash(...prompts)}`;

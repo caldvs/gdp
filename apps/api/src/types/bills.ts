@@ -40,6 +40,15 @@ export const ParsedFromSchema = z.object({
   // Optional for forward-compat with bills parsed before this field existed.
   // Bills without it can't serve image-url; the endpoint returns IMAGE_UNAVAILABLE.
   uploadId: z.string().uuid().optional(),
+  // Whether this bill's read came from the parser or the analysis cache, and
+  // when that read was made. Optional: bills from before the cache lack them.
+  source: z.enum(['parser', 'cache']).optional(),
+  analysedAt: z.string().datetime().optional(),
+  // Set on a bill made by Start again (POST /v1/bills/{billId}/fork): the
+  // bill and version it started from.
+  forkedFrom: z
+    .object({ billId: z.string().uuid(), versionNumber: z.number().int().min(1) })
+    .optional(),
 });
 export type ParsedFrom = z.infer<typeof ParsedFromSchema>;
 
@@ -100,6 +109,15 @@ export const ParseRequestSchema = z.object({
   skipCache: z.boolean().optional(),
 });
 export type ParseRequest = z.infer<typeof ParseRequestSchema>;
+
+/**
+ * Start again: a new bill from the latest version (the lead's corrections
+ * carry over) or from what today's parser reads off the photo.
+ */
+export const ForkBillRequestSchema = z.object({
+  from: z.enum(['latest', 'analysis']).default('latest'),
+});
+export type ForkBillRequest = z.infer<typeof ForkBillRequestSchema>;
 
 // Bounds on what a lead can send (#155): far past any real bill, and they
 // keep a bill version well under DynamoDB's 400 KB item limit. Mirrored in

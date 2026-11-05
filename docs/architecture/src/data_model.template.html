@@ -104,7 +104,7 @@ ul.plain strong { color: var(--ink); }
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
+    <svg viewBox="0 0 1520 %%VBH%%" role="img" aria-label="DynamoDB single-table design for Pay Me Back: identity items (auth identity, user, sign-in code, idempotency record), bill items (image hash index, bill versions, table fee, bill analysis cache, venue lookup cache), session items (bill lock, the session item collection with META, participant and share rows, join code) and payment items, with GSI1 listing a user's sessions.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
       </defs>
@@ -131,6 +131,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Sign in by email</td><td><code>AUTH#email:{e}</code>, <code>SIGNIN#{id}</code></td><td class="op">Get, conditional Update</td></tr>
             <tr><td>Current user</td><td><code>USER#{userId}</code></td><td class="op">Get</td></tr>
             <tr><td>Repeat photo?</td><td><code>IMGHASH#{user}#{sha}</code></td><td class="op">Get</td></tr>
+            <tr><td>Photo read before?</td><td><code>ANALYSIS#{sha} / P#{fingerprint}</code></td><td class="op">Get, conditional Put</td></tr>
             <tr><td>Background read</td><td><code>READ#{id}</code></td><td class="op">Get</td></tr>
             <tr><td>Latest bill</td><td><code>BILL#{id}</code> / <code>LATEST</code></td><td class="op">Get</td></tr>
             <tr><td>Pinned bill version</td><td><code>BILL#{id}</code> / <code>V#{nnn}</code></td><td class="op">Get</td></tr>
@@ -138,6 +139,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
+            <tr><td>My sessions' totals</td><td>META rows, then pinned <code>BILL# / V#</code> rows + the caller's <code>SHARE#</code> rows</td><td class="op">BatchGet ×2</td></tr>
             <tr><td>Payment by id</td><td><code>PAY#{paymentId}</code></td><td class="op">Get</td></tr>
             <tr><td>Table fee status</td><td><code>FEE#{billId}</code> / <code>FEE</code></td><td class="op">Get</td></tr>
             <tr><td>Venue lookup</td><td><code>VENUEQ#{key}</code></td><td class="op">Get</td></tr>
@@ -163,11 +165,11 @@ ul.plain strong { color: var(--ink); }
       <h2>Lifetimes</h2>
       <ul class="plain">
         <li><strong>Kept:</strong> users, auth identities, bills, image hashes, payments, table fees, venue lookups.</li>
-        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks.</li>
+        <li><strong>30 days:</strong> sessions (META, PART#, SHARE#, CLAIMS), join codes, bill locks, bill analyses.</li>
         <li><strong>Short-lived:</strong> sign-in codes 10 min, idempotency 24 h, bill reads 1 day.</li>
       </ul>
     </section>
   </div>
 
-  <p class="foot">Read from <code>apps/api/src/storage/*</code>, <code>src/types/*</code> and <code>infra/tableSchema.ts</code> on main. The planned analysis cache would add <code>ANALYSIS#{sha256}</code> / <code>P#{parserFingerprint}</code> with a 30-day TTL.</p>
+  <p class="foot">Read from <code>apps/api/src/storage/*</code>, <code>src/types/*</code> and <code>infra/tableSchema.ts</code> on main.</p>
 </div>

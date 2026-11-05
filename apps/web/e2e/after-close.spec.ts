@@ -6,7 +6,9 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { CODE, FakeApi, SID, fragmentFor, items, users, type User } from './fakeApi';
 
-const POLL = { timeout: 10_000 };
+// Another page's change arrives on its next poll (every 5s while claiming):
+// allow three, for a busy CI runner with several WebKit pages open.
+const POLL = { timeout: 15_000 };
 
 async function open(browser: Browser, api: FakeApi, user: User, to: string, atTable = true): Promise<Page> {
   const ctx = await browser.newContext();
@@ -38,7 +40,7 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
 
   // The closed bill isn't polled; the lead comes back to it and confirms.
   await lead.reload();
-  await expect(lead.getByText('Says they’ve paid £17.25')).toBeVisible(POLL);
+  await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
 });

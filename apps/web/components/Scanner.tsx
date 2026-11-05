@@ -14,10 +14,12 @@ import { useRouter } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { useStartBillRead } from '@gdp/core/api/hooks/useBillRead';
 import { setPendingRead } from '@gdp/core/lib/pendingRead';
+import { duplicateRoute, settledSession } from '@gdp/core/lib/duplicateRoute';
 import { processImage, type ProcessedImage } from '@gdp/core/lib/image';
 import { ActionBar, Button, Page, Title } from './ui';
 import { Camera, hasLiveCamera } from './Camera';
 import { ReadingFailed, ReadingWait, stashPhoto, useSlow } from './Reading';
+import { SettledRepeat } from './SettledRepeat';
 import { WEB_APP_ENV } from '@/lib/config';
 
 export type ScanError = { title: string; body?: string };
@@ -84,6 +86,8 @@ export function useScanner() {
   const [source, setSource] = useState<Source>('camera');
   const [error, setError] = useState<ScanError | null>(null);
   const [since, setSince] = useState<number>();
+  // A photo of a bill already split and closed: Open or Start again.
+  const [settled, setSettled] = useState<{ billId: string; sessionId: string } | null>(null);
   const slow = useSlow(8_000, since);
   const start = useStartBillRead();
 
@@ -105,8 +109,16 @@ export function useScanner() {
   useEffect(() => {
     if (start.isSuccess && start.data) {
       const result = start.data;
-      if (result.kind === 'duplicate') {
-        router.replace(`/confirm-bill/${result.billId}`);
+      const sessionId = result.kind === 'duplicate' ? settledSession(result.context) : undefined;
+      if (result.kind === 'duplicate' && sessionId) {
+        // Already split and closed: ask before going anywhere.
+        dropPhoto();
+        setBusy(null);
+        setSettled({ billId: result.billId, sessionId });
+        start.reset();
+      } else if (result.kind === 'duplicate') {
+        // Back to that bill: its table if it's in a session, else Review bill.
+        router.replace(duplicateRoute(result.billId, result.context));
       } else {
         // The photo URL is handed to the reading page, so it isn't revoked here.
         if (photo) stashPhoto(result.read.readId, photo.uri);
@@ -155,6 +167,7 @@ export function useScanner() {
 
   const inputs: ReactNode = (
     <>
+      {settled ? <SettledRepeat {...settled} onClose={() => setSettled(null)} /> : null}
       <input ref={camera} type="file" accept="image/*" capture="environment" hidden onChange={pickFrom('camera')} aria-label="Take a photo of the bill" />
       <input ref={library} type="file" accept="image/*,.heic,.heif" hidden onChange={pickFrom('library')} aria-label="Choose a photo of the bill" />
     </>
@@ -198,6 +211,7 @@ export function useScanner() {
     ) : null;
 
   return {
+    /** The hidden photo inputs, and the settled-repeat sheet when it's up: render on every screen. */
     inputs,
     /** The scanner's own screen (camera, photo check, waiting, failed), or null. */
     screen,

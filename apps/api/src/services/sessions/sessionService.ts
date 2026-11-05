@@ -451,6 +451,7 @@ export const sessionService = {
           itemId: input.itemId,
           ways,
           units,
+          userIds: [input.caller.userId],
           version: (existing?.version ?? 0) + 1,
           activity: [{ kind: 'started', byUserId: input.caller.userId, at, toWays: ways }],
         };
@@ -480,6 +481,7 @@ export const sessionService = {
           itemId: input.itemId,
           ways,
           ...keepUnits(existing),
+          userIds: [...sharers, input.caller.userId],
           version: (existing?.version ?? 0) + 1,
           activity: pushActivity(existing?.activity, {
             kind: 'joined',
@@ -550,6 +552,7 @@ export const sessionService = {
               itemId: input.itemId,
               ways: existing?.ways ?? sharers.length,
               ...keepUnits(existing),
+              userIds: sharers.filter((u) => u !== input.caller.userId),
               version: (existing?.version ?? 0) + 1,
               activity: pushActivity(existing?.activity, {
                 kind: 'left',
@@ -626,6 +629,7 @@ export const sessionService = {
         itemId: input.itemId,
         ways: input.ways,
         ...keepUnits(existing),
+        userIds: sharers,
         version: (existing?.version ?? 0) + 1,
         activity: pushActivity(existing?.activity, {
           kind: 'ways',
@@ -959,6 +963,7 @@ async function splitClaimed(input: {
   const settings: ShareSettings = {
     itemId,
     ways,
+    userIds: [...new Set([...sharersOf(session, itemId), claimer.userId, caller.userId])],
     version: (existing?.version ?? 0) + 1,
     activity: [
       {

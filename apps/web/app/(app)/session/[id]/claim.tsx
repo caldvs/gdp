@@ -11,7 +11,7 @@
  * Some of several (2 of 4 bottles) can be split too: the split gets its
  * own row above the rest of the line.
  */
-import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp/core/api/hooks/useSession';
 import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
@@ -57,6 +57,17 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const statuses = useMemo(() => itemStatuses(s, b, meUserId), [s, b, meUserId]);
   const { changes, liveText } = useChangeFeed(statuses);
   const busy = setClaims.isPending || addShare.isPending || removeShare.isPending;
+  // #195: while a claim saves, its controls say they're unavailable rather
+  // than going `disabled`, which would drop keyboard focus to the page. And
+  // when a row's controls swap (Claim → Claimed), focus follows to the new one.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const refocus = useRefocus(boxRef);
+  const act = (key: string, fn: () => void) => () => {
+    if (busy) return;
+    refocus.mark(key);
+    fn();
+  };
+  const off = busy || undefined;
 
   const claimOne = (item: BillItem) => {
     if (!me) return;
@@ -98,7 +109,7 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     const change = r.group === 'yours' && !flash?.startsWith('Split with') ? undefined : flash;
     const key = r.key;
     const row = (note: string, action?: ReactNode) => (
-      <ClaimItem key={key} group={r.group} title={title} names={names} note={change ?? note} action={action} changed={!!change} />
+      <ClaimItem key={key} rowKey={key} group={r.group} title={title} names={names} note={change ?? note} action={action} changed={!!change} />
     );
 
     if (r.group === 'yours') {
@@ -106,14 +117,14 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         return row(`${unit} each · ${left > 0 ? `${left} left` : 'all claimed'}`, (
           <>
             {splitLink}
-            <Stepper n={mine} max={mine + left} busy={busy} onDec={() => dropOne(item.itemId)} onInc={() => claimOne(item)} name={item.name} />
+            <Stepper n={mine} max={mine + left} busy={busy} onDec={act(key, () => dropOne(item.itemId))} onInc={act(key, () => claimOne(item))} name={item.name} />
           </>
         ));
       }
       if (kind === 'single') {
         // Where Claim was, so the row doesn't shift: tap again to put it back.
         return row(unit, (
-          <Button tone="secondary" small className="claim__btn claim__btn--on" disabled={busy} onClick={() => dropOne(item.itemId)} aria-label={`Claimed. Remove ${item.name}`}>
+          <Button tone="secondary" small className="claim__btn claim__btn--on" data-main aria-disabled={off} onClick={act(key, () => dropOne(item.itemId))} aria-label={`Claimed. Remove ${item.name}, ${unit}`}>
             <TickIcon size={16} />Claimed
           </Button>
         ));
@@ -123,7 +134,7 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       return row(note, (
         <>
           <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: share!.ways, units: count, maxUnits: count, share })} aria-label={`Change how many ways ${item.name} is split`}>{share!.ways} ways</button>
-          <button type="button" className="link-btn" disabled={busy} onClick={() => removeShare.mutate({ itemId: item.itemId })} aria-label={`Stop splitting ${item.name}`}>Remove</button>
+          <button type="button" className="link-btn" data-main aria-disabled={off} onClick={act(key, () => removeShare.mutate({ itemId: item.itemId }))} aria-label={`Stop splitting ${item.name}`}>Remove</button>
         </>
       ));
     }
@@ -132,20 +143,20 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       if (kind === 'share') {
         const each = sharePence(splitPricePence(item, share!), share!.userIds, share!.ways, meUserId);
         return row(`${formatGBP(each)} each · ${left} open`,
-          <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => addShare.mutate({ itemId: item.itemId })} aria-label={`Join the split for ${item.name}`}>Join</Button>);
+          <Button tone="secondary" small className="claim__btn" data-main aria-disabled={off} onClick={act(key, () => addShare.mutate({ itemId: item.itemId }))} aria-label={`Join the split for ${item.name}, ${formatGBP(each)} each`}>Join</Button>);
       }
       if (kind === 'multi') {
         return row(`${unit} each · ${left} left`, (
           <>
             {splitLink}
-            <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => claimOne(item)} aria-label={`Claim one ${item.name}`}>Claim</Button>
+            <Button tone="secondary" small className="claim__btn" data-main aria-disabled={off} onClick={act(key, () => claimOne(item))} aria-label={`Claim one ${item.name}, ${unit}`}>Claim</Button>
           </>
         ));
       }
       return row(unit, (
         <>
           <button type="button" className="link-btn" onClick={() => setWaysSheet({ item, ways: 2, units: 1, maxUnits: 1 })} aria-label={`Split ${item.name}`}>Split</button>
-          <Button tone="secondary" small className="claim__btn" disabled={busy} onClick={() => claimOne(item)} aria-label={`Claim ${item.name}`}>Claim</Button>
+          <Button tone="secondary" small className="claim__btn" data-main aria-disabled={off} onClick={act(key, () => claimOne(item))} aria-label={`Claim ${item.name}, ${unit}`}>Claim</Button>
         </>
       ));
     }
@@ -154,7 +165,7 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     const lost = raceLost === item.itemId;
     const holder = listNames(names);
     const splitBtn = r.canSplit ? (
-      <Button tone="text" small className="claim__btn" disabled={busy} onClick={() => { addShare.reset(); setConfirming(r); }} aria-label={`Split ${item.name} with ${holder || 'them'}`}>
+      <Button tone="text" small className="claim__btn" data-main aria-disabled={off} onClick={act(key, () => { addShare.reset(); setConfirming(r); })} aria-label={`Split ${item.name} with ${holder || 'them'}`}>
         {lost ? `Split with ${holder}` : 'Split'}
       </Button>
     ) : undefined;
@@ -167,8 +178,10 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   return (
     <>
       <div className="vh" aria-live="polite">{liveText}</div>
-      <h2 className="vh">Items</h2>
-      <Box list>{rows.map(render)}</Box>
+      <div ref={boxRef} style={{ display: 'contents' }}>
+        <h2 className="vh">Items</h2>
+        <Box list>{rows.map(render)}</Box>
+      </div>
       {err ? <Notice tone="error">{err}</Notice> : null}
 
       {confirming ? (
@@ -244,12 +257,49 @@ export function useChangeFeed(statuses: ItemStatus[]) {
   return { changes, liveText };
 }
 
+/**
+ * #195: remember which row a tap was on, and if that row's controls are
+ * swapped out from under the keyboard (focus falls to the page), focus the
+ * row's main control again. Any tap or focus elsewhere forgets it.
+ */
+function useRefocus(boxRef: RefObject<HTMLDivElement | null>) {
+  const pending = useRef<string | null>(null);
+  useEffect(() => {
+    const forget = (e: Event) => {
+      const row = (e.target as Element | null)?.closest?.('[data-row]');
+      if (row?.getAttribute('data-row') !== pending.current) pending.current = null;
+    };
+    document.addEventListener('pointerdown', forget, true);
+    document.addEventListener('focusin', forget, true);
+    return () => {
+      document.removeEventListener('pointerdown', forget, true);
+      document.removeEventListener('focusin', forget, true);
+    };
+  }, []);
+  useEffect(() => {
+    const key = pending.current;
+    const box = boxRef.current;
+    if (!key || !box) return;
+    // Lost: fallen to the page, removed, or just disabled (the browser
+    // moves focus off a disabled button later, without another render).
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected && !active.matches(':disabled')) return;
+    const row = [...box.querySelectorAll<HTMLElement>('[data-row]')].find((el) => el.dataset.row === key);
+    if (!row) return;
+    // The row's main control; on a stepper, + unless it's run out, then −.
+    const mains = row.querySelectorAll<HTMLElement>('[data-main]:not([disabled])');
+    (mains[mains.length - 1] ?? row.querySelector<HTMLElement>('button:not([disabled])'))?.focus();
+  });
+  return { mark: (key: string) => { pending.current = key; } };
+}
+
 export function Stepper({ n, max, busy, onDec, onInc, name }: { n: number; max: number; busy: boolean; onDec: () => void; onInc: () => void; name: string }) {
+  // Busy: aria-disabled, not disabled, so the pressed button keeps focus (#195).
   return (
     <span className="stepper stepper--sm">
-      <button type="button" aria-label={`One fewer ${name}`} disabled={busy} onClick={onDec}>−</button>
+      <button type="button" aria-label={`One fewer ${name}`} data-main aria-disabled={busy || undefined} onClick={onDec}>−</button>
       <span aria-live="polite">{n}</span>
-      <button type="button" aria-label={`One more ${name}`} disabled={busy || n >= max} onClick={onInc}>+</button>
+      <button type="button" aria-label={`One more ${name}`} data-main aria-disabled={busy || undefined} disabled={n >= max} onClick={onInc}>+</button>
     </span>
   );
 }
@@ -302,15 +352,19 @@ export function SplitSheet({ item, ways, min, units = 1, maxUnits, busy, error, 
 }
 
 /** One line on the claiming list: name, who has it and a note, then what you can do. */
-function ClaimItem({ group, title, names, note, action, changed }: {
-  group: ClaimRow['group']; title: string; names: string[]; note: string; action?: ReactNode; /** #123: someone else just changed it. */ changed: boolean;
+function ClaimItem({ rowKey, group, title, names, note, action, changed }: {
+  rowKey: string; group: ClaimRow['group']; title: string; names: string[]; note: string; action?: ReactNode; /** #123: someone else just changed it. */ changed: boolean;
 }) {
   const cls = ['claim', group === 'yours' && 'claim--mine', group === 'others' && 'claim--muted', changed && 'pick--changed'].filter(Boolean).join(' ');
+  // #199: initials alone don't say the row is taken.
+  const who = names.length === 0 ? null : group === 'others'
+    ? <><span className="vh">Taken by</span><AvatarStack names={names} /></>
+    : <AvatarStack names={names} />;
   return (
-    <div className={cls} data-group={group}>
+    <div className={cls} data-group={group} data-row={rowKey}>
       <span className="row__main">
         <span className="row__title">{title}</span>
-        <span className="row__sub claim__sub">{names.length > 0 ? <AvatarStack names={names} /> : null}<span>{note}</span></span>
+        <span className="row__sub claim__sub">{who}<span>{note}</span></span>
       </span>
       {action ? <span className="claim__act">{action}</span> : null}
     </div>
@@ -330,6 +384,7 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
   return (
     <Dialog
       id="split-confirm-t"
+      describedBy="split-confirm-d"
       title={`Split the ${item.name.toLowerCase()} with ${who}?`}
       onClose={onCancel}
       actions={
@@ -343,7 +398,7 @@ function SplitConfirm({ row, meUserId, busy, error, onOk, onCancel }: {
         <TotalLine tone="mute" k={row.count > 1 ? `${row.count} × ${item.name}` : item.name} v={formatGBP(price)} />
         <TotalLine tone="total" k="Your share" v={formatGBP(mine)} />
       </Totals>
-      <p className="muted">{who} will see you’re sharing it.</p>
+      <p id="split-confirm-d" className="muted">{who} will see you’re sharing it.</p>
       {error ? <Notice tone="error">{error}</Notice> : null}
     </Dialog>
   );

@@ -1,6 +1,8 @@
 # Design: caching bill analysis by image
 
-_Status: proposed (31 Oct 2026). Not built. Owner: Callum. Written for the next agent to implement._
+_Status: step 1 (analysis cache) built 4 Nov 2026; step 2 (duplicate context) and step 3 (settled sheet + fork) built 5 Nov 2026; step 4 (backfill) not built. Owner: Callum. Written for the next agent to implement._
+
+_Since this was written, bills are read by Claude Sonnet on Bedrock (crop to the receipt, then read), synchronously (`POST /v1/bills/parse`) or in the background (`POST /v1/bills/reads`). Both go through `parseService.parse`, where the cache sits (`analyse()`). Bedrock's fingerprint hashes every prompt it sends (find-the-receipt, parts note, the bill prompt)._
 
 ## Problem
 
@@ -24,7 +26,7 @@ And the complication: **the analysis is not the bill**. After the parser reads t
 - `POST /v1/bills/uploads` takes the client's `sha256` and looks up `IMGHASH#<userId>#<sha256>` → `billId`. On a hit it returns `{ status: 'duplicate', billId }` and the client skips the S3 upload and goes to `/confirm-bill/<billId>`.
 - `POST /v1/bills/parse` re-hashes the bytes from S3 (authoritative) and repeats the same lookup, returning `billStore.getLatest(billId)` on a hit.
 - Bills are versioned: `BILL#<id>` / `V#001…` plus a `LATEST` mirror. **`V#001` is the untouched parser output** for that bill (built by `buildBillV1`), so a per-user "original analysis" already exists implicitly.
-- A bill in a session holds `BILLLOCK#<billId>`. Abandon releases it; close (settled) currently does not.
+- A bill in a session holds `BILLLOCK#<billId>`. Abandon and close both release it (close since b1a487e), so a settled bill is found through the lead's own sessions (`sessionStore.sessionsForBill`), not the lock.
 
 Gaps:
 
@@ -81,6 +83,7 @@ hit = IMGHASH#<user>#<sha>
 if hit:
     bill = getLatest(hit.billId)
     lock = getBillLock(bill.billId); session = lock && getSession(lock.sessionId)
+    # close releases the lock: else the lead's newest session for the bill, if settled
     return { status: 'duplicate', billId, versionNumber, amended: versionNumber > 1,
              session?: { sessionId, status } }       # no upload needed
 return { status: 'new', uploadId, url, ..., analysisCached: bool }   # optional hint
@@ -115,7 +118,7 @@ The duplicate response carries enough for the client to route:
 | No session, never amended               | `/confirm-bill/<id>`                                                   | none                                         |
 | No session, amended                     | `/confirm-bill/<id>`                                                   | small notice: "Picked up where you left off" |
 | Session `setup` / `claiming` / `paying` | `/session/<id>` (the lead's table)                                     | none — they're back at the table             |
-| Session `settled`                       | sheet: "You split this at Gennaro on Tue" → **Open** / **Start again** |                                              |
+| Session `settled`                       | sheet: "You split this at Gennaro on Tue 3 Nov" → **Open** (`/session/<id>`, the closed bill) / **Start again** (fork `latest`, then Review bill for the new bill) |                                              |
 | Session `abandoned` (lock released)     | `/confirm-bill/<id>` (latest version)                                  | "Picked up where you left off"               |
 
 **Start again** = `POST /v1/bills/{billId}/fork` with `{ from: 'latest' | 'analysis' }`:
@@ -131,18 +134,18 @@ Sessions on the old bill are untouched.
 - The analysis row has no user id. It holds what's printed on the receipt: items, prices, venue. It can only be found by someone who already has the exact bytes, who therefore already has that information.
 - The parser output schema has no card digits or names; keep it that way (any future field reading the payment slip must not go in the shared cache).
 - 30-day TTL. Account deletion removes the user's `IMGHASH` rows and bills; analysis rows age out.
-- **Open question for Callum:** global (cross-user) cache as above, or scope the analysis key by user too (`ANALYSIS#<user>#<sha>`)? Global saves money in a rare case; per-user is the zero-argument privacy story. Default in this plan: global.
+- **Decided (Callum, 4 Nov 2026): global.** The key has no user id (`ANALYSIS#<sha>`), as above.
 
 ## Implementation plan
 
 Build as small PRs, each with tests.
 
-1. **Analysis cache (API only).** `BillParser.fingerprint`; `analysisStore` (`get`, `putIfAbsent`); `parseService` steps 2–3; `parsedFrom.source: 'parser' | 'cache'` and `analysedAt` (optional fields, OpenAPI + `npm run gen:api`). Structured log events `bill.analysis.hit` / `.miss` with fingerprint. No client change.
-2. **Duplicate context.** Extend `UploadDuplicate` with `versionNumber`, `amended`, `session?`. Same shape from `/parse` step 1. Client (`useUploadAndParse` + camera page) routes per the table; add the "Picked up where you left off" notice on the check sheet.
-3. **Settled repeat + fork.** `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
+1. **Analysis cache (API only).** _Built 4 Nov 2026 (`storage/analysisStore.ts`, `analyse()` in `parseService.ts`)._ `BillParser.fingerprint`; `analysisStore` (`get`, `putIfAbsent`); `parseService` steps 2–3; `parsedFrom.source: 'parser' | 'cache'` and `analysedAt` (optional fields, OpenAPI + `npm run gen:api`). Structured log events `bill.analysis.hit` / `.miss` with fingerprint. No client change.
+2. **Duplicate context.** _Built 5 Nov 2026 (`duplicateContext.ts`; `duplicateRoute` in `packages/core/src/lib/`). `/parse` returns it as `duplicate` on the bill (`ParsedBill`) and background reads as `duplicate` on the read. The notice shows only when the bill was amended. Settled bills open `/session/<id>` until step 3._ Extend `UploadDuplicate` with `versionNumber`, `amended`, `session?`. Same shape from `/parse` step 1. Client (`useUploadAndParse` + camera page) routes per the table; add the "Picked up where you left off" notice on the check sheet.
+3. **Settled repeat + fork.** _Built 5 Nov 2026 (`forkService.ts`; `useForkBill`, `settledSession` and `SettledRepeat` in the web app, shown by the scanner and the reading page). The app only uses `from: 'latest'`; `analysis` is there for a later re-read option._ `POST /v1/bills/{billId}/fork`; the settled sheet on the camera page.
 4. **(Optional) backfill.** One-off script seeding `ANALYSIS#` rows from existing `V#001` items where `parsedFrom.parserVersion` matches the current version. Probably not worth it; the cache warms itself.
 
-Also worth fixing alongside (2): `close` should probably release `BILLLOCK` like `abandon` does, otherwise a settled bill blocks _Share_ forever. Check the amend rules still hold (settled bills are frozen by status, not by the lock).
+~~Also worth fixing alongside (2): `close` should probably release `BILLLOCK` like `abandon` does.~~ Already done (b1a487e, tested in `rules-and-races.test.ts` "closing a bill"): close releases the lock, the lead can amend or share the bill again, and the closed session keeps its pinned version.
 
 ## Tests
 
@@ -173,5 +176,5 @@ e2e (`apps/web/e2e/`, extend `FakeApi`): snap the same photo twice → back on t
 - `apps/api/src/storage/billStore.ts` — `putVersion`, `findByImageHash`, key helpers
 - `apps/api/src/storage/sessionStore.ts` — `getBillLock`, `deleteBillLock`
 - `apps/api/src/services/sessions/sessionService.ts` — `close`, `abandon`
-- `packages/core/src/api/hooks/useUploadAndParse.ts`, `apps/web/app/(app)/page.tsx` — client handling of `duplicate`
+- `packages/core/src/api/hooks/useBillRead.ts` (`useStartBillRead`), `apps/web/components/Scanner.tsx`, `apps/web/app/(app)/reading/[readId]/page.tsx` — client handling of `duplicate`, routed by `packages/core/src/lib/duplicateRoute.ts`
 - `packages/core/src/lib/image.ts` — client re-encode (max 3200 px long side, JPEG under 5 MB); the hash is of these processed bytes, so the same source photo on the same browser hashes the same, but not necessarily across browsers.

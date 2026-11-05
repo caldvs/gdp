@@ -1,5 +1,6 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
+import type { DuplicateContext } from '../services/bills/duplicateContext.js';
 
 /** A bill being read in the background. Kept a day; the bill outlives it. */
 export type BillRead = {
@@ -9,6 +10,8 @@ export type BillRead = {
   status: 'reading' | 'done' | 'failed';
   /** Set when done. */
   billId?: string;
+  /** Set when done and the photo was the uploader's own bill from before. */
+  duplicate?: DuplicateContext;
   /** Set when failed: the same code and message the synchronous parse would return. */
   error?: { code: string; message: string; details?: Record<string, unknown> };
   createdAt: string;
@@ -46,22 +49,29 @@ export const readStore = {
   /** Record the outcome. Only a read still `reading` changes, so a late retry can't undo it. */
   async finish(
     readId: string,
-    outcome: { status: 'done'; billId: string } | { status: 'failed'; error: BillRead['error'] },
+    outcome:
+      | { status: 'done'; billId: string; duplicate?: DuplicateContext }
+      | { status: 'failed'; error: BillRead['error'] },
   ): Promise<void> {
-    const field = outcome.status === 'done' ? 'billId' : 'error';
-    const value = outcome.status === 'done' ? outcome.billId : outcome.error;
+    const { status, ...fields } = outcome;
+    const names = Object.keys(fields);
     try {
       await ddb.send(
         new UpdateCommand({
           TableName: TABLE_NAME,
           Key: { pk: readPk(readId), sk: READ_SK },
-          UpdateExpression: 'SET #status = :status, #field = :value',
+          UpdateExpression: `SET #status = :status, ${names.map((_, i) => `#f${i} = :v${i}`).join(', ')}`,
           ConditionExpression: '#status = :reading',
-          ExpressionAttributeNames: { '#status': 'status', '#field': field },
+          ExpressionAttributeNames: {
+            '#status': 'status',
+            ...Object.fromEntries(names.map((n, i) => [`#f${i}`, n])),
+          },
           ExpressionAttributeValues: {
-            ':status': outcome.status,
-            ':value': value,
+            ':status': status,
             ':reading': 'reading',
+            ...Object.fromEntries(
+              names.map((n, i) => [`:v${i}`, fields[n as keyof typeof fields]]),
+            ),
           },
         }),
       );

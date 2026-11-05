@@ -35,8 +35,6 @@ tags:
     description: The authenticated caller
   - name: bills
     description: Photographing, parsing, retrieving, and amending bills
-  - name: venues
-    description: Places near the lead, for naming where a bill is from
   - name: sessions
     description: Group dining sessions, the join flow, and claim management
   - name: payments
@@ -364,8 +362,8 @@ paths:
       summary: Request a pre-signed S3 PUT URL for a bill image
       description: |
         Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
-        If the hash is already mapped to a parsed bill, returns `{ status: "duplicate", billId }` and
-        no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+        If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
+        with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
         scoped permissions (specific key, content-length cap, PUT only).
       requestBody:
         required: true
@@ -409,10 +407,12 @@ paths:
             schema: { $ref: '#/components/schemas/ParseRequest' }
       responses:
         '200':
-          description: Parsed bill
+          description: >-
+            Parsed bill. When the photo is one this user read before, their own latest version of
+            that bill, with `duplicate` saying where it stands.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Bill' }
+              schema: { $ref: '#/components/schemas/ParsedBill' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404':
@@ -576,41 +576,58 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /v1/venues/nearby:
-    get:
-      tags: [venues]
-      operationId: nearbyVenues
-      summary: Food and drink places near a position
+  /v1/bills/{billId}/fork:
+    parameters:
+      - $ref: '#/components/parameters/BillId'
+    post:
+      tags: [bills]
+      operationId: forkBill
+      summary: Start again with a new bill for the same photo
       description: |
-        Up to 5 food and drink places within about 300 m, nearest first, from
-        Amazon Location. Results are cached by the position rounded to 3
-        decimal places; the caller's own position is never stored and is
-        logged rounded at most. An empty list when nothing is near, when the
-        search fails, or locally (no venue lookup).
+        A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
+        `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
+        copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
+        from what the current parser read off the photo: the cached read when there is one, else a
+        new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
+        index moves to the new bill, so sending the photo again opens it. The old bill and its
+        sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
       parameters:
-        - name: lat
-          in: query
-          required: true
-          schema: { type: number, minimum: -90, maximum: 90 }
-        - name: lng
-          in: query
-          required: true
-          schema: { type: number, minimum: -180, maximum: 180 }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForkBillRequest' }
       responses:
-        '200':
-          description: Nearby places, nearest first
+        '201':
+          description: The new bill
           content:
             application/json:
-              schema:
-                type: object
-                required: [venues]
-                properties:
-                  venues:
-                    type: array
-                    maxItems: 5
-                    items: { $ref: '#/components/schemas/NearbyVenue' }
+              schema: { $ref: '#/components/schemas/Bill' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: 'Bill not found, or (`from: analysis`) its photo is no longer available'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '422':
+          description: 'Reading the photo again failed (`from: analysis`)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502':
+          description: Upstream parser provider error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '504':
+          description: Reading the photo again ran out of time (PARSE_TIMEOUT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /v1/sessions:
     post:
@@ -1884,6 +1901,24 @@ components:
               type: string
               format: uuid
               description: Original upload identifier; absent on bills parsed before this field was retained.
+            source:
+              type: string
+              enum: [parser, cache]
+              description: |
+                Where this bill's read came from: the parser, or the analysis
+                cache (the same image read before by the same parser
+                fingerprint, by anyone). Absent on bills from before the cache.
+            analysedAt:
+              type: string
+              format: date-time
+              description: When the read this bill came from was made. Absent on bills from before the cache.
+            forkedFrom:
+              type: object
+              description: 'Set on a bill made by Start again (`POST /v1/bills/{billId}/fork`): the bill and version it came from.'
+              required: [billId, versionNumber]
+              properties:
+                billId: { type: string, format: uuid }
+                versionNumber: { type: integer, minimum: 1 }
         venue: { $ref: '#/components/schemas/Venue' }
         previousVersionId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
@@ -2123,6 +2158,17 @@ components:
           type: integer
           minimum: 0
           description: The caller's locked-in share, present once the session has been locked into paying.
+        billTotalPence:
+          type: integer
+          minimum: 0
+          description: The total of the bill version the session is pinned to.
+        mySharePence:
+          type: integer
+          minimum: 0
+          description: |
+            The caller's part of the bill now: their claims and splits plus their part of service
+            and tax, and a guest's round-up (what the bill page shows them). `myOwedPence` once
+            claims are locked. Absent with `billTotalPence` if the bill version can't be read.
         myPaymentStatus:
           type: string
           enum: [unpaid, self_paid, pending, succeeded, failed]
@@ -2210,13 +2256,46 @@ components:
 
     UploadDuplicate:
       type: object
-      required: [status, billId]
+      required: [status, billId, versionNumber, amended]
       properties:
         status: { type: string, const: duplicate }
         billId:
           type: string
           format: uuid
           description: An existing bill matched the supplied image hash; do not upload again
+        versionNumber: { type: integer, minimum: 1 }
+        amended: { type: boolean }
+        session: { $ref: '#/components/schemas/DuplicateSession' }
+
+    DuplicateContext:
+      type: object
+      description: >-
+        Where the uploader's own bill for a photo they've sent before stands, resolved at request
+        time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or
+        the bill's table when `session` is set.
+      required: [versionNumber, amended]
+      properties:
+        versionNumber: { type: integer, minimum: 1, description: The bill's latest version }
+        amended: { type: boolean, description: '`versionNumber > 1`: the lead has changed it' }
+        session: { $ref: '#/components/schemas/DuplicateSession' }
+
+    DuplicateSession:
+      type: object
+      description: >-
+        The bill's live session (setup, claiming or paying: it holds the bill), else the lead's
+        newest session for it when that one is settled. Absent when there's none or it was
+        abandoned.
+      required: [sessionId, status]
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+
+    ParsedBill:
+      allOf:
+        - $ref: '#/components/schemas/Bill'
+        - type: object
+          properties:
+            duplicate: { $ref: '#/components/schemas/DuplicateContext' }
 
     ParseRequest:
       type: object
@@ -2229,6 +2308,17 @@ components:
             Local API only (ignored elsewhere): read the photo with the model again even if it was
             read before. The new bill replaces the old one as this photo's bill.
 
+    ForkBillRequest:
+      type: object
+      properties:
+        from:
+          type: string
+          enum: [latest, analysis]
+          default: latest
+          description: >-
+            `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what
+            the current parser reads off the photo.
+
     BillRead:
       type: object
       required: [readId, status]
@@ -2239,6 +2329,9 @@ components:
           type: string
           format: uuid
           description: Set when `done`
+        duplicate:
+          $ref: '#/components/schemas/DuplicateContext'
+          description: Set when `done` and the photo was this user's own bill from before
         error:
           type: object
           description: Set when `failed`. `code` is one of the API's error codes.
@@ -2279,22 +2372,6 @@ components:
             name: { type: string, minLength: 1, maxLength: 80 }
             placeId: { type: string, maxLength: 200 }
             address: { type: string, maxLength: 300 }
-
-    NearbyVenue:
-      type: object
-      required: [placeId, name, distanceM]
-      properties:
-        placeId: { type: string, description: Amazon Location place ID }
-        name: { type: string }
-        address:
-          {
-            type: string,
-            description: 'Full address, e.g. "12 King St, Manchester, M2 4LQ, United Kingdom"',
-          }
-        distanceM:
-          type: integer
-          minimum: 0
-          description: Metres from the position asked about
 
     CreateSessionRequest:
       type: object

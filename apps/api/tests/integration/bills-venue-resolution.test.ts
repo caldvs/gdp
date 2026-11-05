@@ -5,7 +5,13 @@ import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { NoopVenueResolver, type VenueResolver } from '../../src/services/bills/venueResolver.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
-import { fakeVerifier, makeAuth, newIdempotencyKey, sampleParsedBill } from './helpers.js';
+import {
+  fakeVerifier,
+  makeAuth,
+  newIdempotencyKey,
+  sampleParsedBill,
+  uniqueImageBytes,
+} from './helpers.js';
 import type { Bill, Venue } from '../../src/types/bills.js';
 import type { Hono } from 'hono';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
@@ -21,7 +27,8 @@ async function putObject(userId: string, uploadId: string) {
     new PutObjectCommand({
       Bucket: BILLS_BUCKET,
       Key: `${userId}/${uploadId}`,
-      Body: new Uint8Array([0xff, 0xd8, 0xff, ...new Array<number>(64).fill(0)]),
+      // Unique bytes: the venue is part of the cached analysis of a photo.
+      Body: new Uint8Array([0xff, 0xd8, 0xff, ...uniqueImageBytes()]),
       ContentType: 'image/jpeg',
     }),
   );

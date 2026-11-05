@@ -24,9 +24,14 @@ export default function AccountPage() {
   if (me.isPending) return <Centre><Spinner /></Centre>;
   const name = me.data?.displayName ?? 'You';
   const bank = payout.data;
-  const bankSub = bank
-    ? [`${bank.sortCode.replace(/(\d{2})(?=\d)/g, '$1-')} · ····${bank.accountNumber.slice(-4)}`, bank.monzoHandle && 'Monzo', bank.revolutTag && 'Revolut'].filter(Boolean).join(' · ')
-    : 'Not saved';
+  // #204: the dots are read out as dots; say "ending 1234" instead.
+  const last4 = bank?.accountNumber.slice(-4);
+  const bankSub = bank ? (
+    <>
+      {bank.sortCode.replace(/(\d{2})(?=\d)/g, '$1-')} · <span aria-hidden>····{last4}</span><span className="vh">account ending {last4}</span>
+      {[bank.monzoHandle && 'Monzo', bank.revolutTag && 'Revolut'].filter(Boolean).map((h) => ` · ${h}`).join('')}
+    </>
+  ) : 'Not saved';
 
   return (
     <Page sub>

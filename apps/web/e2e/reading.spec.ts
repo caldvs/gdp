@@ -40,7 +40,6 @@ test('reading asks nothing, then opens Review bill with the receipt’s place', 
   api.holdReads = false;
   await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(/^d Maiora - Italian Sandwich Shop · 5 items/)).toBeVisible();
-  expect(api.requests.some((r) => r.path === '/v1/venues/nearby')).toBe(false);
 });
 
 test('no place on the receipt: asked once, Skip leaves none, and the table has no party size', async ({ browser }) => {

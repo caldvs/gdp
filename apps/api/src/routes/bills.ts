@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { requireAuth } from '../middleware/auth.js';
 import { requireIdempotency } from '../middleware/idempotency.js';
+import { validJson } from '../middleware/validate.js';
 import { callerOf } from '../context/caller.js';
 import { uploadService } from '../services/bills/uploadService.js';
 import { parseService } from '../services/bills/parseService.js';
 import { amendService } from '../services/bills/amendService.js';
+import { forkService } from '../services/bills/forkService.js';
 import { imageService } from '../services/bills/imageService.js';
 import { billStore } from '../storage/billStore.js';
 import { sessionStore } from '../storage/sessionStore.js';
@@ -17,7 +19,12 @@ import type { IdTokenVerifier } from '../services/auth.js';
 import type { BillParser } from '../services/bills/parser.js';
 import type { VenueResolver } from '../services/bills/venueResolver.js';
 import type { ReadService } from '../services/bills/readService.js';
-import { AmendBillRequestSchema, ParseRequestSchema, UploadRequestSchema } from '../types/bills.js';
+import {
+  AmendBillRequestSchema,
+  ForkBillRequestSchema,
+  ParseRequestSchema,
+  UploadRequestSchema,
+} from '../types/bills.js';
 
 async function loadBillForReader(billId: string, userId: string): Promise<Bill> {
   const bill = await billStore.getLatest(billId);
@@ -54,6 +61,7 @@ const readView = (read: BillRead) => ({
   readId: read.readId,
   status: read.status,
   ...(read.billId ? { billId: read.billId } : {}),
+  ...(read.duplicate ? { duplicate: read.duplicate } : {}),
   ...(read.error ? { error: read.error } : {}),
 });
 
@@ -101,7 +109,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
     async (c) => {
       const { userId } = callerOf(c);
       const { uploadId, skipCache } = c.req.valid('json');
-      const bill = await parseService.parse({
+      const { bill, duplicate } = await parseService.parse({
         userId,
         uploadId,
         requestId: c.var.requestId,
@@ -109,7 +117,7 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
         venueResolver: deps.venueResolver,
         skipCache: deps.allowSkipCache && skipCache === true,
       });
-      return c.json(bill);
+      return c.json({ ...bill, ...(duplicate ? { duplicate } : {}) });
     },
   );
 
@@ -197,6 +205,26 @@ export const buildBillRoutes = (deps: BillRoutesDeps): Hono => {
       const amendment = c.req.valid('json');
       const bill = await amendService.amend({ billId, userId, amendment });
       return c.json(bill);
+    },
+  );
+
+  // Start again: a new bill for the same photo (docs/design/analysis-cache.md, step 3).
+  r.post(
+    '/:billId/fork',
+    requireAuth(deps.idTokenVerifier),
+    requireIdempotency(),
+    validJson(ForkBillRequestSchema),
+    async (c) => {
+      const { userId } = callerOf(c);
+      const bill = await forkService.fork({
+        billId: c.req.param('billId'),
+        userId,
+        from: c.req.valid('json').from,
+        requestId: c.var.requestId,
+        parser: deps.billParser,
+        venueResolver: deps.venueResolver,
+      });
+      return c.json(bill, 201);
     },
   );
 

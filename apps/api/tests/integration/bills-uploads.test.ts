@@ -1,10 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { v7 as uuidv7 } from 'uuid';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { billStore } from '../../src/storage/billStore.js';
-import { fakeVerifier, makeAuth, sampleParsedBill } from './helpers.js';
+import {
+  createBillFor,
+  ensureBillsBucket,
+  fakeVerifier,
+  makeAuth,
+  sampleParsedBill,
+} from './helpers.js';
 
 const sha256Of = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -15,6 +21,7 @@ const buildApp = () =>
   });
 
 describe('POST /v1/bills/uploads', () => {
+  beforeAll(ensureBillsBucket);
   const app = buildApp();
   const userId = `u-${uuidv7()}`;
 
@@ -85,7 +92,7 @@ describe('POST /v1/bills/uploads', () => {
 
   it("short-circuits with status=duplicate when the sha256 already maps to one of the caller's bills", async () => {
     const knownHash = sha256Of(`dup-${uuidv7()}`);
-    const knownBillId = uuidv7();
+    const knownBillId = (await createBillFor(app, userId)).billId;
     await billStore.indexImageHash(userId, knownHash, knownBillId);
 
     const res = await app.request('/v1/bills/uploads', {
@@ -101,6 +108,18 @@ describe('POST /v1/bills/uploads', () => {
     const body = (await res.json()) as { status: string; billId?: string };
     expect(body.status).toBe('duplicate');
     expect(body.billId).toBe(knownBillId);
+  });
+
+  it('hands out a slot when the photo points at a bill that is gone', async () => {
+    const knownHash = sha256Of(`gone-${uuidv7()}`);
+    await billStore.indexImageHash(userId, knownHash, uuidv7());
+
+    const res = await app.request('/v1/bills/uploads', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({ sha256: knownHash, sizeBytes: 1024, mimeType: 'image/jpeg' }),
+    });
+    expect(((await res.json()) as { status: string }).status).toBe('new');
   });
 
   it('hands out a fresh slot for a known photo when skipCache is set (local)', async () => {
@@ -128,7 +147,7 @@ describe('POST /v1/bills/uploads', () => {
       allowSkipCache: false,
     });
     const knownHash = sha256Of(`noskip-${uuidv7()}`);
-    const knownBillId = uuidv7();
+    const knownBillId = (await createBillFor(strict, userId)).billId;
     await billStore.indexImageHash(userId, knownHash, knownBillId);
 
     const res = await strict.request('/v1/bills/uploads', {

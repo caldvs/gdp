@@ -12,7 +12,10 @@
   --card-shadow: 0 6px 20px rgba(0,60,120,.10);
   --ink: #111111;
   --mute: #555555;
-  --faint: #8a9aac;
+  /* Muted text: 5.08:1 on white. */
+  --quiet: #5f7083;
+  /* Disabled controls and icons only, never text: 3.36:1 on white. */
+  --faint: #7d8ea1;
   --line: #e3edf7;
   --line-strong: #b0b0b0;
   --skel: #e8eef5;
@@ -65,8 +68,9 @@ h1, h2, p { margin: 0; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 48px; font-family: var(--display); font-size: 24px; font-weight: 400; letter-spacing: .01em; text-transform: uppercase; color: #fff; }
 .brand:hover { text-decoration: none; }
 /* The logo: a coin whose £ rolls to €, $ and ¥ and back. Still under reduced motion. */
-.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: var(--sky); font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
-.brand__roll { display: block; animation: brand-roll 8s cubic-bezier(.6,0,.2,1) infinite; }
+.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: var(--sky); font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; clip-path: circle(50%); isolation: isolate; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
+/* iOS Safari can drop a transform animated under a rounded overflow clip (#178): clip with clip-path and give the roll its own layer. */
+.brand__roll { display: block; will-change: transform; animation: brand-roll 8s cubic-bezier(.6,0,.2,1) infinite; }
 .brand__roll span { display: block; height: 32px; }
 @keyframes brand-roll { 0%, 40% { transform: none; } 48%, 58% { transform: translateY(-32px); } 66%, 76% { transform: translateY(-64px); } 84%, 94% { transform: translateY(-96px); } 100% { transform: translateY(-128px); } }
 @media (prefers-reduced-motion: reduce) { .brand__roll { animation: none; } }
@@ -93,6 +97,8 @@ h1, h2, p { margin: 0; }
 .back { display: inline-flex; align-items: center; gap: 2px; height: 44px; margin-left: -6px; padding-right: 8px; align-self: flex-start; font-size: 16px; font-weight: 600; color: var(--ink); }
 .back--btn { border: 0; background: none; padding-left: 0; font: inherit; font-size: 16px; font-weight: 600; color: var(--ink); cursor: pointer; }
 .title { display: flex; flex-direction: column; gap: 6px; }
+/* A screen's heading takes focus when the screen changes (PageTransition); it isn't a control, so no ring. */
+h1[tabindex="-1"]:focus { outline: none; }
 .title h1 { font-family: var(--display); font-size: 35px; font-weight: 400; letter-spacing: .005em; line-height: 1; text-transform: uppercase; }
 .title p { font-size: 15px; color: var(--mute); }
 .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -115,9 +121,12 @@ h1, h2, p { margin: 0; }
 .card-list { display: flex; flex-direction: column; gap: 8px; }
 a.row, button.row, label.row { cursor: pointer; }
 a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-decoration: none; }
+/* .box clips its overflow, so a ring drawn outside a full-width row would be cut off. */
+.box :focus-visible { outline-offset: -2px; }
+.box .btn:focus-visible { outline-offset: 2px; }
 .row--tall { min-height: 64px; }
 .row--card { min-height: 72px; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); }
-.row--muted, .row--muted .row__sub { color: var(--faint); }
+.row--muted, .row--muted .row__sub { color: var(--quiet); }
 .row--muted { cursor: default !important; }
 .row--muted:hover { background: none !important; }
 .row__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -150,28 +159,28 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .badge--plain { color: var(--mute); font-weight: 400; padding: 0; }
 
 /* ---------- Buttons ---------- */
-.btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 52px; padding: 0 16px; border-radius: var(--radius); border: 1px solid transparent; font-size: 17px; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; padding: 6px 16px; border-radius: var(--radius); border: 1px solid transparent; font-size: 17px; font-weight: 600; line-height: 1.25; text-align: center; cursor: pointer; text-decoration: none; }
 .btn:hover { text-decoration: none; }
 .btn--primary { background: var(--loud); color: #fff; font-weight: 700; }
 .btn--primary:hover { background: var(--loud-hover); }
 .btn--secondary { background: var(--bg); color: var(--ink); border: 2px solid var(--ink); }
 .btn--secondary:hover { background: var(--hover); }
 .btn--danger { background: var(--bg); color: var(--err-ink); border-color: var(--err-line); }
-.btn--text { background: none; color: var(--ink); font-weight: 600; font-size: 16px; height: 44px; text-decoration: underline; text-underline-offset: 2px; }
+.btn--text { background: none; color: var(--ink); font-weight: 600; font-size: 16px; min-height: 44px; text-decoration: underline; text-underline-offset: 2px; }
 .btn--text:hover { text-decoration: underline; }
-.btn--sm { height: 44px; width: auto; font-size: 15px; padding: 0 14px; }
+.btn--sm { min-height: 44px; width: auto; font-size: 15px; padding: 0 14px; }
 .btn[disabled], .btn[aria-disabled='true'] { opacity: .5; cursor: default; pointer-events: none; }
-.btn-row { display: flex; gap: 12px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
 .btn-row > * { flex: 1; }
 .btn-row--end > * { flex: none; }
 .btn--text-danger { color: var(--err-ink); }
 /* 44px tap target; the negative margin keeps the line the height it was. */
 .link-btn { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; display: inline-flex; align-items: center; min-height: 44px; margin-block: -6px; }
-.link-btn:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+.link-btn:disabled, .link-btn[aria-disabled='true'] { color: var(--faint); text-decoration: none; cursor: default; }
 
 /* In the page flow (#181): at the bottom of a short screen, after the content on a long one. */
 .actionbar { margin-top: auto; background: var(--page); padding: 8px var(--gutter) calc(16px + env(safe-area-inset-bottom)); }
-.actionbar__in { max-width: calc(var(--col) - 2 * var(--gutter)); margin: 0 auto; display: flex; gap: 12px; }
+.actionbar__in { max-width: calc(var(--col) - 2 * var(--gutter)); margin: 0 auto; display: flex; flex-wrap: wrap; gap: 12px; }
 .actionbar__in > * { flex: 1; }
 .actionbar__in > .grow { flex: 1.4; }
 /* A mouse and a tall window: keep the buttons next to what they act on, not
@@ -196,11 +205,16 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .money { position: relative; }
 .money > span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--mute); font-size: 17px; pointer-events: none; }
 .money > .input { padding-left: 30px; }
+/* A prefix (monzo.me/) that takes its own width, so larger text or wider spacing pushes the typing along rather than under it. */
+.affix { display: flex; align-items: center; height: auto; min-height: 52px; padding: 0; }
+.affix:focus-within { outline: 2px solid var(--ink); outline-offset: -1px; border-color: var(--ink); }
+.affix > span { flex: none; padding-left: 14px; color: var(--mute); }
+.affix > input { flex: 1; min-width: 0; min-height: 50px; padding: 0 14px 0 0; border: 0; background: none; font: inherit; color: inherit; outline: none; }
 .check { display: flex; align-items: center; gap: 12px; min-height: 52px; font-size: 16px; cursor: pointer; }
 .check input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius); }
 .stepper button { width: 44px; height: 44px; border: 0; background: none; font-size: 20px; cursor: pointer; color: var(--ink); }
-.stepper button:disabled { color: var(--faint); cursor: default; }
+.stepper button:disabled, .stepper button[aria-disabled='true'] { color: var(--faint); cursor: default; }
 .stepper span { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
 
 /* ---------- Feedback ---------- */
@@ -246,7 +260,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .box > .steps { border-top: 1px solid var(--line); }
 .step__icon { flex: none; width: 24px; display: flex; align-items: center; justify-content: center; }
 .step__dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-strong); }
-.step--todo { color: var(--faint); }
+.step--todo { color: var(--quiet); }
 .step--busy { font-weight: 600; }
 .step__tick { color: var(--ok-ink); }
 .step__tick path { stroke-dasharray: 24; animation: draw .35s ease-out both; }
@@ -276,6 +290,11 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 }
 /* Scanning a bill: our own camera, full screen, with a bill-shaped guide. */
 .cam { position: fixed; inset: 0; z-index: 60; background: #000; color: #fff; overflow: hidden; }
+/* A <dialog> opened with showModal(): undo the browser's own box. The global ring is dark: white here. */
+.cam { width: auto; height: auto; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; }
+.cam::backdrop { background: #000; }
+.cam:focus { outline: none; }
+.cam :focus-visible { outline-color: #fff; }
 .cam__video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .cam__top, .cam__bottom { position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; max-width: var(--col); margin: 0 auto; }
 .cam__top { top: 0; align-items: flex-start; padding: calc(16px + env(safe-area-inset-top)) 12px 0; }
@@ -381,7 +400,6 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 
 .tick { flex: none; width: 24px; height: 24px; border: 2px solid var(--line-strong); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: #fff; background: var(--bg); }
 .tick--on { background: var(--ink); border-color: var(--ink); }
-.tick--done { background: var(--line); border-color: var(--line); color: var(--faint); }
 .each { display: block; font-size: 13px; color: var(--mute); }
 
 /* ---------- People ---------- */
@@ -405,6 +423,12 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* ---------- Dialog ---------- */
 .dialog-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.4); }
 .dialog { position: fixed; z-index: 50; max-height: 92dvh; overflow-y: auto; left: 0; right: 0; bottom: 0; background: var(--bg); border-radius: 12px 12px 0 0; padding: 24px var(--gutter) calc(20px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 16px; max-width: var(--col); margin: 0 auto; }
+/* A <dialog> opened with showModal(): undo the browser's own box. The dim is
+   .dialog-overlay (it fades out on close), so the ::backdrop stays clear. */
+.dialog { top: auto; width: auto; border: 0; color: inherit; }
+.dialog::backdrop { background: none; }
+.dialog:focus { outline: none; }
+.dialog:not([open]), .cam:not([open]) { display: none; }
 @media (min-width: 600px) { .dialog { bottom: auto; top: 50%; transform: translateY(-50%); border-radius: 12px; } }
 .dialog__t { font-size: 20px; font-weight: 700; margin: 0; }
 .dialog__actions { display: flex; flex-direction: column; gap: 8px; }
@@ -416,7 +440,9 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* ---------- Demo banner ---------- */
 .demo-banner { display: flex; align-items: flex-start; gap: 10px; background: var(--ink); color: var(--bg); padding: 10px 16px; font-size: 13px; line-height: 1.4; }
 .demo-banner__tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 1px; }
-.demo-banner__close { margin-left: auto; background: none; border: 0; color: inherit; font-size: 18px; line-height: 1; opacity: .7; }
+.demo-banner__close { flex: none; width: 44px; height: 44px; margin: -10px -12px -10px auto; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--radius); background: none; color: inherit; font-size: 22px; line-height: 1; opacity: .8; cursor: pointer; }
+.demo-banner__close:hover { opacity: 1; }
+.demo-banner :focus-visible { outline-color: #fff; outline-offset: -4px; opacity: 1; }
 
 .hdr__in--wide { max-width: calc(1120px + 2 * var(--gutter)); }
 /* ============ Front door (signed out, #133) ============

@@ -280,8 +280,10 @@ function useRefocus(boxRef: RefObject<HTMLDivElement | null>) {
     const key = pending.current;
     const box = boxRef.current;
     if (!key || !box) return;
+    // Lost: fallen to the page, removed, or just disabled (the browser
+    // moves focus off a disabled button later, without another render).
     const active = document.activeElement;
-    if (active && active !== document.body && active.isConnected) return;
+    if (active && active !== document.body && active.isConnected && !active.matches(':disabled')) return;
     const row = [...box.querySelectorAll<HTMLElement>('[data-row]')].find((el) => el.dataset.row === key);
     if (!row) return;
     // The row's main control; on a stepper, + unless it's run out, then −.

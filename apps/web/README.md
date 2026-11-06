@@ -31,7 +31,7 @@ Next 16 differs from older versions: read [AGENTS.md](AGENTS.md) before changing
 
 ## Storybook
 
-Every piece of `components/ui.tsx`, the forms, the header, the join QR and a few screens, in `stories/`.
+Every piece of `components/ui.tsx`, the forms, the header and the join QR, in `stories/`; and under **Pages** (`stories/pages/`), every built screen on the redesign board, as the real page at phone size against the e2e fake API (`stories/screens/harness.tsx`).
 
 - `npm run storybook -w apps/web`: live at http://localhost:6006.
 - `npm run build -w apps/web` also builds it into `public/storybook` (`scripts/build-storybook.mjs`), so the app serves it at **/storybook**: https://test.paymeback.dev/storybook and http://localhost:8081/storybook after a build. A broken story fails the build, and so CI. Prod builds leave it out.

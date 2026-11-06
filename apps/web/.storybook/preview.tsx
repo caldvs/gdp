@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook/nextjs-vite';
 import { fontClasses } from '../app/fonts';
+import { withScreen } from '../stories/screens/harness';
 import '../app/globals.css';
 
 // What the root layout puts on <html>: the fonts' CSS variables.
@@ -11,14 +12,12 @@ const preview: Preview = {
     nextjs: { appDirectory: true },
     backgrounds: { disable: true },
     controls: { expanded: true },
-    options: { storySort: { order: ['Screens', 'Layout', 'Lists', 'Buttons', 'Forms', 'People', 'Feedback', 'Dialog', 'Shell', 'Icons'] } },
+    options: { storySort: { order: ['Pages', 'Layout', 'Lists', 'Buttons', 'Forms', 'People', 'Feedback', 'Dialog', 'Shell', 'Icons'] } },
   },
   decorators: [
-    (Story) => (
-      <div style={{ maxWidth: 560, margin: '0 auto' }}>
-        <Story />
-      </div>
-    ),
+    // Pages (stories/pages) are the real app at phone size; the pieces sit in a narrow column.
+    (Story, ctx) => (ctx.parameters.phone ? <Story /> : <div style={{ maxWidth: 560, margin: '0 auto' }}><Story /></div>),
+    withScreen,
   ],
 };
 

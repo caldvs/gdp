@@ -32,6 +32,32 @@ export const authIdentityStore = {
     };
   },
 
+  /** #213: `AUTH#phone:{e164}` → userId. The number is personal data: never logged. */
+  async getByPhone(e164: string): Promise<{ userId: string } | null> {
+    const key = `AUTH#phone:${e164}`;
+    const result = await ddb.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: { pk: key, sk: key } }),
+    );
+    return result.Item ? { userId: result.Item.userId as string } : null;
+  },
+
+  async putByPhone(input: { e164: string; userId: string; createdAt: string }): Promise<void> {
+    const key = `AUTH#phone:${input.e164}`;
+    await ddb.send(
+      new PutCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          pk: key,
+          sk: key,
+          phone: input.e164,
+          userId: input.userId,
+          createdAt: input.createdAt,
+        },
+        ConditionExpression: 'attribute_not_exists(pk)',
+      }),
+    );
+  },
+
   async putByEmail(identity: AuthIdentity): Promise<void> {
     await ddb.send(
       new PutCommand({

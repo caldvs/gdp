@@ -105,6 +105,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which ways to sign in are on here
+         * @description #213. `phone` is true once the WhatsApp app is set up on this
+         *     server; `sms` once texts are (#231). Email stays on until phone
+         *     sign-in is live.
+         */
+        get: operations["getSignInMethods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/phone/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a 4-digit sign-in code to a phone
+         * @description #213. Sends a 4-digit code by WhatsApp (an authentication template
+         *     with a copy-code button). It works for 10 minutes, 5 tries, and only
+         *     with the `requestId` returned here, sent with the code to
+         *     `POST /v1/auth/phone/verify`. UK mobiles only for now; the number is
+         *     kept as E.164 and never logged whole.
+         *
+         *     Codes cost money, so the limits are tight: one every 30 seconds and
+         *     3 an hour per number, 10 an hour per IP address, 200 an hour in all
+         *     (429 otherwise). `channel: sms` answers 503 until texts exist (#231).
+         */
+        post: operations["startPhoneSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/phone/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in with the phone code
+         * @description #213. Like `POST /v1/auth/email/verify`, with a 4-digit code. The
+         *     account for the number is found or made; `isNew` is true when it
+         *     has no name yet, and the web app then asks for a name and an email
+         *     for bill emails (`PATCH /v1/me`).
+         */
+        post: operations["verifyPhoneSignInCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/email/test-sign-in": {
         parameters: {
             query?: never;
@@ -142,7 +215,14 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Set your name and the email bill emails go to
+         * @description #213. A phone account has no name or email until it sets them. The
+         *     email is only where bill emails go, not a way to sign in; '' removes
+         *     it. Answers with a fresh session JWT, since the name travels in it.
+         *     Guests (#183) can't.
+         */
+        patch: operations["updateCurrentUser"];
         trace?: never;
     };
     "/v1/me/sign-out": {
@@ -1352,7 +1432,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "PAYMENTS_NOT_OPEN" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "PAYMENTS_NOT_OPEN" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "CHANNEL_UNAVAILABLE" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -2187,6 +2267,133 @@ export interface operations {
             400: components["responses"]["BadRequest"];
         };
     };
+    getSignInMethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The switched-on methods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        email: boolean;
+                        phone: boolean;
+                        sms: boolean;
+                    };
+                };
+            };
+        };
+    };
+    startPhoneSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description As typed, e.g. "07700 900123". */
+                    phone: string;
+                    /**
+                     * @default whatsapp
+                     * @enum {string}
+                     */
+                    channel?: "whatsapp" | "sms";
+                };
+            };
+        };
+        responses: {
+            /** @description Code sent. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        ok: true;
+                        /** @description Secret; keep it in the tab that asked. */
+                        requestId: string;
+                        /** @description The number as E.164, to show back to the person. */
+                        phone: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description `RATE_LIMITED`: see the limits above. `details.retryAfterSeconds` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description `CHANNEL_UNAVAILABLE`: phone sign-in, or texts, aren't on here. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyPhoneSignInCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    requestId: string;
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description What the code came to. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "signedIn" | "wrong" | "expired";
+                        /** @description `signedIn` only: the session JWT. */
+                        token?: string;
+                        /** @description `signedIn` only: no name yet. */
+                        isNew?: boolean;
+                        /** @description `signedIn` only. */
+                        user?: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** @description Where bill emails go; '' if none yet. */
+                            email: string;
+                            displayName: string;
+                        };
+                        /** @description `wrong` only: tries left on this code. */
+                        attemptsLeft?: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
     testAccountSignIn: {
         parameters: {
             query?: never;
@@ -2251,6 +2458,42 @@ export interface operations {
                     "application/json": components["schemas"]["User"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    email?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            userId: string;
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
         };
     };

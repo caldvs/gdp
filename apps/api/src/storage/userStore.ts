@@ -58,6 +58,43 @@ export const userStore = {
   },
 
   /**
+   * #213: set only the fields given (a phone account's name, and the email
+   * its bill emails go to). Creates the row if it isn't there.
+   */
+  async updateProfile(input: {
+    userId: string;
+    displayName?: string;
+    email?: string;
+  }): Promise<User> {
+    const now = new Date().toISOString();
+    const sets = [
+      'updatedAt = :now',
+      'userId = if_not_exists(userId, :uid)',
+      'createdAt = if_not_exists(createdAt, :now)',
+    ];
+    const values: Record<string, unknown> = { ':now': now, ':uid': input.userId };
+    if (input.displayName !== undefined) {
+      sets.push('displayName = :name');
+      values[':name'] = input.displayName;
+    }
+    if (input.email !== undefined) {
+      sets.push('email = :email');
+      values[':email'] = input.email;
+    }
+    const res = await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: userPk(input.userId), sk: userPk(input.userId) },
+        UpdateExpression: `SET ${sets.join(', ')}`,
+        ExpressionAttributeValues: values,
+        ReturnValues: 'ALL_NEW',
+      }),
+    );
+    const { pk: _pk, sk: _sk, ...rest } = (res.Attributes ?? {}) as UserRow;
+    return rest;
+  },
+
+  /**
    * Create or update the basic profile fields (email, displayName, etc.)
    * on a user row without disturbing other fields like payoutAccount.
    * Used on first successful OTP verify to seed the row.

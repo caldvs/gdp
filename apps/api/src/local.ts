@@ -1,3 +1,4 @@
+import { ConsoleMessenger } from './services/messaging/messenger.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { localStubVerifier } from './services/authStub.js';
@@ -62,6 +63,10 @@ const app = createApp({
   ...(idTokenVerifier ? { idTokenVerifier } : {}),
   ...(sessionJwtSecret ? { sessionJwtSecret } : {}),
   devEmailSignIn,
+  // #213: phone sign-in locally, the code printed here instead of sent.
+  phoneMessenger: process.env.WHATSAPP_ACCESS_TOKEN
+    ? undefined
+    : new ConsoleMessenger({ printCodes: true }),
   // Test accounts (@test.invalid, no code), same as on dev.
   testAccountSignIn: hasLocalDb && !isProduction,
 });

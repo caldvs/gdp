@@ -29,6 +29,8 @@ export const ErrorCodes = {
   PARSE_TIMEOUT: { http: 504 },
   RATE_LIMITED: { http: 429 },
   PAYMENT_PROVIDER_ERROR: { http: 502 },
+  /** #213: phone sign-in, or text as a channel, isn't switched on here. */
+  CHANNEL_UNAVAILABLE: { http: 503 },
   INTERNAL_ERROR: { http: 500 },
 } as const satisfies Record<string, { http: ContentfulStatusCode }>;
 

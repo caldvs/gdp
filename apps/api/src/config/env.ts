@@ -53,6 +53,8 @@ const EnvSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional().transform(unwrapSecret),
   WHATSAPP_VERIFY_TOKEN: z.string().optional().transform(unwrapSecret),
   // Paid template sends a month before we stop (and alarm).
+  /** #213: the approved authentication template for sign-in codes. */
+  WHATSAPP_SIGNIN_TEMPLATE: z.string().optional(),
   WHATSAPP_TEMPLATE_CAP: z.coerce.number().int().nonnegative().default(500),
   // Comma list of email addresses that never pay the table fee (the
   // owner, friends testing it). Case and spaces don't matter. From the

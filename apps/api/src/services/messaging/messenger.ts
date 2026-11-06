@@ -17,6 +17,11 @@ export interface TemplateMessage {
   language?: string;
   /** The body's {{1}}, {{2}}, …, in order. */
   params?: string[];
+  /**
+   * An authentication template's copy-code button (#213): Meta needs the
+   * code again as the button's parameter.
+   */
+  copyCode?: string;
 }
 
 export const GRAPH_VERSION = 'v23.0';
@@ -49,10 +54,22 @@ export class WhatsAppCloudMessenger implements Messenger {
       template: {
         name: t.name,
         language: { code: t.language ?? 'en_GB' },
-        ...(t.params?.length
+        ...(t.params?.length || t.copyCode
           ? {
               components: [
-                { type: 'body', parameters: t.params.map((text) => ({ type: 'text', text })) },
+                ...(t.params?.length
+                  ? [{ type: 'body', parameters: t.params.map((text) => ({ type: 'text', text })) }]
+                  : []),
+                ...(t.copyCode
+                  ? [
+                      {
+                        type: 'button',
+                        sub_type: 'url',
+                        index: '0',
+                        parameters: [{ type: 'text', text: t.copyCode }],
+                      },
+                    ]
+                  : []),
               ],
             }
           : {}),
@@ -102,6 +119,12 @@ export class ConsoleMessenger implements Messenger {
   }> = [];
   private n = 0;
 
+  /**
+   * `printCodes`: local development only (src/local.ts), print a sign-in
+   * code to the terminal so it can be typed. Never in a deployed function.
+   */
+  constructor(private readonly opts: { printCodes?: boolean } = {}) {}
+
   sendText(to: string, body: string) {
     this.outbox.push({ to, kind: 'text', body });
     baseLogger.info(
@@ -113,6 +136,10 @@ export class ConsoleMessenger implements Messenger {
 
   sendTemplate(to: string, template: TemplateMessage) {
     this.outbox.push({ to, kind: 'template', template });
+    if (this.opts.printCodes && template.copyCode) {
+      // eslint-disable-next-line no-console
+      console.log(`📱 WhatsApp code for ${maskPhone(to)}: ${template.copyCode}`);
+    }
     baseLogger.info(
       { event: 'whatsapp.console', to: maskPhone(to), kind: 'template', template: template.name },
       'WhatsApp (console)',

@@ -43,7 +43,7 @@ Then refresh the PNGs with any headless Chrome:
 
 ```sh
 cd docs/architecture
-google-chrome --headless=new --hide-scrollbars --window-size=1720,1620 --screenshot=system.png "file://$PWD/system.html"
+google-chrome --headless=new --hide-scrollbars --window-size=1720,1700 --screenshot=system.png "file://$PWD/system.html"
 google-chrome --headless=new --hide-scrollbars --window-size=1600,3500 --screenshot=data-model.png "file://$PWD/data-model.html"
 ```
 

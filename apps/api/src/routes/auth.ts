@@ -2,6 +2,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { createEmailSignInService } from '../services/auth/emailSignIn.js';
+import { createPhoneSignInService } from '../services/auth/phoneSignIn.js';
+import type { Messenger } from '../services/messaging/messenger.js';
+import { baseLogger } from '../logging/logger.js';
 import type { EmailSender } from '../services/email/sender.js';
 
 /**
@@ -23,9 +26,22 @@ const VerifySchema = z.object({
   code: z.string().regex(/^[0-9]{6}$/),
 });
 
+const PhoneStartSchema = z.object({
+  phone: z.string().min(6).max(24),
+  channel: z.enum(['whatsapp', 'sms']).default('whatsapp'),
+});
+
+const PhoneVerifySchema = z.object({
+  requestId: z.string().min(1).max(200),
+  code: z.string().regex(/^[0-9]{4}$/),
+});
+
 export interface AuthRoutesDeps {
   emailSender: EmailSender;
   jwtSecret: Uint8Array;
+  /** #213: sends phone codes; null or absent turns phone sign-in off. */
+  phoneMessenger?: Messenger | null;
+  phoneTemplate?: string;
   /**
    * Register POST /email/dev-sign-in (sign in with just an email, no code).
    * LOCAL DEVELOPMENT ONLY — set by src/local.ts, never by the Lambda.
@@ -47,6 +63,64 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
     jwtSecret: deps.jwtSecret,
     ...(deps.exemptEmails ? { exemptEmails: deps.exemptEmails } : {}),
   });
+
+  const phone = createPhoneSignInService({
+    messenger: deps.phoneMessenger ?? null,
+    logger: baseLogger,
+    jwtSecret: deps.jwtSecret,
+    ...(deps.phoneTemplate ? { template: deps.phoneTemplate } : {}),
+  });
+
+  // #213: which ways in are switched on here, so the web app offers only those.
+  r.get('/methods', (c) => {
+    const p = phone.available();
+    return c.json({ email: true, phone: p.whatsapp, sms: p.sms });
+  });
+
+  r.post(
+    '/phone/start',
+    zValidator('json', PhoneStartSchema, (result, c) => {
+      if (!result.success) {
+        return c.json(
+          {
+            error: {
+              code: 'INVALID_INPUT' as const,
+              message: 'Enter a UK mobile number',
+              requestId: c.var.requestId,
+            },
+          },
+          400,
+        );
+      }
+    }),
+    async (c) => {
+      const sourceIp = sourceIpOf(c.env);
+      const out = await phone.start({ ...c.req.valid('json'), ...(sourceIp ? { sourceIp } : {}) });
+      return c.json({ ok: true, requestId: out.requestId, phone: out.phone });
+    },
+  );
+
+  r.post(
+    '/phone/verify',
+    zValidator('json', PhoneVerifySchema, (result, c) => {
+      if (!result.success) {
+        return c.json(
+          {
+            error: {
+              code: 'INVALID_INPUT' as const,
+              message: 'Enter the 4-digit code',
+              requestId: c.var.requestId,
+            },
+          },
+          400,
+        );
+      }
+    }),
+    async (c) => {
+      c.header('cache-control', 'no-store');
+      return c.json(await phone.enterCode(c.req.valid('json')));
+    },
+  );
 
   r.post(
     '/email/start',

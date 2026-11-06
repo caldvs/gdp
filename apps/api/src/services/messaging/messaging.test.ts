@@ -178,3 +178,45 @@ describe('WhatsApp Cloud API messenger', () => {
     ).toBeInstanceOf(WhatsAppCloudMessenger);
   });
 });
+
+describe('#213 phone numbers and the copy-code button', () => {
+  it('parses UK mobiles as typed', async () => {
+    const { parseUkMobile, formatUkMobile } = await import('./phone.js');
+    for (const t of [
+      '07700 900123',
+      '7700900123',
+      '+44 7700 900123',
+      '0044 7700-900123',
+      '(07700) 900 123',
+    ]) {
+      expect(parseUkMobile(t)).toBe('+447700900123');
+    }
+    for (const t of ['020 7946 0000', '0770090012', '+1 555 165 1251', 'abc', '']) {
+      expect(parseUkMobile(t)).toBeNull();
+    }
+    expect(formatUkMobile('+447700900123')).toBe('+44 7700 900123');
+  });
+
+  it('sends the code as the button parameter too', async () => {
+    const f = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ messages: [{ id: 'wamid.1' }] }), { status: 200 }),
+      ),
+    );
+    const m = new WhatsAppCloudMessenger({ phoneNumberId: '1', accessToken: 't' }, f);
+    await m.sendTemplate('+447700900123', {
+      name: 'pmb_sign_in_code',
+      params: ['4829'],
+      copyCode: '4829',
+    });
+    const body = JSON.parse(
+      (f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string,
+    ) as {
+      template: { components: unknown[] };
+    };
+    expect(body.template.components).toEqual([
+      { type: 'body', parameters: [{ type: 'text', text: '4829' }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: '4829' }] },
+    ]);
+  });
+});

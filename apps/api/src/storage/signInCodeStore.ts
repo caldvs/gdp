@@ -27,6 +27,14 @@ const WINDOW_SECONDS = 15 * 60;
 const HOUR_SECONDS = 60 * 60;
 const SENDS_PER_IP_HOUR = 20;
 const SENDS_PER_HOUR = 1000;
+// Phone codes cost money per send (#213), so tighter, and their own
+// counters: 3 an hour per number, 10 an hour per IP, 200 an hour in all
+// (about £6 an hour at worst), against SMS and WhatsApp pumping.
+const PHONE_SENDS_PER_HOUR = 3;
+const PHONE_SENDS_PER_IP_HOUR = 10;
+const PHONE_SENDS_ALL_HOUR = 200;
+/** How long a phone code works. */
+const PHONE_CODE_TTL_SECONDS = 10 * 60;
 
 /** Why a code wasn't sent: too soon after the last, too many lately, from one IP, or in all. */
 export class SignInRateLimited extends Error {
@@ -40,6 +48,7 @@ export class SignInRateLimited extends Error {
 }
 
 const ratePk = (email: string) => `SIGNINRATE#email:${email.toLowerCase()}`;
+const phoneRatePk = (e164: string) => `SIGNINRATE#phone:${e164}`;
 const ipRatePk = (ip: string) => `SIGNINRATE#ip:${ip}`;
 const GLOBAL_RATE_PK = 'SIGNINRATE#all';
 const codeKey = (id: string) => ({ pk: `SIGNIN#${id}`, sk: `SIGNIN#${id}` });
@@ -52,7 +61,9 @@ const codeKey = (id: string) => ({ pk: `SIGNIN#${id}`, sk: `SIGNIN#${id}` });
  */
 export interface SignInCodeRecord {
   id: string;
+  /** Email requests have `email`, phone requests (#213) `phone` (E.164). */
   email: string;
+  phone?: string;
   status: 'pending' | 'used';
   attempts: number;
   expiresAt: number; // epoch seconds: the code stops working
@@ -60,7 +71,7 @@ export interface SignInCodeRecord {
 
 /** What entering a code came to. */
 export type CodeCheck =
-  | { result: 'ok'; email: string }
+  | { result: 'ok'; email: string; phone?: string }
   | { result: 'wrong'; attemptsLeft: number }
   | { result: 'expired' };
 
@@ -106,19 +117,62 @@ export const signInCodeStore = {
     if (!all.ok) throw new SignInRateLimited('global', all.retryAfterSeconds);
   },
 
+  /**
+   * #213: count a phone code against the number's, the IP's and the overall
+   * hourly limits, plus the same 30-second gap as email.
+   */
+  async reservePhoneSend(e164: string, sourceIp?: string): Promise<void> {
+    const t = now();
+    const perNumber = await countInWindow(phoneRatePk(e164), HOUR_SECONDS, PHONE_SENDS_PER_HOUR, t);
+    if (!perNumber.ok) throw new SignInRateLimited('too-many', perNumber.retryAfterSeconds);
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: phoneRatePk(e164), sk: 'LAST' },
+          UpdateExpression: 'SET sentAt = :now, ttlAt = :ttl',
+          ConditionExpression: 'attribute_not_exists(sentAt) OR sentAt <= :cutoff',
+          ExpressionAttributeValues: {
+            ':now': t,
+            ':cutoff': t - MIN_GAP_SECONDS,
+            ':ttl': t + MIN_GAP_SECONDS + 60,
+          },
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) {
+        throw new SignInRateLimited('too-soon', MIN_GAP_SECONDS);
+      }
+      throw err;
+    }
+    if (sourceIp) {
+      const perIp = await countInWindow(
+        `SIGNINRATE#phone-ip:${sourceIp}`,
+        HOUR_SECONDS,
+        PHONE_SENDS_PER_IP_HOUR,
+        t,
+      );
+      if (!perIp.ok) throw new SignInRateLimited('ip', perIp.retryAfterSeconds);
+    }
+    const all = await countInWindow('SIGNINRATE#phone-all', HOUR_SECONDS, PHONE_SENDS_ALL_HOUR, t);
+    if (!all.ok) throw new SignInRateLimited('global', all.retryAfterSeconds);
+  },
+
   async create(input: {
     id: string;
-    email: string;
+    email?: string;
+    phone?: string;
     requestHash: string;
     codeHash: string;
   }): Promise<void> {
-    const expiresAt = now() + CODE_TTL_SECONDS;
+    const expiresAt = now() + (input.phone ? PHONE_CODE_TTL_SECONDS : CODE_TTL_SECONDS);
     await ddb.send(
       new PutCommand({
         TableName: TABLE_NAME,
         Item: {
           ...codeKey(input.id),
-          email: input.email,
+          email: input.email ?? '',
+          ...(input.phone ? { phone: input.phone } : {}),
           requestHash: input.requestHash,
           codeHash: input.codeHash,
           status: 'pending',
@@ -196,7 +250,11 @@ export const signInCodeStore = {
         throw err;
       }
     }
-    return { result: 'ok', email: item.email as string };
+    return {
+      result: 'ok',
+      email: item.email as string,
+      ...(item.phone ? { phone: item.phone as string } : {}),
+    };
   },
 
   /** The request as stored (tests and support). Null if unknown. */
@@ -208,6 +266,7 @@ export const signInCodeStore = {
     return {
       id,
       email: out.Item.email as string,
+      ...(out.Item.phone ? { phone: out.Item.phone as string } : {}),
       status: out.Item.status as SignInCodeRecord['status'],
       attempts: out.Item.attempts as number,
       expiresAt: out.Item.expiresAt as number,
@@ -215,6 +274,7 @@ export const signInCodeStore = {
   },
 
   CODE_TTL_SECONDS,
+  PHONE_CODE_TTL_SECONDS,
   MAX_ATTEMPTS,
 };
 

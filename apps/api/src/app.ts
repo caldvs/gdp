@@ -14,6 +14,7 @@ import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildAuthRoutes } from './routes/auth.js';
+import { WhatsAppCloudMessenger, type Messenger } from './services/messaging/messenger.js';
 import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
@@ -71,6 +72,12 @@ export interface AppDeps {
   /** Honour `skipCache` on bill uploads and reads. Defaults to APP_ENV=local. */
   allowSkipCache?: boolean;
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
+  /**
+   * #213: sends phone sign-in codes. Default: WhatsApp when the Meta app's
+   * secrets are set, otherwise none (phone sign-in off). Local and tests
+   * pass a ConsoleMessenger.
+   */
+  phoneMessenger?: Messenger | null;
   devEmailSignIn?: boolean;
   /**
    * Enable POST /v1/auth/email/test-sign-in (@test.invalid accounts, no
@@ -171,6 +178,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       buildAuthRoutes({
         emailSender,
         jwtSecret: sessionJwtSecret,
+        phoneMessenger:
+          deps.phoneMessenger !== undefined ? deps.phoneMessenger : phoneMessengerFromEnv(),
+        ...(env.WHATSAPP_SIGNIN_TEMPLATE ? { phoneTemplate: env.WHATSAPP_SIGNIN_TEMPLATE } : {}),
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(
@@ -180,7 +190,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       }),
     );
   }
-  app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier) : meRoutes);
+  app.route('/v1', idTokenVerifier ? buildMeRoutes(idTokenVerifier, sessionJwtSecret) : meRoutes);
   app.route(
     '/v1/bills',
     buildBillRoutes({
@@ -303,6 +313,15 @@ export const runLeadEmailsNow = async (): Promise<LeadEmailsReport> => {
   if (report.failed.length > 0) throw new Error(`Lead emails: ${report.failed.length} not sent`);
   return report;
 };
+
+/** #213: the real WhatsApp sender, only when the Meta app's secrets are there. */
+function phoneMessengerFromEnv(): Messenger | null {
+  if (!env.WHATSAPP_PHONE_NUMBER_ID || !env.WHATSAPP_ACCESS_TOKEN) return null;
+  return new WhatsAppCloudMessenger({
+    phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+    accessToken: env.WHATSAPP_ACCESS_TOKEN,
+  });
+}
 
 /** WhatsApp webhook settings from env, when the Meta app's secrets are there. */
 function whatsappFromEnv(): WhatsAppWebhookDeps | null {

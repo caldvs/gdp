@@ -211,6 +211,131 @@ paths:
                     description: '`wrong` only: tries left on this code.'
         '400': { $ref: '#/components/responses/BadRequest' }
 
+  /v1/auth/methods:
+    get:
+      tags: [identity]
+      operationId: getSignInMethods
+      security: []
+      summary: Which ways to sign in are on here
+      description: |
+        #213. `phone` is true once the WhatsApp app is set up on this
+        server; `sms` once texts are (#231). Email stays on until phone
+        sign-in is live.
+      responses:
+        '200':
+          description: The switched-on methods.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email, phone, sms]
+                properties:
+                  email: { type: boolean }
+                  phone: { type: boolean }
+                  sms: { type: boolean }
+
+  /v1/auth/phone/start:
+    post:
+      tags: [identity]
+      operationId: startPhoneSignIn
+      security: []
+      summary: Send a 4-digit sign-in code to a phone
+      description: |
+        #213. Sends a 4-digit code by WhatsApp (an authentication template
+        with a copy-code button). It works for 10 minutes, 5 tries, and only
+        with the `requestId` returned here, sent with the code to
+        `POST /v1/auth/phone/verify`. UK mobiles only for now; the number is
+        kept as E.164 and never logged whole.
+
+        Codes cost money, so the limits are tight: one every 30 seconds and
+        3 an hour per number, 10 an hour per IP address, 200 an hour in all
+        (429 otherwise). `channel: sms` answers 503 until texts exist (#231).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  { type: string, maxLength: 24, description: 'As typed, e.g. "07700 900123".' }
+                channel: { type: string, enum: [whatsapp, sms], default: whatsapp }
+      responses:
+        '200':
+          description: Code sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, requestId, phone]
+                properties:
+                  ok: { type: boolean, const: true }
+                  requestId: { type: string, description: Secret; keep it in the tab that asked. }
+                  phone:
+                    {
+                      type: string,
+                      description: 'The number as E.164, to show back to the person.',
+                    }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429':
+          description: '`RATE_LIMITED`: see the limits above. `details.retryAfterSeconds` says when to try again.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '503':
+          description: "`CHANNEL_UNAVAILABLE`: phone sign-in, or texts, aren't on here."
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/auth/phone/verify:
+    post:
+      tags: [identity]
+      operationId: verifyPhoneSignInCode
+      security: []
+      summary: Sign in with the phone code
+      description: |
+        #213. Like `POST /v1/auth/email/verify`, with a 4-digit code. The
+        account for the number is found or made; `isNew` is true when it
+        has no name yet, and the web app then asks for a name and an email
+        for bill emails (`PATCH /v1/me`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId, code]
+              properties:
+                requestId: { type: string, maxLength: 200 }
+                code: { type: string, pattern: '^[0-9]{4}$' }
+      responses:
+        '200':
+          description: What the code came to.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [signedIn, wrong, expired] }
+                  token: { type: string, description: '`signedIn` only: the session JWT.' }
+                  isNew: { type: boolean, description: '`signedIn` only: no name yet.' }
+                  user:
+                    type: object
+                    description: '`signedIn` only.'
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string, format: uuid }
+                      email: { type: string, description: "Where bill emails go; '' if none yet." }
+                      displayName: { type: string }
+                  attemptsLeft:
+                    type: integer
+                    minimum: 1
+                    description: '`wrong` only: tries left on this code.'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
   /v1/auth/email/test-sign-in:
     post:
       tags: [identity]
@@ -268,6 +393,47 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '401':
           $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [identity]
+      operationId: updateCurrentUser
+      summary: Set your name and the email bill emails go to
+      description: |
+        #213. A phone account has no name or email until it sets them. The
+        email is only where bill emails go, not a way to sign in; '' removes
+        it. Answers with a fresh session JWT, since the name travels in it.
+        Guests (#183) can't.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                displayName: { type: string, minLength: 1, maxLength: 40 }
+                email:
+                  oneOf:
+                    - { type: string, format: email, maxLength: 254 }
+                    - { type: string, maxLength: 0 }
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token: { type: string }
+                  user:
+                    type: object
+                    required: [userId, email, displayName]
+                    properties:
+                      userId: { type: string }
+                      email: { type: string }
+                      displayName: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/me/sign-out:
     post:
@@ -1996,6 +2162,7 @@ components:
                 - PARSE_TIMEOUT
                 - RATE_LIMITED
                 - PAYMENT_PROVIDER_ERROR
+                - CHANNEL_UNAVAILABLE
                 - TABLE_FEE_PAID
                 - TABLE_FEE_WAIVED
                 - TABLE_FEE_REQUIRED

@@ -51,13 +51,13 @@ C5X, C5W = 1435, 185         # external nodes
 nodes_start = len(S)
 
 # Zones
-a(f'<rect class="zone" x="20" y="20" width="220" height="1308" rx="14"/>')
+a(f'<rect class="zone" x="20" y="20" width="220" height="1388" rx="14"/>')
 a('<text class="zone-label" x="38" y="48">Clients</text>')
-a(f'<rect class="zone" x="270" y="20" width="240" height="1308" rx="14"/>')
+a(f'<rect class="zone" x="270" y="20" width="240" height="1388" rx="14"/>')
 a('<text class="zone-label" x="288" y="48">Frontend · apps/web</text>')
-a(f'<rect class="zone aws" x="530" y="20" width="870" height="1308" rx="14"/>')
+a(f'<rect class="zone aws" x="530" y="20" width="870" height="1388" rx="14"/>')
 a('<text class="zone-label" x="548" y="48">AWS · eu-west-2 · CDK stack gdp-{env}</text>')
-a(f'<rect class="zone" x="1420" y="20" width="200" height="1308" rx="14"/>')
+a(f'<rect class="zone" x="1420" y="20" width="200" height="1388" rx="14"/>')
 a('<text class="zone-label" x="1435" y="48">Third parties</text>')
 zones = S[nodes_start:]; del S[nodes_start:]
 
@@ -76,7 +76,7 @@ for k, v in c4:
     prev = 'gap' if k == 'gap' else 'node'
 # adjust: sns follows cw with 20 gap (already)
 # The routes list sets the height: room for it plus the providers strip.
-LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1254) + 44
+LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1334) + 44
 
 edges = []
 def E(*args, **kw):
@@ -126,8 +126,8 @@ AX, AW = LX + 16, 246
 BX, BW = LX + 16 + 246 + 12, LW - 32 - 246 - 12
 y = 308
 y = group(AX, y, AW, 'Ops', '/', [('GET', '/healthz'), ('GET', '/readyz'), ('GET', '/docs'), ('GET', '/swagger'), ('GET', '/openapi.yaml')]) + 10
-y = group(AX, y, AW, 'Auth', '/v1/auth/email', [('POST', '/start'), ('POST', '/verify'), ('POST', '/test-sign-in')]) + 10
-y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('POST', '/sign-out'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
+y = group(AX, y, AW, 'Auth', '/v1/auth', [('GET', '/methods'), ('POST', '/phone/start'), ('POST', '/phone/verify'), ('POST', '/email/start'), ('POST', '/email/verify'), ('POST', '/email/test-sign-in')]) + 10
+y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PATCH', '/'), ('POST', '/sign-out'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend'), ('POST', '/{billId}/fork')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('GET', '/me')]) + 10
@@ -167,6 +167,7 @@ rect(AX, py, LW - 32, LAMBDA_BOTTOM - 16 - py, 'inner', 7)
 text(AX + 12, py + 22, 'Swappable providers (env)', 't-inner')
 text(AX + 12, py + 44, 'Parser: Bedrock · fixture', 't-mono')
 text(AX + 12, py + 62, 'Email: SES · console     Venue: Location · none', 't-mono')
+text(AX + 12, py + 80, 'WhatsApp: Meta Cloud API · console · none', 't-mono')
 
 # ---- Column 4 nodes
 def c4card(k, title, lines, cls='node'):
@@ -218,10 +219,10 @@ for key, lab, both in [('stripe', 'Checkout · webhooks', True), ('whatsapp', 'm
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')
-E(f'M390,470 L390,1353 L1260,1353 L1260,{s3y+pos["s3"][1]+2}', [(760, 1347, 'Presigned PUT / GET · bill photo', 'middle')])
+E(f'M390,470 L390,1433 L1260,1433 L1260,{s3y+pos["s3"][1]+2}', [(760, 1427, 'Presigned PUT / GET · bill photo', 'middle')])
 
 svg = '\n'.join(zones + edges + nodes)
-VB_H = 1373
+VB_H = 1453
 
 page = (HERE / 'system.template.html').read_text()
 page = page.replace('%%SVG%%', svg).replace('%%VBH%%', str(VB_H)).replace('%%EPS%%', str(COUNTS['eps'])).replace('%%GROUPS%%', str(COUNTS['groups']))

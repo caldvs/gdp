@@ -44,20 +44,6 @@ export function unclaimedOn(bill: Bill, session: Session): string[] {
   );
 }
 
-/** Lines not yet fully taken (see owed.ts unclaimedItemIds). */
-export function unclaimedItemIds(
-  bill: Pick<Bill, 'items'>,
-  participants: Claims,
-  waysByItem: ReadonlyMap<string, number> = new Map(),
-  unitsByItem: ReadonlyMap<string, number> = new Map(),
-): string[] {
-  return unclaimedOnBill(
-    bill.items,
-    participants,
-    splitsFrom(participants, waysByItem, unitsByItem),
-  );
-}
-
 /**
  * Everyone's share of a fully claimed bill, to the penny (see owed.ts
  * computeOwed). Throws 'CLAIMS_INCOMPLETE' with `unclaimedItemIds`.

@@ -3,9 +3,8 @@ import { Button } from '@/components/ui';
 import { ReadingWait } from '@/components/Reading';
 import { screen } from '../screens/harness';
 import { users } from '../screens/tables';
-import bill from '../../e2e/fixtures/bill.jpg';
-
-const photo = typeof bill === 'string' ? bill : bill.src;
+// A URL, not an import: CI typechecks before Next writes its image types.
+const photo = new URL('../../e2e/fixtures/bill.jpg', import.meta.url).href;
 
 /**
  * R2 (Sky · R2): what /reading/[id] shows while the bill is read, up to

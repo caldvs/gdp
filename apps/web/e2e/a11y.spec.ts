@@ -139,7 +139,7 @@ test('pay', async ({ page }) => {
   await open(page, new FakeApi(), users.sam, `/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
   await page.getByRole('button', { name: 'Claim Lasagne' }).click();
   await page.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(page.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(page.getByText('Gennaro Sam')).toBeVisible();
   await audit(page);
 });
 

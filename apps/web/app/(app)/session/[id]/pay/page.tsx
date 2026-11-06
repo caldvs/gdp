@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * Pay the host: the amount, one-tap Monzo/Revolut if they have them, the
- * bank details to copy, then "I've sent it". The lead has no pay page
- * any more — their table covers it.
+ * G3 Pay the host (#222): the guest's share as a receipt, *Pay with Monzo* /
+ * *Pay with Revolut* if the lead saved them, the bank details to copy, then
+ * *I've paid*, confirmed in place. The lead has no pay page: their bill
+ * covers it.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -21,8 +22,8 @@ import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { usePayoutVerdict } from '@gdp/core/lib/usePayoutCheck';
 import { copyText } from '@/lib/clipboard';
-import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Dialog, Notice, Page, Spinner, TickIcon, Title, firstName } from '@/components/ui';
-import { owedFor } from '../guest';
+import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Notice, Page, ReceiptLine, Spinner, TickIcon, Title, firstName } from '@/components/ui';
+import { ShareReceipt, owedFor } from '../guest';
 
 type Instructions = components['schemas']['PaymentInstructions'];
 type ManualInstructions = Extract<Instructions, { type: 'manual_transfer' }>;
@@ -38,8 +39,10 @@ export default function PayPage() {
   const markPaid = useMarkPaymentPaid(id);
   const [instructions, setInstructions] = useState<ManualInstructions | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  // "Are you sure you've paid?" before it's marked (4 Nov).
+  // "Are you sure you've paid?" in place of the button (4 Nov; in place, #222).
   const [confirming, setConfirming] = useState(false);
+  const askRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (confirming) askRef.current?.focus(); }, [confirming]);
 
   const s = session.data;
   // #151: details from a link that don't match the lead's are never shown.
@@ -102,7 +105,8 @@ export default function PayPage() {
   const waitingPence = lg.waiting.reduce((a, e) => a + e.amountPence, 0);
   // ADR-0002: the details the lead shared in the QR are the source of truth.
   const bd = linkPayout ?? (verdict === 'mismatch' ? undefined : instructions?.bankDetails);
-  const reference = instructions?.reference ?? (open ? `gdp-${id.slice(0, 8)}` : undefined);
+  // "Gennaro Tom" (#222): made by the API when the payment opens.
+  const reference = instructions?.reference;
   const monzo = linkPayout?.monzoHandle ? monzoPayUrl(linkPayout.monzoHandle, amount, reference) : null;
   const revolut = linkPayout?.revolutTag ? revolutPayUrl(linkPayout.revolutTag) : null;
   const startError = initiate.error?.message;
@@ -113,13 +117,13 @@ export default function PayPage() {
   const fmtSort = (sc: string) => sc.replace(/(\d{2})(?=\d)/g, '$1-');
 
   const done = due <= 0;
-  const action = settled
+  const action = confirming && open ? null : settled
     ? <Button grow href={`/session/${id}`} replace>Done</Button>
     : done
       ? <Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button>
       : startError
         ? <Button grow busy={initiate.isPending} onClick={() => { started.current = false; initiate.reset(); }}>Try again</Button>
-        : <Button grow busy={markPaid.isPending} disabled={!open} onClick={() => setConfirming(true)}>I’ve paid</Button>;
+        : <Button grow disabled={!open} onClick={() => setConfirming(true)}>I’ve paid</Button>;
   const confirmPaid = () => {
     if (!open) return;
     markPaid.mutate(open.paymentId, { onSuccess: () => router.replace(`/session/${id}`), onSettled: () => setConfirming(false) });
@@ -133,19 +137,31 @@ export default function PayPage() {
         <div className="vh" role="status">{copied ? `${COPIED[copied] ?? 'Detail'} copied` : ''}</div>
         <Title
           title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst}`}
-          sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to confirm.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid. By bank transfer.` : 'By bank transfer. Tap a detail to copy it.'}
+          sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to mark it received.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid.` : undefined}
         />
         {done ? null : (
           <>
             {early ? <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice> : null}
-            <h2 className="pay-total"><span>You pay {hostFirst}</span><b>{formatGBP(amount)}</b></h2>
+            <ShareReceipt s={s} b={bill.data} meUserId={mine.userId} owed={owedFor(s, bill.data, mine)}>
+              {lg.sentPence > 0 ? <ReceiptLine quiet name="Paid already" price={`−${(lg.sentPence / 100).toFixed(2)}`} /> : null}
+              <ReceiptLine strong name={`You pay ${hostFirst}`} price={formatGBP(amount)} />
+            </ShareReceipt>
+            {monzo || revolut ? (
+              <div className="pay-apps">
+                {monzo ? <><a className="btn btn--monzo" href={monzo} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Monzo</a><p className="pay-apps__hint">Amount and reference filled in.</p></> : null}
+                {revolut ? <><a className="btn btn--revolut" href={revolut} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Revolut</a><p className="pay-apps__hint">Opens Revolut. Enter {formatGBP(amount)}.</p></> : null}
+              </div>
+            ) : null}
             {bd ? (
-              <Box list label="Bank details">
-                <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />
-                <CopyRow k="Sort code" v={fmtSort(bd.sortCode)} copied={copied === 's'} onCopy={() => copy('s', bd.sortCode)} />
-                <CopyRow k="Account no." v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
-                {reference ? <CopyRow k="Reference" v={reference} copied={copied === 'r'} onCopy={() => copy('r', reference)} /> : null}
-              </Box>
+              <section aria-labelledby="bank-h">
+                <h2 id="bank-h" className="pay-by">{monzo || revolut ? 'Or pay by bank transfer' : 'Pay by bank transfer'}</h2>
+                <Box list label="Bank details">
+                  <CopyRow k="Name" v={bd.accountHolderName} copied={copied === 'n'} onCopy={() => copy('n', bd.accountHolderName)} />
+                  <CopyRow k="Sort code" v={fmtSort(bd.sortCode)} copied={copied === 's'} onCopy={() => copy('s', bd.sortCode)} />
+                  <CopyRow k="Account no." v={bd.accountNumber} copied={copied === 'a'} onCopy={() => copy('a', bd.accountNumber)} />
+                  {reference ? <CopyRow k="Reference" v={reference} copied={copied === 'r'} onCopy={() => copy('r', reference)} /> : null}
+                </Box>
+              </section>
             ) : verdict === 'mismatch' ? (
               <Notice tone="error" title={`These aren’t ${hostFirst}’s bank details.`}>Don’t pay them. Scan {hostFirst}’s own QR code.</Notice>
             ) : initiate.isPending || verdict === 'checking' ? (
@@ -153,34 +169,23 @@ export default function PayPage() {
             ) : (
               <Notice title={`No bank details from ${hostFirst} yet.`}>Scan their QR code again with this phone.</Notice>
             )}
-            {monzo || revolut ? (
-              <div className="pay-apps">
-                {monzo ? <a className="btn btn--monzo" href={monzo} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Monzo</a> : null}
-                {revolut ? <a className="btn btn--revolut" href={revolut} target="_blank" rel="noopener noreferrer"><span className="pay-apps__mark" aria-hidden="true" />Pay with Revolut</a> : null}
-              </div>
-            ) : null}
             {startError ? <Notice tone="error">{startError}</Notice> : null}
             {markPaid.isError ? <Notice tone="error">{markPaid.error.message}</Notice> : null}
+            {confirming && open ? (
+              <div ref={askRef} tabIndex={-1} className="confirm-inline" role="group" aria-labelledby="paid-t" aria-describedby="paid-d">
+                <h2 id="paid-t" className="confirm-inline__h">Are you sure you’ve paid?</h2>
+                <p className="confirm-inline__amount">{formatGBP(amount)}</p>
+                <p id="paid-d" className="muted">Only once it’s left your account. {hostFirst} checks it’s landed.</p>
+                <div className="confirm-inline__acts">
+                  <Button tone="secondary" onClick={() => setConfirming(false)}>Not yet</Button>
+                  <Button busy={markPaid.isPending} onClick={confirmPaid}>Yes, I’ve paid</Button>
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </Page>
-      <ActionBar>{action}</ActionBar>
-      {confirming && open ? (
-        <Dialog
-          id="paid-t"
-          describedBy="paid-d"
-          title="Are you sure you’ve paid?"
-          onClose={() => setConfirming(false)}
-          actions={(
-            <>
-              <Button tone="secondary" onClick={() => setConfirming(false)}>Not yet</Button>
-              <Button busy={markPaid.isPending} onClick={confirmPaid}>Yes, I’ve paid</Button>
-            </>
-          )}
-        >
-          <p id="paid-d" className="muted">Only once {formatGBP(amount)} has left your account. {hostFirst} checks it’s arrived.</p>
-        </Dialog>
-      ) : null}
+      {action ? <ActionBar>{action}</ActionBar> : null}
     </>
   );
 }

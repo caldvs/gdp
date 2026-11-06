@@ -114,7 +114,7 @@ test('starting a payment fails once: Try again works and only one payment is ope
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await expect(sam.getByRole('alert').filter({ hasText: /boom|Couldn|Our side/ }).or(sam.getByText('boom')).first()).toBeVisible();
   await sam.getByRole('button', { name: 'Try again' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible();
   const initiates = api.requests.filter((r) => r.method === 'POST' && r.path === `/v1/sessions/${SID}/payments`);
   expect(initiates.length).toBe(2);
   expect(api.participants.find((p) => p.userId === 'u-sam')!.payment.status).toBe('pending');

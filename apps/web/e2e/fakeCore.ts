@@ -513,7 +513,8 @@ export class FakeCore {
       me.payment = aggregate(me.payments ?? []);
       return json({
         payment: { paymentId: entry.paymentId, sessionId: SID, payerUserId: user.userId, amountPence, status: 'pending' },
-        instructions: { type: 'manual_transfer', reference: 'gdp-0193ab12', amountPence, links: {}, bankDetails: LEAD_BANK },
+        // #222: the venue and the guest's first name, as the API's paymentReference.
+        instructions: { type: 'manual_transfer', reference: [this.venue?.name, me.displayName?.split(' ')[0]].filter(Boolean).join(' '), amountPence, links: {}, bankDetails: LEAD_BANK },
       }, 201);
     }
     // The lead saw the money land: confirm what's sent, close what's opened

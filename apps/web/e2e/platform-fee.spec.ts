@@ -35,12 +35,11 @@ test('on a hold, guests round what they owe up to the next pound', async ({ brow
   await expect(sam.getByTestId('your-share')).toHaveText('£18.00');
 
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.locator('.pay-total')).toHaveText('You pay Callum£18.00');
+  await expect(sam.getByRole('region', { name: 'Your share' })).toContainText('You pay Callum£18.00');
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
-  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
+  await sam.getByRole('group', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £18.00.')).toBeVisible(POLL);
-  await expect(sam.getByText('Round-up', { exact: true })).toBeVisible();
-  await expect(sam.getByText('£0.75')).toBeVisible();
+  await expect(sam.getByRole('region', { name: 'Your share' })).toContainText('Round-up0.75');
 
   await expect(lead.getByText(/^Says they’ve paid £18\.00/)).toBeVisible(POLL);
 });

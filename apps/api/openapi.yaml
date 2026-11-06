@@ -2564,7 +2564,7 @@ components:
             accountHolderName: { type: string }
         reference:
           type: string
-          description: Short reference the guest should put on their bank transfer (≤18 chars)
+          description: "What the guest puts on their bank transfer: the venue and their first name ('Gennaro Tom'), letters, digits and spaces, at most 18 characters"
         amountPence: { type: integer, minimum: 1 }
         links:
           type: object

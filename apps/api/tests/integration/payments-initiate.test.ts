@@ -59,7 +59,8 @@ describe('POST /v1/sessions/:id/payments', () => {
     expect(body.payment).not.toHaveProperty('provider');
     expect(body.payment.status).toBe('pending');
     expect(body.instructions.type).toBe('manual_transfer');
-    expect(body.instructions.reference).toBe(`gdp-${sessionId.slice(0, 8)}`);
+    // "Gennaro Tom" (#222): the venue and the guest, in what banks accept.
+    expect(body.instructions.reference).toMatch(/^[A-Za-z0-9 ]{1,18}$/);
     expect(body.instructions.amountPence).toBe(body.payment.amountPence);
   });
 

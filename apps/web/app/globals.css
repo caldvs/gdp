@@ -588,25 +588,20 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .testbar__check input { width: 18px; height: 18px; }
 
 /* ---------- Paid: waiting for the lead, then all square (#184) ---------- */
-.pay-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 76px; padding: 0 16px; border-radius: var(--radius-card); background: var(--accent); color: #fff; font-size: inherit; font-weight: inherit; }
-.pay-total span { font-size: 19px; font-weight: 700; }
-.pay-total b { font-family: var(--display); font-size: 36px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.paid-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding-top: 8px; }
-.paid-hero .steps { align-self: stretch; text-align: left; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); }
-.paid-hero__mark { position: relative; width: 128px; height: 128px; display: flex; align-items: center; justify-content: center; }
-.paid-hero__ripple { position: absolute; inset: 0; border-radius: 50%; background: var(--sky); opacity: 0; animation: paid-ripple 2.4s ease-out infinite; }
-.paid-hero__ripple--2 { animation-delay: 1.2s; }
-.paid-hero__coin { position: relative; width: 64px; height: 64px; border-radius: 50%; background: var(--sky); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 34px; box-shadow: 0 0 0 18px var(--accent-tint); animation: paid-coin 2.4s ease-in-out infinite; }
-.paid-hero__mark--ok { width: 96px; height: 96px; margin: 16px; border-radius: 50%; background: var(--ok-ink); color: #fff; box-shadow: 0 0 0 16px var(--ok-bg); animation: paid-pop .45s cubic-bezier(.2,.8,.2,1) both; }
-.paid-hero__tick { stroke-dasharray: 40; animation: paid-draw .4s .25s ease-out both; }
-.paid-hero__h { font-family: var(--display); font-size: 44px; font-weight: 700; line-height: .95; }
-.paid-hero__p { max-width: 300px; font-size: 16px; line-height: 1.45; color: var(--mute); }
-.paid-hero__p b { color: var(--ink); }
-@keyframes paid-ripple { 0% { transform: scale(.6); opacity: .5; } 100% { transform: scale(1.5); opacity: 0; } }
-@keyframes paid-coin { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-@keyframes paid-pop { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: none; } }
-@keyframes paid-draw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
-@media (prefers-reduced-motion: reduce) { .paid-hero__ripple, .paid-hero__coin, .paid-hero__mark--ok, .paid-hero__tick { animation: none; } .paid-hero__ripple { opacity: .15; transform: scale(1.2); } }
+/* G4: sent, waiting for the lead to mark it received (#222). */
+.wait-box { display: flex; align-items: center; gap: 14px; margin-top: 20px; padding: 16px; border-radius: var(--radius-card); background: var(--accent-tint); }
+.wait-box > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+.wait-box > span:last-child > span { font-size: 14px; color: var(--mute); }
+.wait-box__ring { position: relative; flex: none; width: 40px; height: 40px; }
+.wait-box__ring::before, .wait-box__ring::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 4px solid var(--card-line); }
+.wait-box__ring::after { border-color: transparent; border-top-color: var(--accent); border-right-color: var(--accent); animation: spin 1s linear infinite; }
+.wait-box__ring b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--accent); font-weight: 800; }
+@media (prefers-reduced-motion: reduce) { .wait-box__ring::after { animation-duration: 3s; } }
+.receipt__stamp { display: flex; justify-content: flex-end; padding: 10px 6px 2px; }
+.stamp-paid--sent { border-width: 2px; border-style: dashed; border-color: var(--quiet); color: var(--mute); }
+.pay-apps__hint { margin-top: -2px; text-align: center; font-size: 13px; color: var(--mute); }
+.pay-by { margin: 24px 0 8px; font-size: 15px; font-weight: 500; color: var(--mute); }
+.confirm-inline__amount { font-family: var(--display); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 /* ---------- Joining: the QR's landing page for a guest (#183) ---------- */
 .join-hero { background: var(--sky); color: #fff; padding: 0 var(--gutter) 56px; margin-bottom: -40px; }
@@ -626,7 +621,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* ---------- Pay in the guest's banking app (4 Nov) ---------- */
 /* Outline buttons, each with its bank's mark, so the amount band and
    "I've paid" stay the only solid blocks on the screen (7 Nov). */
-.pay-apps { display: flex; flex-direction: column; gap: 10px; }
+.pay-apps { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 .btn--monzo, .btn--revolut { background: var(--bg); color: var(--ink); border: 2px solid var(--ink); font-weight: 700; }
 .btn--monzo:hover, .btn--revolut:hover { background: var(--hover); }
 .btn--monzo .pay-apps__mark { background: #ff4f40; }

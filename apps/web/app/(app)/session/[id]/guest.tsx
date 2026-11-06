@@ -5,7 +5,7 @@
  * then see where things stand until the lead closes the bill
  * (GuestTable). Pay lives in ./pay.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
@@ -14,7 +14,7 @@ import { allClaimed, itemStatuses as coreItemStatuses, openedEarly, paymentsOpen
 import { claimRows, openPence } from '@gdp/core/lib/claimRows';
 import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
-  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Steps, Title, TotalLine, Totals, firstName,
+  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { billTitle } from '@/components/PageTransition';
@@ -236,13 +236,30 @@ function WaitingForTable({ s, b, meUserId, onBack, onSee }: { s: Session; b: Bil
 }
 
 /** G2.3: the lead has opened payments, so here's what you owe. */
-function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; meUserId: string; owed: number; onChange: () => void }) {
-  const host = s.participants.find((p) => p.userId === s.creatorUserId);
-  const hostFirst = firstName(host?.displayName);
+/**
+ * The guest's share as a receipt (#222): their lines, service, the round-up,
+ * then `children` for the last lines (You owe, Sent to Callum…). `stamp`
+ * marks it SENT (waiting for the lead) or PAID (All square).
+ */
+export function ShareReceipt({ s, b, meUserId, owed, stamp, children }: { s: Session; b: Bill; meUserId: string; owed: number; stamp?: 'sent' | 'paid'; children: ReactNode }) {
   const mine = myLines(s, b, meUserId);
   const subtotal = mine.reduce((a, l) => a + l.pence, 0);
   const fee = projectFeePence(s, b, meUserId);
   const extras = Math.max(0, owed - subtotal - fee);
+  return (
+    <Receipt label="Your share" head={b.venue?.name ?? 'Your share'}>
+      {mine.map((l) => <ReceiptLine key={l.key} name={l.name} price={(l.pence / 100).toFixed(2)} />)}
+      {extras > 0 ? <ReceiptLine quiet name="Service" price={(extras / 100).toFixed(2)} /> : null}
+      {fee > 0 ? <ReceiptLine quiet name="Round-up" price={(fee / 100).toFixed(2)} /> : null}
+      {children}
+      {stamp ? <div className="receipt__stamp"><span className={stamp === 'sent' ? 'stamp-paid stamp-paid--sent' : 'stamp-paid'}>{stamp === 'sent' ? 'SENT' : 'PAID'}</span></div> : null}
+    </Receipt>
+  );
+}
+
+function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; meUserId: string; owed: number; onChange: () => void }) {
+  const host = s.participants.find((p) => p.userId === s.creatorUserId);
+  const hostFirst = firstName(host?.displayName);
   return (
     <>
       <Page sub>
@@ -250,12 +267,9 @@ function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; m
         {openedEarly(s, b) ? <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice> : null}
         <Title title={`You owe ${hostFirst}`} />
         <p className="owed-big" data-testid="your-share">{formatGBP(owed)}</p>
-        <Receipt label="Your share" head={b.venue?.name ?? 'Your share'}>
-          {mine.map((l) => <ReceiptLine key={l.key} name={l.name} price={(l.pence / 100).toFixed(2)} />)}
-          {extras > 0 ? <ReceiptLine quiet name="Service" price={(extras / 100).toFixed(2)} /> : null}
-          {fee > 0 ? <ReceiptLine quiet name="Round-up" price={(fee / 100).toFixed(2)} /> : null}
+        <ShareReceipt s={s} b={b} meUserId={meUserId} owed={owed}>
           <ReceiptLine strong name="You owe" price={formatGBP(owed)} />
-        </Receipt>
+        </ShareReceipt>
       </Page>
       <ActionBar stack>
         <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(owed)}</Button>
@@ -283,19 +297,59 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   const waitingPence = l?.waiting.reduce((a, e) => a + e.amountPence, 0) ?? 0;
   const mustPay = due > 0;
   const sentPayments = l?.entries.filter((e) => e.status === 'succeeded' || (e.status === 'pending' && !!e.payerClaimedPaidAt)) ?? [];
+  const more = !closed && open.length > 0 && onMore
+    ? <Button tone="text" onClick={onMore}>I had something else</Button>
+    : null;
+
+  // G4.3 All square: the lead has all of it.
+  if (me && l?.settled) {
+    return (
+      <>
+        <Page sub>
+          {isGuest ? null : <BackLink href="/">Bills</BackLink>}
+          <Title vt={billTitle(s.sessionId)} title="All square" sub={<>{closed ? <><Badge tone="ok">Settled</Badge> </> : null}{hostFirst} got your {formatGBP(l.confirmedPence)}. Nothing more to do.</>} />
+          <ShareReceipt s={s} b={b} meUserId={meUserId} owed={myOwed} stamp="paid">
+            <ReceiptLine strong name={`Paid to ${hostFirst}`} price={formatGBP(l.confirmedPence)} />
+          </ShareReceipt>
+          <p className="small muted" role="status">{hostFirst} marked it received.{closed ? null : ` ${hostFirst} marks the bill as settled once everyone’s paid.`}</p>
+        </Page>
+        <ActionBar stack>
+          {more}
+          {isGuest ? null : <Button tone={closed ? 'primary' : 'secondary'} href="/" replace>{closed ? 'Done' : 'Back to bills'}</Button>}
+        </ActionBar>
+      </>
+    );
+  }
+  // G4 Waiting: sent, and the lead hasn't marked it received yet.
+  if (me && !mustPay && waitingPence > 0) {
+    return (
+      <>
+        <Page sub>
+          {isGuest ? null : <BackLink href="/">Bills</BackLink>}
+          <Title vt={billTitle(s.sessionId)} title={`Waiting for ${hostFirst}`} sub={`You’ve sent ${formatGBP(waitingPence)}.`} />
+          <ShareReceipt s={s} b={b} meUserId={meUserId} owed={myOwed} stamp="sent">
+            {l && l.confirmedPence > 0 ? <ReceiptLine quiet name={`${hostFirst} has`} price={formatGBP(l.confirmedPence)} /> : null}
+            <ReceiptLine strong name={`Sent to ${hostFirst}`} price={formatGBP(waitingPence)} />
+          </ShareReceipt>
+          <div className="wait-box" role="status" aria-live="polite">
+            <span className="wait-box__ring" aria-hidden="true"><b>£</b></span>
+            <span><b>Waiting for {hostFirst} to mark it received</b><span>This page updates by itself.</span></span>
+          </div>
+        </Page>
+        <ActionBar stack>
+          <Button tone="secondary" href={`/session/${s.sessionId}/pay`}>See {hostFirst}’s bank details</Button>
+          {more}
+        </ActionBar>
+      </>
+    );
+  }
 
   return (
     <>
       <Page sub>
         {isGuest ? null : <BackLink href="/">Bills</BackLink>}
         <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Settled' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
-        {l?.settled ? (
-          <PaidHero done host={hostFirst} pence={l.confirmedPence} />
-        ) : mustPay ? (
-          <Notice title={`You owe ${hostFirst} ${formatGBP(due)}${l && l.sentPence > 0 ? ' more' : ''}`} />
-        ) : waitingPence > 0 ? (
-          <PaidHero host={hostFirst} pence={waitingPence} />
-        ) : null}
+        {mustPay ? <Notice title={`You owe ${hostFirst} ${formatGBP(due)}${l && l.sentPence > 0 ? ' more' : ''}`} /> : null}
 
         {me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? (
           <Section title="You had">
@@ -356,30 +410,3 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   );
 }
 
-/**
- * After *I've paid* (#184): the guest waits here until the lead confirms,
- * then it turns to *All square*. The session polls while it's open (3–5s),
- * so the change needs no reload.
- */
-function PaidHero({ host, pence, done = false }: { host: string; pence: number; done?: boolean }) {
-  return (
-    <div className="paid-hero" role="status" aria-live="polite">
-      {done ? (
-        <span className="paid-hero__mark paid-hero__mark--ok" aria-hidden="true">
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path className="paid-hero__tick" d="m5 12 5 5 9-10" /></svg>
-        </span>
-      ) : (
-        <span className="paid-hero__mark" aria-hidden="true"><span className="paid-hero__ripple" /><span className="paid-hero__ripple paid-hero__ripple--2" /><span className="paid-hero__coin">£</span></span>
-      )}
-      <h2 className="paid-hero__h">{done ? 'All square' : `Waiting for ${host}…`}</h2>
-      <p className="paid-hero__p">
-        {done ? <>{host} got your <b>{formatGBP(pence)}</b>. Nothing more to do.</> : <>You’ve sent <b>{formatGBP(pence)}</b>. {host} will confirm when it lands in their account.</>}
-      </p>
-      <Steps steps={[
-        { label: 'Picked your items', state: 'done' },
-        { label: `Sent ${formatGBP(pence)} to ${host}`, state: 'done' },
-        { label: done ? `${host} confirmed` : `${host} confirms`, state: done ? 'done' : 'busy' },
-      ]} />
-    </div>
-  );
-}

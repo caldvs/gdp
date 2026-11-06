@@ -71,7 +71,7 @@ test('Waiting for the table folds lines away; claiming the last line shows every
   await expect(sam.getByTestId('your-share')).toHaveText('£22.50');
   await expect(sam.getByText(/opened payments before every line/)).toHaveCount(0);
   await sam.getByRole('link', { name: 'Pay Callum £22.50' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible();
   expect(api.paymentsOpenedAt).toBeUndefined();
 });
 
@@ -98,6 +98,6 @@ test('the lead can open payments early; it confirms in place and guests are told
   await expect(sam.getByText('Callum opened payments before every line was claimed. What you owe won’t change.')).toBeVisible();
   await expect(sam.getByTestId('your-share')).toHaveText('£22.50');
   await sam.getByRole('link', { name: 'Pay Callum £22.50' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible();
   await expect(sam.getByText(/opened payments before every line/)).toBeVisible();
 });

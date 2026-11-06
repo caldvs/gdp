@@ -112,7 +112,7 @@ test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
   await sam.getByRole('button', { name: 'Claim Calamari' }).click(POLL);
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.getByRole('link', { name: 'Pay with Monzo' })).toHaveAttribute('href', 'https://monzo.me/callum.davies/22.50?d=gdp-0193ab12');
+  await expect(sam.getByRole('link', { name: 'Pay with Monzo' })).toHaveAttribute('href', 'https://monzo.me/callum.davies/22.50?d=Gennaro%20Sam');
   await expect(sam.getByRole('link', { name: 'Pay with Revolut' })).toHaveAttribute('href', 'https://revolut.me/callumd');
 
   const api2 = new FakeApi();
@@ -137,7 +137,7 @@ test('tapping a bank detail copies the raw value', async ({ browser, browserName
   await sam.getByRole('button', { name: 'Copy Account no.' }).click();
   expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('00079660');
   await sam.getByRole('button', { name: 'Copy reference' }).click();
-  expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('gdp-0193ab12');
+  expect(await sam.evaluate(() => navigator.clipboard.readText())).toBe('Gennaro Sam');
 });
 
 test('guest table after the lead closes: what they paid, the tick, Done goes home', async ({ browser }) => {
@@ -157,7 +157,7 @@ test('guest table after the lead closes: what they paid, the tick, Done goes hom
 
   await expect(sam.getByText('Settled', { exact: true })).toBeVisible(POLL);
   await expect(sam.getByText('Callum marks the bill as settled once everyone’s paid')).toHaveCount(0);
-  await expect(sam.locator('.totals__line--total')).toContainText('£17.25');
+  await expect(sam.getByRole('region', { name: 'Your share' })).toContainText('Paid to Callum£17.25');
   await sam.getByRole('link', { name: 'Done' }).click();
   await expect(sam).toHaveURL(/\/$/);
 });

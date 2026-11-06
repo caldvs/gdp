@@ -64,7 +64,7 @@ describe('manual payment mode — initiate returns bank details + optional links
     expect(body.instructions.bankDetails.sortCode).toBe('040668');
     expect(body.instructions.bankDetails.accountNumber).toBe('00079660');
     expect(body.instructions.bankDetails.accountHolderName).toBe('Test Lead');
-    expect(body.instructions.reference).toMatch(/^gdp-[0-9a-f]{8}$/);
+    expect(body.instructions.reference).toMatch(/^[A-Za-z0-9 ]{1,18}$/);
     expect(body.instructions.amountPence).toBeGreaterThan(0);
     expect(body.instructions.links).toEqual({}); // no Monzo/Revolut handles set
   });
@@ -89,7 +89,7 @@ describe('manual payment mode — initiate returns bank details + optional links
     expect(body.payment.status).toBe('pending');
     expect(body.instructions.type).toBe('manual_transfer');
     expect(body.instructions.bankDetails).toBeUndefined();
-    expect(body.instructions.reference).toMatch(/^gdp-[0-9a-f]{8}$/);
+    expect(body.instructions.reference).toMatch(/^[A-Za-z0-9 ]{1,18}$/);
     expect(body.instructions.links).toEqual({});
   });
 

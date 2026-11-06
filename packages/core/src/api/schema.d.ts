@@ -1845,7 +1845,7 @@ export interface components {
                 accountNumber: string;
                 accountHolderName: string;
             };
-            /** @description Short reference the guest should put on their bank transfer (≤18 chars) */
+            /** @description What the guest puts on their bank transfer: the venue and their first name ('Gennaro Tom'), letters, digits and spaces, at most 18 characters */
             reference: string;
             amountPence: number;
             /** @description One-tap deep links into popular banking apps; populated only if the lead has the matching handle saved on `payoutAccount`. */

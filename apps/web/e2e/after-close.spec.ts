@@ -33,10 +33,10 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
   await expect(sam.getByText('Settled', { exact: true })).toBeVisible(POLL);
   await expect(sam.getByText('You owe Callum £17.25')).toBeVisible();
   await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible(POLL);
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible(POLL);
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
-  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
-  await expect(sam.getByText('Callum will confirm')).toBeVisible(POLL);
+  await sam.getByRole('group', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
+  await expect(sam.getByText('Waiting for Callum to mark it received')).toBeVisible(POLL);
 
   // The closed bill isn't polled; the lead comes back to it and marks it received.
   await lead.reload();

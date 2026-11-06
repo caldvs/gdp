@@ -264,17 +264,17 @@ test('picks freeze once the guest has said they’ve sent it', async ({ browser 
   const sam = await diner(browser, api, users.sam);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible();
   // Not sent yet: going back still shows the pick screen.
   await sam.getByRole('link', { name: 'Your items' }).click();
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible();
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
-  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
+  await sam.getByRole('group', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   // Sent: the session page is the guest table now, with nothing to claim.
-  await expect(sam.getByText('Callum will confirm')).toBeVisible();
+  await expect(sam.getByText('Waiting for Callum to mark it received')).toBeVisible();
   await expect(sam.getByRole('button', { name: 'Claim Calamari' })).toHaveCount(0);
-  await expect(sam.getByRole('heading', { name: 'Still to claim' })).toBeVisible();
+  await expect(sam.getByRole('button', { name: 'I had something else' })).toBeVisible();
 });
 
 test('#217: the lead’s bill is one page: what needs them, Claim on the bill, lines nobody has tinted, who’s paid', { tag: '@webkit' }, async ({ browser }) => {

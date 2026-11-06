@@ -105,14 +105,14 @@ test('pay', async ({ page }) => {
   await open(page, api, users.sam, `/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);
   await page.getByRole('button', { name: 'Claim Lasagne' }).click();
   await page.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(page.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(page.getByText('Gennaro Sam')).toBeVisible();
   await expect(page).toHaveScreenshot('pay.png', shot);
 });
 
 test('guest table', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.sam, `/session/${SID}`);
-  await expect(page.getByText('Callum will confirm')).toBeVisible();
+  await expect(page.getByText('Waiting for Callum to mark it received')).toBeVisible();
   await expect(page).toHaveScreenshot('guest-table.png', shot);
 });
 

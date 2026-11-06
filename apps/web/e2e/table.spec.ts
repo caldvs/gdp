@@ -31,10 +31,10 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await expect(sam.getByTestId('your-share')).toHaveText('£28.50');
   await sam.getByRole('link', { name: 'Continue to payment' }).click();
-  await expect(sam.getByText('gdp-0193ab12')).toBeVisible();
+  await expect(sam.getByText('Gennaro Sam')).toBeVisible();
   await sam.getByRole('button', { name: 'I’ve paid' }).click();
-  await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
-  await expect(sam.getByText('Callum will confirm')).toBeVisible();
+  await sam.getByRole('group', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
+  await expect(sam.getByText('Waiting for Callum to mark it received')).toBeVisible();
 
   // --- Lead: Sam says they've sent it. Received. The bill must stay open.
   await lead.goto(`/session/${SID}`);
@@ -54,9 +54,6 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await tom.goto(`/session/${SID}`);
   await tom.getByRole('button', { name: 'Join the split for Calamari' }).click();
   await expect(tom.getByTestId('your-share')).toHaveText('£11.25');
-
-  // Sam, still watching the table, sees Tom in the split (polling).
-  await expect(sam.getByText('Tom').first()).toBeVisible({ timeout: 15_000 });
 
   // --- Lead settles. Tom hasn't paid yet; the confirm says so.
   await lead.getByRole('button', { name: 'Mark as settled' }).click();

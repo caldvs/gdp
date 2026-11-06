@@ -20,6 +20,7 @@ import type { VerifiedCaller } from '../../context/caller.js';
 import type { Participant, Session } from '../../types/sessions.js';
 import type { Payment, PaymentEvent, PaymentInstructions } from '../../types/payments.js';
 import type { PayoutAccount } from '../../types/users.js';
+import { paymentReference } from './reference.js';
 
 // The guest's row changed under us more times than retrying could absorb.
 const busy = () =>
@@ -82,7 +83,7 @@ export const paymentService = {
             payment: old,
             instructions: buildManualInstructions({
               payoutAccount: collectorNow?.payoutAccount,
-              reference: `gdp-${session.sessionId.slice(0, 8)}`,
+              reference: await referenceFor(session, participant),
               amountPence: old.amountPence,
             }),
           };
@@ -113,7 +114,7 @@ export const paymentService = {
       // client shows the ones from the QR.
       const collector = await userStore.get(session.collectorUserId);
       const paymentId = uuidv7();
-      const reference = `gdp-${session.sessionId.slice(0, 8)}`;
+      const reference = await referenceFor(session, participant);
       const amountPence = duePence;
       const instructions = buildManualInstructions({
         payoutAccount: collector?.payoutAccount,
@@ -412,6 +413,12 @@ async function assertPaymentsOpen(session: Session): Promise<void> {
       { unclaimedItemIds: open },
     );
   }
+}
+
+/** "Gennaro Tom": the venue on the pinned bill (it may have been renamed) and the guest. */
+async function referenceFor(session: Session, participant: Participant): Promise<string> {
+  const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+  return paymentReference(bill?.venue?.name ?? session.venue?.name, participant.displayName);
 }
 
 async function owedNow(session: Session, participant: Participant): Promise<number> {

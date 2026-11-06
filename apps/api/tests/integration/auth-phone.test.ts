@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createSessionTokenVerifier } from '../../src/services/auth.js';
 import { ConsoleMessenger } from '../../src/services/messaging/messenger.js';
+import { ConsoleSmsSender } from '../../src/services/messaging/sms.js';
 import { whatsappStore } from '../../src/storage/whatsappStore.js';
 
 const SECRET = new TextEncoder().encode('test-secret-must-be-at-least-16-bytes');
@@ -14,11 +15,15 @@ const SECRET = new TextEncoder().encode('test-secret-must-be-at-least-16-bytes')
 const mobile = () => `07700 ${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`;
 const e164 = (typed: string) => `+44${typed.replace(/\D/g, '').slice(1)}`;
 
-function build(messenger: ConsoleMessenger | null = new ConsoleMessenger()) {
+function build(
+  messenger: ConsoleMessenger | null = new ConsoleMessenger(),
+  sms: ConsoleSmsSender | null = null,
+) {
   const app = createApp({
     sessionJwtSecret: SECRET,
     idTokenVerifier: createSessionTokenVerifier(SECRET),
     phoneMessenger: messenger,
+    phoneSms: sms,
   });
   return { app, messenger };
 }
@@ -56,9 +61,13 @@ const lastCode = (m: ConsoleMessenger) => m.outbox.at(-1)!.template!.copyCode!;
 describe('phone sign-in (#213)', () => {
   it('methods say what is on', async () => {
     const on = await (await build().app.request('/v1/auth/methods')).json();
-    expect(on).toEqual({ email: true, phone: true, sms: false });
+    expect(on).toEqual({ email: true, phone: true, whatsapp: true, sms: false });
     const off = await (await build(null).app.request('/v1/auth/methods')).json();
-    expect(off).toEqual({ email: true, phone: false, sms: false });
+    expect(off).toEqual({ email: true, phone: false, whatsapp: false, sms: false });
+    const smsOnly = await (
+      await build(null, new ConsoleSmsSender()).app.request('/v1/auth/methods')
+    ).json();
+    expect(smsOnly).toEqual({ email: true, phone: true, whatsapp: false, sms: true });
   });
 
   it('sends a 4-digit code by WhatsApp template, signs in, makes the account once', async () => {
@@ -141,6 +150,25 @@ describe('phone sign-in (#213)', () => {
       );
     expect(code?.[1]).toBe(code?.[2]);
     expect(await verify(app, s.requestId, code![1]!)).toMatchObject({ status: 'signedIn' });
+  });
+
+  it('#231: by text, the code in our words; no WhatsApp needed', async () => {
+    const sms = new ConsoleSmsSender();
+    const { app } = build(null, sms);
+    const typed = mobile();
+    const res = await call(app, 'POST', '/v1/auth/phone/start', { phone: typed, channel: 'sms' });
+    expect(res.status).toBe(200);
+    const { requestId } = (await res.json()) as Started;
+    expect(sms.outbox).toHaveLength(1);
+    expect(sms.outbox[0]!.to).toBe(e164(typed));
+    const m =
+      /^(\d{4}) is your Pay Me Back code\. Don’t share this code\.\n\n@paymeback\.dev #\1$/.exec(
+        sms.outbox[0]!.body,
+      );
+    expect(m).not.toBeNull();
+    expect(await verify(app, requestId, m![1]!)).toMatchObject({ status: 'signedIn' });
+    // WhatsApp isn't set up here.
+    expect((await call(app, 'POST', '/v1/auth/phone/start', { phone: mobile() })).status).toBe(503);
   });
 
   it('wrong codes count down, then the code is gone', async () => {

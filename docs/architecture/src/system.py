@@ -167,7 +167,7 @@ rect(AX, py, LW - 32, LAMBDA_BOTTOM - 16 - py, 'inner', 7)
 text(AX + 12, py + 22, 'Swappable providers (env)', 't-inner')
 text(AX + 12, py + 44, 'Parser: Bedrock · fixture', 't-mono')
 text(AX + 12, py + 62, 'Email: SES · console     Venue: Location · none', 't-mono')
-text(AX + 12, py + 80, 'WhatsApp: Meta Cloud API · console · none', 't-mono')
+text(AX + 12, py + 80, 'Phone codes: AWS SMS · WhatsApp · console', 't-mono')
 
 # ---- Column 4 nodes
 def c4card(k, title, lines, cls='node'):

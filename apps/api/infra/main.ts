@@ -153,6 +153,14 @@ class GdpBackendStack extends cdk.Stack {
       });
     }
 
+    // #231: texts sign-in codes through AWS End User Messaging SMS when set
+    // (GitHub environment variable SMS_SENDER_ID, or `-c smsSenderId=…`).
+    // The account must be out of the SMS sandbox, with a spend limit, first.
+    const smsSenderId =
+      process.env.SMS_SENDER_ID ||
+      (this.node.tryGetContext('smsSenderId') as string | undefined) ||
+      '';
+
     // The bill reader: Claude Sonnet 4.6 on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Override with
     // `-c bedrockModelId=…`.
@@ -200,6 +208,8 @@ class GdpBackendStack extends cdk.Stack {
         BEDROCK_MODEL_ID: bedrockModelId,
         VENUE_LOOKUP: 'amazon-location',
         SES_FROM_EMAIL: sesFromEmail,
+        // #231: sign-in codes by text, from this alphanumeric sender ID.
+        ...(smsSenderId ? { SMS_SENDER_ID: smsSenderId } : {}),
 
         ...(appBaseUrl ? { APP_BASE_URL: appBaseUrl } : {}),
         // Leads who never pay the table fee: a comma list from the GitHub
@@ -284,6 +294,16 @@ class GdpBackendStack extends cdk.Stack {
         resources: [`arn:aws:geo-places:${this.region}::provider/default`],
       }),
     );
+
+    // #231: send texts, only in this account and region.
+    if (smsSenderId) {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['sms-voice:SendTextMessage'],
+          resources: [`arn:aws:sms-voice:${this.region}:${this.account}:*`],
+        }),
+      );
+    }
 
     // SES send permission for the EmailSender: only as the paymeback.dev
     // domain identity (verified out of band; #154).

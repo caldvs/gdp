@@ -53,6 +53,11 @@ const EnvSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().optional().transform(unwrapSecret),
   WHATSAPP_VERIFY_TOKEN: z.string().optional().transform(unwrapSecret),
   // Paid template sends a month before we stop (and alarm).
+  /** #231: AWS SMS sender ID (1-11 letters/digits) for sign-in texts; unset: no SMS. */
+  SMS_SENDER_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9-]{1,11}$/)
+    .optional(),
   /** #213: the approved authentication template for sign-in codes. */
   WHATSAPP_SIGNIN_TEMPLATE: z.string().optional(),
   WHATSAPP_TEMPLATE_CAP: z.coerce.number().int().nonnegative().default(500),

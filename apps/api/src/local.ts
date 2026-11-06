@@ -1,3 +1,4 @@
+import { ConsoleSmsSender } from './services/messaging/sms.js';
 import { ConsoleMessenger } from './services/messaging/messenger.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
@@ -67,6 +68,8 @@ const app = createApp({
   phoneMessenger: process.env.WHATSAPP_ACCESS_TOKEN
     ? undefined
     : new ConsoleMessenger({ printCodes: true }),
+  // #231: texts too, printed here, unless a real sender ID is set.
+  phoneSms: process.env.SMS_SENDER_ID ? undefined : new ConsoleSmsSender({ printCodes: true }),
   // Test accounts (@test.invalid, no code), same as on dev.
   testAccountSignIn: hasLocalDb && !isProduction,
 });

@@ -72,3 +72,17 @@ test('phone on, email still there: Use email instead', async ({ browser }) => {
   await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
   await expect(page.getByLabel('Email')).toBeVisible();
 });
+
+test('#231 texts where WhatsApp isn’t set up', async ({ browser }) => {
+  const api = new FakeApi();
+  api.phoneSignIn = true;
+  api.phoneChannel = 'sms';
+  const page = await signedOut(browser, api);
+  await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
+  await page.getByLabel('Your mobile number').fill('07700 900123');
+  await page.getByRole('button', { name: 'Send me a code' }).click();
+  await expect(page.getByText('Sent to +44 7700 900123 by text. Works for 10 minutes.')).toBeVisible();
+  expect(api.lastPhoneChannel).toBe('sms');
+  await page.getByLabel('4-digit code').fill(PHONE_CODE);
+  await expect(page).not.toHaveURL(/sign-in/);
+});

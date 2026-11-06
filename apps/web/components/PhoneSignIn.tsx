@@ -8,7 +8,8 @@ import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { BackButton, Button, Title } from './ui';
 
 /**
- * #213 M4 / M4.1: your mobile number, then the 4-digit code from WhatsApp,
+ * #213 M4 / M4.1: your mobile number, then the 4-digit code by text (#231)
+ * or WhatsApp,
  * in the same tab. A new account then gives its name and the email its
  * bill emails go to. Texts come with #231, so there's no *Send it by text
  * instead* yet.
@@ -50,7 +51,8 @@ const looksLikeUkMobile = (typed: string) => /^(?:\+?44|0)?7\d{9}$/.test(typed.r
 
 type Stage = 'PHONE' | 'CODE';
 
-export function PhoneSignIn({ title = 'Sign in', onUseEmail }: { title?: string; onUseEmail?: () => void }) {
+export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmail }: { title?: string; /** #231: texts where WhatsApp isn't set up. */ channel?: 'whatsapp' | 'sms'; onUseEmail?: () => void }) {
+  const how = channel === 'sms' ? 'by text' : 'on WhatsApp';
   const router = useRouter();
   const dest = safeInternalPath(useSearchParams().get('from'));
   const [stage, setStage] = useState<Stage>('PHONE');
@@ -85,7 +87,7 @@ export function PhoneSignIn({ title = 'Sign in', onUseEmail }: { title?: string;
   const send = async (number: string) => {
     setError(null);
     try {
-      const out = await start.mutateAsync({ phone: number, channel: 'whatsapp' });
+      const out = await start.mutateAsync({ phone: number, channel });
       writePending({ phone: out.phone, requestId: out.requestId });
       setPhone(out.phone);
       setRequestId(out.requestId);
@@ -129,7 +131,7 @@ export function PhoneSignIn({ title = 'Sign in', onUseEmail }: { title?: string;
   if (stage === 'PHONE') {
     return (
       <>
-        <Title title={title} sub="We’ll send you a 4-digit code by WhatsApp." />
+        <Title title={title} sub={channel === 'sms' ? 'We’ll text you a 4-digit code.' : 'We’ll send you a 4-digit code by WhatsApp.'} />
         <form
           noValidate
           style={STACK}
@@ -170,7 +172,7 @@ export function PhoneSignIn({ title = 'Sign in', onUseEmail }: { title?: string;
   return (
     <>
       <BackButton onClick={() => { writePending(null); setRequestId(null); setCode(''); setError(null); setStage('PHONE'); }}>Change number</BackButton>
-      <Title title="Enter the code" sub={`Sent to ${shown(phone)} on WhatsApp. Works for 10 minutes.`} />
+      <Title title="Enter the code" sub={`Sent to ${shown(phone)} ${how}. Works for 10 minutes.`} />
       <form noValidate style={STACK} onSubmit={(e) => { e.preventDefault(); void submitCode(code); }}>
         <div className="field">
           <label htmlFor="code" className="vh">4-digit code</label>

@@ -113,6 +113,10 @@ export class FakeCore {
   phoneSignIn = false;
   /** #213: the phone account is new (no name yet). */
   phoneIsNew = false;
+  /** #231: which channel the fake server has for phone codes. */
+  phoneChannel: 'whatsapp' | 'sms' = 'whatsapp';
+  /** The channel the last phone code was asked for. */
+  lastPhoneChannel?: string;
   readonly profilePatches: { displayName?: string; email?: string }[] = [];
   /** Sign-outs everywhere (#155), by user. */
   signedOutEverywhere: string[] = [];
@@ -279,10 +283,10 @@ export class FakeCore {
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
     // #213: phone sign-in, on only when a test turns it on.
-    if (path === '/v1/auth/methods') return json({ email: true, phone: this.phoneSignIn, sms: false });
+    if (path === '/v1/auth/methods') return json({ email: true, phone: this.phoneSignIn, whatsapp: this.phoneSignIn && this.phoneChannel === 'whatsapp', sms: this.phoneSignIn && this.phoneChannel === 'sms' });
     if (path === '/v1/auth/phone/start') {
       const phone = String(body().phone ?? '').replace(/\D/g, '').replace(/^0/, '');
-      this.codeTries = 5; this.signIn = 'pending';
+      this.codeTries = 5; this.signIn = 'pending'; this.lastPhoneChannel = String(body().channel ?? 'whatsapp');
       return json({ ok: true, requestId: SIGN_IN_REQUEST, phone: `+44${phone.replace(/^44/, '')}` });
     }
     if (path === '/v1/auth/phone/verify') {

@@ -11,13 +11,13 @@ type SignedInUser = { userId: string; email: string; displayName: string };
  * error) means email.
  */
 export function useSignInMethods() {
-  return useQuery<{ email: boolean; phone: boolean; sms: boolean }>({
+  return useQuery<{ email: boolean; phone: boolean; whatsapp?: boolean; sms: boolean }>({
     queryKey: ['auth-methods'],
     queryFn: async () => {
       try {
         return await api('/v1/auth/methods');
       } catch {
-        return { email: true, phone: false, sms: false };
+        return { email: true, phone: false, whatsapp: false, sms: false };
       }
     },
     staleTime: 5 * 60 * 1000,

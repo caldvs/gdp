@@ -133,6 +133,24 @@ After step 1, CI keeps the role stack up to date: the dev deploy job redeploys
 `GdpGithubDeploy` as its last step. If a change to its trust locks CI out, rerun
 step 1 from your Mac.
 
+### Turn on sign-in by text (#231)
+
+Sign-in codes go by text through AWS End User Messaging SMS, in eu-west-2.
+Once, in the AWS console (End User Messaging → SMS):
+
+1. **Request production access** (Account → *Request production access*):
+   transactional, UK, one-time sign-in codes, low volume. Until it's
+   granted the account is in the sandbox and texts only numbers verified
+   under *Verified destination numbers*, which is enough to try it.
+2. **Set the monthly SMS spend limit** (new accounts start at $1).
+3. **Request a sender ID** (*Phone numbers* → *Request originator* → Sender
+   ID, United Kingdom): `PayMeBack`. No registration for an unprotected
+   name.
+
+Then set the GitHub environment variable `SMS_SENDER_ID=PayMeBack` (dev
+first) and deploy. `GET /v1/auth/methods` then says `sms: true` and Sign in
+asks for a mobile number. Without it, sign-in stays email only.
+
 ### Turn on WhatsApp (#229, #230)
 
 Off until the Meta app exists. Once you have its details:

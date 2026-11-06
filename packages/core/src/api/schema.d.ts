@@ -114,8 +114,9 @@ export interface paths {
         };
         /**
          * Which ways to sign in are on here
-         * @description #213. `phone` is true once the WhatsApp app is set up on this
-         *     server; `sms` once texts are (#231). Email stays on until phone
+         * @description #213. `whatsapp` is true once the WhatsApp app is set up on this
+         *     server, `sms` once texts are (#231: `SMS_SENDER_ID`), and `phone` if
+         *     either is. Email stays on until phone
          *     sign-in is live.
          */
         get: operations["getSignInMethods"];
@@ -146,7 +147,9 @@ export interface paths {
          *
          *     Codes cost money, so the limits are tight: one every 30 seconds and
          *     3 an hour per number, 10 an hour per IP address, 200 an hour in all
-         *     (429 otherwise). `channel: sms` answers 503 until texts exist (#231).
+         *     (429 otherwise). `channel: sms` texts the code through AWS End User
+         *     Messaging SMS (#231), in our own words; a channel that isn't set up
+         *     here answers 503.
          */
         post: operations["startPhoneSignIn"];
         delete?: never;
@@ -2286,7 +2289,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         email: boolean;
+                        /** @description Phone sign-in by either channel. */
                         phone: boolean;
+                        whatsapp: boolean;
                         sms: boolean;
                     };
                 };

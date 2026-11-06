@@ -8,12 +8,13 @@ import { mintSessionToken } from './sessionToken.js';
 import { maskPhone, parseUkMobile } from '../messaging/phone.js';
 import { whatsappStore } from '../../storage/whatsappStore.js';
 import type { Messenger } from '../messaging/messenger.js';
+import type { SmsSender } from '../messaging/sms.js';
 import type { Logger } from '../../logging/logger.js';
 
 /**
- * #213: sign in with your phone. A 4-digit code goes by WhatsApp (an
- * approved authentication template with a copy-code button); the tab that
- * asked enters it. Same request-secret scheme, attempt limit and hashing as
+ * #213: sign in with your phone. A 4-digit code goes by text (#231) or by
+ * WhatsApp (an approved authentication template with a copy-code button,
+ * or plain text inside the 24-hour window); the tab that asked enters it. Same request-secret scheme, attempt limit and hashing as
  * email sign-in; tighter send limits, because every code costs money.
  * Numbers are stored as E.164 and never logged whole.
  */
@@ -39,8 +40,10 @@ const RATE_LIMIT_MESSAGES: Record<SignInRateLimited['reason'], string> = {
 };
 
 export interface PhoneSignInDeps {
-  /** Null: phone sign-in is off here (no WhatsApp app set up). */
+  /** Null: no WhatsApp here. */
   messenger: Messenger | null;
+  /** #231: texts. Null: no SMS here. Phone sign-in is on with either. */
+  sms?: SmsSender | null;
   jwtSecret: Uint8Array;
   template?: string;
   logger?: Logger;
@@ -61,8 +64,7 @@ export type PhoneCodeResult =
 export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
   available: (): { whatsapp: boolean; sms: boolean } => ({
     whatsapp: deps.messenger !== null,
-    // Text comes with #231.
-    sms: false,
+    sms: !!deps.sms,
   }),
 
   async start(input: {
@@ -71,10 +73,11 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
     sourceIp?: string;
   }): Promise<{ requestId: string; phone: string }> {
     const messenger = deps.messenger;
-    if (!messenger || input.channel === 'sms') {
+    const sms = deps.sms ?? null;
+    if (input.channel === 'sms' ? !sms : !messenger) {
       throw new AppError(
         'CHANNEL_UNAVAILABLE',
-        input.channel === 'sms' ? 'Texts aren’t available yet' : 'Phone sign-in isn’t on here',
+        input.channel === 'sms' ? 'Texts aren’t available here' : 'WhatsApp isn’t available here',
       );
     }
     const e164 = parseUkMobile(input.phone);
@@ -105,11 +108,16 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
     // Inside the 24-hour window they opened by messaging us, a plain message
     // is free and in our own words; outside it only the approved template
     // can go (#230). The last line lets phones offer the code to this site.
-    const viaText = await whatsappStore.windowOpen(e164);
-    if (viaText) {
-      await messenger.sendText(e164, codeText(code));
+    let via: 'sms' | 'text' | 'template';
+    if (input.channel === 'sms') {
+      via = 'sms';
+      await sms!.send(e164, codeText(code));
+    } else if (await whatsappStore.windowOpen(e164)) {
+      via = 'text';
+      await messenger!.sendText(e164, codeText(code));
     } else {
-      await messenger.sendTemplate(e164, {
+      via = 'template';
+      await messenger!.sendTemplate(e164, {
         name: deps.template ?? DEFAULT_SIGNIN_TEMPLATE,
         params: [code],
         copyCode: code,
@@ -120,7 +128,7 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
         event: 'signin.phone.sent',
         to: maskPhone(e164),
         channel: input.channel,
-        via: viaText ? 'text' : 'template',
+        via,
       },
       'Phone code sent',
     );

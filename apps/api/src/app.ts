@@ -15,6 +15,7 @@ import { buildSessionRoutes } from './routes/sessions.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildAuthRoutes } from './routes/auth.js';
 import { WhatsAppCloudMessenger, type Messenger } from './services/messaging/messenger.js';
+import { AwsSmsSender, type SmsSender } from './services/messaging/sms.js';
 import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
@@ -78,6 +79,8 @@ export interface AppDeps {
    * pass a ConsoleMessenger.
    */
   phoneMessenger?: Messenger | null;
+  /** #231: texts sign-in codes. Default: AWS SMS when SMS_SENDER_ID is set. */
+  phoneSms?: SmsSender | null;
   devEmailSignIn?: boolean;
   /**
    * Enable POST /v1/auth/email/test-sign-in (@test.invalid accounts, no
@@ -180,6 +183,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         jwtSecret: sessionJwtSecret,
         phoneMessenger:
           deps.phoneMessenger !== undefined ? deps.phoneMessenger : phoneMessengerFromEnv(),
+        phoneSms: deps.phoneSms !== undefined ? deps.phoneSms : smsFromEnv(),
         ...(env.WHATSAPP_SIGNIN_TEMPLATE ? { phoneTemplate: env.WHATSAPP_SIGNIN_TEMPLATE } : {}),
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
@@ -313,6 +317,11 @@ export const runLeadEmailsNow = async (): Promise<LeadEmailsReport> => {
   if (report.failed.length > 0) throw new Error(`Lead emails: ${report.failed.length} not sent`);
   return report;
 };
+
+/** #231: AWS End User Messaging SMS, when a sender ID is configured. */
+function smsFromEnv(): SmsSender | null {
+  return env.SMS_SENDER_ID ? new AwsSmsSender({ senderId: env.SMS_SENDER_ID }) : null;
+}
 
 /** #213: the real WhatsApp sender, only when the Meta app's secrets are there. */
 function phoneMessengerFromEnv(): Messenger | null {

@@ -220,3 +220,21 @@ describe('#213 phone numbers and the copy-code button', () => {
     ]);
   });
 });
+
+describe('#231 AWS SMS', () => {
+  it('sends a transactional text from the sender ID', async () => {
+    const { AwsSmsSender, ConsoleSmsSender } = await import('./sms.js');
+    const send = vi.fn((_cmd: unknown) => Promise.resolve({ MessageId: 'm-1' }));
+    const s = new AwsSmsSender({ senderId: 'PayMeBack' }, { send } as never);
+    expect(await s.send('+447700900123', 'hi')).toEqual({ messageId: 'm-1' });
+    expect((send.mock.calls[0]![0] as { input: unknown }).input).toEqual({
+      DestinationPhoneNumber: '+447700900123',
+      OriginationIdentity: 'PayMeBack',
+      MessageBody: 'hi',
+      MessageType: 'TRANSACTIONAL',
+    });
+    const c = new ConsoleSmsSender();
+    await c.send('+447700900123', 'x');
+    expect(c.outbox).toEqual([{ to: '+447700900123', body: 'x' }]);
+  });
+});

@@ -3,7 +3,7 @@
  * guest's token, and what that token can and can't reach.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from '../../src/services/auth.js';

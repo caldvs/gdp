@@ -1,6 +1,6 @@
 import { GetObjectCommand, NoSuchKey } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import { s3, BILLS_BUCKET } from '../../storage/s3.js';
 import { billStore } from '../../storage/billStore.js';
 import { ReadQuotaExceeded, readQuotaStore } from '../../storage/readQuotaStore.js';

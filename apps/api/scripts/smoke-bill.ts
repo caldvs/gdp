@@ -19,7 +19,7 @@
 
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../src/lib/uuid.js';
 
 const API = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const GREEN = '\x1b[32m';

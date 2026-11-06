@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import { billStore } from '../../storage/billStore.js';
 import { analysisStore } from '../../storage/analysisStore.js';
 import { AppError } from '../../errors/AppError.js';

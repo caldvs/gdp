@@ -138,21 +138,6 @@ class GdpBackendStack extends cdk.Stack {
         STRIPE_WEBHOOK_SECRET: `gdp-${envName}/stripe-webhook-secret`,
       });
     }
-    // WhatsApp (#229, #230) is off until the Meta app is set up. Turn it on with
-    // WHATSAPP_ENABLED=true (GitHub environment variable, or `-c whatsapp=true`)
-    // once these four are in Secrets Manager. Then subscribe Meta's webhook to
-    // https://<api>/webhooks/whatsapp with the verify token.
-    const whatsappEnabled =
-      process.env.WHATSAPP_ENABLED === 'true' || this.node.tryGetContext('whatsapp') === 'true';
-    if (whatsappEnabled) {
-      Object.assign(secretSources, {
-        WHATSAPP_PHONE_NUMBER_ID: `gdp-${envName}/whatsapp-phone-number-id`,
-        WHATSAPP_ACCESS_TOKEN: `gdp-${envName}/whatsapp-access-token`,
-        WHATSAPP_APP_SECRET: `gdp-${envName}/whatsapp-app-secret`,
-        WHATSAPP_VERIFY_TOKEN: `gdp-${envName}/whatsapp-verify-token`,
-      });
-    }
-
     // #231: texts sign-in codes through AWS End User Messaging SMS when set
     // (GitHub environment variable SMS_SENDER_ID, or `-c smsSenderId=…`).
     // The account must be out of the SMS sandbox, with a spend limit, first.

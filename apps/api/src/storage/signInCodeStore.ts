@@ -29,7 +29,7 @@ const SENDS_PER_IP_HOUR = 20;
 const SENDS_PER_HOUR = 1000;
 // Phone codes cost money per send (#213), so tighter, and their own
 // counters: 3 an hour per number, 10 an hour per IP, 200 an hour in all
-// (about £6 an hour at worst), against SMS and WhatsApp pumping.
+// (about £6 an hour at worst), against SMS pumping.
 const PHONE_SENDS_PER_HOUR = 3;
 const PHONE_SENDS_PER_IP_HOUR = 10;
 const PHONE_SENDS_ALL_HOUR = 200;

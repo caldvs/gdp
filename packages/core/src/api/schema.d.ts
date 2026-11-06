@@ -114,9 +114,8 @@ export interface paths {
         };
         /**
          * Which ways to sign in are on here
-         * @description #213. `whatsapp` is true once the WhatsApp app is set up on this
-         *     server, `sms` once texts are (#231: `SMS_SENDER_ID`), and `phone` if
-         *     either is. Email stays on until phone
+         * @description #213. `sms` (and `phone`, the same) is true once texts are set up on
+         *     this server (#231: `SMS_SENDER_ID`). Email stays on until phone
          *     sign-in is live.
          */
         get: operations["getSignInMethods"];
@@ -139,17 +138,15 @@ export interface paths {
         put?: never;
         /**
          * Send a 4-digit sign-in code to a phone
-         * @description #213. Sends a 4-digit code by WhatsApp (an authentication template
-         *     with a copy-code button). It works for 10 minutes, 5 tries, and only
+         * @description #213, #231. Texts a 4-digit code through AWS End User Messaging SMS,
+         *     in our own words. It works for 10 minutes, 5 tries, and only
          *     with the `requestId` returned here, sent with the code to
          *     `POST /v1/auth/phone/verify`. UK mobiles only for now; the number is
          *     kept as E.164 and never logged whole.
          *
          *     Codes cost money, so the limits are tight: one every 30 seconds and
          *     3 an hour per number, 10 an hour per IP address, 200 an hour in all
-         *     (429 otherwise). `channel: sms` texts the code through AWS End User
-         *     Messaging SMS (#231), in our own words; a channel that isn't set up
-         *     here answers 503.
+         *     (429 otherwise). Without texts set up here it answers 503.
          */
         post: operations["startPhoneSignIn"];
         delete?: never;
@@ -1301,34 +1298,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/webhooks/whatsapp": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Meta's WhatsApp webhook subscribe handshake
-         * @description #230. Echoes `hub.challenge` when `hub.mode` is `subscribe` and `hub.verify_token` matches
-         *     `WHATSAPP_VERIFY_TOKEN`. Only mounted once the WhatsApp secrets are set (#229).
-         */
-        get: operations["whatsappWebhookVerify"];
-        put?: never;
-        /**
-         * Meta's WhatsApp messages webhook
-         * @description #230. Verified with `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with
-         *     `WHATSAPP_APP_SECRET`). Each new message opens the sender's 24-hour reply window and is
-         *     handled once (Meta retries; repeats are skipped). Status updates are ignored. Message
-         *     bodies and whole phone numbers are never logged.
-         */
-        post: operations["whatsappWebhook"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2362,9 +2331,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         email: boolean;
-                        /** @description Phone sign-in by either channel. */
+                        /** @description Phone sign-in is on. */
                         phone: boolean;
-                        whatsapp: boolean;
                         sms: boolean;
                     };
                 };
@@ -2384,10 +2352,10 @@ export interface operations {
                     /** @description As typed, e.g. "07700 900123". */
                     phone: string;
                     /**
-                     * @default whatsapp
+                     * @description Optional; texts are the only channel.
                      * @enum {string}
                      */
-                    channel?: "whatsapp" | "sms";
+                    channel?: "sms";
                 };
             };
         };
@@ -2418,7 +2386,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description `CHANNEL_UNAVAILABLE`: phone sign-in, or texts, aren't on here. */
+            /** @description `CHANNEL_UNAVAILABLE`: texts aren't on here. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -4383,91 +4351,6 @@ export interface operations {
             };
             /** @description Invalid signature */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    whatsappWebhookVerify: {
-        parameters: {
-            query?: {
-                "hub.mode"?: string;
-                "hub.verify_token"?: string;
-                "hub.challenge"?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The challenge, as plain text */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/plain": string;
-                };
-            };
-            /** @description Wrong verify token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description WhatsApp isn't set up here */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    whatsappWebhook: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Accepted */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        ok: boolean;
-                        /** @description New messages in this delivery */
-                        handled: number;
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            /** @description Invalid signature */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description WhatsApp isn't set up here */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { createEmailSignInService } from '../services/auth/emailSignIn.js';
 import { createPhoneSignInService } from '../services/auth/phoneSignIn.js';
-import type { Messenger } from '../services/messaging/messenger.js';
 import type { SmsSender } from '../services/messaging/sms.js';
 import { baseLogger } from '../logging/logger.js';
 import type { EmailSender } from '../services/email/sender.js';
@@ -29,7 +28,8 @@ const VerifySchema = z.object({
 
 const PhoneStartSchema = z.object({
   phone: z.string().min(6).max(24),
-  channel: z.enum(['whatsapp', 'sms']).default('whatsapp'),
+  // Texts are the only way (WhatsApp dropped); older pages still send it.
+  channel: z.literal('sms').optional(),
 });
 
 const PhoneVerifySchema = z.object({
@@ -40,11 +40,8 @@ const PhoneVerifySchema = z.object({
 export interface AuthRoutesDeps {
   emailSender: EmailSender;
   jwtSecret: Uint8Array;
-  /** #213: sends phone codes by WhatsApp; null or absent: no WhatsApp. */
-  phoneMessenger?: Messenger | null;
   /** #231: sends phone codes by text; null or absent: no SMS. */
   phoneSms?: SmsSender | null;
-  phoneTemplate?: string;
   /**
    * Register POST /email/dev-sign-in (sign in with just an email, no code).
    * LOCAL DEVELOPMENT ONLY — set by src/local.ts, never by the Lambda.
@@ -68,17 +65,15 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
   });
 
   const phone = createPhoneSignInService({
-    messenger: deps.phoneMessenger ?? null,
     sms: deps.phoneSms ?? null,
     logger: baseLogger,
     jwtSecret: deps.jwtSecret,
-    ...(deps.phoneTemplate ? { template: deps.phoneTemplate } : {}),
   });
 
   // #213: which ways in are switched on here, so the web app offers only those.
   r.get('/methods', (c) => {
     const p = phone.available();
-    return c.json({ email: true, phone: p.whatsapp || p.sms, whatsapp: p.whatsapp, sms: p.sms });
+    return c.json({ email: true, phone: p.sms, sms: p.sms });
   });
 
   r.post(

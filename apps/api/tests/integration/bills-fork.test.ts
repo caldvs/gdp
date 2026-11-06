@@ -5,7 +5,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';

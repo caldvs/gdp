@@ -5,7 +5,7 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { proofKey, proofStore } from '../../storage/proofStore.js';

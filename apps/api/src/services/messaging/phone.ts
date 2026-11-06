@@ -1,9 +1,4 @@
-/**
- * Phone numbers as E.164 (`+447700900123`). WhatsApp sends and expects the
- * digits without the `+`.
- */
-export const toE164 = (waId: string): string => `+${waId.replace(/\D/g, '')}`;
-export const toWaId = (e164: string): string => e164.replace(/\D/g, '');
+/** Phone numbers are kept as E.164 (`+447700900123`). */
 
 /** For logs: never a whole number. `+44•••••••123`. */
 export const maskPhone = (phone: string): string => {

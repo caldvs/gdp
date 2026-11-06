@@ -14,7 +14,6 @@ import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildAuthRoutes } from './routes/auth.js';
-import { WhatsAppCloudMessenger, type Messenger } from './services/messaging/messenger.js';
 import { AwsSmsSender, type SmsSender } from './services/messaging/sms.js';
 import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
@@ -57,7 +56,6 @@ import { runHoldSweep, type HoldSweepReport } from './ops/holdSweep.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
-import { buildWhatsAppWebhookRoutes, type WhatsAppWebhookDeps } from './routes/whatsappWebhook.js';
 
 export interface AppDeps {
   /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
@@ -74,12 +72,10 @@ export interface AppDeps {
   allowSkipCache?: boolean;
   /** LOCAL DEVELOPMENT ONLY: enable POST /v1/auth/email/dev-sign-in. */
   /**
-   * #213: sends phone sign-in codes. Default: WhatsApp when the Meta app's
-   * secrets are set, otherwise none (phone sign-in off). Local and tests
-   * pass a ConsoleMessenger.
+   * #213, #231: texts phone codes. Default: AWS SMS when SMS_SENDER_ID is
+   * set, otherwise none (phone sign-in off). Local and tests pass a
+   * ConsoleSmsSender.
    */
-  phoneMessenger?: Messenger | null;
-  /** #231: texts sign-in codes. Default: AWS SMS when SMS_SENDER_ID is set. */
   phoneSms?: SmsSender | null;
   devEmailSignIn?: boolean;
   /**
@@ -93,8 +89,6 @@ export interface AppDeps {
    */
   stripe?: Stripe | null;
   stripeWebhookSecret?: string;
-  /** #230: WhatsApp webhook secrets; defaults to env, `null` leaves it unmounted. */
-  whatsapp?: WhatsAppWebhookDeps | null;
   tableFeeStore?: TableFeeStore;
   /** The free monthly bill. Omit for DynamoDB; `null` turns credits off (every share pays). */
   creditStore?: CreditStore | null;
@@ -184,10 +178,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       buildAuthRoutes({
         emailSender,
         jwtSecret: sessionJwtSecret,
-        phoneMessenger:
-          deps.phoneMessenger !== undefined ? deps.phoneMessenger : phoneMessengerFromEnv(),
         phoneSms,
-        ...(env.WHATSAPP_SIGNIN_TEMPLATE ? { phoneTemplate: env.WHATSAPP_SIGNIN_TEMPLATE } : {}),
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
         testAccountSignIn: testAccountsAllowed(
@@ -246,10 +237,6 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       app.route('/webhooks', buildStripeWebhookRoutes({ stripe, webhookSecret, tableFees }));
     }
   }
-
-  // #230: WhatsApp's webhook, once the Meta app is set up (#229).
-  const wa = deps.whatsapp === null ? null : (deps.whatsapp ?? whatsappFromEnv());
-  if (wa) app.route('/webhooks', buildWhatsAppWebhookRoutes(wa));
 
   app.notFound((c) =>
     c.json(
@@ -325,19 +312,4 @@ export const runLeadEmailsNow = async (): Promise<LeadEmailsReport> => {
 /** #231: AWS End User Messaging SMS, when a sender ID is configured. */
 function smsFromEnv(): SmsSender | null {
   return env.SMS_SENDER_ID ? new AwsSmsSender({ senderId: env.SMS_SENDER_ID }) : null;
-}
-
-/** #213: the real WhatsApp sender, only when the Meta app's secrets are there. */
-function phoneMessengerFromEnv(): Messenger | null {
-  if (!env.WHATSAPP_PHONE_NUMBER_ID || !env.WHATSAPP_ACCESS_TOKEN) return null;
-  return new WhatsAppCloudMessenger({
-    phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
-    accessToken: env.WHATSAPP_ACCESS_TOKEN,
-  });
-}
-
-/** WhatsApp webhook settings from env, when the Meta app's secrets are there. */
-function whatsappFromEnv(): WhatsAppWebhookDeps | null {
-  if (!env.WHATSAPP_APP_SECRET || !env.WHATSAPP_VERIFY_TOKEN) return null;
-  return { appSecret: env.WHATSAPP_APP_SECRET, verifyToken: env.WHATSAPP_VERIFY_TOKEN };
 }

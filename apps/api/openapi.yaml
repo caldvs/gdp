@@ -218,9 +218,8 @@ paths:
       security: []
       summary: Which ways to sign in are on here
       description: |
-        #213. `whatsapp` is true once the WhatsApp app is set up on this
-        server, `sms` once texts are (#231: `SMS_SENDER_ID`), and `phone` if
-        either is. Email stays on until phone
+        #213. `sms` (and `phone`, the same) is true once texts are set up on
+        this server (#231: `SMS_SENDER_ID`). Email stays on until phone
         sign-in is live.
       responses:
         '200':
@@ -229,11 +228,10 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [email, phone, whatsapp, sms]
+                required: [email, phone, sms]
                 properties:
                   email: { type: boolean }
-                  phone: { type: boolean, description: Phone sign-in by either channel. }
-                  whatsapp: { type: boolean }
+                  phone: { type: boolean, description: Phone sign-in is on. }
                   sms: { type: boolean }
 
   /v1/auth/phone/start:
@@ -243,17 +241,15 @@ paths:
       security: []
       summary: Send a 4-digit sign-in code to a phone
       description: |
-        #213. Sends a 4-digit code by WhatsApp (an authentication template
-        with a copy-code button). It works for 10 minutes, 5 tries, and only
+        #213, #231. Texts a 4-digit code through AWS End User Messaging SMS,
+        in our own words. It works for 10 minutes, 5 tries, and only
         with the `requestId` returned here, sent with the code to
         `POST /v1/auth/phone/verify`. UK mobiles only for now; the number is
         kept as E.164 and never logged whole.
 
         Codes cost money, so the limits are tight: one every 30 seconds and
         3 an hour per number, 10 an hour per IP address, 200 an hour in all
-        (429 otherwise). `channel: sms` texts the code through AWS End User
-        Messaging SMS (#231), in our own words; a channel that isn't set up
-        here answers 503.
+        (429 otherwise). Without texts set up here it answers 503.
       requestBody:
         required: true
         content:
@@ -264,7 +260,8 @@ paths:
               properties:
                 phone:
                   { type: string, maxLength: 24, description: 'As typed, e.g. "07700 900123".' }
-                channel: { type: string, enum: [whatsapp, sms], default: whatsapp }
+                channel:
+                  { type: string, enum: [sms], description: Optional; texts are the only channel. }
       responses:
         '200':
           description: Code sent.
@@ -288,7 +285,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '503':
-          description: "`CHANNEL_UNAVAILABLE`: phone sign-in, or texts, aren't on here."
+          description: "`CHANNEL_UNAVAILABLE`: texts aren't on here."
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -1948,68 +1945,6 @@ paths:
         '200': { description: Event accepted }
         '401':
           description: Invalid signature
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-
-  /webhooks/whatsapp:
-    get:
-      tags: [webhooks]
-      operationId: whatsappWebhookVerify
-      summary: Meta's WhatsApp webhook subscribe handshake
-      description: |
-        #230. Echoes `hub.challenge` when `hub.mode` is `subscribe` and `hub.verify_token` matches
-        `WHATSAPP_VERIFY_TOKEN`. Only mounted once the WhatsApp secrets are set (#229).
-      security: []
-      parameters:
-        - { name: hub.mode, in: query, schema: { type: string } }
-        - { name: hub.verify_token, in: query, schema: { type: string } }
-        - { name: hub.challenge, in: query, schema: { type: string } }
-      responses:
-        '200':
-          description: The challenge, as plain text
-          content:
-            text/plain:
-              schema: { type: string }
-        '401':
-          description: Wrong verify token
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '404':
-          description: WhatsApp isn't set up here
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-    post:
-      tags: [webhooks]
-      operationId: whatsappWebhook
-      summary: Meta's WhatsApp messages webhook
-      description: |
-        #230. Verified with `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with
-        `WHATSAPP_APP_SECRET`). Each new message opens the sender's 24-hour reply window and is
-        handled once (Meta retries; repeats are skipped). Status updates are ignored. Message
-        bodies and whole phone numbers are never logged.
-      security: []
-      responses:
-        '200':
-          description: Accepted
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [ok, handled]
-                properties:
-                  ok: { type: boolean }
-                  handled: { type: integer, description: New messages in this delivery }
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401':
-          description: Invalid signature
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '404':
-          description: WhatsApp isn't set up here
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }

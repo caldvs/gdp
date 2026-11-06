@@ -1,20 +1,17 @@
-import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { AppError } from '../../errors/AppError.js';
 import { SignInRateLimited, signInCodeStore } from '../../storage/signInCodeStore.js';
 import { authIdentityStore } from '../../storage/authIdentityStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { mintSessionToken } from './sessionToken.js';
 import { maskPhone, parseUkMobile } from '../messaging/phone.js';
-import { whatsappStore } from '../../storage/whatsappStore.js';
-import type { Messenger } from '../messaging/messenger.js';
 import type { SmsSender } from '../messaging/sms.js';
 import type { Logger } from '../../logging/logger.js';
 
 /**
- * #213: sign in with your phone. A 4-digit code goes by text (#231) or by
- * WhatsApp (an approved authentication template with a copy-code button,
- * or plain text inside the 24-hour window); the tab that asked enters it. Same request-secret scheme, attempt limit and hashing as
+ * #213: sign in with your phone. A 4-digit code goes by text (#231, AWS
+ * End User Messaging SMS); the tab that asked enters it. Same request-secret
+ * scheme, attempt limit and hashing as
  * email sign-in; tighter send limits, because every code costs money.
  * Numbers are stored as E.164 and never logged whole.
  */
@@ -26,9 +23,7 @@ const codeHash = (id: string, code: string): string => sha256(`${id}:${code}`);
 
 export const newPhoneCode = (): string => String(randomInt(0, 10_000)).padStart(4, '0');
 
-export const DEFAULT_SIGNIN_TEMPLATE = 'pmb_sign_in_code';
-
-/** The code as a free-form message (#213's wording), sent inside the 24-hour window. */
+/** The text (#213's wording). The last line lets phones offer the code to this site. */
 export const codeText = (code: string): string =>
   `${code} is your Pay Me Back code. Don’t share this code.\n\n@paymeback.dev #${code}`;
 
@@ -40,12 +35,9 @@ const RATE_LIMIT_MESSAGES: Record<SignInRateLimited['reason'], string> = {
 };
 
 export interface PhoneSignInDeps {
-  /** Null: no WhatsApp here. */
-  messenger: Messenger | null;
-  /** #231: texts. Null: no SMS here. Phone sign-in is on with either. */
-  sms?: SmsSender | null;
+  /** #231: texts. Null: no SMS here, so no phone sign-in. */
+  sms: SmsSender | null;
   jwtSecret: Uint8Array;
-  template?: string;
   logger?: Logger;
 }
 
@@ -68,24 +60,14 @@ export type PhoneCodeResult =
   | { status: 'expired' };
 
 export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
-  available: (): { whatsapp: boolean; sms: boolean } => ({
-    whatsapp: deps.messenger !== null,
-    sms: !!deps.sms,
-  }),
+  available: (): { sms: boolean } => ({ sms: !!deps.sms }),
 
   async start(input: {
     phone: string;
-    channel: 'whatsapp' | 'sms';
     sourceIp?: string;
   }): Promise<{ requestId: string; phone: string }> {
-    const messenger = deps.messenger;
-    const sms = deps.sms ?? null;
-    if (input.channel === 'sms' ? !sms : !messenger) {
-      throw new AppError(
-        'CHANNEL_UNAVAILABLE',
-        input.channel === 'sms' ? 'Texts aren’t available here' : 'WhatsApp isn’t available here',
-      );
-    }
+    const sms = deps.sms;
+    if (!sms) throw new AppError('CHANNEL_UNAVAILABLE', 'Texts aren’t available here');
     const e164 = parseUkMobile(input.phone);
     if (!e164) throw new AppError('INVALID_INPUT', 'Enter a UK mobile number');
     try {
@@ -111,30 +93,12 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
       requestHash: sha256(requestSecret),
       codeHash: codeHash(id, code),
     });
-    // Inside the 24-hour window they opened by messaging us, a plain message
-    // is free and in our own words; outside it only the approved template
-    // can go (#230). The last line lets phones offer the code to this site.
-    let via: 'sms' | 'text' | 'template';
-    if (input.channel === 'sms') {
-      via = 'sms';
-      await sms!.send(e164, codeText(code));
-    } else if (await whatsappStore.windowOpen(e164)) {
-      via = 'text';
-      await messenger!.sendText(e164, codeText(code));
-    } else {
-      via = 'template';
-      await messenger!.sendTemplate(e164, {
-        name: deps.template ?? DEFAULT_SIGNIN_TEMPLATE,
-        params: [code],
-        copyCode: code,
-      });
-    }
+    await sms.send(e164, codeText(code));
     deps.logger?.info(
       {
         event: 'signin.phone.sent',
         to: maskPhone(e164),
-        channel: input.channel,
-        via,
+        via: 'sms',
       },
       'Phone code sent',
     );
@@ -171,7 +135,7 @@ async function signInByPhone(e164: string, jwtSecret: Uint8Array): Promise<Phone
   let isNew = false;
   let userId = (await authIdentityStore.getByPhone(e164))?.userId;
   if (!userId) {
-    const fresh = uuidv7();
+    const fresh = randomUUID();
     try {
       await authIdentityStore.putByPhone({
         e164,

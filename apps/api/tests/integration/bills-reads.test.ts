@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import type { Hono } from 'hono';
 import { createApp } from '../../src/app.js';

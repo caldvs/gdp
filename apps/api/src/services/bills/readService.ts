@@ -1,5 +1,5 @@
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { readStore, type BillRead } from '../../storage/readStore.js';

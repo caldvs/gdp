@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { createApp } from '../../src/app.js';
 import { createSessionTokenVerifier } from '../../src/services/auth.js';
 import type { EmailSender } from '../../src/services/email/sender.js';

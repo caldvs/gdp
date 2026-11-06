@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import {
   aggregatePayment,
   computeOwedForParticipant,

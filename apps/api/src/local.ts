@@ -1,5 +1,4 @@
 import { ConsoleSmsSender } from './services/messaging/sms.js';
-import { ConsoleMessenger } from './services/messaging/messenger.js';
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { localStubVerifier } from './services/authStub.js';
@@ -64,11 +63,8 @@ const app = createApp({
   ...(idTokenVerifier ? { idTokenVerifier } : {}),
   ...(sessionJwtSecret ? { sessionJwtSecret } : {}),
   devEmailSignIn,
-  // #213: phone sign-in locally, the code printed here instead of sent.
-  phoneMessenger: process.env.WHATSAPP_ACCESS_TOKEN
-    ? undefined
-    : new ConsoleMessenger({ printCodes: true }),
-  // #231: texts too, printed here, unless a real sender ID is set.
+  // #213, #231: phone codes printed here instead of texted, unless a real
+  // sender ID is set.
   phoneSms: process.env.SMS_SENDER_ID ? undefined : new ConsoleSmsSender({ printCodes: true }),
   // Test accounts (@test.invalid, no code), same as on dev.
   testAccountSignIn: hasLocalDb && !isProduction,

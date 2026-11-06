@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { createHash } from 'node:crypto';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../lib/uuid.js';
 import { AppError } from '../../errors/AppError.js';
 import { SignInRateLimited, signInCodeStore } from '../../storage/signInCodeStore.js';
 import { authIdentityStore } from '../../storage/authIdentityStore.js';

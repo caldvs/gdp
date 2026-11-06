@@ -1,4 +1,4 @@
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { PutObjectCommand, CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { AppError } from '../../src/errors/AppError.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';

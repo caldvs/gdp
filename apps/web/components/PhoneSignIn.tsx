@@ -10,7 +10,7 @@ import { CodeBoxes, NOT_A_MOBILE, PHONE_CODE_LENGTH, PhoneField, RESEND_SECONDS,
 
 /**
  * #213 M4 / M4.1: your mobile number, then the 4-digit code by text (#231)
- * or WhatsApp, in the same tab. A new account then gives its name and the
+ * in the same tab. A new account then gives its name and the
  * email its bill emails go to.
  */
 
@@ -42,8 +42,7 @@ function writePending(p: Pending | null) {
 
 type Stage = 'PHONE' | 'CODE';
 
-export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmail }: { title?: string; /** #231: texts where WhatsApp isn't set up. */ channel?: 'whatsapp' | 'sms'; onUseEmail?: () => void }) {
-  const how = channel === 'sms' ? 'by text' : 'on WhatsApp';
+export function PhoneSignIn({ title = 'Sign in', onUseEmail }: { title?: string; onUseEmail?: () => void }) {
   const router = useRouter();
   const dest = safeInternalPath(useSearchParams().get('from'));
   const [stage, setStage] = useState<Stage>('PHONE');
@@ -72,7 +71,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   const send = async (number: string) => {
     setError(null);
     try {
-      const out = await start.mutateAsync({ phone: number, channel });
+      const out = await start.mutateAsync({ phone: number });
       writePending({ phone: out.phone, requestId: out.requestId });
       setPhone(out.phone);
       setRequestId(out.requestId);
@@ -116,7 +115,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   if (stage === 'PHONE') {
     return (
       <>
-        <Title title={title} sub={channel === 'sms' ? 'We’ll text you a 4-digit code.' : 'We’ll send you a 4-digit code by WhatsApp.'} />
+        <Title title={title} sub="We’ll text you a 4-digit code." />
         <form
           noValidate
           style={STACK}
@@ -138,7 +137,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   return (
     <>
       <BackButton onClick={() => { writePending(null); setRequestId(null); setCode(''); setError(null); setStage('PHONE'); }}>Change number</BackButton>
-      <Title title="Enter the code" sub={`Sent to ${shownPhone(phone)} ${how}. Works for 10 minutes.`} />
+      <Title title="Enter the code" sub={`Sent to ${shownPhone(phone)} by text. Works for 10 minutes.`} />
       <form noValidate style={STACK} onSubmit={(e) => { e.preventDefault(); void submitCode(code); }}>
         <CodeBoxes
           inputRef={codeInput}

@@ -3,7 +3,7 @@
  * writes; text only; nobody else can see it.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import type { Session } from '../../src/types/sessions.js';

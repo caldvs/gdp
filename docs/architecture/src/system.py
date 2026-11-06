@@ -64,7 +64,7 @@ zones = S[nodes_start:]; del S[nodes_start:]
 # ---- Column 4: AWS services, sequential with gaps for external lines
 c4 = [
     ('ddb', 395), ('ses', 88), ('sec', 90),
-    ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('gap', 'whatsapp'), ('location', 60), ('s3', 96),
+    ('cw', 100), ('sns', 60), ('gap', 'stripe'), ('bedrock', 84), ('location', 60), ('s3', 96),
 ]
 y = 70; pos = {}; gaps = {}; prev = None
 for k, v in c4:
@@ -131,7 +131,7 @@ y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PATCH', '/'), ('POST', '/s
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend'), ('POST', '/{billId}/fork')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('GET', '/me')]) + 10
-y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe'), ('GET', '/whatsapp'), ('POST', '/whatsapp')]) + 10
+y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe')]) + 10
 colA_end = y
 
 y = 308
@@ -167,7 +167,7 @@ rect(AX, py, LW - 32, LAMBDA_BOTTOM - 16 - py, 'inner', 7)
 text(AX + 12, py + 22, 'Swappable providers (env)', 't-inner')
 text(AX + 12, py + 44, 'Parser: Bedrock · fixture', 't-mono')
 text(AX + 12, py + 62, 'Email: SES · console     Venue: Location · none', 't-mono')
-text(AX + 12, py + 80, 'Phone codes: AWS SMS · WhatsApp · console', 't-mono')
+text(AX + 12, py + 80, 'Phone codes: AWS SMS · console', 't-mono')
 
 # ---- Column 4 nodes
 def c4card(k, title, lines, cls='node'):
@@ -180,7 +180,7 @@ text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF# GUESTPHONE#', 'Comments, proofs, guest numbers'),
-                   ('JCODE# PAY#', 'Join codes, guest payments to the lead'), ('WAWIN# WAMSG# WATPL#', 'WhatsApp windows, seen, sends'),
+                   ('JCODE# PAY#', 'Join codes, guest payments to the lead'),
                    ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
@@ -195,7 +195,6 @@ c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Del
 def ext(key, title, lines, h=72):
     cy = gaps[key]; card(C5X, cy - h // 2, C5W, h, title, lines, 'node ext')
 ext('stripe', 'Stripe', ['£1 hold Checkout', 'Capture or cancel'], 82)
-ext('whatsapp', 'WhatsApp (Meta)', ['Cloud API: send', 'webhook: messages in'], 80)
 s3y = pos['s3'][0]
 card(C5X, s3y - 10, C5W, 92, 'GitHub Actions', ['CI, e2e, typecheck', 'Deploys dev from main'], 'node ext')
 
@@ -215,7 +214,7 @@ E(f'M1260,{pos["cw"][0]+pos["cw"][1]} L1260,{pos["sns"][0]-2}')
 E(f'M1080,{pos["bedrock"][0]+35} L{C4X-2},{pos["bedrock"][0]+35}', [(1115, pos["bedrock"][0]+27, 'parse', 'middle')])
 E(f'M1080,{pos["location"][0]+35} L{C4X-2},{pos["location"][0]+35}', [(1115, pos["location"][0]+27, 'look up', 'middle')])
 E(f'M1080,{pos["s3"][0]+55} L{C4X-2},{pos["s3"][0]+55}', [(1115, pos["s3"][0]+47, 'SDK', 'middle')], both=True)
-for key, lab, both in [('stripe', 'Checkout · webhooks', True), ('whatsapp', 'messages · webhook', True)]:
+for key, lab, both in [('stripe', 'Checkout · webhooks', True)]:
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')

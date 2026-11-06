@@ -60,7 +60,6 @@ test('#183: a guest scans the QR, sees the bill and joins with just a name; the 
 test('#214: where texts are on, a guest gives their name and number, types the texted code, and is in', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   api.phoneSignIn = true;
-  api.phoneChannel = 'sms';
   const { page: sam } = await ctxFor(browser, api, users.sam, { signedIn: false });
   const fragment = fragmentFor();
 

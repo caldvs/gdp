@@ -167,7 +167,6 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   const guestCodes =
     sms && deps.jwtSecret
       ? createPhoneSignInService({
-          messenger: null,
           sms,
           jwtSecret: deps.jwtSecret,
           logger: baseLogger,
@@ -182,7 +181,6 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const sourceIp = sourceIpOf(c.env);
     const out = await guestCodes.start({
       phone,
-      channel: 'sms',
       ...(sourceIp ? { sourceIp } : {}),
     });
     return c.json({ requestId: out.requestId, phone: out.phone });

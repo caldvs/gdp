@@ -282,7 +282,7 @@ export function SignInScreen() {
   if (methods.data?.phone && !useEmail && !readPending()) {
     return (
       <Page>
-        <PhoneSignIn channel={methods.data.sms ? 'sms' : 'whatsapp'} onUseEmail={() => setUseEmail(true)} />
+        <PhoneSignIn onUseEmail={() => setUseEmail(true)} />
       </Page>
     );
   }

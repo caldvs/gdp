@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { idempotencyStore } from '../../src/storage/idempotencyStore.js';
 
 describe('idempotencyStore', () => {

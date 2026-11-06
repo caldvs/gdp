@@ -22,7 +22,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../src/lib/uuid.js';
 
 const API = process.env.API_BASE_URL ?? 'http://localhost:3000';
 const FIXTURE = process.env.E2E_FIXTURE ?? '../gdp-mobile/test-fixtures/receipt.jpg';

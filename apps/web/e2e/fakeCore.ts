@@ -115,10 +115,6 @@ export class FakeCore {
   phoneSignIn = false;
   /** #213: the phone account is new (no name yet). */
   phoneIsNew = false;
-  /** #231: which channel the fake server has for phone codes. */
-  phoneChannel: 'whatsapp' | 'sms' = 'whatsapp';
-  /** The channel the last phone code was asked for. */
-  lastPhoneChannel?: string;
   /** #214: the number a guest asked a join code for, and the tries left on it. */
   guestPhone?: string;
   guestCodeTries = 0;
@@ -293,10 +289,10 @@ export class FakeCore {
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
     // #213: phone sign-in, on only when a test turns it on.
-    if (path === '/v1/auth/methods') return json({ email: true, phone: this.phoneSignIn, whatsapp: this.phoneSignIn && this.phoneChannel === 'whatsapp', sms: this.phoneSignIn && this.phoneChannel === 'sms' });
+    if (path === '/v1/auth/methods') return json({ email: true, phone: this.phoneSignIn, sms: this.phoneSignIn });
     if (path === '/v1/auth/phone/start') {
       const phone = String(body().phone ?? '').replace(/\D/g, '').replace(/^0/, '');
-      this.codeTries = 5; this.signIn = 'pending'; this.lastPhoneChannel = String(body().channel ?? 'whatsapp');
+      this.codeTries = 5; this.signIn = 'pending';
       return json({ ok: true, requestId: SIGN_IN_REQUEST, phone: `+44${phone.replace(/^44/, '')}` });
     }
     if (path === '/v1/auth/phone/verify') {
@@ -359,7 +355,7 @@ export class FakeCore {
       if (code !== CODE || this.status !== 'claiming') return err('NOT_FOUND', 'Code not active', 404);
       const n = (name ?? '').trim();
       if (!n) return err('INVALID_INPUT', 'name', 400);
-      if (this.phoneSignIn && this.phoneChannel === 'sms') {
+      if (this.phoneSignIn) {
         if (!phoneCode) return err('INVALID_INPUT', 'Verify your mobile number first', 400);
         if (this.guestCodeTries <= 0) return json({ status: 'expired' });
         this.guestCodeTries -= 1;

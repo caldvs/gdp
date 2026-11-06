@@ -6,7 +6,7 @@
  * `it.fails` as failed, and the fix's PR changes it to `it`.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';

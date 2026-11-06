@@ -19,12 +19,12 @@ test('phone off: the email sign-in, as before', async ({ browser }) => {
   await expect(page.getByLabel('Your mobile number')).toHaveCount(0);
 });
 
-test('phone on: number, the 4-digit code by WhatsApp, a wrong try, then signed in', async ({ browser }) => {
+test('phone on: number, the 4-digit code by text, a wrong try, then signed in', async ({ browser }) => {
   const api = new FakeApi();
   api.phoneSignIn = true;
   const page = await signedOut(browser, api, `/sign-in/email?from=${encodeURIComponent('/history')}`);
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-  await expect(page.getByText('We’ll send you a 4-digit code by WhatsApp.')).toBeVisible();
+  await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
 
   await page.getByLabel('Your mobile number').fill('020 7946 0000');
   await page.getByRole('button', { name: 'Send me a code' }).click();
@@ -33,7 +33,7 @@ test('phone on: number, the 4-digit code by WhatsApp, a wrong try, then signed i
   await page.getByLabel('Your mobile number').fill('07700 900123');
   await page.getByRole('button', { name: 'Send me a code' }).click();
   await expect(page.getByRole('heading', { name: 'Enter the code' })).toBeVisible();
-  await expect(page.getByText('Sent to +44 7700 900123 on WhatsApp. Works for 10 minutes.')).toBeVisible();
+  await expect(page.getByText('Sent to +44 7700 900123 by text. Works for 10 minutes.')).toBeVisible();
   await expect(page.getByText(/^New code in \d:\d\d$/)).toBeVisible();
 
   const code = page.getByLabel('4-digit code');
@@ -73,33 +73,9 @@ test('phone on, email still there: Use email instead', async ({ browser }) => {
   await expect(page.getByLabel('Email')).toBeVisible();
 });
 
-test('#231 texts where WhatsApp isn’t set up', async ({ browser }) => {
-  const api = new FakeApi();
-  api.phoneSignIn = true;
-  api.phoneChannel = 'sms';
-  const page = await signedOut(browser, api);
-  await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
-  await page.getByLabel('Your mobile number').fill('07700 900123');
-  await page.getByRole('button', { name: 'Send me a code' }).click();
-  await expect(page.getByText('Sent to +44 7700 900123 by text. Works for 10 minutes.')).toBeVisible();
-  expect(api.lastPhoneChannel).toBe('sms');
-  await page.getByLabel('4-digit code').fill(PHONE_CODE);
-  await expect(page).not.toHaveURL(/sign-in/);
-});
-
-test('#231 texts when both are on: Callum chose SMS', async ({ browser }) => {
-  const api = new FakeApi();
-  api.phoneSignIn = true;
-  const page = await signedOut(browser, api);
-  await page.route('**/v1/auth/methods', (r) => r.fulfill({ json: { email: true, phone: true, whatsapp: true, sms: true } }));
-  await page.reload();
-  await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
-});
-
 test('a last-active time left from yesterday doesn’t sign a new sign-in straight out', async ({ browser }) => {
   const api = new FakeApi();
   api.phoneSignIn = true;
-  api.phoneChannel = 'sms';
   const page = await signedOut(browser, api);
   await page.evaluate(() => window.localStorage.setItem('gdp.lastActiveAt', String(Date.now() - 24 * 60 * 60 * 1000)));
   await page.getByLabel('Your mobile number').fill('07700 900123');

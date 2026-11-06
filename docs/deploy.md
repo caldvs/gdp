@@ -158,23 +158,6 @@ Then set the GitHub environment variable `SMS_SENDER_ID=PAYMEBACK` (dev
 first) and deploy. `GET /v1/auth/methods` then says `sms: true` and Sign in
 asks for a mobile number. Without it, sign-in stays email only.
 
-### Turn on WhatsApp (#229, #230)
-
-Off until the Meta app exists. Once you have its details:
-
-```bash
-for s in phone-number-id access-token app-secret verify-token; do
-  aws secretsmanager create-secret --profile gdp-dev --region eu-west-2 \
-    --name "gdp-dev/whatsapp-$s" --secret-string "<value>"
-done
-```
-
-Then set the `dev` environment variable `WHATSAPP_ENABLED=true` (GitHub →
-Settings → Environments → dev) and deploy. In the Meta app, subscribe the
-webhook to `https://<dev api>/webhooks/whatsapp` with the same verify token,
-field `messages`. Without the secrets the webhook isn't mounted and messages
-go to the console logger.
-
 ### Checks after every deploy
 
 The workflow runs two checks once `cdk deploy` finishes:

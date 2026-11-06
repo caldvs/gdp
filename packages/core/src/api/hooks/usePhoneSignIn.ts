@@ -7,17 +7,17 @@ type SignedInUser = { userId: string; email: string; displayName: string };
 
 /**
  * #213: which ways in this server has switched on. Phone sign-in shows
- * only where the WhatsApp app is set up; anything else (an older API, an
+ * only where texts are set up; anything else (an older API, an
  * error) means email.
  */
 export function useSignInMethods() {
-  return useQuery<{ email: boolean; phone: boolean; whatsapp?: boolean; sms: boolean }>({
+  return useQuery<{ email: boolean; phone: boolean; sms: boolean }>({
     queryKey: ['auth-methods'],
     queryFn: async () => {
       try {
         return await api('/v1/auth/methods');
       } catch {
-        return { email: true, phone: false, whatsapp: false, sms: false };
+        return { email: true, phone: false, sms: false };
       }
     },
     staleTime: 5 * 60 * 1000,
@@ -33,9 +33,9 @@ function useAdopt() {
   };
 }
 
-/** Send a 4-digit code by WhatsApp. `requestId` is this tab's secret. */
+/** Text a 4-digit code. `requestId` is this tab's secret. */
 export function useStartPhoneSignIn() {
-  return useMutation<{ ok: true; requestId: string; phone: string }, ApiError, { phone: string; channel?: 'whatsapp' | 'sms' }>({
+  return useMutation<{ ok: true; requestId: string; phone: string }, ApiError, { phone: string }>({
     mutationFn: (body) => api('/v1/auth/phone/start', { method: 'POST', body }),
   });
 }

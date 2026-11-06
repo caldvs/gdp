@@ -107,7 +107,7 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>22</b> item types</span><span><b>1</b> GSI</span><span><b>13</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>21</b> item types</span><span><b>1</b> GSI</span><span><b>12</b> expiring types</span></div>
   </header>
 
   <div class="board">
@@ -216,31 +216,18 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="104" y="1114">KEY#{Idempotency-Key}</text>
 <line class="rule" x1="48" y1="1128" x2="332" y2="1128"/>
 <text class="t-attr" x="48" y="1146">stored status + response body</text>
-<rect class="node" x="30" y="1208" width="320" height="160" rx="10"/>
-<rect class="band band-id" x="30" y="1208" width="6" height="160" rx="3"/>
-<text class="t-title" x="48" y="1235">WhatsApp</text>
-<rect class="chip-ttl" x="306.2" y="1221" width="29.799999999999997" height="20" rx="10"/>
-<text class="t-chip" x="321.1" y="1235" text-anchor="middle">2 d</text>
+<rect class="node" x="30" y="1208" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="1208" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="1235">Lead email queue</text>
+<rect class="chip-ttl" x="299.6" y="1221" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1235" text-anchor="middle">14 d</text>
 <text class="t-keylab" x="48" y="1260">pk</text>
-<text class="t-key" x="104" y="1260">WAWIN# · WAMSG# · WATPL#</text>
+<text class="t-key" x="104" y="1260">LEADMAILQ</text>
 <text class="t-keylab" x="48" y="1282">sk</text>
-<text class="t-key" x="104" y="1282">WIN · SEEN · COUNT</text>
+<text class="t-key" x="104" y="1282">{settledAt}#{sessionId}</text>
 <line class="rule" x1="48" y1="1296" x2="332" y2="1296"/>
-<text class="t-attr" x="48" y="1314">WAWIN#{e164}: lastInboundAt, free replies 24 h</text>
-<text class="t-attr" x="48" y="1332">WAMSG#{messageId}: webhook message handled</text>
-<text class="t-attr" x="48" y="1350">WATPL#{yyyy-mm}: paid template sends (capped)</text>
-<rect class="node" x="30" y="1412" width="320" height="142" rx="10"/>
-<rect class="band band-id" x="30" y="1412" width="6" height="142" rx="3"/>
-<text class="t-title" x="48" y="1439">Lead email queue</text>
-<rect class="chip-ttl" x="299.6" y="1425" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="1439" text-anchor="middle">14 d</text>
-<text class="t-keylab" x="48" y="1464">pk</text>
-<text class="t-key" x="104" y="1464">LEADMAILQ</text>
-<text class="t-keylab" x="48" y="1486">sk</text>
-<text class="t-key" x="104" y="1486">{settledAt}#{sessionId}</text>
-<line class="rule" x1="48" y1="1500" x2="332" y2="1500"/>
-<text class="t-attr" x="48" y="1518">sessionId, settledAt: settled, emailed next morning</text>
-<text class="t-attr" x="48" y="1536">daily job reads sk &lt; London midnight (#221)</text>
+<text class="t-attr" x="48" y="1314">sessionId, settledAt: settled, emailed next morning</text>
+<text class="t-attr" x="48" y="1332">daily job reads sk &lt; London midnight (#221)</text>
 <rect class="node" x="410" y="80" width="320" height="160" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="160" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -500,7 +487,6 @@ ul.plain strong { color: var(--ink); }
             <tr><td>A bill's comments</td><td><code>SESS#{id}</code>, <code>begins_with(COMMENT#)</code></td><td class="op">Query</td></tr>
             <tr><td>Payment screenshots</td><td><code>SESS#{id}</code>, <code>begins_with(PROOF#[{userId}#])</code></td><td class="op">Query</td></tr>
             <tr><td>Lead emails due today</td><td><code>LEADMAILQ</code>, sk &lt; midnight</td><td class="op">Query</td></tr>
-            <tr><td>Free WhatsApp reply?</td><td><code>WAWIN#{e164}</code></td><td class="op">Get</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>My sessions' totals</td><td>META rows, then pinned <code>BILL# / V#</code> rows + the caller's <code>SHARE#</code> rows</td><td class="op">BatchGet ×2</td></tr>

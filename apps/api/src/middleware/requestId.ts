@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../lib/uuid.js';
 
 export const requestId = (): MiddlewareHandler => async (c, next) => {
   const incoming = c.req.header('x-request-id');

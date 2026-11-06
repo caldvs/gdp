@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createSessionTokenVerifier } from '../../src/services/auth.js';
 import type { EmailSender, SendEmailInput } from '../../src/services/email/sender.js';
-import { v7 as uuidv7 } from 'uuid';
+import { uuidv7 } from '../../src/lib/uuid.js';
 
 const SECRET = new TextEncoder().encode('test-secret-must-be-at-least-16-bytes');
 

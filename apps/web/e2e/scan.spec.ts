@@ -50,7 +50,7 @@ async function lead(browser: Browser, api: FakeApi, camera: CameraMode): Promise
 
 const uploads = (api: FakeApi) => api.requests.filter((r) => r.method === 'POST' && r.path === '/v1/bills/uploads').length;
 
-test('Scan a bill opens our camera; the shutter goes to the photo check, then the bill is read', async ({ browser }) => {
+test('Scan a bill opens our camera; the shutter goes to the photo check, then the bill is read', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi({ status: 'setup' });
   const page = await lead(browser, api, 'fake');
 
@@ -70,7 +70,7 @@ test('Scan a bill opens our camera; the shutter goes to the photo check, then th
   expect(uploads(api)).toBe(1);
 });
 
-test('closing the camera goes back to Bills', async ({ browser }) => {
+test('closing the camera goes back to Bills', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const page = await lead(browser, api, 'fake');
 
@@ -81,7 +81,7 @@ test('closing the camera goes back to Bills', async ({ browser }) => {
   await expect(page.getByRole('dialog', { name: 'Scan a bill' })).toHaveCount(0);
 });
 
-test('no camera access: falls back to the phone’s camera (the file input)', async ({ browser }) => {
+test('no camera access: falls back to the phone’s camera (the file input)', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const page = await lead(browser, api, 'denied');
 
@@ -93,7 +93,7 @@ test('no camera access: falls back to the phone’s camera (the file input)', as
   await expect(page.getByRole('heading', { name: 'All in?' })).toBeVisible({ timeout: 15_000 });
 });
 
-test('All in? Retake discards the photo without uploading; Use photo uploads once', async ({ browser }) => {
+test('All in? Retake discards the photo without uploading; Use photo uploads once', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi({ status: 'setup' });
   const page = await lead(browser, api, 'denied');
 

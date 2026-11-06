@@ -57,7 +57,7 @@ function busyTable() {
   return api;
 }
 
-test.describe('tap targets', () => {
+test.describe('tap targets', { tag: '@webkit' }, () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
   const screens: { name: string; user: User; to: (api: FakeApi) => string; api: () => FakeApi; ready: (p: Page) => Promise<void> }[] = [
@@ -90,7 +90,7 @@ test.describe('tap targets', () => {
   });
 });
 
-test("the lead's bank details never reach a server", async ({ page }) => {
+test("the lead's bank details never reach a server", { tag: '@webkit' }, async ({ page }) => {
   const api = new FakeApi({ status: 'setup' });
   await open(page, api, users.lead, '/');
   await page.locator('input[capture]').setInputFiles(PHOTO);
@@ -101,7 +101,10 @@ test("the lead's bank details never reach a server", async ({ page }) => {
   await page.getByLabel('Sort code').fill(LEAD_BANK.sortCode);
   await page.getByLabel('Account number').fill(LEAD_BANK.accountNumber);
   await page.getByRole('button', { name: 'Save and continue' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  // Wait for Review bill: 'Continue' alone would also match "Save and continue",
+  // and a click before the page moves submits the form again.
+  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
 
   const sent = api.requests.map((r) => `${r.method} ${r.path} ${r.body ?? ''}`);
@@ -149,7 +152,7 @@ test('a table of ten: everyone claims, the shares add up, the lead closes', asyn
   await ctx.close();
 });
 
-test.describe('screen sizes', () => {
+test.describe('screen sizes', { tag: '@webkit' }, () => {
   const unauth = (page: Page) =>
     page.route('**/v1/me', (r) => r.fulfill({ status: 401, json: { error: { code: 'AUTH_MISSING', message: 'no' } } }));
 

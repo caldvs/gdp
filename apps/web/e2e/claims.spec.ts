@@ -22,7 +22,7 @@ async function diner(browser: Browser, api: FakeApi, user: User, opts: { clipboa
 const GROUPS = { Yours: 'yours', 'Still to claim': 'open', 'Claimed by others': 'others' } as const;
 const group = (page: Page, name: keyof typeof GROUPS) => page.locator(`.claim[data-group="${GROUPS[name]}"]`);
 
-test('#130: a 3× line is claimed one portion at a time, never more than were ordered', async ({ browser }) => {
+test('#130: a 3× line is claimed one portion at a time, never more than were ordered', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   const sam = await diner(browser, api, users.sam);
@@ -80,7 +80,7 @@ test('some of a 3× line can be split: the split gets its own row and the rest i
   expect(api.participants.find((p) => p.userId === 'u-tom')!.claimedItemIds).toEqual([items[4]!.itemId]);
 });
 
-test('#130, #177: claiming one thing ticks its row in place; tapping again puts it back', async ({ browser }) => {
+test('#130, #177: claiming one thing ticks its row in place; tapping again puts it back', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const sam = await diner(browser, api, users.sam);
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
@@ -300,7 +300,7 @@ test('#131: the lead lands on Your items, Done goes to The table', async ({ brow
   await expect(lead.getByRole('tab', { name: 'Your items' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('#131: Not claimed opens a sheet; Claim takes a line and the sheet closes when none are left', async ({ browser }) => {
+test('#131: Not claimed opens a sheet; Claim takes a line and the sheet closes when none are left', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   api.join(users.sam);
   // Sam has the calamari, lasagne and both Negronis; olives and the martinis are left.

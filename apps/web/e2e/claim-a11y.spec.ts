@@ -56,9 +56,13 @@ test('#195: the stepper keeps focus, and moves to − when + runs out', async ({
   await sam.keyboard.press('Enter');
   const more = sam.getByRole('button', { name: 'One more Espresso Martini' });
   await expect(more).toBeFocused();
+  // A busy stepper ignores presses (#196), and keyboard.press doesn't wait
+  // for it the way click does, so wait for each claim to land first.
+  await expect(more).not.toHaveAttribute('aria-disabled');
   await sam.keyboard.press('Enter');
   await expect(sam.locator(`.claim[data-row="${items[4]!.itemId}"] .stepper span`)).toHaveText('2');
   await expect(more).toBeFocused();
+  await expect(more).not.toHaveAttribute('aria-disabled');
   await sam.keyboard.press('Enter');
   await expect(more).toBeDisabled();
   await expect(sam.getByRole('button', { name: 'One fewer Espresso Martini' })).toBeFocused();

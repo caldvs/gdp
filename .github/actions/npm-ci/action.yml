@@ -1,0 +1,30 @@
+name: npm ci (cached)
+description: >-
+  Node from .nvmrc, then every node_modules folder from the cache, or `npm ci`
+  when the lockfile, Node version or image changed. Skipping `npm ci` skips
+  `prepare` (husky), which CI doesn't need.
+
+inputs:
+  key:
+    description: What else the install depends on (e.g. the container image), so different setups don't share a cache.
+    required: false
+    default: host
+
+runs:
+  using: composite
+  steps:
+    - id: node
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version-file: .nvmrc
+    - id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: node-modules-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-node${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci

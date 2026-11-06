@@ -26,7 +26,7 @@ async function signInWithCode(page: Page) {
   await page.getByLabel('Code sent to sam@example.com').fill(SIGN_IN_CODE);
 }
 
-test('#183: a guest scans the QR, sees the bill and joins with just a name; the bank details never reach a server', async ({ browser }) => {
+test('#183: a guest scans the QR, sees the bill and joins with just a name; the bank details never reach a server', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam, { signedIn: false });
   const fragment = fragmentFor();
@@ -106,7 +106,7 @@ test('an expired link leaves the guest without bank details, with a way out', as
   await expect(sam.getByText('04-06-68').or(sam.getByText('No bank details from Callum yet.'))).toBeVisible();
 });
 
-test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo carries amount and reference', async ({ browser }) => {
+test('Monzo and Revolut buttons appear only when the lead has the handles; Monzo carries amount and reference', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies', revolut: 'callumd' })}`);

@@ -29,27 +29,31 @@ const pastSessions = () => {
   ];
 };
 
-test('history: All / Hosted / Joined; the host sees the bill’s total, a guest their share, ticked once paid', async ({ browser }) => {
+test('Every bill: by month, All / Hosted / Joined; the host sees the bill’s total, a guest their share, ticked once paid', async ({ browser }) => {
   const api = new FakeApi();
   api.mySessions = pastSessions();
   const lead = await diner(browser, api, users.lead);
   await lead.goto('/history');
   const rows = lead.locator('.box a.row');
   await expect(rows).toHaveCount(4);
+  await expect(lead.getByRole('heading', { name: 'Every bill' })).toBeVisible();
+  const month = new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Europe/London' });
+  await expect(lead.getByRole('heading', { name: month })).toBeVisible();
 
-  await lead.getByLabel('Show').selectOption('hosted');
+  await lead.getByRole('button', { name: 'Hosted' }).click();
+  await expect(lead.getByRole('button', { name: 'Hosted' })).toHaveAttribute('aria-pressed', 'true');
   await expect(rows).toHaveCount(2);
   await expect(rows.first()).toContainText('Gennaro');
-  await expect(rows.first()).toContainText('hosted · open');
+  await expect(rows.first()).toContainText('hosted · Open');
   await expect(rows.first().locator('.row__end')).toHaveText(`£${(api.bill.totalPence / 100).toFixed(2)}`);
   await expect(rows.nth(1).locator('.row__end')).toHaveText('£50.00');
-  await expect(rows.nth(1)).not.toContainText('open');
+  await expect(rows.nth(1)).toContainText('hosted · Settled');
 
-  await lead.getByLabel('Show').selectOption('joined');
+  await lead.getByRole('button', { name: 'Joined' }).click();
   await expect(rows).toHaveCount(2);
   const dishoom = rows.filter({ hasText: 'Dishoom' });
   await expect(dishoom.locator('.badge--ok')).toHaveText('Paid £28.40');
-  await expect(dishoom).toContainText('joined · £96.00 bill');
+  await expect(dishoom).toContainText('joined · Settled · £96.00 bill');
   await expect(rows.filter({ hasText: 'Rudy’s' }).locator('.badge--ok')).toHaveCount(0);
   await expect(rows.filter({ hasText: 'Rudy’s' }).locator('.row__end')).toHaveText('£15.50');
 });
@@ -87,7 +91,7 @@ test('menu → account → sign out → the front door, and a deep link afterwar
   await lead.getByRole('button', { name: 'Open menu' }).click();
   await lead.getByRole('link', { name: 'Account' }).click();
   await expect(lead.getByRole('heading', { name: 'Account' })).toBeVisible();
-  await expect(lead.getByText('Callum Davies · callum@example.com')).toBeVisible();
+  await expect(lead.getByText('callum@example.com · For your bill emails.')).toBeVisible();
   await lead.getByRole('button', { name: 'Sign out' }).click();
   await expect(lead).toHaveURL(/\/sign-in$/);
   expect(await lead.evaluate(() => localStorage.getItem('gdp.idToken'))).toBeNull();
@@ -120,4 +124,16 @@ test('starting a payment fails once: Try again works and only one payment is ope
   const initiates = api.requests.filter((r) => r.method === 'POST' && r.path === `/v1/sessions/${SID}/payments`);
   expect(initiates.length).toBe(2);
   expect(api.participants.find((p) => p.userId === 'u-sam')!.payment.status).toBe('pending');
+});
+
+test('#224 Account: bank details, the email bill emails go to, Every bill, Sign out', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead);
+  await lead.goto('/account');
+  await expect(lead.getByRole('heading', { name: 'Account' })).toBeVisible();
+  await expect(lead.getByRole('link', { name: /^Bank details/ })).toContainText('Not saved');
+  await expect(lead.getByText(`${users.lead.email} · For your bill emails.`)).toBeVisible();
+  await expect(lead.getByRole('link', { name: 'Credits' })).toHaveCount(0);
+  await lead.getByRole('link', { name: 'Every bill' }).click();
+  await expect(lead.getByRole('heading', { name: 'Every bill' })).toBeVisible();
 });

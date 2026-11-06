@@ -666,6 +666,12 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .bill-end b { font-weight: 600; }
 .bill-end__sub { font-size: 13px; color: var(--mute); }
 .qr-caption { display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; }
+.credit-card { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px 14px; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); }
+.credit-card__top { display: flex; justify-content: space-between; gap: 12px; font-family: var(--display); font-size: 19px; }
+/* M3 filters (#224): the selected one is ink, not the screen's red-orange. */
+.filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--card-line); background: var(--bg); color: var(--ink); font: 600 15px var(--font); cursor: pointer; }
+.filter[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .adds-up { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--ok-ink); }
 /* Claim on a receipt line: 44px, outlined; claimed is blue. */
 .receipt .claim-btn { flex: none; min-width: 104px; height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--ink); background: var(--bg); color: var(--ink); font: 700 14px var(--font); letter-spacing: 0; cursor: pointer; }

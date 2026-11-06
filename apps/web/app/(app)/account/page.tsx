@@ -1,17 +1,16 @@
 'use client';
 
 /**
- * You: saved bank details, history, sign out. Accounts are optional for
- * guests; this is where the people who do have one keep things.
+ * M1 Account (#224): this month's free credit, bank details (this phone
+ * only), the email bill emails go to, every bill, sign out.
  */
 import { useRouter } from 'next/navigation';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { creditDate, useMyBilling } from '@gdp/core/api/hooks/useTableFee';
-import { formatGBP } from '@gdp/core/lib/money';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { BackLink, Badge, Box, Button, Centre, Page, Row, RowLink, Section, Spinner, Title } from '@/components/ui';
+import { BackLink, Box, Button, Centre, Page, Row, RowLink, Spinner, Title } from '@/components/ui';
 
 export default function AccountPage() {
   const router = useRouter();
@@ -33,32 +32,23 @@ export default function AccountPage() {
     </>
   ) : 'Not saved';
 
+  const credit = billing.data;
   return (
     <Page sub>
       <BackLink href="/">Bills</BackLink>
-      <Title title="Account" sub={me.data?.email ? `${name} · ${me.data.email}` : name} />
-      <Box>
-        <RowLink href="/payout-account?returnTo=%2Faccount" tall title="Bank details" sub={bankSub} />
-        <RowLink href="/history" tall title="History" />
-      </Box>
-      <p className="small muted">Bank details stay on this device. We never see them.</p>
-      {billing.data ? (
-        <Section title="Platform fee">
-          <Box>
-            <Row
-              title="Credits"
-              sub={billing.data.creditsLeft === 0 ? `Free one ${creditDate(billing.data.nextCreditOn)}` : '1 free each month'}
-              end={<Badge tone={billing.data.creditsLeft + billing.data.boughtCredits > 0 ? 'ok' : 'plain'}>{billing.data.creditsLeft + billing.data.boughtCredits} left</Badge>}
-            />
-            <RowLink href="/credits" title="Buy 10 credits" sub="Bills free for everyone" end={formatGBP(500)} />
-            <Row
-              title="Fees paid"
-              sub={billing.data.refundedPence > 0 ? `${formatGBP(billing.data.refundedPence)} refunded` : undefined}
-              end={formatGBP(billing.data.paidPence)}
-            />
-          </Box>
-        </Section>
+      <Title title="Account" sub={name} />
+      {/* M1 (#224): this month's free credit; no bought credits (#227). */}
+      {credit ? (
+        <div className="credit-card" data-testid="free-credit">
+          <div className="credit-card__top"><b>Free credit</b><b>{credit.creditsLeft > 0 ? '1 this month' : 'Used this month'}</b></div>
+          <span className="muted">Next one {creditDate(credit.nextCreditOn)}</span>
+        </div>
       ) : null}
+      <Box list>
+        <RowLink href="/payout-account?returnTo=%2Faccount" tall title="Bank details" sub={bank ? <>{bankSub}<br />On this phone only</> : 'Not saved'} />
+        {me.data?.email ? <Row tall title="Email" sub={<>{me.data.email} · For your bill emails.</>} /> : null}
+        <RowLink href="/history" tall title="Every bill" />
+      </Box>
       <Button tone="secondary" onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
     </Page>
   );

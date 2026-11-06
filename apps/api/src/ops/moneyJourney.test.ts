@@ -3,6 +3,7 @@ import {
   checkoutSessionIdOf,
   expectedCharge,
   isTestKey,
+  keyFromSecret,
   pickClaims,
   settledProblems,
   type IntentView,
@@ -81,6 +82,13 @@ describe('checkoutSessionIdOf and isTestKey', () => {
   it('reads the Checkout Session id from its client secret', () => {
     expect(checkoutSessionIdOf('cs_test_a1B2c3_secret_xyz')).toBe('cs_test_a1B2c3');
     expect(checkoutSessionIdOf('pi_123_secret_x')).toBeNull();
+  });
+
+  it('reads the key from its secret, plain or a one-entry JSON object', () => {
+    expect(keyFromSecret(' sk_test_a \n')).toBe('sk_test_a');
+    expect(keyFromSecret('{"STRIPE_SECRET_KEY":" sk_test_b "}')).toBe('sk_test_b');
+    expect(keyFromSecret('{"a":"x","b":"y"}')).toBe('{"a":"x","b":"y"}');
+    expect(keyFromSecret('{not json')).toBe('{not json');
   });
 
   it('takes only test-mode keys', () => {

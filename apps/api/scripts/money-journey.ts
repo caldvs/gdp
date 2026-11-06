@@ -39,6 +39,7 @@ import {
   checkoutSessionIdOf,
   expectedCharge,
   isTestKey,
+  keyFromSecret,
   pickClaims,
   settledProblems,
   type IntentView,
@@ -66,14 +67,14 @@ const gbp = (p: number) => `£${(p / 100).toFixed(2)}`;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function stripeKey(): Promise<string> {
-  if (process.env.STRIPE_TEST_KEY) return process.env.STRIPE_TEST_KEY;
+  if (process.env.STRIPE_TEST_KEY) return keyFromSecret(process.env.STRIPE_TEST_KEY);
   const sm = new SecretsManagerClient({ region: process.env.AWS_REGION ?? 'eu-west-2' });
   // The deploy that grants the read may have just landed: give IAM a moment.
   for (let attempt = 1; ; attempt++) {
     try {
       const out = await sm.send(new GetSecretValueCommand({ SecretId: SECRET }));
       if (!out.SecretString) fail(`${SECRET} has no string value`);
-      return out.SecretString!.trim();
+      return keyFromSecret(out.SecretString!);
     } catch (err) {
       const name = (err as { name?: string }).name;
       if (name !== 'AccessDeniedException' || attempt >= 8) throw err;

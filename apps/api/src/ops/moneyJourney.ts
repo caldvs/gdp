@@ -95,6 +95,21 @@ export function checkoutSessionIdOf(clientSecret: string): string | null {
   return m ? m[1]! : null;
 }
 
+/**
+ * The key from its secret, stored as is or as a one-entry JSON object
+ * (as the Lambda reads it, `unwrapSecret` in config/env.ts).
+ */
+export function keyFromSecret(raw: string): string {
+  const v = raw.trim();
+  if (!v.startsWith('{')) return v;
+  try {
+    const values = Object.values(JSON.parse(v) as Record<string, unknown>);
+    return values.length === 1 && typeof values[0] === 'string' ? values[0].trim() : v;
+  } catch {
+    return v;
+  }
+}
+
 /** Only ever a Stripe test-mode key: the journey makes real charges. */
 export const isTestKey = (key: string): boolean => /^(sk|rk)_test_/.test(key);
 

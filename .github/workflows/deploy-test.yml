@@ -1,22 +1,28 @@
 name: Deploy to test
 
-# Every hour, put the newest green commit on main onto test: the dev API
+# When main's Checks pass (and hourly as a backstop: GitHub runs schedules
+# hours late, #232), put the newest green commit on main onto test: the dev API
 # (Deploy API, environment `dev`) and test.paymeback.dev (a Vercel Preview
 # build aliased to it). Pushes to main deploy nothing themselves; prod only
 # deploys through Deploy to prod (deploy-prod.yml).
 #
 # - Picks the newest commit on main whose CI `gate` passed (a commit still in
-#   CI waits for the next hour).
+#   CI is deployed when its Checks finish).
 # - Compares it with the last `test` deployment (Settings → Environments; what
 #   test runs now) and deploys only
 #   the parts that changed: the API for apps/api, the web app for apps/web or
 #   packages. Nothing new → nothing deploys, so a quiet hour costs nothing.
 # - Records a `test` deployment once everything it deployed succeeded. A
-#   failure records nothing, so the next hour tries again; fix main.
+#   failure records nothing, so the next run tries again; fix main.
 # - Run it by hand (Actions → Deploy to test → Run workflow) to deploy now;
 #   `force` redeploys both parts even if nothing changed.
 
 on:
+  # Checks finishing on main: deploy straight away if it went green.
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -36,6 +42,8 @@ permissions:
 jobs:
   pick:
     name: pick a commit
+    # A red or cancelled Checks run has nothing new to deploy.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

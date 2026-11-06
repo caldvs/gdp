@@ -183,13 +183,13 @@ Git pushes never deploy (`apps/web/vercel.json` switches Git deploys off):
 Hobby allows 100 deployments a day and every push counts. GitHub Actions
 deploys instead (#124):
 
-- **Test:** pushes to main deploy nothing. Every hour (at :17) **Deploy to test**
+- **Test:** pushes to main deploy nothing themselves. When a push's Checks pass on main (and hourly at :17 as a backstop, since GitHub runs schedules hours late, #232) **Deploy to test**
   (`deploy-test.yml`) takes the newest commit on main whose `gate` passed,
   compares it with the last `test` deployment (Settings → Environments; what test runs now) and deploys only
   what changed: the dev API (Deploy API, `dev`) for `apps/api`, and for
   `apps/web` or `packages` a Vercel Preview build (Preview env vars: the dev
-  API) aliased to `test.paymeback.dev`. Then it records a `test` deployment. A quiet
-  hour deploys nothing, so test costs at most 24 Vercel deploys a day. Run it
+  API) aliased to `test.paymeback.dev`. Then it records a `test` deployment. Nothing new
+  deploys nothing, so test costs one Vercel deploy per green web change. Run it
   by hand to deploy now (`force` redeploys both). If a deploy fails the tag
   stays put and the next hour retries, so fix main.
 - **Live:** Actions → **Deploy to prod** → Run workflow (optionally a commit on main;

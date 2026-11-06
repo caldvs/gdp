@@ -111,6 +111,7 @@ function Landing() {
       <footer className="home__foot">
         <span>© Pay Me Back</span>
         <nav aria-label="Legal">
+          <Link href="/help">Help</Link>
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/refunds">Refunds</Link>

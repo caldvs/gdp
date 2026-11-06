@@ -48,6 +48,7 @@ export default function AccountPage() {
         <RowLink href="/payout-account?returnTo=%2Faccount" tall title="Bank details" sub={bank ? <>{bankSub}<br />On this phone only</> : 'Not saved'} />
         {me.data?.email ? <Row tall title="Email" sub={<>{me.data.email} · For your bill emails.</>} /> : null}
         <RowLink href="/history" tall title="Every bill" />
+        <RowLink href="/help" tall title="Help" sub="How claiming and paying work" />
       </Box>
       <Button tone="secondary" onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
     </Page>

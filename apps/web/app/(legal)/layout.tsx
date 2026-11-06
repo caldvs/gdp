@@ -11,6 +11,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         <div className="page legal">
           {children}
           <nav className="legal__nav" aria-label="Legal">
+            <Link href="/help">Help</Link>
             <Link href="/terms">Terms</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/refunds">Refunds</Link>

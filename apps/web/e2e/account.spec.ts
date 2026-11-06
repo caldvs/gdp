@@ -137,3 +137,16 @@ test('#224 Account: bank details, the email bill emails go to, Every bill, Sign 
   await lead.getByRole('link', { name: 'Every bill' }).click();
   await expect(lead.getByRole('heading', { name: 'Every bill' })).toBeVisible();
 });
+
+test('#233 Help: from Account, and readable signed out', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await diner(browser, api, users.lead);
+  await lead.goto('/account');
+  await lead.getByRole('link', { name: /^Help/ }).click();
+  await expect(lead.getByRole('heading', { name: 'Help', level: 1 })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Bank details' })).toBeVisible();
+
+  const out = await diner(browser, api, users.sam, { signedIn: false });
+  await out.goto('/help');
+  await expect(out.getByRole('heading', { name: 'The platform fee' })).toBeVisible();
+});

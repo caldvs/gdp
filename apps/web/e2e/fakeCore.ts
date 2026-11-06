@@ -12,6 +12,7 @@
  * frozen once the guest has said they've paid).
  */
 import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
+import { owedPence } from '@gdp/core/lib/owed';
 import { billStatement } from '@gdp/core/lib/statement';
 
 /** What the fake answers a request with. */
@@ -233,18 +234,11 @@ export class FakeCore {
     return { billTotalPence: this.bill.totalPence, ...(inIt ? { mySharePence: this.owed(userId) } : {}), ...table, ...s };
   }
 
-  /** What each participant owes, the way the app projects it. */
+  /** What each participant owes: the shared split maths (core's owed.ts), as the API charges it. */
   owed(userId: string): number {
     const p = this.participants.find((x) => x.userId === userId)!;
-    const unit = (id: string) => this.items.find((i) => i.itemId === id)?.unitPricePence ?? 0;
-    let sub = p.claimedItemIds.reduce((a, id) => a + unit(id), 0);
-    for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil((unit(sh.itemId) * (sh.units ?? 1)) / sh.ways);
-    const b = this.bill;
-    const off = b.discounts.reduce((a, d) => a + d.amountPence, 0);
-    const before = Math.round(sub * (1 + (b.subtotalPence ? (b.serviceChargePence - off) / b.subtotalPence : 0)));
-    // On a hold, a guest rounds up to the next whole pound.
-    const fee = userId !== 'u-lead' && this.platformFeePence && before > 0 ? (100 - (before % 100)) % 100 : 0;
-    return before + fee;
+    const table = { creatorUserId: 'u-lead', platformFeePence: this.platformFeePence ?? 0, participants: this.participants };
+    return owedPence(this.bill as never, table, p, this.shares);
   }
 
   /**

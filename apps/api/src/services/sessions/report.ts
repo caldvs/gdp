@@ -1,6 +1,7 @@
-import { apportionByWeight, splitShare } from './allocation.js';
+import { discountPartPence, sharesOf } from '@gdp/core/lib/owed';
+import { splitShare } from './allocation.js';
 import { roundUpPence } from '../payments/ledger.js';
-import { discountPence, type Bill } from '../../types/bills.js';
+import type { Bill } from '../../types/bills.js';
 import type { Session, Participant } from '../../types/sessions.js';
 
 /**
@@ -13,8 +14,6 @@ import type { Session, Participant } from '../../types/sessions.js';
  * Anything not yet taken is carried as its own "unclaimed" share so the
  * extras still add up to the bill; on a settled bill it is the lead's.
  */
-
-const UNCLAIMED = '￿#unclaimed';
 
 export type ReportLine = { name: string; detail?: string; pence: number };
 
@@ -115,15 +114,19 @@ export function buildReport(
   const itemsByUser = new Map<string, number>();
   for (const [userId, lines] of linesByUser) itemsByUser.set(userId, sum(lines));
   const unclaimedPence = sum(unclaimed);
-  const weights = new Map(itemsByUser);
-  if (unclaimedPence > 0) weights.set(UNCLAIMED, unclaimedPence);
-  const extras = apportionByWeight(bill.serviceChargePence + bill.taxPence, weights);
-  const off = apportionByWeight(discountPence(bill), weights);
+  // Penny-exact (8 Nov 2026): what each guest pays, the same maths as their
+  // payment; the lead takes the rest of the bill.
+  if (!itemsByUser.has(session.creatorUserId)) itemsByUser.set(session.creatorUserId, 0);
+  const shares = sharesOf(bill, itemsByUser, session.creatorUserId, unclaimedPence);
+  /** Service and tax shown on `items`, given the share they come to, and the discount part. */
+  const partsOf = (items: number, share: number) => {
+    const discount = discountPartPence(bill, items);
+    return { discount, extras: share - items + discount };
+  };
 
   const diners: DinerReport[] = session.participants.map((p) => {
     const itemsPence = itemsByUser.get(p.userId) ?? 0;
-    const extrasPence = extras.get(p.userId) ?? 0;
-    const discount = off.get(p.userId) ?? 0;
+    const { extras: extrasPence, discount } = partsOf(itemsPence, shares.byUser.get(p.userId) ?? 0);
     const feePence =
       p.userId === session.creatorUserId
         ? 0
@@ -162,7 +165,7 @@ export function buildReport(
     billTotalPence: bill.totalPence,
     diners,
     unclaimed,
-    unclaimedPence: unclaimedPence + (extras.get(UNCLAIMED) ?? 0) - (off.get(UNCLAIMED) ?? 0),
+    unclaimedPence: shares.nobody,
     collectedPence,
     toCollectPence,
   };

@@ -380,9 +380,10 @@ describe('computeOwed with a split covering several of a line', () => {
   it('divides the split’s units by its ways and adds the claims', () => {
     const owed = computeOwed(wine, people, ways, units);
     // £40 three ways: 1334, 1333, 1333; a and b also have a £20 bottle.
-    // c's service: 400 × 1333 / 8000, rounded down by largest remainder.
+    // Guests' service rounds down (c: 400 × 1333 / 8000 = 66.6), and the
+    // lead (a, the first here) takes the pennies left over.
     expect(owed.get('c')).toBe(1333 + 66);
-    expect(owed.get('a')).toBe(1334 + 2000 + 167);
+    expect(owed.get('a')).toBe(1334 + 2000 + 168);
     expect(sumValues(owed)).toBe(wine.totalPence);
   });
 

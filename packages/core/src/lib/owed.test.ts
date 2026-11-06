@@ -6,15 +6,48 @@ import {
   discountPence,
   extrasRate,
   itemsPence,
+  nobodyPence,
+  owedBeforeRoundUp,
   paymentsAreOpen,
   projectFeePence,
   projectOwedPence,
   projectSubtotalPence,
   sharePence,
+  sharesOf,
   splitShare,
   splitsOf,
   unclaimedItemIds,
+  withExtrasPence,
 } from './owed';
+
+describe('penny-exact shares (8 Nov 2026)', () => {
+  const items = [{ itemId: 'x', unitPricePence: 1000, quantity: 3 }];
+  const totals = { items, subtotalPence: 3000, serviceChargePence: 375, taxPence: 0, discounts: [] };
+  const a = { userId: 'a', claimedItemIds: ['x'] };
+  const b = { userId: 'b', claimedItemIds: ['x'] };
+
+  it('rounds a guest down', () => {
+    // 1001 × 3375 / 3000 = 1126.125, rounded down.
+    expect(withExtrasPence(totals, 1001)).toBe(1126);
+    expect(withExtrasPence(totals, 0)).toBe(0);
+    // No items on the bill at all: nothing to add.
+    expect(withExtrasPence({ ...totals, subtotalPence: 0 }, 500)).toBe(500);
+  });
+
+  it('puts what nobody claimed on the lead, and adds up to the bill', () => {
+    const table = { creatorUserId: 'a', participants: [a, b] };
+    expect(owedBeforeRoundUp(totals, table, b, [])).toBe(1125);
+    expect(nobodyPence(totals, table, [])).toBe(1125);
+    expect(owedBeforeRoundUp(totals, table, a, [])).toBe(3375 - 1125 - 1125);
+  });
+
+  it('works for a lead not at the table yet', () => {
+    const table = { creatorUserId: 'lead', participants: [b] };
+    expect(owedBeforeRoundUp(totals, table, { userId: 'lead', claimedItemIds: [] }, [])).toBe(3375 - 1125 - 2250);
+    expect(nobodyPence(totals, table, [])).toBe(2250);
+    expect(sharesOf(totals, new Map([['b', 1000]]), 'lead').byUser.get('lead')).toBe(3375 - 1125);
+  });
+});
 
 const bill = {
   billId: 'b1',
@@ -44,7 +77,8 @@ describe('owed projection', () => {
   });
 
   it('adds service pro rata', () => {
-    expect(projectOwedPence(session, bill, 'bob')).toBe(Math.round(2200 * (1 + 525 / 5251)));
+    // Rounded down (penny-exact, 8 Nov 2026): 2200 × 5776 / 5251 = 2419.9.
+    expect(projectOwedPence(session, bill, 'bob')).toBe(Math.floor((2200 * 5776) / 5251));
   });
 
   it('is zero for someone with no picks', () => {
@@ -96,7 +130,8 @@ describe('shared discounts (8 Nov 2026)', () => {
     expect(extrasRate(holland)).toBeCloseTo((697 - 5000) / 5575);
   });
   it('gives a diner their part of it by what they had', () => {
-    expect(discountPartPence(holland, 375)).toBe(336);
+    // 375 × 5000 / 5575 = 336.3, rounded up so the service shown is never below zero.
+    expect(discountPartPence(holland, 375)).toBe(337);
     expect(discountPartPence({ subtotalPence: 0, discounts: [] } as never, 0)).toBe(0);
   });
 });
@@ -140,13 +175,13 @@ describe('the split maths the API uses too', () => {
     expect(unclaimedItemIds(items, [a, b], [{ itemId: 'y', userIds: [] }])).toEqual(['y']);
     let open: string[] = [];
     try {
-      computeOwed(bill, [a], []);
+      computeOwed(bill, { creatorUserId: 'a', participants: [a] }, []);
     } catch (err) {
       expect((err as Error).message).toBe('CLAIMS_INCOMPLETE');
       open = (err as { unclaimedItemIds: string[] }).unclaimedItemIds;
     }
     expect(open).toEqual(['x', 'y']);
-    const owed = computeOwed(bill, [a, b], [{ itemId: 'y', userIds: ['a', 'b'] }]);
+    const owed = computeOwed(bill, { creatorUserId: 'a', participants: [a, b] }, [{ itemId: 'y', userIds: ['a', 'b'] }]);
     expect(owed).toEqual(new Map([['a', 605], ['b', 605]]));
   });
 

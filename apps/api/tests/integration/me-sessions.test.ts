@@ -200,18 +200,21 @@ describe('GET /v1/me/sessions', () => {
       };
       return body.sessions.find((s) => s.sessionId === sid);
     };
-    // Lead: 1450 + 376 of the split, plus service pro rata (356 / 2851).
-    expect(await mine(lead)).toMatchObject({ billTotalPence: 3207, mySharePence: 2054 });
-    // Guest: 650 + 375, plus service.
-    expect(await mine(guest)).toMatchObject({ billTotalPence: 3207, mySharePence: 1153 });
+    // Guest: 650 + 375, plus service pro rata (356 / 2851), rounded down:
+    // 1025 × 3207 / 2851 = 1152.99. The lead takes the rest of the bill.
+    expect(await mine(guest)).toMatchObject({ billTotalPence: 3207, mySharePence: 1152 });
+    expect(await mine(lead)).toMatchObject({ billTotalPence: 3207, mySharePence: 3207 - 1152 });
 
     // The guest leaves the split: their spot reopens, the lead keeps their part.
     await app.request(`/v1/sessions/${sid}/shares/${tiramisu}`, {
       method: 'DELETE',
       headers: makeAuth(guest),
     });
-    expect((await mine(guest))?.mySharePence).toBe(Math.round((650 * 3207) / 2851));
-    expect((await mine(lead))?.mySharePence).toBe(Math.round(((1450 + 376) * 3207) / 2851));
+    // The open spot (375) is nobody's: it and its service go on the lead.
+    const guestPart = Math.floor((650 * 3207) / 2851);
+    const nobody = Math.floor((375 * 3207) / 2851);
+    expect((await mine(guest))?.mySharePence).toBe(guestPart);
+    expect((await mine(lead))?.mySharePence).toBe(3207 - guestPart - nobody);
   });
 
   it('a locked bill gives the locked share', async () => {

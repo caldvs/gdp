@@ -750,6 +750,7 @@ export const sessionService = {
           session.participants,
           new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.ways])),
           new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.units ?? 1])),
+          session.creatorUserId,
         );
       } catch (err) {
         if (err instanceof Error && err.message === 'CLAIMS_INCOMPLETE') {

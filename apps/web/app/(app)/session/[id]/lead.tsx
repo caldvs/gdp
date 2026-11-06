@@ -18,7 +18,7 @@ import { useGuestTexts, useRemind, type GuestRemind } from '@gdp/core/api/hooks/
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { claimRows, openPence } from '@gdp/core/lib/claimRows';
-import { extrasRate, projectFeePence, projectOwedPence } from '@gdp/core/lib/owed';
+import { projectFeePence, projectOwedPence, withExtrasPence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
   ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, Section, Title, TotalLine, Totals, firstName,
@@ -102,11 +102,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   // Nobody joined: settling or deleting gives back what sharing cost (#132).
   const spent = useSpent(s.sessionId, guests.length === 0);
   const giveBack = giveBackNote(spent);
-  const rate = extrasRate(b);
   const myOwed = projectOwedPence(s, b, meUserId);
   const rows = useMemo(() => claimRows(s, b, meUserId), [s, b, meUserId]);
   const left = rows.filter((r) => r.group === 'open');
-  const leftWithService = Math.round(left.reduce((acc, r) => acc + openPence(r), 0) * (1 + rate));
+  const leftWithService = withExtrasPence(b, left.reduce((acc, r) => acc + openPence(r), 0));
   const says = guests.filter((p) => ledger(p, owedFor(s, b, p)).waiting.length > 0);
   // Once everyone's paid for a fully claimed bill, claims are fixed and
   // nobody else needs the QR. With lines still open someone may yet join.

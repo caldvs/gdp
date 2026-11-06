@@ -7,6 +7,8 @@ import {
   apportionByWeight,
   computeOwed as owedOnBill,
   extrasRate,
+  nobodyPence,
+  owedBeforeRoundUp,
   projectFeePence,
   projectOwedPence,
   projectSubtotalPence,
@@ -22,8 +24,9 @@ import { billAndSession, split, type GenSession } from '../test/arbitraries';
 
 /** The shares as the app reads them; `computeOwed(bill, participants, ...splits(session))`. */
 const splits = (session: GenSession): [GenSession['shares']] => [session.shares];
-const computeOwed = (bill: Parameters<typeof owedOnBill>[0] & { totalPence?: number }, participants: Parameters<typeof owedOnBill>[1], shares: readonly Split[]) =>
-  owedOnBill(bill, participants, shares);
+// The lead (who takes the pennies left over) is the first participant.
+const computeOwed = (bill: Parameters<typeof owedOnBill>[0] & { totalPence?: number }, participants: Parameters<typeof owedOnBill>[1]['participants'], shares: readonly Split[]) =>
+  owedOnBill(bill, { creatorUserId: participants[0]!.userId, participants }, shares);
 
 describe('sharePence (property)', () => {
   it('gives each person the floor or ceiling of price ÷ ways', () => {
@@ -134,17 +137,40 @@ describe('client and server agree (property)', () => {
     );
   });
 
-  it('a payment and the locked bill differ by at most 3p a person', () => {
-    // A payment rounds subtotal × (1 + rate) once (it works on a bill still
-    // being claimed); locking apportions service, tax and any shared discount
-    // separately by largest remainder so the bill adds up (±1p each).
+  it('a payment and the locked bill are the same amount, to the penny', () => {
     fc.assert(
       fc.property(billAndSession(), ({ bill, session }) => {
+        const s = { ...session, creatorUserId: session.participants[0]!.userId } as never;
         const server = computeOwed(bill, session.participants, ...splits(session));
         for (const p of session.participants) {
-          const projected = projectOwedPence(session as never, bill as never, p.userId);
-          expect(Math.abs(projected - server.get(p.userId)!)).toBeLessThanOrEqual(3);
+          expect(projectOwedPence(s, bill as never, p.userId)).toBe(server.get(p.userId));
         }
+      }),
+    );
+  });
+
+  it('everyone’s amounts and what nobody claimed add up to the bill, even mid-claiming', () => {
+    fc.assert(
+      fc.property(billAndSession({ complete: false }), ({ bill, session }) => {
+        const s = { ...session, creatorUserId: session.participants[0]!.userId };
+        const all = session.participants.reduce((a, p) => a + owedBeforeRoundUp(bill, s, p, s.shares), 0);
+        expect(all + nobodyPence(bill, s, s.shares)).toBe(bill.totalPence);
+        for (const p of session.participants) expect(owedBeforeRoundUp(bill, s, p, s.shares)).toBeGreaterThanOrEqual(0);
+      }),
+    );
+  });
+
+  it('a guest’s amount depends only on what they had: someone else claiming never moves it', () => {
+    fc.assert(
+      fc.property(billAndSession({ complete: false }), fc.nat(), ({ bill, session }, pick) => {
+        fc.pre(session.participants.length >= 3);
+        const s = { ...session, creatorUserId: session.participants[0]!.userId };
+        const guest = session.participants[1]!;
+        const other = session.participants[2 + (pick % (session.participants.length - 2))]!;
+        const item = bill.items[pick % bill.items.length]!;
+        const before = owedBeforeRoundUp(bill, s, guest, s.shares);
+        const moved = { ...s, participants: s.participants.map((p) => (p === other ? { ...p, claimedItemIds: [...p.claimedItemIds, item.itemId] } : p)) };
+        expect(owedBeforeRoundUp(bill, moved, guest, s.shares)).toBe(before);
       }),
     );
   });
@@ -273,9 +299,11 @@ describe('server allocation (property)', () => {
         fc.pre(bill.discounts.length > 0);
         const full = computeOwed({ ...bill, discounts: [], totalPence: bill.totalPence + bill.discounts[0]!.amountPence }, session.participants, ...splits(session));
         const owed = computeOwed(bill, session.participants, ...splits(session));
+        const lead = session.participants[0]!.userId;
         for (const [u, v] of owed) {
           expect(v).toBeGreaterThanOrEqual(0);
-          expect(v).toBeLessThanOrEqual(full.get(u)!);
+          // The lead takes the pennies left over: under 1p a person, and what nobody claimed.
+          expect(v).toBeLessThanOrEqual(full.get(u)! + (u === lead ? session.participants.length : 0));
         }
       }),
     );

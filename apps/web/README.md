@@ -29,6 +29,14 @@ Next 16 differs from older versions: read [AGENTS.md](AGENTS.md) before changing
 - API calls and hooks come from `@gdp/core` ([packages/core](../../packages/core/README.md)).
 - `lib/joinFragment.ts` puts the lead's bank details in the link's `#p=` fragment ([ADR-0002](../../docs/decisions.md#adr-0002-bank-details-stay-on-the-leads-device)).
 
+## Storybook
+
+Every piece of `components/ui.tsx`, the forms, the header, the join QR and a few screens, in `stories/`.
+
+- `npm run storybook -w apps/web`: live at http://localhost:6006.
+- `npm run build -w apps/web` also builds it into `public/storybook` (`scripts/build-storybook.mjs`), so the app serves it at **/storybook**: https://test.paymeback.dev/storybook and http://localhost:8081/storybook after a build. A broken story fails the build, and so CI. Prod builds leave it out.
+- Its pages may frame each other (same origin only); the rest of the site is never framed (`securityHeaders`, `sameOriginFrames`).
+
 ## Settings
 
 `.env.local`, see `.env.example`:

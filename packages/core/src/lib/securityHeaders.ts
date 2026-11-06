@@ -17,9 +17,14 @@
  * and nonces would force every page to render per request (see Next's CSP
  * guide). 'unsafe-eval' is there for heic2any, whose libheif build makes
  * functions with `new Function` inside its blob: worker.
+ *
+ * Storybook at /storybook (test and local builds) shows each story in a
+ * same-origin iframe, so its pages get `{ sameOriginFrames: true }`: they may
+ * frame, and be framed by, the site itself and nothing else.
  */
 
 type Env = Record<string, string | undefined>;
+type Options = { sameOriginFrames?: boolean };
 
 const AWS_REGION = 'eu-west-2';
 
@@ -55,7 +60,7 @@ function directive(name: string, values: (string | null | false | undefined)[]):
   return uniq.length ? `${name} ${uniq.join(' ')}` : name;
 }
 
-export function contentSecurityPolicy(env: Env): string {
+export function contentSecurityPolicy(env: Env, { sameOriginFrames = false }: Options = {}): string {
   const appEnv = env.NEXT_PUBLIC_APP_ENV?.trim() || 'local';
   const local = appEnv === 'local';
   const devServer = env.NODE_ENV === 'development';
@@ -95,21 +100,21 @@ export function contentSecurityPolicy(env: Env): string {
       ...(devServer ? ['ws:'] : []),
       ...(preview ? VERCEL_LIVE_CONNECT : []),
     ]),
-    directive('frame-src', [...STRIPE_SCRIPT, ...STRIPE_ANY, ...live]),
+    directive('frame-src', [sameOriginFrames && "'self'", ...STRIPE_SCRIPT, ...STRIPE_ANY, ...live]),
     directive('worker-src', ["'self'", 'blob:']),
     directive('media-src', ["'self'", 'blob:']),
     directive('object-src', ["'none'"]),
     directive('base-uri', ["'self'"]),
     directive('form-action', ["'self'"]),
-    directive('frame-ancestors', ["'none'"]),
+    directive('frame-ancestors', [sameOriginFrames ? "'self'" : "'none'"]),
     ...(local ? [] : ['upgrade-insecure-requests']),
   ].join('; ');
 }
 
-export function securityHeaders(env: Env): { key: string; value: string }[] {
+export function securityHeaders(env: Env, options: Options = {}): { key: string; value: string }[] {
   return [
-    { key: 'Content-Security-Policy', value: contentSecurityPolicy(env) },
-    { key: 'X-Frame-Options', value: 'DENY' },
+    { key: 'Content-Security-Policy', value: contentSecurityPolicy(env, options) },
+    { key: 'X-Frame-Options', value: options.sameOriginFrames ? 'SAMEORIGIN' : 'DENY' },
     { key: 'X-Content-Type-Options', value: 'nosniff' },
     { key: 'Referrer-Policy', value: 'no-referrer' },
     { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' },

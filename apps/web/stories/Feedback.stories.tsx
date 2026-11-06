@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { useState } from 'react';
 import { fn } from 'storybook/test';
-import { Button, Centre, Dialog, Notice, Spinner } from '@/components/ui';
+import { BillSkeleton, Button, Centre, CentreMain, Dialog, Notice, Spinner, Steps } from '@/components/ui';
 
 const meta = { title: 'Feedback/Notice', component: Notice } satisfies Meta<typeof Notice>;
 export default meta;
@@ -42,4 +42,27 @@ export const ADialog: StoryObj<typeof Dialog> = {
   name: 'Dialog',
   parameters: { layout: 'fullscreen' },
   render: () => <div style={{ minHeight: 420, padding: 20 }}><DialogDemo onClose={fn()} /></div>,
+};
+
+export const Skeleton: StoryObj<typeof BillSkeleton> = { args: { rows: 6 }, render: (a) => <BillSkeleton {...a} /> };
+
+export const StepsInProgress: StoryObj<typeof Steps> = {
+  args: {
+    steps: [
+      { label: 'Confirming the payment', state: 'done' },
+      { label: 'Paid', state: 'busy' },
+      { label: 'Making the QR code', state: 'todo' },
+    ],
+  },
+  render: (a) => <Steps {...a} />,
+};
+
+export const WholePageState: StoryObj<typeof CentreMain> = {
+  parameters: { layout: 'fullscreen' },
+  render: () => (
+    <CentreMain>
+      <Spinner />
+      <p className="muted">Loading the bill</p>
+    </CentreMain>
+  ),
 };

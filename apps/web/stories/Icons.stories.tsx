@@ -8,6 +8,7 @@ const icons = {
   CloseIcon: ui.CloseIcon,
   PlusIcon: ui.PlusIcon,
   TickIcon: ui.TickIcon,
+  WarnIcon: ui.WarnIcon,
   CopyIcon: ui.CopyIcon,
   PhotoIcon: ui.PhotoIcon,
   MailIcon: ui.MailIcon,

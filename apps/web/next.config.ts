@@ -18,11 +18,20 @@ const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV || '' },
   // CSP, no framing, no referrer (#150). packages/core/src/lib/securityHeaders.ts.
   // Sign-in links (before 6-digit codes) land on the sign-in screen.
+  // Storybook (test and local builds, scripts/build-storybook.mjs) lives in
+  // public/storybook; its pages use relative URLs, so it opens at index.html.
   async redirects() {
-    return [{ source: '/sign-in/verify', destination: '/sign-in/email', permanent: false }];
+    return [
+      { source: '/sign-in/verify', destination: '/sign-in/email', permanent: false },
+      { source: '/storybook', destination: '/storybook/index.html', permanent: false },
+    ];
   },
+  // Storybook shows stories in a same-origin iframe; everything else is never framed.
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders(process.env) }];
+    return [
+      { source: '/:path((?!storybook/).*)', headers: securityHeaders(process.env) },
+      { source: '/storybook/:path*', headers: securityHeaders(process.env, { sameOriginFrames: true }) },
+    ];
   },
 };
 

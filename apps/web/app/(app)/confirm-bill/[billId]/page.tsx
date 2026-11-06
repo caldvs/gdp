@@ -315,16 +315,18 @@ function CheckBill() {
   // The lines don't make the printed total: the strongest sign a price was
   // misread, since the reader's own notes miss some (#107). Live as lines are fixed.
   const offBy = mismatch && items.length > 0 ? totalPence - printed : 0;
-  const restOfSub = [b.venue?.name, `${items.length} ${items.length === 1 ? 'item' : 'items'}`, !mismatch && printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
+  const restOfSub = [`${items.length} ${items.length === 1 ? 'item' : 'items'}`, !mismatch && printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
   const sub = items.length === 0
     ? 'Nothing read. Add the items yourself, or scan again.'
     : noVenue
       ? restOfSub
       : (
+        // The place's name is the link that changes it (7 Nov: a "change" at
+        // the end of the line didn't say what it changed).
         <>
-          {restOfSub}
+          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={`Change venue: ${b.venue!.name}`}>{b.venue!.name}</button>
           {' · '}
-          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label="Change venue">change</button>
+          {restOfSub}
         </>
       );
   // No printed total to check against (a cut-off photo, usually). Only

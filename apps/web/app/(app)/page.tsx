@@ -5,7 +5,7 @@ import { formatGBP } from '@gdp/core/lib/money';
 import { useScanner } from '@/components/Scanner';
 import { PendingReadRow } from '@/components/PendingRead';
 import { billTitle } from '@/components/PageTransition';
-import { ActionBar, Badge, Box, Button, CardList, Notice, Page, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
+import { ActionBar, Badge, Box, Button, CardList, Notice, Page, Row, RowLink, Section, Spinner, Title, formatWhen } from '@/components/ui';
 
 const isOpen = (s: SessionSummary) => s.status === 'claiming' || s.status === 'paying' || s.status === 'setup';
 
@@ -50,7 +50,15 @@ export default function BillsPage() {
         ) : null}
 
         {sessions.isSuccess && all.length === 0 ? (
-          <p className="muted">No bills yet. Scan one to split it with the table.</p>
+          <>
+            {/* The shape of a bill card, to show where bills will appear (7 Nov).
+                Shapes, not text: faded text would fail contrast. */}
+            <div className="empty-demo row row--card" aria-hidden="true">
+              <span className="empty-demo__lines"><span className="skel" style={{ width: '62%' }} /><span className="skel" style={{ width: '40%' }} /></span>
+              <span className="skel empty-demo__badge" />
+            </div>
+            <p className="muted">No bills yet. Scan one to split it with the table.</p>
+          </>
         ) : null}
       </Page>
       <ActionBar>

@@ -12,6 +12,7 @@ const icons = {
   CopyIcon: ui.CopyIcon,
   PhotoIcon: ui.PhotoIcon,
   MailIcon: ui.MailIcon,
+  MoreIcon: ui.MoreIcon,
   ShareIcon: ui.ShareIcon,
   QrIcon: ui.QrIcon,
 };

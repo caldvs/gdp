@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { useState } from 'react';
 import { fn } from 'storybook/test';
-import { BackButton, BackLink, Badge, Box, Button, CardList, Page, Row, Section, TabPanel, Tabs, Title } from '@/components/ui';
+import { BackButton, BackLink, Badge, Box, Button, CardList, Page, Row, Section, TabPanel, Tabs, Title, QrIcon, MoreIcon } from '@/components/ui';
 
 const meta = { title: 'Layout/Page', component: Page, parameters: { layout: 'fullscreen' } } satisfies Meta<typeof Page>;
 export default meta;
@@ -38,7 +38,7 @@ export const TitleOnly: StoryObj<typeof Title> = {
 };
 
 export const TitleWithAside: StoryObj<typeof Title> = {
-  render: () => <Title title="Gennaro" sub="Today · code K7Q2MX" aside={<Button tone="secondary" small>QR code</Button>} />,
+  render: () => <Title title="Gennaro" sub="4 people" aside={<div className="tools"><a className="tool" href="#" aria-label="QR code" title="QR code"><QrIcon /></a><button type="button" className="tool" aria-label="More" title="More"><MoreIcon /></button></div>} />,
 };
 
 export const SectionWithHeading: StoryObj<typeof Section> = {

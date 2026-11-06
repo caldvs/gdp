@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { Header } from '@/components/AppShell';
-import { ActionBar, Badge, BackLink, Box, Button, Notice, Page, Row, RowLink, Section, Stats, Title, TotalLine, Totals } from '@/components/ui';
+import { ActionBar, Badge, BackLink, Box, Button, Notice, Page, Row, RowLink, Section, Stats, Title, TotalLine, Totals, QrIcon, MoreIcon } from '@/components/ui';
 
 /** Whole screens put together from the pieces, to see the tinted page and white cards in context. */
 const meta = { title: 'Screens/Lead', parameters: { layout: 'fullscreen' }, decorators: [(S) => <div className="app"><S /></div>] } satisfies Meta;
@@ -38,7 +38,7 @@ export const TheBill: Story = {
       <Header onMenu={() => {}} />
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title title="Gennaro" sub="Today · code K7Q2MX" aside={<Button tone="secondary" small>QR code</Button>} />
+        <Title title="Gennaro" sub="4 people" aside={<div className="tools"><a className="tool" href="#" aria-label="QR code" title="QR code"><QrIcon /></a><button type="button" className="tool" aria-label="More" title="More"><MoreIcon /></button></div>} />
         <Stats items={[{ k: 'Bill', v: '£110.76' }, { k: 'Collected', v: '£38.19' }, { k: 'To collect', v: '£23.57', warn: true }]} />
         <Section title="People">
           <Box>

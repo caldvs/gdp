@@ -106,7 +106,8 @@ export default function SummaryPage() {
         <div>
           <h2>Payments to {leadName}</h2>
           <table>
-            <thead><tr><th>From</th><th>When</th><th className="n">Amount</th></tr></thead>
+            {/* No column headings over an empty list (7 Nov). */}
+            {st.payments.length + st.unpaid.length > 0 ? <thead><tr><th>From</th><th>When</th><th className="n">Amount</th></tr></thead> : null}
             <tbody>
               {st.payments.map((p, k) => (
                 <tr key={k}><td>{p.name}</td><td>{p.at ? whenText(p.at) : ''}{p.confirmed ? ', confirmed' : ''}</td><td className="n">{formatGBP(p.amountPence)}</td></tr>

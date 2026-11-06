@@ -124,7 +124,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${s.participants.length} ${s.participants.length === 1 ? 'person' : 'people'}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} />} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${s.participants.length} ${s.participants.length === 1 ? 'person' : 'people'}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} onDelete={() => setBinning(true)} />} />
         <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
 
         {tab === 'mine' ? (
@@ -133,12 +133,14 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           </TabPanel>
         ) : (
           <TabPanel id="table">
-            <Section title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}>
-              <p className="small muted" style={{ textAlign: 'right' }}>
-                <button type="button" className="link-btn" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
+            <Section
+              title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}
+              aside={
+                <button type="button" className="link-btn small" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
                   {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
                 </button>
-              </p>
+              }
+            >
               <Box list>
                 <RowButton
                   onClick={() => startTransition(() => setTab('mine'))}
@@ -167,7 +169,6 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
               <RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" />
             </Box>
 
-            <Button tone="text" className="btn--text-danger" onClick={() => setBinning(true)} style={{ alignSelf: 'flex-start', width: 'auto', padding: 0 }}>Delete this bill</Button>
           </TabPanel>
         )}
       </Page>
@@ -307,6 +308,7 @@ function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number;
     // Paid once, then took more: the rest is still to come.
     return <Row lead={av} title={name} sub={`Paid ${formatGBP(l.confirmedPence)} · owes ${formatGBP(l.duePence)} more`} end={formatGBP(owed)} />;
   }
+  if (owed === 0 && !l.draft) return <Row lead={av} title={name} sub="Nothing claimed yet" />;
   return <Row lead={av} title={name} sub={l.draft ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
 }
 

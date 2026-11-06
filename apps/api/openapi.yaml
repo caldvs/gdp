@@ -1547,6 +1547,67 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/texts:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [sessions]
+      operationId: getGuestTexts
+      summary: What Remind can do for each guest (#219)
+      description: |
+        The lead only. Per guest: `ready` (*Remind* sends a text), `today`
+        (reminded in the last day), `used_up` (three reminders sent),
+        `stopped` (they opted out), `no_number`, `not_owed` or `not_open`
+        (payments aren't open yet). `enabled: false` where texts are off.
+        Never a phone number.
+      responses:
+        '200':
+          description: Reminder state per guest
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestTexts' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/sessions/{sessionId}/participants/{userId}/remind:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - in: path
+        name: userId
+        required: true
+        schema: { type: string }
+        description: The guest to remind
+    post:
+      tags: [sessions]
+      operationId: remindGuest
+      summary: The lead texts a guest who still owes a reminder (#219)
+      description: |
+        One text by AWS SMS: what they owe, the bill's link
+        (`/b/{token}`) and a link to stop reminders (`/s/{token}`). At most
+        one a day per guest and three in all (the automatic one counts),
+        and never more than 30 texts a bill. 429 when it's too soon or used
+        up; 409 when the guest can't be reminded (paid, no number, opted
+        out, payments not open); 503 where texts are off.
+      responses:
+        '200':
+          description: Sent; the guest's reminder state now
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GuestRemind' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: This guest can't be reminded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: Texts aren't available here
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/receipt:
     parameters:
       - $ref: '#/components/parameters/SessionId'
@@ -2344,6 +2405,25 @@ components:
         name: { type: string }
         detail: { type: string }
         pence: { type: integer }
+    GuestRemind:
+      type: object
+      description: '#219: whether Remind can text this guest now.'
+      required: [remind, reminders]
+      properties:
+        remind:
+          type: string
+          enum: [ready, today, used_up, stopped, no_number, not_owed, not_open]
+        reminders: { type: integer, minimum: 0, description: Reminders sent so far }
+        lastRemindedAt: { type: string, format: date-time }
+    GuestTexts:
+      type: object
+      required: [enabled, guests]
+      properties:
+        enabled: { type: boolean, description: False where texts are off }
+        guests:
+          type: object
+          description: By guest userId
+          additionalProperties: { $ref: '#/components/schemas/GuestRemind' }
     BillLinkView:
       type: object
       description: "#220 G5: a bill seen from a guest's text. No numbers, no bank details."

@@ -23,8 +23,9 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>Your mobile number</strong>, if you sign in with it, so we can text you a sign-in code. If you join
-            someone’s bill as a guest, so we can text you the code and texts about that bill; it’s deleted with the
-            bill. Nobody else at the table sees it.
+            someone’s bill as a guest, so we can text you the code and texts about that bill: that the person you
+            owe got your money, and up to three reminders while you still owe them (each has a link to stop them).
+            It’s deleted with the bill. Nobody else at the table sees it.
           </li>
           <li>
             <strong>Your email address</strong>, if you give one, to sign in or to get your bill emails. If a guest

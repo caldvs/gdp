@@ -370,6 +370,20 @@ class GdpBackendStack extends cdk.Stack {
       ],
     });
 
+    // The automatic reminder text (#219, src/ops/reminders.ts): 10:00 UTC
+    // (10 or 11 in London), for guests still owing a day after payments
+    // opened. A bill that fails stays queued; the errors alarm reports it.
+    new events.Rule(this, 'RemindersDaily', {
+      description: 'Text guests who still owe, a day after payments open (#219)',
+      schedule: events.Schedule.cron({ minute: '0', hour: '10' }),
+      targets: [
+        new targets.LambdaFunction(fn, {
+          event: events.RuleTargetInput.fromObject({ gdpReminders: true }),
+          retryAttempts: 2,
+        }),
+      ],
+    });
+
     // Custom API domain (api.paymeback.dev / api.test.paymeback.dev). DNS is
     // on Vercel, so the ACM certificate is requested and validated by hand and
     // its ARN comes from the GitHub environment (API_DOMAIN, API_CERT_ARN).

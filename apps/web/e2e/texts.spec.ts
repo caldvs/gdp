@@ -91,3 +91,38 @@ test('#220 G4.3: All square offers the receipt by email', async ({ browser }) =>
   await expect(sam.getByRole('status').filter({ hasText: 'Receipt sent to Sam@Example.com.' })).toBeVisible();
   expect(api.receipts).toEqual([{ userId: 'u-sam', email: 'sam@example.com' }]);
 });
+
+test('#219: the lead taps Remind on Sam: one text, then Reminded today', async ({ browser }) => {
+  const api = new FakeApi();
+  api.textsOn = true;
+  samOwes(api);
+  const ctx = await browser.newContext();
+  await api.attach(ctx, users.lead);
+  const lead = await ctx.newPage();
+  await lead.goto(`/session/${SID}`);
+  await lead.getByRole('button', { name: 'Remind Sam' }).click();
+  await expect(lead.getByText('Reminded today')).toBeVisible(POLL);
+  await expect(lead.getByRole('button', { name: 'Remind Sam' })).toHaveCount(0);
+  expect(api.texts).toEqual([{ userId: 'u-sam', kind: 'reminder' }]);
+});
+
+test('#219: no Remind where texts are off', async ({ browser }) => {
+  const api = new FakeApi();
+  samOwes(api);
+  const ctx = await browser.newContext();
+  await api.attach(ctx, users.lead);
+  const lead = await ctx.newPage();
+  await lead.goto(`/session/${SID}`);
+  await expect(lead.getByRole('button', { name: 'Sam’s £17.25 received' })).toBeVisible(POLL);
+  await expect(lead.getByRole('button', { name: 'Remind Sam' })).toHaveCount(0);
+});
+
+test('#219: Stop reminders from the text, signed out', async ({ browser }) => {
+  const api = new FakeApi();
+  samOwes(api);
+  const page = await open(browser, api, users.sam, `/s/${LINK_TOKEN}`, { signedIn: false });
+  await expect(page.getByText('No more reminders for this bill.')).toBeVisible(POLL);
+  expect(api.stopped).toEqual(['u-sam']);
+  await page.getByRole('link', { name: 'See the bill' }).click();
+  await expect(page.getByRole('table', { name: 'You' })).toBeVisible(POLL);
+});

@@ -6,6 +6,7 @@ import { authIdentityStore } from '../../storage/authIdentityStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { mintSessionToken } from './sessionToken.js';
 import { maskPhone, parseUkMobile } from '../messaging/phone.js';
+import { whatsappStore } from '../../storage/whatsappStore.js';
 import type { Messenger } from '../messaging/messenger.js';
 import type { Logger } from '../../logging/logger.js';
 
@@ -25,6 +26,10 @@ const codeHash = (id: string, code: string): string => sha256(`${id}:${code}`);
 export const newPhoneCode = (): string => String(randomInt(0, 10_000)).padStart(4, '0');
 
 export const DEFAULT_SIGNIN_TEMPLATE = 'pmb_sign_in_code';
+
+/** The code as a free-form message (#213's wording), sent inside the 24-hour window. */
+export const codeText = (code: string): string =>
+  `${code} is your Pay Me Back code. Don’t share this code.\n\n@paymeback.dev #${code}`;
 
 const RATE_LIMIT_MESSAGES: Record<SignInRateLimited['reason'], string> = {
   'too-soon': 'We’ve just sent a code. Check WhatsApp, or try again in a moment.',
@@ -97,13 +102,26 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
       requestHash: sha256(requestSecret),
       codeHash: codeHash(id, code),
     });
-    await messenger.sendTemplate(e164, {
-      name: deps.template ?? DEFAULT_SIGNIN_TEMPLATE,
-      params: [code],
-      copyCode: code,
-    });
+    // Inside the 24-hour window they opened by messaging us, a plain message
+    // is free and in our own words; outside it only the approved template
+    // can go (#230). The last line lets phones offer the code to this site.
+    const viaText = await whatsappStore.windowOpen(e164);
+    if (viaText) {
+      await messenger.sendText(e164, codeText(code));
+    } else {
+      await messenger.sendTemplate(e164, {
+        name: deps.template ?? DEFAULT_SIGNIN_TEMPLATE,
+        params: [code],
+        copyCode: code,
+      });
+    }
     deps.logger?.info(
-      { event: 'signin.phone.sent', to: maskPhone(e164), channel: input.channel },
+      {
+        event: 'signin.phone.sent',
+        to: maskPhone(e164),
+        channel: input.channel,
+        via: viaText ? 'text' : 'template',
+      },
       'Phone code sent',
     );
     return { requestId: `${id}.${requestSecret}`, phone: e164 };

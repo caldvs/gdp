@@ -22,7 +22,11 @@ export default function PrivacyPage() {
         <h2>What we collect</h2>
         <ul>
           <li>
-            <strong>Your email address</strong>, if you sign in, so we can send you a sign-in link.
+            <strong>Your mobile number</strong>, if you sign in with it, so we can send you a sign-in code by WhatsApp.
+            Nobody else at the table sees it.
+          </li>
+          <li>
+            <strong>Your email address</strong>, if you give one, to sign in or to get your bill emails.
           </li>
           <li>
             <strong>Your name</strong>, so the table knows who has picked and paid.
@@ -63,7 +67,8 @@ export default function PrivacyPage() {
           <li>Amazon Web Services hosts the app and stores data in London.</li>
           <li>Amazon Web Services reads bill photos (Claude, on Amazon Bedrock) in the EU, and looks up the restaurant (Amazon Location Service).</li>
           <li>Stripe takes fee payments.</li>
-          <li>Amazon SES sends sign-in emails.</li>
+          <li>Amazon SES sends sign-in and bill emails.</li>
+          <li>Meta’s WhatsApp Business Platform sends sign-in codes to your phone.</li>
         </ul>
         <p>Some of these may process data outside the UK, under the safeguards UK law requires.</p>
       </section>

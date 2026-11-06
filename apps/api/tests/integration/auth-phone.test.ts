@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { createSessionTokenVerifier } from '../../src/services/auth.js';
 import { ConsoleMessenger } from '../../src/services/messaging/messenger.js';
+import { whatsappStore } from '../../src/storage/whatsappStore.js';
 
 const SECRET = new TextEncoder().encode('test-secret-must-be-at-least-16-bytes');
 
@@ -125,6 +126,21 @@ describe('phone sign-in (#213)', () => {
       isNew: false,
       user: { userId: first.user!.userId, displayName: 'Sam' },
     });
+  });
+
+  it('inside the 24-hour window the code goes as a plain message, in our words', async () => {
+    const { app, messenger } = build();
+    const typed = mobile();
+    await whatsappStore.openWindow(e164(typed), new Date());
+    const s = await start(app, typed);
+    const sent = messenger!.outbox.at(-1)!;
+    expect(sent.kind).toBe('text');
+    const code =
+      /^(\d{4}) is your Pay Me Back code\. Don’t share this code\.\n\n@paymeback\.dev #(\d{4})$/.exec(
+        sent.body!,
+      );
+    expect(code?.[1]).toBe(code?.[2]);
+    expect(await verify(app, s.requestId, code![1]!)).toMatchObject({ status: 'signedIn' });
   });
 
   it('wrong codes count down, then the code is gone', async () => {

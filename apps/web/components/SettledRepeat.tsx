@@ -16,7 +16,7 @@ export function SettledRepeat({ billId, sessionId, onClose }: { billId: string; 
   const session = useSession(sessionId);
   const fork = useForkBill();
   const s = session.data;
-  const day = s ? new Date(s.createdAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }) : null;
+  const day = s ? new Date(s.createdAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '') : null; // some WebKit builds write "Sat, 31 Oct"
   const title = s ? `You split this${s.venue?.name ? ` at ${s.venue.name}` : ''} on ${day}` : 'You split this before';
   const startAgain = () =>
     fork.mutate({ billId }, { onSuccess: (bill) => router.replace(`/confirm-bill/${bill.billId}`) });

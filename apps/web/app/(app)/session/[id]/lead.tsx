@@ -61,7 +61,7 @@ export function LeadSetup({ s, b }: { s: Session; b: Bill }) {
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${b.items.length} ${b.items.length === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)} · not shared yet`} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${b.items.length} ${b.items.length === 1 ? 'item' : 'items'} · ${formatGBP(b.totalPence)} · not shared yet`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
         {share.isError && !isFeeRequired(share.error) ? <Notice tone="error">{share.error.message}</Notice> : null}
       </Page>
       <ActionBar>

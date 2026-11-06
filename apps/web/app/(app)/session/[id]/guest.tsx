@@ -208,7 +208,7 @@ function WaitingForTable({ s, b, meUserId, onBack, onSee }: { s: Session; b: Bil
     <>
       <Page sub>
         <BackButton onClick={onBack}>Claim something else</BackButton>
-        <Title title={!open ? 'Waiting for the table' : everything ? 'Every item on the bill is claimed' : `${hostFirst} has opened payments`} />
+        <Title title={!open ? 'Waiting for the table' : everything ? 'Every item on the bill is claimed' : `${hostFirst} has opened payments`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />} />
         <p className="wait-line" role="status" data-testid="wait-status">
           {open ? null : <span className="wait-dot" aria-hidden="true" />}
           {open ? 'You can see what you owe.' : 'Waiting for everyone to claim. You’ll see what you owe once every line’s claimed.'}
@@ -267,7 +267,7 @@ function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; m
       <Page sub>
         {/* G3.1: opened before every line was claimed. */}
         {openedEarly(s, b) ? <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice> : null}
-        <Title title={`You owe ${hostFirst}`} />
+        <Title title={`You owe ${hostFirst}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />} />
         <p className="owed-big" data-testid="your-share">{formatGBP(owed)}</p>
         <ShareReceipt s={s} b={b} meUserId={meUserId} owed={owed}>
           <ReceiptLine strong name="You owe" price={formatGBP(owed)} />
@@ -332,7 +332,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
       <>
         <Page sub>
           {isGuest ? null : <BackLink href="/">Bills</BackLink>}
-          <Title vt={billTitle(s.sessionId)} title={`Waiting for ${hostFirst}`} sub={`You’ve sent ${formatGBP(waitingPence)}.`} />
+          <Title vt={billTitle(s.sessionId)} title={`Waiting for ${hostFirst}`} sub={`You’ve sent ${formatGBP(waitingPence)}.`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && s.status === 'claiming'} />} />
           <ShareReceipt s={s} b={b} meUserId={meUserId} owed={myOwed} stamp="sent">
             {l && l.confirmedPence > 0 ? <ReceiptLine quiet name={`${hostFirst} has`} price={formatGBP(l.confirmedPence)} /> : null}
             <ReceiptLine strong name={`Sent to ${hostFirst}`} price={formatGBP(waitingPence)} />

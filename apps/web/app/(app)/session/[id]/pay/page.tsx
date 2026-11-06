@@ -23,6 +23,7 @@ import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
 import { usePayoutVerdict } from '@gdp/core/lib/usePayoutCheck';
 import { copyText } from '@/lib/clipboard';
 import { ActionBar, BackLink, Box, Button, Centre, CopyIcon, Notice, Page, ReceiptLine, Spinner, TickIcon, Title, firstName } from '@/components/ui';
+import { BillTools } from '@/components/BillTools';
 import { ShareReceipt, owedFor } from '../guest';
 
 type Instructions = components['schemas']['PaymentInstructions'];
@@ -138,6 +139,7 @@ export default function PayPage() {
         <Title
           title={settled ? `${hostFirst} has your ${formatGBP(lg.confirmedPence)}` : done ? `You’ve paid ${hostFirst} ${formatGBP(lg.sentPence)}` : `Pay ${hostFirst}`}
           sub={settled ? bill.data.venue?.name : done ? (waitingPence > 0 ? `Waiting for ${hostFirst} to mark it received.` : undefined) : lg.sentPence > 0 ? `The rest, after the ${formatGBP(lg.sentPence)} you’ve paid.` : undefined}
+          aside={settled ? undefined : <BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />}
         />
         {done ? null : (
           <>

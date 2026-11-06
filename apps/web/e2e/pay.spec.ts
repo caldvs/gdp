@@ -60,3 +60,26 @@ test('a guest pays with the Monzo link, confirms, waits, and is all square once 
   await expect(share).toContainText('Paid to Callum£22.50');
   await expect(share).toContainText('PAID');
 });
+
+test('the bill photo is there while paying and while waiting, for checking the bill', async ({ browser }) => {
+  const api = new FakeApi();
+  const ctx = await browser.newContext();
+  await api.attach(ctx, users.sam, { atTable: false });
+  const sam = await ctx.newPage();
+  await sam.goto(`/join/${CODE}#p=${fragmentFor({ monzo: 'callum.davies' })}`);
+  await sam.getByRole('button', { name: 'Claim Calamari' }).click(POLL);
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  const photo = async () => {
+    await sam.getByRole('button', { name: 'More', exact: true }).click();
+    await sam.getByRole('dialog', { name: 'This bill' }).getByRole('button', { name: 'Bill photo' }).click();
+    const d = sam.getByRole('dialog', { name: 'Bill photo' });
+    await expect(d).toBeVisible();
+    await d.getByRole('button', { name: 'Close' }).click();
+  };
+  await expect(sam.getByRole('heading', { name: 'Pay Callum' })).toBeVisible();
+  await photo();
+  await sam.getByRole('button', { name: 'I’ve paid' }).click();
+  await sam.getByRole('group', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
+  await expect(sam.getByRole('heading', { name: 'Waiting for Callum' })).toBeVisible(POLL);
+  await photo();
+});

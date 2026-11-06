@@ -31,30 +31,41 @@ export const requireIdempotency = (): MiddlewareHandler => async (c, next) => {
     .update(bodyText)
     .digest('hex');
 
-  const cached = await idempotencyStore.get(userId, endpoint, key);
-  if (cached) {
-    if (cached.bodyHash !== bodyHash) {
+  // Hold the key before running, so a double tap or a retry sent while
+  // the first is still in flight can't run the handler a second time.
+  const existing = await idempotencyStore.reserve(userId, endpoint, key, bodyHash);
+  if (existing) {
+    if (existing.bodyHash !== bodyHash) {
       throw new AppError('IDEMPOTENCY_CONFLICT', 'Idempotency key reused with a different body');
     }
-    return new Response(cached.response.body, {
-      status: cached.response.status,
-      headers: { 'content-type': cached.response.contentType, 'idempotency-replayed': 'true' },
+    if (!existing.response) {
+      throw new AppError('IDEMPOTENCY_CONFLICT', 'A request with this key is still in progress');
+    }
+    return new Response(existing.response.body, {
+      status: existing.response.status,
+      headers: { 'content-type': existing.response.contentType, 'idempotency-replayed': 'true' },
     });
   }
 
-  await next();
-
-  const status = c.res.status;
-  if (status >= 200 && status < 300) {
-    const cloned = c.res.clone();
-    const responseBody = await cloned.text();
-    await idempotencyStore.put(userId, endpoint, key, {
-      bodyHash,
-      response: {
-        status,
-        body: responseBody,
-        contentType: cloned.headers.get('content-type') ?? 'application/json',
-      },
-    });
+  let stored = false;
+  try {
+    await next();
+    const status = c.res.status;
+    if (status >= 200 && status < 300) {
+      const cloned = c.res.clone();
+      const responseBody = await cloned.text();
+      await idempotencyStore.put(userId, endpoint, key, {
+        bodyHash,
+        response: {
+          status,
+          body: responseBody,
+          contentType: cloned.headers.get('content-type') ?? 'application/json',
+        },
+      });
+      stored = true;
+    }
+  } finally {
+    // Failed (an error response or a throw): free the key for a retry.
+    if (!stored) await idempotencyStore.release(userId, endpoint, key);
   }
 };

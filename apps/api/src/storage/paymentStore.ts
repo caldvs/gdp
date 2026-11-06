@@ -8,13 +8,11 @@ import {
 import { ddb, TABLE_NAME } from './ddb.js';
 import type { Payment } from '../types/payments.js';
 import type { Participant } from '../types/sessions.js';
+import { sessionStore } from './sessionStore.js';
 
 const SESSION_TTL_DAYS = 30;
 
 const paymentPk = (paymentId: string) => `PAY#${paymentId}`;
-const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
-const partSk = (userId: string) => `PART#${userId}`;
-const userIdx = (userId: string) => `USER#${userId}`;
 
 const ttlEpochSeconds = (): number =>
   Math.floor(Date.now() / 1000) + SESSION_TTL_DAYS * 24 * 60 * 60;
@@ -61,6 +59,7 @@ export const paymentStore = {
   /**
    * Atomically update a payment's status and the matching participant row.
    * Used at initiate and on confirm so the two views can never disagree.
+   * Fails with ConditionalCheckFailed if the participant changed since read.
    */
   async applyUpdate(input: { payment: Payment; participant: Participant }): Promise<void> {
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
@@ -74,22 +73,10 @@ export const paymentStore = {
           },
         },
       },
-      {
-        Put: {
-          TableName: TABLE_NAME,
-          Item: {
-            pk: sessionPk(input.payment.sessionId),
-            sk: partSk(input.participant.userId),
-            ttlAt: ttlEpochSeconds(),
-            // sessionStore.get strips GSI1PK/GSI1SK on read, so we have to
-            // re-add them here or this Put silently drops the participant
-            // from the byUser index — breaking listForUser for that diner.
-            GSI1PK: userIdx(input.participant.userId),
-            GSI1SK: input.payment.sessionId,
-            ...input.participant,
-          },
-        },
-      },
+      // Conditional on the row being as it was read, so a claim (or the
+      // lead's confirm) landing in between isn't overwritten: the whole
+      // transaction fails and the caller re-reads.
+      sessionStore.participantPutOp(input.payment.sessionId, ttlEpochSeconds(), input.participant),
     ];
     await ddb.send(new TransactWriteCommand({ TransactItems: transactItems }));
   },

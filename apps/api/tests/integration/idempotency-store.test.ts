@@ -21,8 +21,8 @@ describe('idempotencyStore', () => {
     const fetched = await idempotencyStore.get(userId, endpoint, key);
     expect(fetched).not.toBeNull();
     expect(fetched?.bodyHash).toBe('abc123');
-    expect(fetched?.response.status).toBe(201);
-    expect(fetched?.response.body).toBe('{"ok":true}');
+    expect(fetched?.response?.status).toBe(201);
+    expect(fetched?.response?.body).toBe('{"ok":true}');
   });
 
   it('isolates by userId — same key for different users is independent', async () => {
@@ -40,7 +40,41 @@ describe('idempotencyStore', () => {
 
     const a = await idempotencyStore.get('user-a', endpoint, key);
     const b = await idempotencyStore.get('user-b', endpoint, key);
-    expect(a?.response.body).toBe('a');
-    expect(b?.response.body).toBe('b');
+    expect(a?.response?.body).toBe('a');
+    expect(b?.response?.body).toBe('b');
+  });
+
+  it('reserve: the first request holds the key, a second sees it still running', async () => {
+    const userId = `u-${uuidv7()}`;
+    const key = uuidv7();
+    expect(await idempotencyStore.reserve(userId, 'POST /v1/r', key, 'h')).toBeNull();
+    expect(await idempotencyStore.reserve(userId, 'POST /v1/r', key, 'h')).toEqual({
+      bodyHash: 'h',
+    });
+  });
+
+  it('reserve: once finished, a second request gets the stored response', async () => {
+    const userId = `u-${uuidv7()}`;
+    const key = uuidv7();
+    const response = { status: 201, body: '{}', contentType: 'application/json' };
+    await idempotencyStore.reserve(userId, 'POST /v1/r', key, 'h');
+    await idempotencyStore.put(userId, 'POST /v1/r', key, { bodyHash: 'h', response });
+    expect(await idempotencyStore.reserve(userId, 'POST /v1/r', key, 'h')).toEqual({
+      bodyHash: 'h',
+      response,
+    });
+  });
+
+  it('release frees a reservation but never a finished response', async () => {
+    const userId = `u-${uuidv7()}`;
+    const [open, done] = [uuidv7(), uuidv7()];
+    const response = { status: 200, body: 'x', contentType: 'text/plain' };
+    await idempotencyStore.reserve(userId, 'POST /v1/r', open, 'h');
+    await idempotencyStore.release(userId, 'POST /v1/r', open);
+    expect(await idempotencyStore.reserve(userId, 'POST /v1/r', open, 'h')).toBeNull();
+
+    await idempotencyStore.put(userId, 'POST /v1/r', done, { bodyHash: 'h', response });
+    await idempotencyStore.release(userId, 'POST /v1/r', done);
+    expect((await idempotencyStore.get(userId, 'POST /v1/r', done))?.response).toEqual(response);
   });
 });

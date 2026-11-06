@@ -617,4 +617,82 @@ describe('races', () => {
     const s = await getSession(app, t.sessionId, t.lead);
     for (const p of people) expect(s.participants.map((x) => x.userId)).toContain(p);
   });
+
+  // A race only shows when the writes interleave, so each of these runs a
+  // few tables at once.
+  const TABLES = 6;
+
+  it('a guest paying while claiming more: neither write undoes the other', async () => {
+    const app = buildApp();
+    await Promise.all(
+      Array.from({ length: TABLES }, async () => {
+        const t = await claimingTable(app, 1);
+        const g = t.guests[0]!;
+        expect((await claim(app, t.sessionId, g, [t.pizza.itemId])).status).toBe(200);
+        const [pay, more] = await Promise.all([
+          post(app, `/v1/sessions/${t.sessionId}/payments`, g),
+          claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]),
+        ]);
+        expect(pay.status).toBe(201);
+        expect(more.status).toBe(200);
+        const { payment } = (await pay.json()) as { payment: { paymentId: string } };
+        const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+        expect(me.claimedItemIds).toContain(t.tiramisu.itemId);
+        expect(me.payments?.map((e) => e.paymentId)).toContain(payment.paymentId);
+        // The row version is storage's own; clients never see it.
+        expect(me).not.toHaveProperty('rev');
+      }),
+    );
+  });
+
+  it('the lead confirming a payment while the guest claims more: both stick', async () => {
+    const app = buildApp();
+    await Promise.all(
+      Array.from({ length: TABLES }, async () => {
+        const t = await claimingTable(app, 1);
+        const g = t.guests[0]!;
+        expect((await claim(app, t.sessionId, g, [t.pizza.itemId])).status).toBe(200);
+        const p = await initiate(app, t.sessionId, g);
+        const [confirm, more] = await Promise.all([
+          post(app, `/v1/payments/${p.paymentId}/confirm`, t.lead),
+          claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]),
+        ]);
+        expect(confirm.status).toBe(200);
+        expect(more.status).toBe(200);
+        const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+        expect(me.claimedItemIds).toContain(t.tiramisu.itemId);
+        expect(me.payments?.find((e) => e.paymentId === p.paymentId)?.status).toBe('succeeded');
+      }),
+    );
+  });
+
+  it('the same payment request sent twice at once opens one payment', async () => {
+    const app = buildApp();
+    await Promise.all(
+      Array.from({ length: TABLES }, async () => {
+        const t = await claimingTable(app, 1);
+        const g = t.guests[0]!;
+        expect((await claim(app, t.sessionId, g, [t.pizza.itemId])).status).toBe(200);
+        const key = newIdempotencyKey();
+        const send = () =>
+          app.request(`/v1/sessions/${t.sessionId}/payments`, {
+            method: 'POST',
+            headers: { ...makeAuth(g), 'idempotency-key': key },
+          });
+        const results = await Promise.all([send(), send()]);
+        // The second either replays the first or is told it's still running.
+        const ids = new Set<string>();
+        for (const r of results) {
+          if (r.status === 201) {
+            ids.add(((await r.json()) as { payment: { paymentId: string } }).payment.paymentId);
+          } else {
+            expect(r.status).toBe(409);
+          }
+        }
+        expect(ids.size).toBe(1);
+        const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+        expect(me.payments).toHaveLength(1);
+      }),
+    );
+  });
 });

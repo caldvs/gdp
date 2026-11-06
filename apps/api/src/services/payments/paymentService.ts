@@ -11,11 +11,16 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { billStore } from '../../storage/billStore.js';
+import { retryOnConflict } from '../../storage/conflict.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Participant, Session } from '../../types/sessions.js';
 import type { Payment, PaymentEvent, PaymentInstructions } from '../../types/payments.js';
 import type { PayoutAccount } from '../../types/users.js';
+
+// The guest's row changed under us more times than retrying could absorb.
+const busy = () =>
+  new AppError('SESSION_INVALID_STATE', 'Something changed at the same moment — try again');
 
 export const paymentService = {
   async initiate(input: {
@@ -24,115 +29,118 @@ export const paymentService = {
     idempotencyKey: string;
     logger?: Logger;
   }): Promise<{ payment: Payment; instructions: PaymentInstructions }> {
-    const session = await sessionStore.get(input.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    const participant = session.participants.find((p) => p.userId === input.caller.userId);
-    if (!participant) {
-      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    }
-    // Trust-based model: a guest can pay as soon as they're confident
-    // in their picks — no need for the lead to "lock claims" first.
-    // We accept both `claiming` (no lock yet) and `paying` (post-lock).
-    // `settled` is also allowed: the lead can close the bill from the
-    // table before everyone has paid, and a late guest should still be
-    // able to settle up. Setup / abandoned remain hard-rejected.
-    if (
-      session.status !== 'paying' &&
-      session.status !== 'claiming' &&
-      session.status !== 'settled'
-    ) {
-      throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't pay`);
-    }
-    if (participant.userId === session.collectorUserId) {
-      throw new AppError('SESSION_INVALID_STATE', 'Collector does not pay themselves');
-    }
-    // #121: a guest can pay more than once. Each payment is for what they
-    // owe now less what they've already sent (in flight or confirmed), so
-    // a guest who claimed more after paying tops up just the difference.
-    // Payments can overlap: the lead confirms each one on its own.
-    const owed = await owedNow(session, participant);
-    let entries = paymentsOf(participant, owed);
-    const duePence = owed - sentPence(entries);
-    if (duePence <= 0) {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        sentPence(entries) > 0 ? 'Nothing more to pay' : 'Nothing claimed yet',
-      );
-    }
-    // A payment opened earlier and not sent yet: reuse it if it's still
-    // for the right amount (same reference and details), else
-    // close it and open one for the new amount.
-    const draft = draftOf(entries);
-    if (draft) {
-      const old = await paymentStore.get(draft.paymentId);
-      if (old && old.status === 'pending' && old.amountPence === duePence) {
-        const collectorNow = await userStore.get(session.collectorUserId);
-        return {
-          payment: old,
-          instructions: buildManualInstructions({
-            payoutAccount: collectorNow?.payoutAccount,
-            reference: `gdp-${session.sessionId.slice(0, 8)}`,
-            amountPence: old.amountPence,
-          }),
-        };
+    // Each try re-reads the guest's row; the write lands only over that read.
+    return retryOnConflict(async () => {
+      const session = await sessionStore.get(input.sessionId);
+      if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      const participant = session.participants.find((p) => p.userId === input.caller.userId);
+      if (!participant) {
+        throw new AppError('SESSION_NOT_FOUND', 'Session not found');
       }
-      if (old && old.status === 'pending') {
-        await paymentStore.put({
-          ...old,
-          status: 'failed',
-          events: [
-            ...old.events,
-            {
-              at: new Date().toISOString(),
-              from: 'pending',
-              to: 'failed',
-              source: 'system',
-              note: 'superseded: amount changed before it was sent',
-            },
-          ],
-        });
+      // Trust-based model: a guest can pay as soon as they're confident
+      // in their picks — no need for the lead to "lock claims" first.
+      // We accept both `claiming` (no lock yet) and `paying` (post-lock).
+      // `settled` is also allowed: the lead can close the bill from the
+      // table before everyone has paid, and a late guest should still be
+      // able to settle up. Setup / abandoned remain hard-rejected.
+      if (
+        session.status !== 'paying' &&
+        session.status !== 'claiming' &&
+        session.status !== 'settled'
+      ) {
+        throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; can't pay`);
       }
-      entries = entries.filter((e) => e.paymentId !== draft.paymentId);
-    }
+      if (participant.userId === session.collectorUserId) {
+        throw new AppError('SESSION_INVALID_STATE', 'Collector does not pay themselves');
+      }
+      // #121: a guest can pay more than once. Each payment is for what they
+      // owe now less what they've already sent (in flight or confirmed), so
+      // a guest who claimed more after paying tops up just the difference.
+      // Payments can overlap: the lead confirms each one on its own.
+      const owed = await owedNow(session, participant);
+      let entries = paymentsOf(participant, owed);
+      const duePence = owed - sentPence(entries);
+      if (duePence <= 0) {
+        throw new AppError(
+          'SESSION_INVALID_STATE',
+          sentPence(entries) > 0 ? 'Nothing more to pay' : 'Nothing claimed yet',
+        );
+      }
+      // A payment opened earlier and not sent yet: reuse it if it's still
+      // for the right amount (same reference and details), else
+      // close it and open one for the new amount.
+      const draft = draftOf(entries);
+      if (draft) {
+        const old = await paymentStore.get(draft.paymentId);
+        if (old && old.status === 'pending' && old.amountPence === duePence) {
+          const collectorNow = await userStore.get(session.collectorUserId);
+          return {
+            payment: old,
+            instructions: buildManualInstructions({
+              payoutAccount: collectorNow?.payoutAccount,
+              reference: `gdp-${session.sessionId.slice(0, 8)}`,
+              amountPence: old.amountPence,
+            }),
+          };
+        }
+        if (old && old.status === 'pending') {
+          await paymentStore.put({
+            ...old,
+            status: 'failed',
+            events: [
+              ...old.events,
+              {
+                at: new Date().toISOString(),
+                from: 'pending',
+                to: 'failed',
+                source: 'system',
+                note: 'superseded: amount changed before it was sent',
+              },
+            ],
+          });
+        }
+        entries = entries.filter((e) => e.paymentId !== draft.paymentId);
+      }
 
-    // The guest pays from their own banking app and the lead confirms it
-    // arrived (/confirm). Per ADR-0002 the lead's bank details normally live
-    // on their device and reach guests in the join QR: if the server has
-    // them they're echoed back (with Monzo/Revolut links), otherwise the
-    // client shows the ones from the QR.
-    const collector = await userStore.get(session.collectorUserId);
-    const paymentId = uuidv7();
-    const reference = `gdp-${session.sessionId.slice(0, 8)}`;
-    const amountPence = duePence;
-    const instructions = buildManualInstructions({
-      payoutAccount: collector?.payoutAccount,
-      reference,
-      amountPence,
-    });
+      // The guest pays from their own banking app and the lead confirms it
+      // arrived (/confirm). Per ADR-0002 the lead's bank details normally live
+      // on their device and reach guests in the join QR: if the server has
+      // them they're echoed back (with Monzo/Revolut links), otherwise the
+      // client shows the ones from the QR.
+      const collector = await userStore.get(session.collectorUserId);
+      const paymentId = uuidv7();
+      const reference = `gdp-${session.sessionId.slice(0, 8)}`;
+      const amountPence = duePence;
+      const instructions = buildManualInstructions({
+        payoutAccount: collector?.payoutAccount,
+        reference,
+        amountPence,
+      });
 
-    const now = new Date().toISOString();
-    const payment: Payment = {
-      paymentId,
-      sessionId: session.sessionId,
-      payerUserId: participant.userId,
-      collectorUserId: session.collectorUserId,
-      amountPence,
-      currency: 'GBP',
-      status: 'pending',
-      idempotencyKey: input.idempotencyKey,
-      events: [{ at: now, from: 'pending', to: 'pending', source: 'system', note: 'created' }],
-      createdAt: now,
-    };
+      const now = new Date().toISOString();
+      const payment: Payment = {
+        paymentId,
+        sessionId: session.sessionId,
+        payerUserId: participant.userId,
+        collectorUserId: session.collectorUserId,
+        amountPence,
+        currency: 'GBP',
+        status: 'pending',
+        idempotencyKey: input.idempotencyKey,
+        events: [{ at: now, from: 'pending', to: 'pending', source: 'system', note: 'created' }],
+        createdAt: now,
+      };
 
-    const updatedParticipant = withPayment(participant, entries, {
-      paymentId,
-      amountPence,
-      status: 'pending',
-    });
+      const updatedParticipant = withPayment(participant, entries, {
+        paymentId,
+        amountPence,
+        status: 'pending',
+      });
 
-    await paymentStore.applyUpdate({ payment, participant: updatedParticipant });
+      await paymentStore.applyUpdate({ payment, participant: updatedParticipant });
 
-    return { payment, instructions };
+      return { payment, instructions };
+    }, busy);
   },
 
   /**
@@ -170,21 +178,23 @@ export const paymentService = {
     // being `pending` — if they've already moved on, the mirror is a
     // no-op. The payment row is the truth; the mirror is best-effort UX.
     if (updated.payerClaimedPaidAt) {
-      const session = await sessionStore.get(payment.sessionId);
-      const participant = session?.participants.find((p) => p.userId === payment.payerUserId);
-      if (participant) {
-        const entries = paymentsOf(participant, payment.amountPence);
-        const entry = entries.find((e) => e.paymentId === payment.paymentId);
-        if (entry?.status === 'pending' && !entry.payerClaimedPaidAt) {
-          await sessionStore.putParticipant(
-            payment.sessionId,
-            withPayment(participant, entries, {
-              ...entry,
-              payerClaimedPaidAt: updated.payerClaimedPaidAt,
-            }),
-          );
+      await retryOnConflict(async () => {
+        const session = await sessionStore.get(payment.sessionId);
+        const participant = session?.participants.find((p) => p.userId === payment.payerUserId);
+        if (participant) {
+          const entries = paymentsOf(participant, payment.amountPence);
+          const entry = entries.find((e) => e.paymentId === payment.paymentId);
+          if (entry?.status === 'pending' && !entry.payerClaimedPaidAt) {
+            await sessionStore.putParticipant(
+              payment.sessionId,
+              withPayment(participant, entries, {
+                ...entry,
+                payerClaimedPaidAt: updated.payerClaimedPaidAt,
+              }),
+            );
+          }
         }
-      }
+      }, busy);
     }
     return updated;
   },
@@ -195,55 +205,57 @@ export const paymentService = {
     paymentId: string;
     logger?: Logger;
   }): Promise<Payment> {
-    const payment = await paymentStore.get(input.paymentId);
-    if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
-    if (payment.collectorUserId !== input.caller.userId) {
-      throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
-    }
-    if (payment.status === 'succeeded') {
-      // Idempotent: already confirmed.
-      return payment;
-    }
-    if (payment.status !== 'pending') {
-      throw new AppError(
-        'SESSION_INVALID_STATE',
-        `Cannot confirm a payment in status ${payment.status}`,
+    return retryOnConflict(async () => {
+      const payment = await paymentStore.get(input.paymentId);
+      if (!payment) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+      if (payment.collectorUserId !== input.caller.userId) {
+        throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
+      }
+      if (payment.status === 'succeeded') {
+        // Idempotent: already confirmed.
+        return payment;
+      }
+      if (payment.status !== 'pending') {
+        throw new AppError(
+          'SESSION_INVALID_STATE',
+          `Cannot confirm a payment in status ${payment.status}`,
+        );
+      }
+
+      const session = await sessionStore.get(payment.sessionId);
+      if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      const participant = session.participants.find((p) => p.userId === payment.payerUserId);
+      if (!participant) throw new AppError('SESSION_NOT_FOUND', 'Participant not found');
+
+      const now = new Date().toISOString();
+      const event: PaymentEvent = {
+        at: now,
+        from: payment.status,
+        to: 'succeeded',
+        source: 'api',
+        note: 'collector confirmed manual receipt',
+      };
+      const updatedPayment: Payment = {
+        ...payment,
+        status: 'succeeded',
+        events: [...payment.events, event],
+      };
+      const entries = paymentsOf(participant, payment.amountPence);
+      const prev = entries.find((e) => e.paymentId === payment.paymentId);
+      const updatedParticipant = withPayment(participant, entries, {
+        ...(prev ?? { paymentId: payment.paymentId, amountPence: payment.amountPence }),
+        status: 'succeeded',
+        paidAt: now,
+      });
+      await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
+
+      maybeSettleSession(
+        { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
+        input.logger,
       );
-    }
 
-    const session = await sessionStore.get(payment.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    const participant = session.participants.find((p) => p.userId === payment.payerUserId);
-    if (!participant) throw new AppError('SESSION_NOT_FOUND', 'Participant not found');
-
-    const now = new Date().toISOString();
-    const event: PaymentEvent = {
-      at: now,
-      from: payment.status,
-      to: 'succeeded',
-      source: 'api',
-      note: 'collector confirmed manual receipt',
-    };
-    const updatedPayment: Payment = {
-      ...payment,
-      status: 'succeeded',
-      events: [...payment.events, event],
-    };
-    const entries = paymentsOf(participant, payment.amountPence);
-    const prev = entries.find((e) => e.paymentId === payment.paymentId);
-    const updatedParticipant = withPayment(participant, entries, {
-      ...(prev ?? { paymentId: payment.paymentId, amountPence: payment.amountPence }),
-      status: 'succeeded',
-      paidAt: now,
-    });
-    await paymentStore.applyUpdate({ payment: updatedPayment, participant: updatedParticipant });
-
-    maybeSettleSession(
-      { ...session, participants: replaceParticipant(session.participants, updatedParticipant) },
-      input.logger,
-    );
-
-    return updatedPayment;
+      return updatedPayment;
+    }, busy);
   },
 
   async get(input: { caller: VerifiedCaller; paymentId: string }): Promise<Payment> {

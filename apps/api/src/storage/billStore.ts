@@ -19,7 +19,6 @@ const LATEST_SK = 'LATEST';
 const hashPk = (userId: string, sha256: string) => `IMGHASH#${userId}#${sha256}`;
 const sessionPk = (sessionId: string) => `SESS#${sessionId}`;
 const META_SK = 'META';
-const partSk = (userId: string) => `PART#${userId}`;
 
 /** What GET /v1/me/sessions reads of a bill version. */
 export type SummaryBill = Pick<
@@ -208,12 +207,9 @@ export const billStore = {
           },
         },
       },
-      ...input.participants.map((p) => ({
-        Put: {
-          TableName: TABLE_NAME,
-          Item: { pk: sessionPk(input.sessionMeta.sessionId), sk: partSk(p.userId), ttlAt, ...p },
-        },
-      })),
+      ...input.participants.map((p) =>
+        sessionStore.participantPutOp(input.sessionMeta.sessionId, ttlAt, p),
+      ),
       ...(input.removedSplitItemIds ?? []).map((itemId) => ({
         Delete: {
           TableName: TABLE_NAME,

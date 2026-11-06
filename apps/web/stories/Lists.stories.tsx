@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { fn } from 'storybook/test';
-import { Badge, Box, PlusIcon, Row, RowButton, RowLink, Stats, TotalLine, Totals } from '@/components/ui';
+import { useState } from 'react';
+import { Badge, Box, Button as Btn, PlusIcon, Pulse, Row, RowButton, RowLink, Stats, TotalEdit, TotalLine, Totals } from '@/components/ui';
 
 const meta = { title: 'Lists/Row', component: Row } satisfies Meta<typeof Row>;
 export default meta;
@@ -65,3 +66,27 @@ export const StatsRow: StoryObj<typeof Stats> = {
   args: { items: [{ k: 'Bill', v: '£110.76' }, { k: 'Collected', v: '£38.19' }, { k: 'To collect', v: '£23.57', warn: true }] },
   render: (a) => <Stats {...a} />,
 };
+
+export const TotalBeingEdited: StoryObj<typeof TotalEdit> = {
+  render: () => (
+    <Totals>
+      <TotalLine k="Subtotal" v="£98.45" tone="mute" />
+      <TotalEdit label="Service">
+        <input className="input" defaultValue="12.31" inputMode="decimal" aria-label="Service" />
+      </TotalEdit>
+      <TotalLine k="Total" v="£110.76" tone="total" />
+    </Totals>
+  ),
+};
+
+function PulseDemo() {
+  const [n, setN] = useState(2);
+  return (
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+      <Pulse value={n}><strong>{n} joined</strong></Pulse>
+      <Btn tone="secondary" small onClick={() => setN(n + 1)}>Someone joins</Btn>
+    </div>
+  );
+}
+
+export const PulseOnChange: StoryObj<typeof Pulse> = { render: () => <PulseDemo /> };

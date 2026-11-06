@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { Avatar, Diners } from '@/components/ui';
+import { Avatar, AvatarStack, Diners } from '@/components/ui';
 
 const meta = {
   title: 'People/Diners',
@@ -29,4 +29,9 @@ export const Avatars: StoryObj<typeof Avatar> = {
       <Avatar name="Tom Reed" you />
     </div>
   ),
+};
+
+export const Stack: StoryObj<typeof AvatarStack> = {
+  args: { names: ['Callum Davies', 'Priya Shah', 'Tom Reed', 'Sam', 'Ana', 'Jo'] },
+  render: (a) => <AvatarStack {...a} />,
 };

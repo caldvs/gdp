@@ -71,4 +71,15 @@ describe('securityHeaders', () => {
     expect(h['Permissions-Policy']).toBe('camera=(self), microphone=(), geolocation=(self)');
     expect(h['Content-Security-Policy']).toContain("default-src 'self'");
   });
+
+  it('lets Storybook frame itself, and only itself', () => {
+    const env = { NEXT_PUBLIC_APP_ENV: 'dev', NODE_ENV: 'production' };
+    const csp = directives(contentSecurityPolicy(env, { sameOriginFrames: true }));
+    expect(csp.get('frame-ancestors')).toEqual(["'self'"]);
+    expect(csp.get('frame-src')).toContain("'self'");
+    expect(directives(contentSecurityPolicy(env)).get('frame-src')).not.toContain("'self'");
+    const xfo = (o?: { sameOriginFrames: boolean }) => securityHeaders(env, o).find((h) => h.key === 'X-Frame-Options')?.value;
+    expect(xfo({ sameOriginFrames: true })).toBe('SAMEORIGIN');
+    expect(xfo()).toBe('DENY');
+  });
 });

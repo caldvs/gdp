@@ -9,6 +9,7 @@ node_modules/
 apps/web/.next/
 apps/web/out/
 apps/web/storybook-static/
+apps/web/public/storybook/
 apps/web/next-env.d.ts
 # test output
 test-results/

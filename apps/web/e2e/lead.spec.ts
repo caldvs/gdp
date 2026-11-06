@@ -27,7 +27,7 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
 
   await lead.getByRole('button', { name: 'Use photo' }).click();
 
-  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await lead.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   await expect(lead.getByRole('button', { name: 'Change venue: Gennaro' })).toBeVisible();
 
@@ -63,7 +63,7 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await lead.goto('/');
   await lead.locator('input[capture]').setInputFiles(PHOTO);
   await lead.getByRole('button', { name: 'Use photo' }).click();
-  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await lead.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   await lead.getByRole('button', { name: 'Generate QR code' }).click();
   await expect(lead.getByRole('heading', { name: 'Show the table' })).toBeVisible();
@@ -266,7 +266,7 @@ test('a slow read keeps the photo, and Try again reads it', async ({ browser }) 
 
   await lead.getByRole('button', { name: 'Try again' }).click();
 
-  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await lead.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
 });
 

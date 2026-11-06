@@ -38,7 +38,7 @@ test('reading asks nothing, then opens Review bill with the receipt’s place', 
   await expect(page.locator('input:not([type=file])')).toHaveCount(0);
 
   api.holdReads = false;
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Change venue: d Maiora - Italian Sandwich Shop' })).toBeVisible();
 });
@@ -47,7 +47,7 @@ test('no place on the receipt: asked once, Skip leaves none, and the table has n
   const api = new FakeApi({ status: 'setup', venue: null });
   const page = await lead(browser, api);
   await scan(page).catch(() => undefined);
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Where was this?' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Skip' }).click();
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();

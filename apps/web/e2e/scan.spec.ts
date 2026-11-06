@@ -66,7 +66,7 @@ test('Scan a bill opens our camera; the shutter goes to the photo check, then th
 
   await page.getByRole('button', { name: 'Use photo' }).click();
 
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   expect(uploads(api)).toBe(1);
 });
@@ -108,7 +108,7 @@ test('All in? Retake discards the photo without uploading; Use photo uploads onc
 
   await page.locator('input[capture]').setInputFiles(PHOTO);
   await page.getByRole('button', { name: 'Use photo' }).click();
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   expect(uploads(api)).toBe(1);
 });
@@ -127,7 +127,7 @@ test('the same photo again, after the bill was changed, opens Review bill where 
   const page = await lead(browser, api, 'denied');
 
   await scanFile(page);
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('Picked up where you left off')).toHaveCount(0);
   api.pinnedBillVersion = 2; // the lead fixed a line
@@ -146,7 +146,7 @@ test('the same photo again, once the bill is at a table, opens the lead’s tabl
   const page = await lead(browser, api, 'denied');
 
   await scanFile(page);
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   // Shared: guests are claiming.
   api.billInSession = true;
@@ -165,7 +165,7 @@ async function settledRepeat(browser: Browser) {
   api.rememberPhotos = true;
   const page = await lead(browser, api, 'denied');
   await scanFile(page);
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   api.billInSession = true;
   api.status = 'settled';

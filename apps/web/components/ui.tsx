@@ -258,13 +258,14 @@ export function AvatarStack({ names, max = 3 }: { names: string[]; max?: number 
  * dashed rules. Only for the bill itself (being checked or claimed, a guest's
  * share, the whole-bill summary); everything else is ordinary cards.
  */
-export function Receipt({ head, end, children, label }: { head?: ReactNode; end?: ReactNode; children: ReactNode; label?: string }) {
-  return (
+export function Receipt({ head, end, children, label, vt }: { head?: ReactNode; end?: ReactNode; children: ReactNode; label?: string; /** Same-named receipt on the last page morphs into this one. */ vt?: string }) {
+  const r = (
     <section className="receipt" aria-label={label}>
       {head || end ? <div className="receipt__head"><span className="receipt__name">{head}</span>{end ? <span className="receipt__end">{end}</span> : null}</div> : null}
       {children}
     </section>
   );
+  return vt ? <ViewTransition name={vt} share="morph" enter="page-in" exit="page-out" default="none">{r}</ViewTransition> : r;
 }
 
 /** One receipt line: name (and a note under it), then the price; `tools` sits at the end (Claim). */

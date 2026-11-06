@@ -107,5 +107,8 @@ export function Morph({ name, children }: { name?: string; children: ReactNode }
   );
 }
 
+/** The bill's receipt, printing on the reading page and then edited on Check it matches. */
+export const BILL_RECEIPT = 'bill-receipt';
+
 /** The shared name for a bill's title, in lists and on the bill itself. */
 export const billTitle = (sessionId: string) => `bill-title-${sessionId.replace(/[^\w-]/g, '_')}`;

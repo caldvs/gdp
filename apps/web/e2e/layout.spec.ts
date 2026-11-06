@@ -95,7 +95,7 @@ test("the lead's bank details never reach a server", { tag: '@webkit' }, async (
   await open(page, api, users.lead, '/');
   await page.locator('input[capture]').setInputFiles(PHOTO);
   await page.getByRole('button', { name: 'Use photo' }).click();
-  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await page.waitForURL(/\/confirm-bill\//, { timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Generate QR code' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);

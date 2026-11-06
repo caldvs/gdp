@@ -16,6 +16,7 @@ import { RESUMED_PARAM } from '@gdp/core/lib/duplicateRoute';
 import {
   ActionBar, BackLink, BillSkeleton, Button, Centre, Notice, Page, PencilIcon, PlusIcon, Receipt, ReceiptLine, TickIcon, Title,
 } from '@/components/ui';
+import { BILL_RECEIPT } from '@/components/PageTransition';
 
 type Bill = components['schemas']['Bill'];
 type BillItem = components['schemas']['BillItem'];
@@ -381,6 +382,7 @@ function CheckBill() {
         {/* L3: the bill as a receipt. A pencil on every line opens it in place (L3.1). */}
         <Receipt
           label="The bill"
+          vt={isMidSession ? undefined : BILL_RECEIPT}
           head={noVenue || editing === 'venue'
             ? 'Your bill'
             : <button type="button" className="link-btn receipt__venue" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={`Change venue: ${b.venue!.name}`}>{b.venue!.name}</button>}

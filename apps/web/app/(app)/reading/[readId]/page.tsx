@@ -11,12 +11,13 @@ import { useBill } from '@gdp/core/api/hooks/useBill';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ActionBar, Button, Page, Receipt, ReceiptLine, Title } from '@/components/ui';
+import { BILL_RECEIPT } from '@/components/PageTransition';
 import { SettledRepeat } from '@/components/SettledRepeat';
 
 /**
  * Waits for a background read (POST /v1/bills/reads) on R2: the photo being
  * scanned and the stages ticking off (#174), nothing else to do. Once read, a new
- * bill prints onto a receipt (L2.1) and *Proceed* opens Check it matches; a photo
+ * bill prints onto a receipt (L2.1) and goes on into Check it matches; a photo
  * read before goes straight back to its bill. The place comes from the receipt alone; nothing is asked
  * (#136). The lead can go back to Bills meanwhile; the read carries on and
  * Bills' "Bill read" row comes back here. If it fails, the photo stays,
@@ -40,7 +41,7 @@ export default function ReadingPage() {
   const duplicate = read.data?.duplicate;
   // Already split and closed: Open or Start again first.
   const settled = settledSession(duplicate);
-  // A new bill shows its lines here first (L2.1), then *Proceed*. A photo
+  // A new bill shows its lines here first (L2.1), then goes on to Check it matches. A photo
   // read before goes straight back to its bill.
   const fresh = !!billId && !duplicate;
   const bill = useBill(fresh ? billId : undefined);
@@ -107,7 +108,9 @@ type Bill = components['schemas']['Bill'];
 /**
  * L2.1 (#223): the bill's lines arrive together, but they print onto the
  * receipt one by one, about 2.5s in all (at once with reduced motion). Then
- * *Proceed* to Check it matches. No progress bar (decided).
+ * the page moves on to Check it matches by itself, the receipt staying put
+ * (a shared view transition) while its lines gain their pencils. No
+ * progress bar, no button (Callum, 9 Nov 2026).
  */
 function ReadBill({ bill, onProceed }: { bill: Bill; onProceed: () => void }) {
   const lines = [
@@ -124,11 +127,19 @@ function ReadBill({ bill, onProceed }: { bill: Bill; onProceed: () => void }) {
     return () => clearTimeout(t);
   }, [shown, all]);
   const done = shown >= all;
+  // A beat on the finished receipt, then into editing.
+  useEffect(() => {
+    if (!done) return;
+    const t = setTimeout(onProceed, reducedMotion() ? 0 : 600);
+    return () => clearTimeout(t);
+    // Once, when the last line is in: onProceed is new each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
   return (
     <>
       <Page>
         <Title title="Here’s your bill" sub={<span role="status">{done ? 'Every line read.' : 'Reading the prices…'}</span>} />
-        <Receipt label="The bill" head={bill.venue?.name ?? 'Your bill'}>
+        <Receipt label="The bill" head={bill.venue?.name ?? 'Your bill'} vt={BILL_RECEIPT}>
           {lines.map((l, i) => (
             <div key={l.key} className={`read-line${i < shown ? ' read-line--in' : ''}`} aria-hidden={i < shown ? undefined : true}>
               <ReceiptLine quiet={l.quiet} name={l.name} price={l.pence < 0 ? `−${(-l.pence / 100).toFixed(2)}` : (l.pence / 100).toFixed(2)} />
@@ -139,10 +150,6 @@ function ReadBill({ bill, onProceed }: { bill: Bill; onProceed: () => void }) {
           </div>
         </Receipt>
       </Page>
-      <ActionBar stack>
-        <Button onClick={onProceed}>Proceed</Button>
-        <Button tone="secondary" href="/">Back to bills</Button>
-      </ActionBar>
     </>
   );
 }

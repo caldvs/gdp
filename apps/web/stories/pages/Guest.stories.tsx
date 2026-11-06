@@ -19,7 +19,7 @@ export const JoinLandingPage: Story = {
 };
 
 export const PaymentsWait: Story = {
-  name: 'G2 Your items so far: payments wait (#216)',
+  name: 'G2 Your items so far: until the lead opens payments (#216)',
   parameters: screen({ user: users.tom, api: () => { const a = new FakeCore({ paymentsOpen: false }); a.join(users.tom); a.participants[1]!.claimedItemIds = [items[1]!.itemId]; return a; }, path: `/session/${SID}` }),
   render: () => <Session />,
 };

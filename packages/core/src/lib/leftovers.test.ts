@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { coverLeftovers, itemStatuses, paymentsOpen, unclaimedLines } from './leftovers';
+import { allClaimed, coverLeftovers, itemStatuses, paymentsOpen, unclaimedLines } from './leftovers';
 import { billAndSession } from '../test/arbitraries';
 
 const name = (p: { displayName?: string } | undefined) => p?.displayName ?? 'someone';
@@ -114,16 +114,23 @@ describe('paymentsOpen (#216)', () => {
     shares: [{ itemId: 'wine', userIds: ['ann', 'lead'], ways: 2, activity: [] }],
   } as never;
 
-  it('waits for every unit and every spot in a split', () => {
+  it('every line claimed means every unit and every spot in a split', () => {
     expect(unclaimedLines(claiming, bill).map((i) => i.itemId)).toEqual(['beer', 'wine', 'chips']);
-    expect(paymentsOpen(claiming, bill)).toBe(false);
+    expect(allClaimed(claiming, bill)).toBe(false);
     expect(unclaimedLines(all, bill)).toEqual([]);
-    expect(paymentsOpen(all, bill)).toBe(true);
+    expect(allClaimed(all, bill)).toBe(true);
   });
 
-  it('opens early when the lead says, and once the bill is locked or closed', () => {
-    expect(paymentsOpen({ ...(claiming as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never, bill)).toBe(true);
-    expect(paymentsOpen({ ...(claiming as object), status: 'paying' } as never, bill)).toBe(true);
-    expect(paymentsOpen({ ...(claiming as object), status: 'settled' } as never, bill)).toBe(true);
+  it('only the lead opens payments: every line claimed doesn’t', () => {
+    expect(paymentsOpen(claiming)).toBe(false);
+    expect(paymentsOpen(all)).toBe(false);
+    expect(paymentsOpen({ ...(all as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never)).toBe(true);
+  });
+
+  it('a locked or closed bill is open; one being set up isn’t', () => {
+    expect(paymentsOpen({ ...(claiming as object), status: 'paying' } as never)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), status: 'settled' } as never)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), status: 'setup' } as never)).toBe(false);
   });
 });

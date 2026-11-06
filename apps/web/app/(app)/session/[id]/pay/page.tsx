@@ -51,10 +51,10 @@ export default function PayPage() {
   // (all of it, or the top-up after claiming more).
   const l = s && mine && bill.data ? ledger(mine, owedFor(s, bill.data, mine)) : null;
   const due = l?.duePence ?? 0;
-  // #216: nothing to pay, and no bank details, until every line is claimed
-  // or the lead lets people pay now. The details only ever reach this phone
-  // in the link's #p= (ADR-0002), so this screen is where they're held back.
-  const payable = !!s && !!bill.data && paymentsOpen(s, bill.data);
+  // #216: nothing to pay, and no bank details, until the lead opens
+  // payments. The details only ever reach this phone in the link's #p=
+  // (ADR-0002), so this screen is where they're held back.
+  const payable = !!s && paymentsOpen(s);
 
   // Open the payment as soon as the guest lands here, so the reference
   // is ready by the time they've opened their banking app. The API hands
@@ -88,8 +88,7 @@ export default function PayPage() {
       <>
         <Page sub>
           <BackLink href={`/session/${id}`}>What did you have?</BackLink>
-          <Title title="Not yet" sub={`${toClaim} ${toClaim === 1 ? 'line' : 'lines'} still to claim.`} />
-          <Notice>You’ll see what you owe {hostFirst} once every line is claimed.</Notice>
+          <Title title="Not yet" sub={`You’ll see what you owe when ${hostFirst} opens payments.`} />
         </Page>
         <ActionBar><Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button></ActionBar>
       </>
@@ -138,7 +137,7 @@ export default function PayPage() {
         />
         {done ? null : (
           <>
-            {early ? <Notice>{hostFirst}’s letting people pay before every line is claimed. What you owe won’t change.</Notice> : null}
+            {early ? <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice> : null}
             <h2 className="pay-total"><span>You pay {hostFirst}</span><b>{formatGBP(amount)}</b></h2>
             {bd ? (
               <Box list label="Bank details">

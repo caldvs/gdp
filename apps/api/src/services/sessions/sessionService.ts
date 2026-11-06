@@ -2,11 +2,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
+import type { Bill } from '../../types/bills.js';
 import { isConditionalCheckFailed, retryOnConflict } from '../../storage/conflict.js';
 import { entitlementOps } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
-import { computeOwed } from './allocation.js';
+import { computeOwed, paymentsAreOpen, unclaimedItemIds } from './allocation.js';
 import {
   computeOwedForParticipant,
   feeFor,
@@ -123,9 +124,10 @@ export const sessionService = {
   },
 
   /**
-   * #216: the lead lets people pay before every line is claimed. Amounts
-   * don't change; what's still unclaimed is the lead's at settle. Lead only,
-   * while the bill is live. Idempotent.
+   * #216: the lead opens payments; until then guests can't see what they owe
+   * or pay, even with every line claimed. Amounts don't change; what's still
+   * unclaimed is the lead's at settle. Lead only, while the bill is live.
+   * Idempotent.
    */
   async openPayments(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
     const session = await sessionStore.get(input.sessionId);
@@ -888,10 +890,42 @@ async function assertEditableSession(
   return loaded;
 }
 
-function projectForCaller(session: Session, _callerUserId: string): Session {
-  const { shareSettings, ...rest } = session;
+// Bill versions never change once written, so a warm Lambda keeps the few
+// it has read for the session view's allClaimed (#216).
+const billVersions = new Map<string, Promise<Bill | null>>();
+function pinnedBill(session: Session): Promise<Bill | null> {
+  const key = `${session.billId}#${session.pinnedBillVersion}`;
+  let bill = billVersions.get(key);
+  if (!bill) {
+    if (billVersions.size >= 200) billVersions.delete(billVersions.keys().next().value!);
+    bill = billStore.getVersion(session.billId, session.pinnedBillVersion);
+    billVersions.set(key, bill);
+    bill.catch(() => billVersions.delete(key));
+  }
+  return bill;
+}
+
+/** #216: the view says whether every line is claimed and whether payments are open. */
+async function payState(session: Session): Promise<{ allClaimed: boolean; paymentsOpen: boolean }> {
+  const paymentsOpen = paymentsAreOpen(session);
+  if (session.status === 'setup') return { allClaimed: false, paymentsOpen };
+  const bill = await pinnedBill(session);
+  if (!bill) return { allClaimed: false, paymentsOpen };
+  const settings = session.shareSettings ?? [];
+  const open = unclaimedItemIds(
+    bill,
+    session.participants,
+    new Map(settings.map((st) => [st.itemId, st.ways])),
+    new Map(settings.map((st) => [st.itemId, st.units ?? 1])),
+  );
+  return { allClaimed: open.length === 0, paymentsOpen };
+}
+
+async function projectForCaller(session: Session, _callerUserId: string): Promise<Session> {
+  const { shareSettings, allClaimed: _ac, paymentsOpen: _po, ...rest } = session;
   const withShares: Session = {
     ...rest,
+    ...(await payState(session)),
     // rev is storage's (see participantPutOp), not the client's.
     participants: session.participants.map(({ rev: _rev, ...p }) => p),
     shares: computeShares(session.participants, shareSettings ?? []),

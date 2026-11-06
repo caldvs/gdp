@@ -672,8 +672,15 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .split-panel__acts > * { flex: 1; }
 .split-panel__acts > :last-child { flex: 1.4; }
 .split-panel__note { margin: 0; font-size: 14px; color: var(--quiet); }
-/* #216: what a guest owes once every line is claimed; the lead's confirm in place. */
+/* #216: the guest's waiting line (a gentle breathing dot), what they owe, and the lead's confirm in place. */
+.wait-line { display: flex; align-items: flex-start; gap: 10px; margin: 0; color: var(--mute); }
+.wait-dot { flex: none; width: 10px; height: 10px; margin-top: .45em; border-radius: 999px; background: var(--accent); animation: wait-breathe 1.6s ease-in-out infinite; }
+@keyframes wait-breathe { 50% { opacity: .3; transform: scale(.7); } }
+@media (prefers-reduced-motion: reduce) { .wait-dot { animation: none; } }
 .owed-big { margin: 0; font-family: var(--display); font-size: 44px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.open-pay { display: flex; flex-direction: column; gap: 8px; }
+.open-pay p { margin: 0; }
+.open-pay__line { font-weight: 700; }
 .confirm-inline { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 2px solid var(--accent); border-radius: var(--radius-card); background: var(--bg); }
 .confirm-inline__h { margin: 0; font-size: 17px; font-weight: 700; }
 .confirm-inline p { margin: 0; }

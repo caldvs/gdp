@@ -92,11 +92,21 @@ export function unclaimedLines(s: Session, b: Bill): BillItem[] {
 }
 
 /**
- * #216: guests see what they owe, and can pay, once every line is claimed,
- * or once the lead lets them pay early, or once the bill is locked or closed.
- * The API refuses a payment otherwise (PAYMENTS_NOT_OPEN).
+ * #216: guests see what they owe, and can pay, once the lead opens payments
+ * (or the bill is locked or closed). Every line being claimed doesn't open
+ * them by itself. The API says the same in `paymentsOpen` and refuses a
+ * payment otherwise (PAYMENTS_NOT_OPEN).
  */
-export function paymentsOpen(s: Session, b: Bill): boolean {
-  if (s.status !== 'claiming' || s.paymentsOpenedAt) return true;
+export function paymentsOpen(s: Pick<Session, 'status' | 'paymentsOpenedAt'>): boolean {
+  if (s.status === 'setup') return false;
+  return s.status !== 'claiming' || !!s.paymentsOpenedAt;
+}
+
+/**
+ * #216: every unit and every spot in a split is claimed. Worked out here
+ * rather than read from the API's `allClaimed` so an optimistic claim counts
+ * straight away.
+ */
+export function allClaimed(s: Session, b: Bill): boolean {
   return unclaimedLines(s, b).length === 0;
 }

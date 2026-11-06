@@ -1,5 +1,5 @@
 import type { Bill } from '../../types/bills.js';
-import type { Participant } from '../../types/sessions.js';
+import type { Participant, Session } from '../../types/sessions.js';
 
 /**
  * Computes `owedPence` for each participant such that the total reconciles
@@ -43,6 +43,15 @@ export function splitShare(
   const out = new Map<string, number>();
   for (const u of keys) out.set(u, all.get(u) ?? 0);
   return out;
+}
+
+/**
+ * #216: guests see what they owe, and can pay, once the lead opens payments.
+ * A locked or closed bill is open; a bill still being set up isn't.
+ */
+export function paymentsAreOpen(session: Pick<Session, 'status' | 'paymentsOpenedAt'>): boolean {
+  if (session.status === 'setup') return false;
+  return session.status !== 'claiming' || !!session.paymentsOpenedAt;
 }
 
 /**

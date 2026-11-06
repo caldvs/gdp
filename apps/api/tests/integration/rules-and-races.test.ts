@@ -48,6 +48,8 @@ type Session = {
   sessionId: string;
   status: string;
   paymentsOpenedAt?: string;
+  allClaimed?: boolean;
+  paymentsOpen?: boolean;
   participants: {
     userId: string;
     claimedItemIds: string[];
@@ -151,34 +153,44 @@ const amendBody = (items: (Item & { category?: 'food' | 'drink' })[]) => ({
 
 beforeAll(ensureBillsBucket);
 
-describe('payments wait for every line (#216)', () => {
+describe('the lead opens payments (#216)', () => {
   const allOf = (items: Item[], except: string[] = []) =>
     items
       .filter((i) => !except.includes(i.itemId))
       .flatMap((i) => Array.from({ length: i.quantity }, () => i.itemId));
 
-  it('nobody can pay while a line is open; claiming the last line opens payments for everyone', async () => {
+  it('nobody can pay until the lead opens payments, even with every line claimed', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 2, { open: false });
     const [a, b] = t.guests as [string, string];
     expect(
       (await claim(app, t.sessionId, a, allOf(t.bill.items, [t.tiramisu.itemId]))).status,
     ).toBe(200);
+    let view = await getSession(app, t.sessionId, a);
+    expect(view).toMatchObject({ allClaimed: false, paymentsOpen: false });
 
     const refused = await post(app, `/v1/sessions/${t.sessionId}/payments`, a);
     expect(refused.status).toBe(409);
-    const body = (await refused.json()) as {
-      error: { code: string; details: { unclaimedItemIds: string[] } };
-    };
-    expect(body.error.code).toBe('PAYMENTS_NOT_OPEN');
-    expect(body.error.details.unclaimedItemIds).toEqual([t.tiramisu.itemId]);
+    expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
+      'PAYMENTS_NOT_OPEN',
+    );
 
+    // The last line claimed: everyone can see it, but payments stay closed.
     expect((await claim(app, t.sessionId, b, [t.tiramisu.itemId])).status).toBe(200);
+    view = await getSession(app, t.sessionId, a);
+    expect(view).toMatchObject({ allClaimed: true, paymentsOpen: false });
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, b)).status).toBe(409);
+
+    expect((await post(app, `/v1/sessions/${t.sessionId}/open-payments`, t.lead)).status).toBe(200);
+    expect(await getSession(app, t.sessionId, b)).toMatchObject({
+      allClaimed: true,
+      paymentsOpen: true,
+    });
     await initiate(app, t.sessionId, a);
     await initiate(app, t.sessionId, b);
   });
 
-  it('a split with a spot open keeps payments closed until someone takes it', async () => {
+  it('a split with a spot open isn’t every line claimed', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 2, { open: false });
     const [a, b] = t.guests as [string, string];
@@ -193,15 +205,15 @@ describe('payments wait for every line (#216)', () => {
         })
       ).status,
     ).toBe(200);
-    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, a)).status).toBe(409);
+    expect((await getSession(app, t.sessionId, a)).allClaimed).toBe(false);
     expect(
       (await post(app, `/v1/sessions/${t.sessionId}/shares`, b, { itemId: t.tiramisu.itemId }))
         .status,
     ).toBe(200);
-    await initiate(app, t.sessionId, b);
+    expect((await getSession(app, t.sessionId, a)).allClaimed).toBe(true);
   });
 
-  it('the lead can let people pay now, and only the lead can', async () => {
+  it('the lead can open payments with lines unclaimed, and only the lead can', async () => {
     const app = buildApp();
     const t = await claimingTable(app, 2, { open: false });
     const [a, b] = t.guests as [string, string];
@@ -218,7 +230,11 @@ describe('payments wait for every line (#216)', () => {
       await post(app, `/v1/sessions/${t.sessionId}/open-payments`, t.lead)
     ).json()) as Session;
     expect(again.paymentsOpenedAt).toBe(at);
-    expect((await getSession(app, t.sessionId, a)).paymentsOpenedAt).toBe(at);
+    expect(await getSession(app, t.sessionId, a)).toMatchObject({
+      paymentsOpenedAt: at,
+      paymentsOpen: true,
+      allClaimed: false,
+    });
 
     const payment = await initiate(app, t.sessionId, a);
     expect(payment.amountPence).toBeGreaterThanOrEqual(t.pizza.unitPricePence);

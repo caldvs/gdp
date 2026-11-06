@@ -13,7 +13,7 @@ import { sessionStore } from '../../storage/sessionStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
 import { userStore } from '../../storage/userStore.js';
 import { billStore } from '../../storage/billStore.js';
-import { unclaimedItemIds } from '../sessions/allocation.js';
+import { paymentsAreOpen } from '../sessions/allocation.js';
 import { retryOnConflict } from '../../storage/conflict.js';
 import type { Logger } from '../../logging/logger.js';
 import type { VerifiedCaller } from '../../context/caller.js';
@@ -56,7 +56,7 @@ export const paymentService = {
       if (participant.userId === session.collectorUserId) {
         throw new AppError('SESSION_INVALID_STATE', 'Collector does not pay themselves');
       }
-      await assertPaymentsOpen(session);
+      assertPaymentsOpen(session);
       // #121: a guest can pay more than once. Each payment is for what they
       // owe now less what they've already sent (in flight or confirmed), so
       // a guest who claimed more after paying tops up just the difference.
@@ -400,24 +400,11 @@ function replaceParticipant(participants: Participant[], updated: Participant): 
  * reach a guest's phone in the link's `#p=` (ADR-0002), so hiding them until
  * then is the web app's job; this stops the payment itself.
  */
-async function assertPaymentsOpen(session: Session): Promise<void> {
-  if (session.status !== 'claiming' || session.paymentsOpenedAt) return;
-  const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
-  if (!bill) throw new AppError('SESSION_INVALID_STATE', 'Bill not found');
-  const settings = session.shareSettings ?? [];
-  const open = unclaimedItemIds(
-    bill,
-    session.participants,
-    new Map(settings.map((st) => [st.itemId, st.ways])),
-    new Map(settings.map((st) => [st.itemId, st.units ?? 1])),
-  );
-  if (open.length > 0) {
-    throw new AppError(
-      'PAYMENTS_NOT_OPEN',
-      `Payments open once every line is claimed: ${open.length} to go`,
-      { unclaimedItemIds: open },
-    );
-  }
+function assertPaymentsOpen(session: Session): void {
+  // #216: the lead opens payments (POST open-payments); every line being
+  // claimed doesn't by itself. A locked or closed bill is open.
+  if (paymentsAreOpen(session)) return;
+  throw new AppError('PAYMENTS_NOT_OPEN', 'The lead hasn’t opened payments yet');
 }
 
 async function owedNow(session: Session, participant: Participant): Promise<number> {

@@ -5,12 +5,13 @@
  * then see where things stand until the lead closes the bill
  * (GuestTable). Pay lives in ./pay.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { itemStatuses as coreItemStatuses, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
+import { allClaimed, itemStatuses as coreItemStatuses, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
+import { claimRows, openPence } from '@gdp/core/lib/claimRows';
 import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Steps, Title, TotalLine, Totals, firstName,
@@ -67,15 +68,16 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const l = me ? ledger(me, owed) : null;
   const paidSome = !!l && l.sentPence > 0;
   const due = l ? l.duePence : owed;
-  // #216: nobody sees what they owe, or pays, until every line is claimed
-  // (or the lead lets them pay now).
-  const open = paymentsOpen(s, b);
+  // #216: nobody sees what they owe, or pays, until the lead opens payments.
+  // G2 here; *I've claimed mine* → G2.2 waiting; *See what you owe* → G2.3.
+  const open = paymentsOpen(s);
   const toClaim = unclaimedLines(s, b).length;
-  const [waiting, setWaiting] = useState(false);
-  if (!paidSome && waiting) {
-    return open
-      ? <AllClaimed s={s} b={b} meUserId={meUserId} owed={owed} onChange={() => setWaiting(false)} />
-      : <WaitingForTable s={s} b={b} meUserId={meUserId} onBack={() => setWaiting(false)} />;
+  const [view, setView] = useState<'pick' | 'waiting' | 'owed'>('pick');
+  if (!paidSome && view === 'owed' && open) {
+    return <WhatYouOwe s={s} b={b} meUserId={meUserId} owed={owed} onChange={() => setView('pick')} />;
+  }
+  if (!paidSome && view !== 'pick') {
+    return <WaitingForTable s={s} b={b} meUserId={meUserId} onBack={() => setView('pick')} onSee={() => setView('owed')} />;
   }
   const holding = !open && !paidSome;
 
@@ -97,8 +99,8 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
               <span className="muted">Your items so far</span>
               <Pulse value={subtotal}><b data-testid="your-share">{formatGBP(subtotal)}</b></Pulse>
             </div>
-            <p className="small muted" data-testid="still-to-claim">{toClaim} {toClaim === 1 ? 'line' : 'lines'} still to claim. You’ll see what you owe then.</p>
-            <Button disabled={subtotal <= 0} onClick={() => setWaiting(true)}>{subtotal > 0 ? 'I’ve claimed mine' : 'Claim what you had'}</Button>
+            <p className="small muted" data-testid="still-to-claim">{toClaim > 0 ? `${toClaim} ${toClaim === 1 ? 'line' : 'lines'} still to claim. ` : ''}You’ll see what you owe when {hostFirst} opens payments.</p>
+            <Button disabled={subtotal <= 0} onClick={() => setView('waiting')}>{subtotal > 0 ? 'I’ve claimed mine' : 'Claim what you had'}</Button>
           </>
         ) : null}
         {!holding && owed > 0 ? (
@@ -153,26 +155,87 @@ function myLines(s: Session, b: Bill, meUserId: string): { key: string; name: st
   return [...claimed, ...shared];
 }
 
-/** G2.2: claimed mine, waiting for the rest of the table. Polls with the session. */
-function WaitingForTable({ s, b, meUserId, onBack }: { s: Session; b: Bill; meUserId: string; onBack: () => void }) {
+type OpenLine = { key: string; name: string; pence: number };
+
+/**
+ * Keeps a line that's gone on screen for a moment, marked as leaving, so it
+ * can fade and fold away (#216). Instant under reduced motion.
+ */
+function useFolding(lines: OpenLine[]): (OpenLine & { leaving?: boolean })[] {
+  const [gone, setGone] = useState<OpenLine[]>([]);
+  const last = useRef(lines);
+  const keys = lines.map((l) => l.key).join('|');
+  useEffect(() => {
+    const now = new Set(lines.map((l) => l.key));
+    const left = last.current.filter((l) => !now.has(l.key));
+    last.current = lines;
+    if (left.length === 0 || reducedMotion()) return;
+    setGone((g) => [...g.filter((x) => !now.has(x.key)), ...left]);
+    const t = setTimeout(() => setGone((g) => g.filter((x) => !left.some((l) => l.key === x.key))), 320);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keys]);
+  const here = new Set(lines.map((l) => l.key));
+  return [...lines, ...gone.filter((g) => !here.has(g.key)).map((g) => ({ ...g, leaving: true }))];
+}
+
+const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * G2.2: claimed mine, waiting for the table. The lines nobody has are listed
+ * without Claim buttons (*Claim something else* goes back) and fold away as
+ * people claim them. Polls with the session; *See what you owe* once the
+ * lead opens payments.
+ */
+function WaitingForTable({ s, b, meUserId, onBack, onSee }: { s: Session; b: Bill; meUserId: string; onBack: () => void; onSee: () => void }) {
   const mine = myLines(s, b, meUserId);
+  const hostFirst = firstName(s.participants.find((p) => p.userId === s.creatorUserId)?.displayName);
+  const open = paymentsOpen(s);
+  const everything = allClaimed(s, b);
+  const left = useMemo(
+    () => claimRows(s, b, meUserId).filter((r) => r.group === 'open').map((r) => ({
+      key: r.key,
+      name: r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.item.name,
+      pence: openPence(r),
+    })),
+    [s, b, meUserId],
+  );
+  const rows = useFolding(left);
   return (
-    <Page sub>
-      <BackButton onClick={onBack}>What did you have?</BackButton>
-      <Title title="Waiting for the table" sub="We’ll show what you owe here as soon as the last line’s claimed." />
-      <Section title="You claimed">
-        <Box list>{mine.map((l) => <Row key={l.key} title={l.name} end={formatGBP(l.pence)} />)}</Box>
-      </Section>
-      <Section title="Nobody’s claimed these yet">
-        <ClaimList s={s} b={b} meUserId={meUserId} onlyOpen />
-        <p className="small muted">Had one? Claim it.</p>
-      </Section>
-    </Page>
+    <>
+      <Page sub>
+        <BackButton onClick={onBack}>Claim something else</BackButton>
+        <Title title={open ? `${hostFirst} has opened payments` : 'Waiting for the table'} />
+        <p className="wait-line" role="status" data-testid="wait-status">
+          {open ? null : <span className="wait-dot" aria-hidden="true" />}
+          {open ? 'You can see what you owe.' : everything ? `Every item on the bill is claimed. Waiting for ${hostFirst} to open payments.` : `Waiting for everyone to claim. ${hostFirst} opens payments after.`}
+        </p>
+        <Section title="You claimed">
+          <Box list>{mine.map((l) => <Row key={l.key} title={l.name} end={formatGBP(l.pence)} />)}</Box>
+        </Section>
+        {rows.length > 0 ? (
+          <Section title="Nobody’s claimed these yet">
+            <Box list>
+              {rows.map((l) => (
+                <div key={l.key} className={l.leaving ? 'leaving' : undefined} aria-hidden={l.leaving || undefined} data-testid="nobody-row">
+                  <Row title={l.name} end={formatGBP(l.pence)} muted />
+                </div>
+              ))}
+            </Box>
+          </Section>
+        ) : null}
+      </Page>
+      {open ? (
+        <ActionBar>
+          <Button grow onClick={onSee}>See what you owe</Button>
+        </ActionBar>
+      ) : null}
+    </>
   );
 }
 
-/** G2.3: every line is claimed, so here's what you owe. */
-function AllClaimed({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; meUserId: string; owed: number; onChange: () => void }) {
+/** G2.3: the lead has opened payments, so here's what you owe. */
+function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; meUserId: string; owed: number; onChange: () => void }) {
   const host = s.participants.find((p) => p.userId === s.creatorUserId);
   const hostFirst = firstName(host?.displayName);
   const mine = myLines(s, b, meUserId);
@@ -182,12 +245,11 @@ function AllClaimed({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; m
   return (
     <>
       <Page sub>
-        {unclaimedLines(s, b).length === 0
-          ? <Badge tone="ok">Every line is claimed</Badge>
-          : <Notice>{hostFirst}’s letting people pay before every line is claimed. What you owe won’t change.</Notice>}
-        <Title title={`You owe ${hostFirst}`} sub={b.venue?.name} />
+        {/* G3.1: opened before every line was claimed. */}
+        {allClaimed(s, b) ? null : <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice>}
+        <Title title={`You owe ${hostFirst}`} />
         <p className="owed-big" data-testid="your-share">{formatGBP(owed)}</p>
-        <Receipt label="Your share">
+        <Receipt label="Your share" head={b.venue?.name ?? 'Your share'}>
           {mine.map((l) => <ReceiptLine key={l.key} name={l.name} price={(l.pence / 100).toFixed(2)} />)}
           {extras > 0 ? <ReceiptLine quiet name="Service" price={(extras / 100).toFixed(2)} /> : null}
           {fee > 0 ? <ReceiptLine quiet name="Round-up" price={(fee / 100).toFixed(2)} /> : null}

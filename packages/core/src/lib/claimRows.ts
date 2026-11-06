@@ -1,4 +1,5 @@
 import type { components } from '../api';
+import { sharePence, splitPricePence } from './owed';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -178,4 +179,15 @@ export function claimPortions(
       canSplit: false,
     }));
   });
+}
+
+/** What's still open on a line: unclaimed portions, or a split's open spots. */
+export function openPence(r: ClaimRow): number {
+  const share = r.share;
+  if (share) {
+    const price = splitPricePence(r.item, share);
+    const taken = share.userIds.reduce((acc, u) => acc + sharePence(price, share.userIds, share.ways, u), 0);
+    return Math.max(0, price - taken);
+  }
+  return r.item.unitPricePence * r.left;
 }

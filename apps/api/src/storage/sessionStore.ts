@@ -74,12 +74,21 @@ function stripParticipantKeys(row: object): Participant {
 
 // Fields that live elsewhere (split settings have their own rows; shares
 // are derived on read) and must never be written into the META row.
-function metaOnly<T extends object>(meta: T): Omit<T, 'shares' | 'shareSettings'> {
+function metaOnly<T extends object>(
+  meta: T,
+): Omit<T, 'shares' | 'shareSettings' | 'allClaimed' | 'paymentsOpen'> {
   const {
     shares: _s,
     shareSettings: _ss,
+    allClaimed: _ac,
+    paymentsOpen: _po,
     ...rest
-  } = meta as T & { shares?: unknown; shareSettings?: unknown };
+  } = meta as T & {
+    shares?: unknown;
+    shareSettings?: unknown;
+    allClaimed?: unknown;
+    paymentsOpen?: unknown;
+  };
   return rest;
 }
 

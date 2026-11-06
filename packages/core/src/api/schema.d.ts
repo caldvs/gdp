@@ -887,10 +887,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * The lead lets people pay before every line is claimed
-         * @description Lead only (#216). Sets `paymentsOpenedAt`, so guests can pay what they owe now. Amounts
-         *     don't change; whatever nobody has claimed is the lead's at settle. Idempotent: the first
-         *     time is kept.
+         * The lead opens payments
+         * @description Lead only (#216). Until the lead opens payments, guests don't see what they owe and can't
+         *     pay, even once every line is claimed. Sets `paymentsOpenedAt`. The lead can open them with
+         *     lines unclaimed; amounts don't change, and whatever nobody has claimed is the lead's at
+         *     settle. Idempotent: the first time is kept.
          */
         post: operations["openPayments"];
         delete?: never;
@@ -912,10 +913,8 @@ export interface paths {
         put?: never;
         /**
          * Initiate a payment from the current participant to the collector
-         * @description The current user must be a guest at the table, and payments must be open: every line claimed
-         *     (every unit, every spot in a split), the lead has let people pay early (`open-payments`), or
-         *     the bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN` with the unclaimed item IDs in
-         *     `details`. Pays what the guest owes now less what they've already sent (#121). Returns the
+         * @description The current user must be a guest at the table, and payments must be open: the lead has opened
+         *     them (`open-payments`), or the bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN`. Pays what the guest owes now less what they've already sent (#121). Returns the
          *     payment record and the details the guest pays with from their own banking app.
          */
         post: operations["initiatePayment"];
@@ -1519,11 +1518,16 @@ export interface components {
             expectedDiners?: number;
             /**
              * Format: date-time
-             * @description When the lead let people pay before every line was claimed (#216).
-             *     Absent until then. Guests can pay once every line is claimed or
-             *     this is set; amounts are the same either way.
+             * @description When the lead opened payments (#216). Absent until then.
              */
             paymentsOpenedAt?: string;
+            /** @description View only (#216): every unit and every spot in a split is claimed. */
+            allClaimed?: boolean;
+            /**
+             * @description View only (#216): guests can see what they owe and pay. True once
+             *     the lead opens payments, or the bill is locked or closed.
+             */
+            paymentsOpen?: boolean;
             /**
              * @description The hold that paid for sharing this bill (#165). Guests pay it back
              *     to the lead in proportion to what they ordered (#166). Absent when

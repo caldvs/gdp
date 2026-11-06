@@ -164,6 +164,10 @@ export const SessionSchema = z.object({
   // When the lead let people pay before every line was claimed (#216).
   // Until then, or until every line is claimed, guests can't pay.
   paymentsOpenedAt: z.string().datetime().optional(),
+  // #216, view only (never stored): every unit and split spot is claimed,
+  // and whether guests can see what they owe and pay.
+  allClaimed: z.boolean().optional(),
+  paymentsOpen: z.boolean().optional(),
   // The hold that paid for the share (#165), which the guests pay back in
   // proportion to what they ordered (#166). Absent when a credit, an exempt
   // lead or Stripe being off paid for it.

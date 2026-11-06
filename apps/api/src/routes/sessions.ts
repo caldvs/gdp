@@ -214,7 +214,7 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     },
   );
 
-  // #216: the lead lets people pay before every line is claimed.
+  // #216: the lead opens payments; guests can't pay until then.
   r.post('/:sessionId/open-payments', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);
     const sessionId = c.req.param('sessionId');

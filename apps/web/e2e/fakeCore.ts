@@ -11,7 +11,7 @@
  * replaces unit claims; the last unit can't be claimed twice; claims are
  * frozen once the guest has said they've paid).
  */
-import { unclaimedLines } from '@gdp/core/lib/leftovers';
+import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
 
 /** What the fake answers a request with. */
 export type Reply = { status: number; contentType: string; body: string };
@@ -113,9 +113,9 @@ export class FakeCore {
   /** #64: how many the lead said are eating. */
   expectedDiners: number | undefined;
   /**
-   * #216: when the lead let people pay before every line was claimed. Most
-   * tests pay with lines unclaimed, so the fake starts open; `paymentsOpen:
-   * false` gives the real start, where guests wait for every line.
+   * #216: when the lead opened payments. Most tests pay straight away, so
+   * the fake starts open; `paymentsOpen: false` gives the real start, where
+   * guests wait for the lead.
    */
   paymentsOpenedAt: string | undefined;
   /** #166: the lead's £1 hold, which the guests pay back by what they ordered. */
@@ -166,6 +166,12 @@ export class FakeCore {
   }
 
   session() {
+    const base = this.sessionBase();
+    // #216: view only, as the API works them out.
+    return { ...base, allClaimed: unclaimedLines(base as never, this.bill as never).length === 0, paymentsOpen: paymentsOpen(base as never) };
+  }
+
+  private sessionBase() {
     return {
       sessionId: SID, status: this.status, creatorUserId: 'u-lead', collectorUserId: 'u-lead', billId: BID, pinnedBillVersion: this.pinnedBillVersion, joinCode: CODE,
       venue: this.bill.venue, shares: this.shares, participants: this.participants, createdAt: '2026-10-31T12:00:00.000Z',
@@ -486,10 +492,9 @@ export class FakeCore {
     // ---- payments
     if (path === `/v1/sessions/${SID}/payments` && method === 'POST') {
       if (this.takeFault('initiate-500')) return err('INTERNAL_ERROR', 'boom', 500);
-      // #216: not until every line is claimed, or the lead opens payments.
-      const open = unclaimedLines(this.session() as never, this.bill as never);
-      if (this.status === 'claiming' && !this.paymentsOpenedAt && open.length > 0) {
-        return err('PAYMENTS_NOT_OPEN', `Payments open once every line is claimed: ${open.length} to go`, 409, { unclaimedItemIds: open.map((i) => i.itemId) });
+      // #216: not until the lead opens payments.
+      if (!paymentsOpen(this.session() as never)) {
+        return err('PAYMENTS_NOT_OPEN', 'The lead hasn’t opened payments yet', 409);
       }
       // #121: pay what's owed now less what's been sent; reuse an unsent
       // payment for the same amount, else replace it.

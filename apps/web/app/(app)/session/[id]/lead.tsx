@@ -14,7 +14,7 @@ import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
+import { claimRows, openPence, type ClaimRow } from '@gdp/core/lib/claimRows';
 import { extrasRate, projectFeePence, projectOwedPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
@@ -235,19 +235,24 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 }
 
 /**
- * L5.0 (#216): guests can't pay until every line is claimed. The lead can
- * open payments now; a confirm in place says what that puts on them.
+ * L5.0 (#216): guests don't see what they owe, or pay, until the lead opens
+ * payments. *Open payments* works any time; with lines still unclaimed it
+ * confirms in place, saying what that puts on the lead.
  */
 function OpenPayments({ s, b, leftPence }: { s: Session; b: Bill; leftPence: number }) {
   const openPay = useOpenPayments(s.sessionId);
   const [asking, setAsking] = useState(false);
-  if (paymentsOpen(s, b)) return null;
+  if (paymentsOpen(s) || s.status !== 'claiming') return null;
   const n = unclaimedLines(s, b).length;
+  const go = () => openPay.mutate(undefined, { onSuccess: () => setAsking(false) });
   if (!asking) {
     return (
-      <Notice title={`Payments open once every line is claimed: ${n} to go`}>
-        <button type="button" className="link-btn" onClick={() => { openPay.reset(); setAsking(true); }}>Let people pay now</button>
-      </Notice>
+      <div className="open-pay">
+        <p className="open-pay__line" data-testid="open-pay-status">{n > 0 ? `${n} ${n === 1 ? 'line' : 'lines'} still to claim` : 'Every line is claimed'}</p>
+        <p className="small muted">Guests see what they owe when you open payments.</p>
+        <Button busy={openPay.isPending} onClick={() => { openPay.reset(); if (n > 0) setAsking(true); else go(); }}>Open payments</Button>
+        {openPay.error ? <Notice tone="error">{openPay.error.message}</Notice> : null}
+      </div>
     );
   }
   return (
@@ -257,23 +262,13 @@ function OpenPayments({ s, b, leftPence }: { s: Session; b: Bill; leftPence: num
       <Totals><TotalLine k="Nobody claimed · goes on you" v={formatGBP(leftPence)} /></Totals>
       <div className="confirm-inline__acts">
         <Button tone="secondary" small onClick={() => setAsking(false)}>Keep waiting</Button>
-        <Button small busy={openPay.isPending} onClick={() => openPay.mutate(undefined, { onSuccess: () => setAsking(false) })}>Open payments</Button>
+        <Button small busy={openPay.isPending} onClick={go}>Open payments</Button>
       </div>
       {openPay.error ? <Notice tone="error">{openPay.error.message}</Notice> : null}
     </div>
   );
 }
 
-/** What's still open on a line: unclaimed portions, or a split's open spots. */
-function openPence(r: ClaimRow): number {
-  const share = r.share;
-  if (share) {
-    const price = splitPricePence(r.item, share);
-    const taken = share.userIds.reduce((acc, u) => acc + sharePence(price, share.userIds, share.ways, u), 0);
-    return Math.max(0, price - taken);
-  }
-  return r.item.unitPricePence * r.left;
-}
 
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 

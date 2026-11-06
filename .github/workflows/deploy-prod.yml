@@ -1,11 +1,11 @@
-name: Release
+name: Deploy to prod
 
 # One manual run puts a commit live (#124): the prod API first, then
 # paymeback.dev from the same commit. `main` itself only ever deploys to test
-# (CI's deploy-test-web job and API Deploy → dev).
+# (CI's deploy-test-web job and Deploy API → dev).
 #
 # - Refuses a commit that isn't on main or whose CI `gate` didn't pass.
-# - The prod API deploy (API Deploy, environment `prod`, with its reviewer)
+# - The prod API deploy (Deploy API, environment `prod`, with its reviewer)
 #   runs the smoke test and dependency check; if either fails, the web app
 #   isn't touched.
 # - The web app is a fresh Vercel production build (it bakes in the prod API
@@ -13,7 +13,7 @@ name: Release
 #   deployment (Settings → Environments → live) named release-YYYY-MM-DD-n.
 #
 # Rollback: the web app with Vercel's Instant Rollback (no build); the API by
-# running Release again on the previous `live` deployment's commit.
+# running Deploy to prod again on the previous `live` deployment's commit.
 
 on:
   workflow_dispatch:
@@ -68,7 +68,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/api-deploy.yml
+    uses: ./.github/workflows/deploy-api.yml
     with:
       environment: prod
       ref: ${{ needs.check.outputs.sha }}

@@ -24,7 +24,7 @@ export interface GithubDeployStackProps extends cdk.StackProps {
 }
 
 /**
- * Lets `.github/workflows/api-deploy.yml` deploy with OIDC instead of
+ * Lets `.github/workflows/deploy-api.yml` deploy with OIDC instead of
  * long-lived keys. The role only assumes the CDK bootstrap roles (`cdk-*`),
  * which do the actual work, so it holds no other AWS permissions.
  *

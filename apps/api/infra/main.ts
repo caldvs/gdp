@@ -729,7 +729,7 @@ new GdpBackendStack(app, 'GdpBackendProd', { env: { region }, envName: 'prod' })
 // can assume the shared CDK bootstrap roles, so AWS itself doesn't separate
 // them; a second account would.)
 //
-// OIDC roles for .github/workflows/api-deploy.yml. The dev deploy job keeps
+// OIDC roles for .github/workflows/deploy-api.yml. The dev deploy job keeps
 // both up to date. They share the account's one GitHub OIDC provider. See
 // githubDeploy.ts.
 const existingProviderArn = app.node.tryGetContext('githubOidcProviderArn') as string | undefined;

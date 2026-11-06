@@ -62,7 +62,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   cert["ACM certificate<br/>(by hand)"] -- ARN --> vars["GitHub environment<br/>API_DOMAIN, API_CERT_ARN<br/>(by hand)"]
-  vars --> wf["api-deploy.yml<br/>runs as that environment"]
+  vars --> wf["deploy-api.yml<br/>runs as that environment"]
   wf --> cdk{"infra/main.ts:<br/>both set?"}
   cdk -- yes --> cfn["DomainName + ApiMapping<br/>output ApiDomainTargetOutput"]
   cdk -- no --> skip["no custom domain<br/>execute-api URL only"]
@@ -79,7 +79,7 @@ flowchart LR
 
 | Home | Read | By | Examples |
 | --- | --- | --- | --- |
-| GitHub environment variables | At deploy | CDK, via `api-deploy.yml` | `API_DOMAIN`, `API_CERT_ARN`, `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `APP_BASE_URL`, `STRIPE_ENABLED` |
+| GitHub environment variables | At deploy | CDK, via `deploy-api.yml` | `API_DOMAIN`, `API_CERT_ARN`, `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `APP_BASE_URL`, `STRIPE_ENABLED` |
 | AWS Secrets Manager and SSM | At cold start | The Lambda | `gdp-<env>/stripe-secret-key`, `gdp-<env>/session-jwt-secret` |
 | Vercel environment variables | At build | Next.js, baked into public JavaScript | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_APP_ENV` |
 | Vercel DNS | On every lookup | Browsers and certificate authorities | `test` ALIAS, `api.test` CNAME, ACM validation CNAME, CAA |

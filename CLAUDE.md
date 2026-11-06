@@ -65,9 +65,9 @@ Before pushing, run what CI would, so `main` stays green:
 - API changes: `npm run test:int -w apps/api` (needs `npm run ddb:up -w apps/api`)
 - web changes: `npm run build && npm run e2e -w apps/web` (visual baselines are CI's: don't commit local snapshots)
 
-After pushing, check CI's `gate` on that commit (`.github/workflows/ci.yml`) and, within the hour, the Test Deploy run that ships it. If either fails, fix it on `main` straight away, or revert the commit; don't leave `main` red.
+After pushing, check CI's `gate` on that commit (`.github/workflows/checks.yml`) and, within the hour, the Deploy to test run that ships it. If either fails, fix it on `main` straight away, or revert the commit; don't leave `main` red.
 
-`main` deploys to test only, hourly: **Test Deploy** (`.github/workflows/test-deploy.yml`) ships the newest green commit to test.paymeback.dev and the dev API; pushes themselves deploy nothing. Going live is one manual **Release** run (`.github/workflows/release.yml`), Callum's call; see [docs/deploy.md](docs/deploy.md).
+`main` deploys to test only, hourly: **Deploy to test** (`.github/workflows/deploy-test.yml`) ships the newest green commit to test.paymeback.dev and the dev API; pushes themselves deploy nothing. Going live is one manual **Deploy to prod** run (`.github/workflows/deploy-prod.yml`), Callum's call; see [docs/deploy.md](docs/deploy.md).
 
 Coverage: each package's `vitest.config.ts` thresholds are hard floors, and CI fails a push that goes under them. Raise floors as tests land; never lower them to get a push through.
 

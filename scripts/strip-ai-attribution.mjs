@@ -6,7 +6,7 @@
 //   node scripts/strip-ai-attribution.mjs <path-to-COMMIT_EDITMSG>
 //   node scripts/strip-ai-attribution.mjs --check <file>   exit 1 if any found
 //
-// Also run by .github/workflows/pr-attribution.yml over PR descriptions.
+// Also run by .github/workflows/strip-ai-attribution.yml over PR descriptions.
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);

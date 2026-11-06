@@ -4,7 +4,7 @@
  *
  * Baselines are the CI runner's (Linux Chromium) and live next to this
  * file in visual.spec.ts-snapshots/. To refresh them after a deliberate
- * change, run the "Update visual baselines" workflow and commit what it
+ * change, run the "Update screenshot baselines" workflow and commit what it
  * produces, or locally on Linux: npx playwright test visual --update-snapshots
  */
 import { expect, test, type Page } from '@playwright/test';

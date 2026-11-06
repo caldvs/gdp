@@ -8,6 +8,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { uuidv7 } from '../../src/lib/uuid.js';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ConsoleSmsSender } from '../../src/services/messaging/sms.js';
+import { guestPhoneStore } from '../../src/storage/guestPhoneStore.js';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import type { ParsedBillFromImage } from '../../src/services/bills/parser.js';
@@ -403,6 +405,28 @@ describe('after paying (#121: top-ups)', () => {
     expect(me.payments?.every((e) => e.status === 'succeeded')).toBe(true);
     expect(me.payment.status).toBe('succeeded');
     expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, g)).status).toBe(409);
+  });
+
+  it('a reminder asks a part-paid guest for what’s left, not their whole share', async () => {
+    const sms = new ConsoleSmsSender();
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(parsed),
+      phoneSms: sms,
+    });
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await guestPhoneStore.put(t.sessionId, g, '+447700900123');
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    await payAndConfirm(app, t.sessionId, g, t.lead);
+    // Paid in full: nothing to remind.
+    const remind = () => post(app, `/v1/sessions/${t.sessionId}/participants/${g}/remind`, t.lead);
+    expect((await remind()).status).toBe(409);
+
+    // Adds the tiramisu: £7.50 left to pay, and that's what the text says.
+    await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]);
+    expect((await remind()).status).toBe(200);
+    expect(sms.outbox.at(-1)!.body).toMatch(/^You owe \S+ £7\.50\b/);
   });
 
   it('a top-up can go before the lead has confirmed the first payment', async () => {

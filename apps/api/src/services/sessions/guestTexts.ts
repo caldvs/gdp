@@ -10,6 +10,7 @@ import type { SmsSender } from '../messaging/sms.js';
 import type { VerifiedCaller } from '../../context/caller.js';
 import type { Session } from '../../types/sessions.js';
 import { paymentsAreOpen } from './allocation.js';
+import { paymentsOf, sentPence } from '../payments/ledger.js';
 import { loadReport } from './reportService.js';
 import type { BillReport, DinerReport } from './report.js';
 import { paidText, reminderText } from './texts.js';
@@ -85,6 +86,17 @@ export function createGuestTexts(deps: GuestTextDeps) {
   const countBillText = async (sessionId: string) =>
     (await countInWindow(`TEXTS#${sessionId}`, 60 * 24 * 60 * 60, TEXTS_PER_BILL)).ok;
 
+  /**
+   * What a guest still has to send: their share less what they've sent
+   * (confirmed, or said they'd paid). A guest who paid and then claimed
+   * more owes the difference (#121), and that's what a reminder asks for.
+   */
+  function leftToPay(session: Session, diner: DinerReport): number {
+    const p = session.participants.find((x) => x.userId === diner.userId);
+    if (!p) return 0;
+    return Math.max(0, diner.totalPence - sentPence(paymentsOf(p, diner.totalPence)));
+  }
+
   function remindStateOf(
     session: Session,
     report: BillReport,
@@ -96,7 +108,7 @@ export function createGuestTexts(deps: GuestTextDeps) {
     const open =
       session.status !== 'abandoned' && paymentsAreOpen(session, report.unclaimed.length === 0);
     if (!open) return 'not_open';
-    if (!diner || diner.isLead || diner.paid.kind !== 'not_paid' || diner.totalPence <= 0) {
+    if (!diner || diner.isLead || leftToPay(session, diner) <= 0) {
       return 'not_owed';
     }
     if (!hasNumber) return 'no_number';
@@ -136,7 +148,7 @@ export function createGuestTexts(deps: GuestTextDeps) {
     const { token } = await guestTextStore.link(session.sessionId, userId);
     const body = reminderText({
       leadName: report.leadName,
-      amountPence: diner.totalPence,
+      amountPence: leftToPay(session, diner),
       ...(report.venueName ? { venueName: report.venueName } : {}),
       link: `${host}/b/${token}`,
       stopLink: `${host}/s/${token}`,

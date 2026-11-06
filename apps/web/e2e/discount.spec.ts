@@ -48,9 +48,10 @@ test('a guest’s share shows their part of the discount, and adds up', async ({
 
   await expect(sam.getByRole('heading', { name: 'Pay Callum' })).toBeVisible();
   const share = sam.getByRole('region', { name: 'Your share' });
-  // 3.75 of 55.75 in items: 3.36 of the £50 off, 0.47 of the service.
+  // 3.75 of 55.75 in items: 375 × 12.72 / 55.75 = 85.6p, rounded down to 0.85;
+  // 3.37 of the £50 off (rounded up for showing), and service to match.
   await expect(share).toContainText('Diet Coke3.75');
   await expect(share).toContainText('Service0.47');
-  await expect(share).toContainText('Discount−3.36');
-  await expect(share).toContainText('You pay Callum£0.86');
+  await expect(share).toContainText('Discount−3.37');
+  await expect(share).toContainText('You pay Callum£0.85');
 });

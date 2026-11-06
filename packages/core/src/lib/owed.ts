@@ -181,6 +181,48 @@ export function discountPence(bill: Pick<BillTotals, 'discounts'>): number {
   return (bill.discounts ?? []).reduce((acc, d) => acc + d.amountPence, 0);
 }
 
+/** The bill to pay: items, service and tax, less the shared discounts. */
+export function billTotalPence(bill: BillTotals): number {
+  return bill.subtotalPence + bill.serviceChargePence + bill.taxPence - discountPence(bill);
+}
+
+/**
+ * What `items` pence of the bill comes to with its part of service and tax,
+ * less its part of any shared discount, rounded down to the penny (8 Nov
+ * 2026, penny-exact): a guest's amount depends only on what they had, so it
+ * never moves when someone else claims, and the lead takes the pennies left
+ * over (see sharesOf).
+ */
+export function withExtrasPence(bill: BillTotals, items: number): number {
+  if (items <= 0) return 0;
+  if (bill.subtotalPence <= 0) return items;
+  return Math.floor((items * billTotalPence(bill)) / bill.subtotalPence);
+}
+
+/**
+ * Everyone's share, adding up to the bill exactly: each guest and what nobody
+ * claimed get withExtrasPence of their items; the lead gets the rest of the
+ * bill. `itemsByUser` must include the lead.
+ */
+export function sharesOf(
+  bill: BillTotals,
+  itemsByUser: ReadonlyMap<string, number>,
+  leadUserId: string,
+  nobodyItems = 0,
+): { byUser: Map<string, number>; nobody: number } {
+  const byUser = new Map<string, number>();
+  const nobody = withExtrasPence(bill, nobodyItems);
+  let others = nobody;
+  for (const [u, items] of itemsByUser) {
+    if (u === leadUserId) continue;
+    const share = withExtrasPence(bill, items);
+    byUser.set(u, share);
+    others += share;
+  }
+  byUser.set(leadUserId, billTotalPence(bill) - others);
+  return { byUser, nobody };
+}
+
 /** Service and tax per pound of items, less the shared discount, taken off pro rata. */
 export function extrasRate(bill: BillTotals): number {
   return bill.subtotalPence > 0
@@ -188,9 +230,13 @@ export function extrasRate(bill: BillTotals): number {
     : 0;
 }
 
-/** A diner's part of the shared discount, on `itemsPence` of items (for showing it). */
+/**
+ * A diner's part of the shared discount, on `itemsPence` of items, for showing
+ * it. Rounded up, so service shown as (share − items + discount) is never
+ * below zero.
+ */
 export function discountPartPence(bill: BillTotals, items: number): number {
-  return bill.subtotalPence > 0 ? Math.round((items * discountPence(bill)) / bill.subtotalPence) : 0;
+  return bill.subtotalPence > 0 && items > 0 ? Math.ceil((items * discountPence(bill)) / bill.subtotalPence) : 0;
 }
 
 /**
@@ -203,50 +249,65 @@ export function roundUpPence(holdPence: number, owedPence: number): number {
   return (100 - (owedPence % 100)) % 100;
 }
 
-type Table = { creatorUserId: string; platformFeePence?: number | null };
+type Table = { creatorUserId: string; platformFeePence?: number | null; participants: readonly Diner[] };
 type OwedBill = BillTotals & { items: readonly PricedItem[] };
 
 /**
- * What a diner owes before any round-up: their items, plus their part of
- * service and tax, less their part of any shared discount, rounded once.
- * Works on a bill still being claimed, so it's what a payment is for.
+ * Everyone's share of the bill as it stands, to the penny (sharesOf): the
+ * diners at the table (plus `extra`, someone not in it yet), and what nobody
+ * has claimed, which goes on the lead.
  */
-export function owedBeforeRoundUp(bill: OwedBill, diner: Diner, splits: readonly Split[]): number {
-  return Math.round(itemsPence(bill.items, diner, splits) * (1 + extrasRate(bill)));
+function sharesAt(bill: OwedBill, table: Table, splits: readonly Split[], extra?: Diner) {
+  const diners = extra && !table.participants.some((p) => p.userId === extra.userId) ? [...table.participants, extra] : table.participants;
+  const items = new Map(diners.map((d) => [d.userId, itemsPence(bill.items, d, splits)]));
+  if (!items.has(table.creatorUserId)) items.set(table.creatorUserId, 0);
+  const claimed = [...items.values()].reduce((a, b) => a + b, 0);
+  return sharesOf(bill, items, table.creatorUserId, Math.max(0, bill.subtotalPence - claimed));
+}
+
+/**
+ * What a diner owes before any round-up: their items, plus their part of
+ * service and tax, less their part of any shared discount (withExtrasPence);
+ * for the lead, the rest of the bill. Works on a bill still being claimed, so
+ * it's what a payment is for, and what the bill is locked at.
+ */
+export function owedBeforeRoundUp(bill: OwedBill, table: Table, diner: Diner, splits: readonly Split[]): number {
+  if (diner.userId !== table.creatorUserId) return withExtrasPence(bill, itemsPence(bill.items, diner, splits));
+  return sharesAt(bill, table, splits, diner).byUser.get(diner.userId)!;
+}
+
+/** What nobody has claimed, with its service and tax: it goes on the lead. */
+export function nobodyPence(bill: OwedBill, table: Table, splits: readonly Split[]): number {
+  return sharesAt(bill, table, splits).nobody;
 }
 
 /** The round-up a diner pays the lead on top of their share. The lead pays none. */
 export function feePence(bill: OwedBill, table: Table, diner: Diner, splits: readonly Split[]): number {
   if (diner.userId === table.creatorUserId) return 0;
-  return roundUpPence(table.platformFeePence ?? 0, owedBeforeRoundUp(bill, diner, splits));
+  return roundUpPence(table.platformFeePence ?? 0, owedBeforeRoundUp(bill, table, diner, splits));
 }
 
 /** What a diner owes now: their share and their round-up. */
 export function owedPence(bill: OwedBill, table: Table, diner: Diner, splits: readonly Split[]): number {
-  return owedBeforeRoundUp(bill, diner, splits) + feePence(bill, table, diner, splits);
+  return owedBeforeRoundUp(bill, table, diner, splits) + feePence(bill, table, diner, splits);
 }
 
 /**
  * Everyone's share of a fully claimed bill, adding up to its total to the
- * penny (round-ups not included): items, then service, tax and any shared
- * discount each apportioned by largest remainder over what people had.
- * Throws an Error 'CLAIMS_INCOMPLETE' with `unclaimedItemIds` otherwise.
+ * penny (round-ups not included), exactly what owedBeforeRoundUp gives each
+ * of them. Throws an Error 'CLAIMS_INCOMPLETE' with `unclaimedItemIds`
+ * otherwise.
  */
-export function computeOwed(bill: OwedBill & { items: readonly Line[] }, diners: readonly Diner[], splits: readonly Split[]): Map<string, number> {
+export function computeOwed(bill: OwedBill & { items: readonly Line[] }, table: Table, splits: readonly Split[]): Map<string, number> {
+  const diners = table.participants;
   const unclaimed = unclaimedItemIds(bill.items, diners, splits);
   if (unclaimed.length > 0) {
     const err = new Error('CLAIMS_INCOMPLETE');
     (err as Error & { unclaimedItemIds: string[] }).unclaimedItemIds = unclaimed;
     throw err;
   }
-  const subtotals = new Map(diners.map((d) => [d.userId, itemsPence(bill.items, d, splits)]));
-  const service = apportionByWeight(bill.serviceChargePence, subtotals);
-  const tax = apportionByWeight(bill.taxPence, subtotals);
-  // Never more than the items, so no one's part is more than what they had.
-  const off = apportionByWeight(discountPence(bill), subtotals);
-  return new Map(
-    [...subtotals].map(([u, items]) => [u, items + service.get(u)! + tax.get(u)! - off.get(u)!]),
-  );
+  const { byUser } = sharesAt(bill, table, splits);
+  return new Map(diners.map((d) => [d.userId, byUser.get(d.userId)!]));
 }
 
 // ---- The app's projections, from the session as the API returns it ----

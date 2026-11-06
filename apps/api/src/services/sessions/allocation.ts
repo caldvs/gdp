@@ -46,7 +46,7 @@ export function unclaimedOn(bill: Bill, session: Session): string[] {
 
 /**
  * Everyone's share of a fully claimed bill, to the penny (see owed.ts
- * computeOwed). Throws 'CLAIMS_INCOMPLETE' with `unclaimedItemIds`.
+ * computeOwed): guests' shares rounded down, the lead takes the rest. Throws 'CLAIMS_INCOMPLETE' with `unclaimedItemIds`.
  */
 export function computeOwed(
   bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'> &
@@ -57,10 +57,14 @@ export function computeOwed(
   waysByItem: ReadonlyMap<string, number> = new Map(),
   // itemId → how many of the line the split covers. Missing → 1.
   unitsByItem: ReadonlyMap<string, number> = new Map(),
+  // The lead, who takes the pennies left over. Missing → the first participant.
+  creatorUserId: string = participants[0]?.userId ?? '',
 ): Map<string, number> {
+  const subtotalPence =
+    bill.subtotalPence ?? bill.items.reduce((a, it) => a + it.unitPricePence * it.quantity, 0);
   return owedOnBill(
-    { subtotalPence: 0, ...bill },
-    participants,
+    { ...bill, subtotalPence },
+    { creatorUserId, participants },
     splitsFrom(participants, waysByItem, unitsByItem),
   );
 }

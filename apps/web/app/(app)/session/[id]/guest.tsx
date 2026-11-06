@@ -5,15 +5,15 @@
  * then see where things stand until the lead closes the bill
  * (GuestTable). Pay lives in ./pay.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
+import { itemStatuses as coreItemStatuses, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
-  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Row, Section, Steps, Title, TotalLine, Totals, firstName,
+  ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Steps, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { billTitle } from '@/components/PageTransition';
@@ -67,6 +67,17 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const l = me ? ledger(me, owed) : null;
   const paidSome = !!l && l.sentPence > 0;
   const due = l ? l.duePence : owed;
+  // #216: nobody sees what they owe, or pays, until every line is claimed
+  // (or the lead lets them pay now).
+  const open = paymentsOpen(s, b);
+  const toClaim = unclaimedLines(s, b).length;
+  const [waiting, setWaiting] = useState(false);
+  if (!paidSome && waiting) {
+    return open
+      ? <AllClaimed s={s} b={b} meUserId={meUserId} owed={owed} onChange={() => setWaiting(false)} />
+      : <WaitingForTable s={s} b={b} meUserId={meUserId} onBack={() => setWaiting(false)} />;
+  }
+  const holding = !open && !paidSome;
 
   return (
     <>
@@ -80,13 +91,23 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
         <ClaimList s={s} b={b} meUserId={meUserId} />
       </Page>
       <ActionBar stack>
-        {owed > 0 ? (
+        {holding ? (
+          <>
+            <div className="actionbar__total">
+              <span className="muted">Your items so far</span>
+              <Pulse value={subtotal}><b data-testid="your-share">{formatGBP(subtotal)}</b></Pulse>
+            </div>
+            <p className="small muted" data-testid="still-to-claim">{toClaim} {toClaim === 1 ? 'line' : 'lines'} still to claim. You’ll see what you owe then.</p>
+            <Button disabled={subtotal <= 0} onClick={() => setWaiting(true)}>{subtotal > 0 ? 'I’ve claimed mine' : 'Claim what you had'}</Button>
+          </>
+        ) : null}
+        {!holding && owed > 0 ? (
           <div className="actionbar__total">
             <span className="muted">{paidSome ? `Paid ${formatGBP(l!.sentPence)} · still to pay` : totalLabel(rate > 0, fee > 0)}</span>
             <Pulse value={paidSome ? due : owed}><b data-testid="your-share">{formatGBP(paidSome ? due : owed)}</b></Pulse>
           </div>
         ) : null}
-        {paidSome ? (
+        {holding ? null : paidSome ? (
           <Button href={`/session/${s.sessionId}/pay`} disabled={due <= 0}>
             {due > 0 ? `Pay ${hostFirst} ${formatGBP(due)}` : 'Claim what else you had'}
           </Button>
@@ -111,6 +132,74 @@ export function splitSub(s: Session, share: Share, meUserId: string): string {
   const others = share.userIds.filter((u) => u !== meUserId).map((u) => firstName(s.participants.find((p) => p.userId === u)?.displayName));
   const seats = Math.max(0, share.ways - share.userIds.length);
   return [`Shared ${share.ways} ways${others.length ? ` with ${others.join(', ')}` : ''}`, seats ? `${seats} open` : null].filter(Boolean).join(' · ');
+}
+
+/* ============================ waiting for every line (#216) ============================ */
+
+/** What I've claimed so far, each line at its price (a split at my share). */
+function myLines(s: Session, b: Bill, meUserId: string): { key: string; name: string; pence: number }[] {
+  const me = s.participants.find((p) => p.userId === meUserId);
+  if (!me) return [];
+  const claimed = [...new Set(me.claimedItemIds)].flatMap((id) => {
+    const item = b.items.find((x) => x.itemId === id);
+    const n = me.claimedItemIds.filter((x) => x === id).length;
+    return item ? [{ key: id, name: n > 1 ? `${item.name} × ${n}` : item.name, pence: item.unitPricePence * n }] : [];
+  });
+  const shared = me.sharedItemIds.flatMap((id) => {
+    const item = b.items.find((x) => x.itemId === id);
+    const share = s.shares?.find((x) => x.itemId === id);
+    return item && share ? [{ key: `${id}:split`, name: `${item.name} (shared)`, pence: sharePence(splitPricePence(item, share), share.userIds, share.ways, meUserId) }] : [];
+  });
+  return [...claimed, ...shared];
+}
+
+/** G2.2: claimed mine, waiting for the rest of the table. Polls with the session. */
+function WaitingForTable({ s, b, meUserId, onBack }: { s: Session; b: Bill; meUserId: string; onBack: () => void }) {
+  const mine = myLines(s, b, meUserId);
+  return (
+    <Page sub>
+      <BackButton onClick={onBack}>What did you have?</BackButton>
+      <Title title="Waiting for the table" sub="We’ll show what you owe here as soon as the last line’s claimed." />
+      <Section title="You claimed">
+        <Box list>{mine.map((l) => <Row key={l.key} title={l.name} end={formatGBP(l.pence)} />)}</Box>
+      </Section>
+      <Section title="Nobody’s claimed these yet">
+        <ClaimList s={s} b={b} meUserId={meUserId} onlyOpen />
+        <p className="small muted">Had one? Claim it.</p>
+      </Section>
+    </Page>
+  );
+}
+
+/** G2.3: every line is claimed, so here's what you owe. */
+function AllClaimed({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; meUserId: string; owed: number; onChange: () => void }) {
+  const host = s.participants.find((p) => p.userId === s.creatorUserId);
+  const hostFirst = firstName(host?.displayName);
+  const mine = myLines(s, b, meUserId);
+  const subtotal = mine.reduce((a, l) => a + l.pence, 0);
+  const fee = projectFeePence(s, b, meUserId);
+  const extras = Math.max(0, owed - subtotal - fee);
+  return (
+    <>
+      <Page sub>
+        {unclaimedLines(s, b).length === 0
+          ? <Badge tone="ok">Every line is claimed</Badge>
+          : <Notice>{hostFirst}’s letting people pay before every line is claimed. What you owe won’t change.</Notice>}
+        <Title title={`You owe ${hostFirst}`} sub={b.venue?.name} />
+        <p className="owed-big" data-testid="your-share">{formatGBP(owed)}</p>
+        <Receipt label="Your share">
+          {mine.map((l) => <ReceiptLine key={l.key} name={l.name} price={(l.pence / 100).toFixed(2)} />)}
+          {extras > 0 ? <ReceiptLine quiet name="Service" price={(extras / 100).toFixed(2)} /> : null}
+          {fee > 0 ? <ReceiptLine quiet name="Round-up" price={(fee / 100).toFixed(2)} /> : null}
+          <ReceiptLine strong name="You owe" price={formatGBP(owed)} />
+        </Receipt>
+      </Page>
+      <ActionBar stack>
+        <Button href={`/session/${s.sessionId}/pay`}>Pay {hostFirst} {formatGBP(owed)}</Button>
+        <Button tone="text" onClick={onChange}>Change what I had</Button>
+      </ActionBar>
+    </>
+  );
 }
 
 /* ============================ after paying (guest) ============================ */

@@ -47,6 +47,7 @@ type Item = { itemId: string; name: string; unitPricePence: number; quantity: nu
 type Session = {
   sessionId: string;
   status: string;
+  paymentsOpenedAt?: string;
   participants: {
     userId: string;
     claimedItemIds: string[];
@@ -81,7 +82,11 @@ async function getSession(app: App, sessionId: string, user: string): Promise<Se
 }
 
 /** A shared bill in `claiming` with the guests joined and nothing claimed. */
-async function claimingTable(app: App, guestCount: number) {
+/**
+ * A shared bill with guests at it. Payments are open (the lead's *Let people
+ * pay now*, #216) unless `open: false`, so tests can pay with lines unclaimed.
+ */
+async function claimingTable(app: App, guestCount: number, { open = true } = {}) {
   const lead = `lead-${uuidv7()}`;
   const guests = Array.from({ length: guestCount }, (_, i) => `g${i}-${uuidv7()}`);
   const bill = (await createBillFor(app, lead)) as { billId: string; items: Item[] };
@@ -92,6 +97,8 @@ async function claimingTable(app: App, guestCount: number) {
   for (const g of guests) {
     expect((await post(app, `/v1/sessions/${sessionId}/join`, g)).status).toBe(200);
   }
+  if (open)
+    expect((await post(app, `/v1/sessions/${sessionId}/open-payments`, lead)).status).toBe(200);
   const byName = (prefix: string) => bill.items.find((i) => i.name.startsWith(prefix))!;
   return {
     lead,
@@ -143,6 +150,82 @@ const amendBody = (items: (Item & { category?: 'food' | 'drink' })[]) => ({
 });
 
 beforeAll(ensureBillsBucket);
+
+describe('payments wait for every line (#216)', () => {
+  const allOf = (items: Item[], except: string[] = []) =>
+    items
+      .filter((i) => !except.includes(i.itemId))
+      .flatMap((i) => Array.from({ length: i.quantity }, () => i.itemId));
+
+  it('nobody can pay while a line is open; claiming the last line opens payments for everyone', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2, { open: false });
+    const [a, b] = t.guests as [string, string];
+    expect(
+      (await claim(app, t.sessionId, a, allOf(t.bill.items, [t.tiramisu.itemId]))).status,
+    ).toBe(200);
+
+    const refused = await post(app, `/v1/sessions/${t.sessionId}/payments`, a);
+    expect(refused.status).toBe(409);
+    const body = (await refused.json()) as {
+      error: { code: string; details: { unclaimedItemIds: string[] } };
+    };
+    expect(body.error.code).toBe('PAYMENTS_NOT_OPEN');
+    expect(body.error.details.unclaimedItemIds).toEqual([t.tiramisu.itemId]);
+
+    expect((await claim(app, t.sessionId, b, [t.tiramisu.itemId])).status).toBe(200);
+    await initiate(app, t.sessionId, a);
+    await initiate(app, t.sessionId, b);
+  });
+
+  it('a split with a spot open keeps payments closed until someone takes it', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2, { open: false });
+    const [a, b] = t.guests as [string, string];
+    expect(
+      (await claim(app, t.sessionId, a, allOf(t.bill.items, [t.tiramisu.itemId]))).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(app, `/v1/sessions/${t.sessionId}/shares`, a, {
+          itemId: t.tiramisu.itemId,
+          ways: 2,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, a)).status).toBe(409);
+    expect(
+      (await post(app, `/v1/sessions/${t.sessionId}/shares`, b, { itemId: t.tiramisu.itemId }))
+        .status,
+    ).toBe(200);
+    await initiate(app, t.sessionId, b);
+  });
+
+  it('the lead can let people pay now, and only the lead can', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2, { open: false });
+    const [a, b] = t.guests as [string, string];
+    expect((await claim(app, t.sessionId, a, [t.pizza.itemId])).status).toBe(200);
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, a)).status).toBe(409);
+
+    expect((await post(app, `/v1/sessions/${t.sessionId}/open-payments`, b)).status).toBe(404);
+    const opened = await post(app, `/v1/sessions/${t.sessionId}/open-payments`, t.lead);
+    expect(opened.status).toBe(200);
+    const at = ((await opened.json()) as Session).paymentsOpenedAt;
+    expect(at).toBeTruthy();
+    // Again: the first time is kept.
+    const again = (await (
+      await post(app, `/v1/sessions/${t.sessionId}/open-payments`, t.lead)
+    ).json()) as Session;
+    expect(again.paymentsOpenedAt).toBe(at);
+    expect((await getSession(app, t.sessionId, a)).paymentsOpenedAt).toBe(at);
+
+    const payment = await initiate(app, t.sessionId, a);
+    expect(payment.amountPence).toBeGreaterThanOrEqual(t.pizza.unitPricePence);
+    // Something nobody's claimed stays unclaimed; the lead covers it at close.
+    expect(guestOf(await getSession(app, t.sessionId, t.lead), b).claimedItemIds).toEqual([]);
+  });
+});
 
 describe('payments', () => {
   it('opening the pay page again reuses the payment not sent yet', async () => {

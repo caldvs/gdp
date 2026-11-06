@@ -84,7 +84,7 @@ y = place(2, y, 'Bill lock', 'sess', '30 days', [('pk', 'BILLLOCK#{billId}'), ('
 # Session item collection (custom)
 sx, sy = COLS[2], y
 rows = [
-    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck', 'platformFeePence: the hold guests repay']),
+    ('META', 'META', ['status, creatorUserId, collectorUserId', 'billId, pinnedBillVersion', 'joinCode, venue, expectedDiners, payoutCheck', 'paymentsOpenedAt: lead let people pay early', 'platformFeePence: the hold guests repay']),
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, units, version (optimistic lock)', 'userIds[]: copy of who is in it', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),

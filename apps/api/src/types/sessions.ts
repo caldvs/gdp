@@ -161,6 +161,9 @@ export const SessionSchema = z.object({
   // How many people the lead expects at the table, lead included. Unset
   // until the lead says.
   expectedDiners: ExpectedDinersSchema.optional(),
+  // When the lead let people pay before every line was claimed (#216).
+  // Until then, or until every line is claimed, guests can't pay.
+  paymentsOpenedAt: z.string().datetime().optional(),
   // The hold that paid for the share (#165), which the guests pay back in
   // proportion to what they ordered (#166). Absent when a credit, an exempt
   // lead or Stripe being off paid for it.

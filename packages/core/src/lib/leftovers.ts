@@ -80,3 +80,23 @@ export function coverLeftovers(
     ],
   };
 }
+
+/**
+ * Lines not yet fully taken: some of the quantity nobody has claimed, or a
+ * split with a spot open. Mirrors the API's `unclaimedItemIds` (allocation.ts).
+ */
+export function unclaimedLines(s: Session, b: Bill): BillItem[] {
+  return itemStatuses(s, b, '', () => '')
+    .filter((st) => st.left > 0 || (!!st.share && st.share.userIds.length < st.share.ways))
+    .map((st) => st.item);
+}
+
+/**
+ * #216: guests see what they owe, and can pay, once every line is claimed,
+ * or once the lead lets them pay early, or once the bill is locked or closed.
+ * The API refuses a payment otherwise (PAYMENTS_NOT_OPEN).
+ */
+export function paymentsOpen(s: Session, b: Bill): boolean {
+  if (s.status !== 'claiming' || s.paymentsOpenedAt) return true;
+  return unclaimedLines(s, b).length === 0;
+}

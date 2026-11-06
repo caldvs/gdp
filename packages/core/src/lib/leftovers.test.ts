@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { coverLeftovers, itemStatuses } from './leftovers';
+import { coverLeftovers, itemStatuses, paymentsOpen, unclaimedLines } from './leftovers';
 import { billAndSession } from '../test/arbitraries';
 
 const name = (p: { displayName?: string } | undefined) => p?.displayName ?? 'someone';
@@ -100,5 +100,30 @@ describe('coverLeftovers', () => {
         }
       }),
     );
+  });
+});
+
+describe('paymentsOpen (#216)', () => {
+  const claiming = { ...(session as object), status: 'claiming' } as never;
+  const all = {
+    status: 'claiming',
+    participants: [
+      { userId: 'lead', claimedItemIds: ['beer', 'beer', 'chips', 'chips'], sharedItemIds: ['wine'] },
+      { userId: 'ann', claimedItemIds: ['pizza', 'beer', 'beer'], sharedItemIds: ['wine'] },
+    ],
+    shares: [{ itemId: 'wine', userIds: ['ann', 'lead'], ways: 2, activity: [] }],
+  } as never;
+
+  it('waits for every unit and every spot in a split', () => {
+    expect(unclaimedLines(claiming, bill).map((i) => i.itemId)).toEqual(['beer', 'wine', 'chips']);
+    expect(paymentsOpen(claiming, bill)).toBe(false);
+    expect(unclaimedLines(all, bill)).toEqual([]);
+    expect(paymentsOpen(all, bill)).toBe(true);
+  });
+
+  it('opens early when the lead says, and once the bill is locked or closed', () => {
+    expect(paymentsOpen({ ...(claiming as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never, bill)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), status: 'paying' } as never, bill)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), status: 'settled' } as never, bill)).toBe(true);
   });
 });

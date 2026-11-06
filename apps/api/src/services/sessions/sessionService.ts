@@ -123,6 +123,24 @@ export const sessionService = {
   },
 
   /**
+   * #216: the lead lets people pay before every line is claimed. Amounts
+   * don't change; what's still unclaimed is the lead's at settle. Lead only,
+   * while the bill is live. Idempotent.
+   */
+  async openPayments(input: { caller: VerifiedCaller; sessionId: string }): Promise<Session> {
+    const session = await sessionStore.get(input.sessionId);
+    if (!session || session.creatorUserId !== input.caller.userId) {
+      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+    }
+    if (session.status !== 'claiming' && session.status !== 'paying') {
+      throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}`);
+    }
+    const at = session.paymentsOpenedAt ?? new Date().toISOString();
+    if (!session.paymentsOpenedAt) await sessionStore.setPaymentsOpened(session.sessionId, at);
+    return projectForCaller({ ...session, paymentsOpenedAt: at }, input.caller.userId);
+  },
+
+  /**
    * The lead changes how many people are eating (#64), or clears it with
    * null. Lead only, and only while the bill is live.
    */

@@ -189,6 +189,8 @@ describe('the £1 hold at close (#167)', () => {
       body: JSON.stringify({ claimedItemIds: [pizza.itemId] }),
     });
     expect(claim.status).toBe(200);
+    // The rest of the bill stays unclaimed: the lead lets them pay now (#216).
+    expect((await post(app, `/v1/sessions/${sessionId}/open-payments`, lead)).status).toBe(200);
     return { app, lead, guest, sessionId, billId: bill.billId };
   }
 

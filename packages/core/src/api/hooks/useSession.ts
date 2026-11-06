@@ -318,6 +318,17 @@ export function useAbandonSession(sessionId: string) {
   });
 }
 
+/** #216: the lead lets people pay before every line is claimed. */
+export function useOpenPayments(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<Session, ApiError, void>({
+    mutationFn: () => api<Session>(`/v1/sessions/${sessionId}/open-payments`, { method: 'POST' }),
+    onSuccess: (session) => {
+      qc.setQueryData(['session', sessionId], session);
+    },
+  });
+}
+
 /** #64: the lead says how many are eating (lead included); null clears it. */
 export function useSetExpectedDiners(sessionId: string) {
   const qc = useQueryClient();

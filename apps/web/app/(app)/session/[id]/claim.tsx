@@ -38,7 +38,7 @@ function shareError(err: ApiError): string {
 /** The row whose split is open, how many ways, and whether it's mine to change (fixed when it opens). */
 type Splitting = { key: string; ways: number; mine: boolean };
 
-export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
+export function ClaimList({ s, b, meUserId, onlyOpen = false }: { s: Session; b: Bill; meUserId: string; /** G2.2: just the rows nobody has. */ onlyOpen?: boolean }) {
   const setClaims = useSetClaims(s.sessionId);
   const addShare = useAddShare(s.sessionId);
   const removeShare = useRemoveShare(s.sessionId);
@@ -191,8 +191,8 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       <div className="vh" aria-live="polite">{liveText}</div>
       <div ref={boxRef} style={{ display: 'contents' }}>
         <h2 className="vh">Items</h2>
-        <Receipt head={b.venue?.name ?? 'The bill'} end={host ? `${host.userId === meUserId ? 'You' : nameOf(host)} paid` : undefined}>
-          {rows.map(render)}
+        <Receipt head={onlyOpen ? undefined : b.venue?.name ?? 'The bill'} end={onlyOpen || !host ? undefined : `${host.userId === meUserId ? 'You' : nameOf(host)} paid`}>
+          {(onlyOpen ? rows.filter((r) => r.state === 'open' || r.key === splitting?.key) : rows).map(render)}
         </Receipt>
       </div>
       {err ? <Notice tone="error">{err}</Notice> : null}

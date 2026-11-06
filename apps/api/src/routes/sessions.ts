@@ -214,6 +214,14 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     },
   );
 
+  // #216: the lead lets people pay before every line is claimed.
+  r.post('/:sessionId/open-payments', requireAuth(deps.idTokenVerifier), async (c) => {
+    const caller = callerOf(c);
+    const sessionId = c.req.param('sessionId');
+    const session = await sessionService.openPayments({ caller, sessionId });
+    return c.json(session);
+  });
+
   // The QR: needs the bill's paid fee, an exempt lead, or this month's
   // credit (402 TABLE_FEE_REQUIRED otherwise). Free when Stripe is off.
   r.post('/:sessionId/share', requireAuth(deps.idTokenVerifier), async (c) => {

@@ -8,7 +8,7 @@
 import { startTransition, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { components } from '@gdp/core/api';
-import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useSetClaims, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useOpenPayments, useSetClaims, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
@@ -24,6 +24,7 @@ import { BillTools } from '@/components/BillTools';
 import { useTableFeed } from '@/components/useTableFeed';
 import { billTitle } from '@/components/PageTransition';
 import { itemStatuses } from './guest';
+import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
 import { ClaimList } from './claim';
 
 type Session = components['schemas']['Session'];
@@ -158,6 +159,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
               </Box>
             </Section>
 
+            <OpenPayments s={s} b={b} leftPence={leftWithService} />
+
             {everyoneHere && left.length > 0 ? (
               <Notice tone="warn" title="Everyone’s here">{formatGBP(leftWithService)} still not claimed.</Notice>
             ) : null}
@@ -228,6 +231,36 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * L5.0 (#216): guests can't pay until every line is claimed. The lead can
+ * open payments now; a confirm in place says what that puts on them.
+ */
+function OpenPayments({ s, b, leftPence }: { s: Session; b: Bill; leftPence: number }) {
+  const openPay = useOpenPayments(s.sessionId);
+  const [asking, setAsking] = useState(false);
+  if (paymentsOpen(s, b)) return null;
+  const n = unclaimedLines(s, b).length;
+  if (!asking) {
+    return (
+      <Notice title={`Payments open once every line is claimed: ${n} to go`}>
+        <button type="button" className="link-btn" onClick={() => { openPay.reset(); setAsking(true); }}>Let people pay now</button>
+      </Notice>
+    );
+  }
+  return (
+    <div className="confirm-inline" role="group" aria-labelledby="open-pay-t">
+      <h2 id="open-pay-t" className="confirm-inline__h">Open payments with lines unclaimed?</h2>
+      <p className="muted">Guests see what they owe and your bank details. Anything nobody claims goes on you.</p>
+      <Totals><TotalLine k="Nobody claimed · goes on you" v={formatGBP(leftPence)} /></Totals>
+      <div className="confirm-inline__acts">
+        <Button tone="secondary" small onClick={() => setAsking(false)}>Keep waiting</Button>
+        <Button small busy={openPay.isPending} onClick={() => openPay.mutate(undefined, { onSuccess: () => setAsking(false) })}>Open payments</Button>
+      </div>
+      {openPay.error ? <Notice tone="error">{openPay.error.message}</Notice> : null}
+    </div>
   );
 }
 

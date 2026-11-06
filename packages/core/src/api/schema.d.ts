@@ -875,6 +875,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/open-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The lead lets people pay before every line is claimed
+         * @description Lead only (#216). Sets `paymentsOpenedAt`, so guests can pay what they owe now. Amounts
+         *     don't change; whatever nobody has claimed is the lead's at settle. Idempotent: the first
+         *     time is kept.
+         */
+        post: operations["openPayments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/payments": {
         parameters: {
             query?: never;
@@ -888,9 +912,11 @@ export interface paths {
         put?: never;
         /**
          * Initiate a payment from the current participant to the collector
-         * @description The current user must be a participant in the session, the session must be in `paying`, and the
-         *     participant's current `payment.status` must be `unpaid` or `failed`. Returns the created payment
-         *     record and the details the guest pays with from their own banking app.
+         * @description The current user must be a guest at the table, and payments must be open: every line claimed
+         *     (every unit, every spot in a split), the lead has let people pay early (`open-payments`), or
+         *     the bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN` with the unclaimed item IDs in
+         *     `details`. Pays what the guest owes now less what they've already sent (#121). Returns the
+         *     payment record and the details the guest pays with from their own banking app.
          */
         post: operations["initiatePayment"];
         delete?: never;
@@ -1224,7 +1250,7 @@ export interface components {
                  * @description Stable error code (SCREAMING_SNAKE_CASE)
                  * @enum {string}
                  */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "PAYMENTS_NOT_OPEN" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
                 /** @description Human-safe explanation */
                 message: string;
                 /** @description Server request ID; cross-reference in support */
@@ -1491,6 +1517,13 @@ export interface components {
              *     "3 of 4 joined"; never used in the money maths. Absent until set.
              */
             expectedDiners?: number;
+            /**
+             * Format: date-time
+             * @description When the lead let people pay before every line was claimed (#216).
+             *     Absent until then. Guests can pay once every line is claimed or
+             *     this is set; amounts are the same either way.
+             */
+            paymentsOpenedAt?: string;
             /**
              * @description The hold that paid for sharing this bill (#165). Guests pay it back
              *     to the lead in proportion to what they ordered (#166). Absent when
@@ -3302,6 +3335,47 @@ export interface operations {
             };
         };
     };
+    openPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, with `paymentsOpenedAt` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller is not the lead */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is in setup, closed or deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     initiatePayment: {
         parameters: {
             query?: never;
@@ -3337,7 +3411,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description Session not in `paying`, or payment status not unpaid/failed */
+            /** @description Payments not open yet (`PAYMENTS_NOT_OPEN`), session in setup or deleted, or nothing to pay */
             409: {
                 headers: {
                     [name: string]: unknown;

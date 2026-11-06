@@ -443,6 +443,19 @@ export const sessionStore = {
     );
   },
 
+  /** The lead lets people pay before every line is claimed (#216). Keeps the first time. */
+  async setPaymentsOpened(sessionId: string, at: string): Promise<void> {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: sessionPk(sessionId), sk: META_SK },
+        ConditionExpression: 'attribute_exists(pk)',
+        UpdateExpression: 'SET paymentsOpenedAt = if_not_exists(paymentsOpenedAt, :at)',
+        ExpressionAttributeValues: { ':at': at },
+      }),
+    );
+  },
+
   /** The lead's fingerprint of the bank details in their join link (#151). */
   async setPayoutCheck(sessionId: string, payoutCheck: string): Promise<void> {
     await ddb.send(

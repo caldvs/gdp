@@ -12,6 +12,7 @@ export const ErrorCodes = {
   PAYMENT_NOT_FOUND: { http: 404 },
   SESSION_INVALID_STATE: { http: 409 },
   CLAIMS_INCOMPLETE: { http: 409 },
+  PAYMENTS_NOT_OPEN: { http: 409 },
   CLAIMS_EXCEED_QUANTITY: { http: 409 },
   CLAIM_SHARE_CONFLICT: { http: 409 },
   ITEM_NOT_SHAREABLE: { http: 409 },

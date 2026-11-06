@@ -45,6 +45,41 @@ export function splitShare(
   return out;
 }
 
+/**
+ * Lines not yet fully taken: some of the quantity nobody has claimed, or a
+ * split with a spot open. Empty when every line is claimed (what computeOwed
+ * needs, and what opens payments, #216).
+ */
+export function unclaimedItemIds(
+  bill: Pick<Bill, 'items'>,
+  participants: ReadonlyArray<
+    Pick<Participant, 'userId' | 'claimedItemIds'> & { sharedItemIds?: readonly string[] }
+  >,
+  waysByItem: ReadonlyMap<string, number> = new Map(),
+  unitsByItem: ReadonlyMap<string, number> = new Map(),
+): string[] {
+  const sharers = new Map<string, number>();
+  for (const p of participants) {
+    for (const itemId of p.sharedItemIds ?? []) sharers.set(itemId, (sharers.get(itemId) ?? 0) + 1);
+  }
+  const unclaimed: string[] = [];
+  for (const item of bill.items) {
+    const sharerCount = sharers.get(item.itemId) ?? 0;
+    // A split is complete once every spot is taken.
+    if (sharerCount > 0 && sharerCount < (waysByItem.get(item.itemId) ?? sharerCount)) {
+      unclaimed.push(item.itemId);
+      continue;
+    }
+    const shared = sharerCount > 0 ? (unitsByItem.get(item.itemId) ?? 1) : 0;
+    const totalClaimed = participants.reduce(
+      (sum, p) => sum + p.claimedItemIds.filter((id) => id === item.itemId).length,
+      0,
+    );
+    if (totalClaimed + shared < item.quantity) unclaimed.push(item.itemId);
+  }
+  return unclaimed;
+}
+
 export function computeOwed(
   bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'>,
   participants: ReadonlyArray<
@@ -74,23 +109,7 @@ export function computeOwed(
     }
   }
 
-  // Completeness: every unit of every item must be either claimed or
-  // covered by a split whose spots are all taken.
-  const unclaimed: string[] = [];
-  for (const item of bill.items) {
-    const sharerCount = sharersByItem.get(item.itemId)?.length ?? 0;
-    // A split is complete once every spot is taken.
-    if (sharerCount > 0 && sharerCount < (waysByItem.get(item.itemId) ?? sharerCount)) {
-      unclaimed.push(item.itemId);
-      continue;
-    }
-    const shared = sharerCount > 0 ? (unitsByItem.get(item.itemId) ?? 1) : 0;
-    const totalClaimed = participants.reduce(
-      (sum, p) => sum + p.claimedItemIds.filter((id) => id === item.itemId).length,
-      0,
-    );
-    if (totalClaimed + shared < item.quantity) unclaimed.push(item.itemId);
-  }
+  const unclaimed = unclaimedItemIds(bill, participants, waysByItem, unitsByItem);
   if (unclaimed.length > 0) {
     const err = new Error('CLAIMS_INCOMPLETE');
     (err as Error & { unclaimedItemIds: string[] }).unclaimedItemIds = unclaimed;

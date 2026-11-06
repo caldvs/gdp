@@ -99,11 +99,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Pay Me Back architecture</h1>
-    <div class="stats"><span><b>48</b> endpoints</span><span><b>8</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
+    <div class="stats"><span><b>49</b> endpoints</span><span><b>8</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1373" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 48 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venue lookup), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1373" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 49 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venue lookup), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -257,7 +257,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-inner" x="588" y="1121">Webhooks</text>
 <text class="t-base" x="810" y="1121" text-anchor="end">/webhooks</text>
 <text class="t-ep" x="588" y="1141"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
-<rect class="inner" x="834" y="308" width="230" height="380" rx="7"/>
+<rect class="inner" x="834" y="308" width="230" height="398" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
 <text class="t-ep" x="846" y="349"><tspan class="m m-post">POST</tspan><tspan x="902">/</tspan></text>
@@ -278,26 +278,27 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="846" y="619"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
 <text class="t-ep" x="846" y="637"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
 <text class="t-ep" x="846" y="655"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
-<text class="t-ep" x="846" y="673"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<rect class="inner" x="834" y="698" width="230" height="458" rx="7"/>
-<text class="t-inner" x="846" y="719">Services</text>
-<text class="t-base" x="1052" y="719" text-anchor="end">src/services</text>
-<text class="t-mono" x="846" y="742">auth</text>
-<text class="t-sub" x="846" y="759">emailOtp, sessionToken (JWT)</text>
-<text class="t-mono" x="846" y="782">bills</text>
-<text class="t-sub" x="846" y="799">upload, parse, amend, fork, image</text>
-<text class="t-mono" x="846" y="822">bills</text>
-<text class="t-sub" x="846" y="839">parser, venueResolver</text>
-<text class="t-mono" x="846" y="862">sessions</text>
-<text class="t-sub" x="846" y="879">allocation, joinCode, report</text>
-<text class="t-mono" x="846" y="902">payments</text>
-<text class="t-sub" x="846" y="919">paymentService, ledger</text>
-<text class="t-mono" x="846" y="942">billing</text>
-<text class="t-sub" x="846" y="959">tableFee</text>
-<text class="t-mono" x="846" y="982">email</text>
-<text class="t-sub" x="846" y="999">sender (SES or console)</text>
-<text class="t-mono" x="846" y="1022">storage</text>
-<text class="t-sub" x="846" y="1039">one store per entity</text>
+<text class="t-ep" x="846" y="673"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/open-payments</tspan></text>
+<text class="t-ep" x="846" y="691"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
+<rect class="inner" x="834" y="716" width="230" height="440" rx="7"/>
+<text class="t-inner" x="846" y="737">Services</text>
+<text class="t-base" x="1052" y="737" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="760">auth</text>
+<text class="t-sub" x="846" y="777">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="800">bills</text>
+<text class="t-sub" x="846" y="817">upload, parse, amend, fork, image</text>
+<text class="t-mono" x="846" y="840">bills</text>
+<text class="t-sub" x="846" y="857">parser, venueResolver</text>
+<text class="t-mono" x="846" y="880">sessions</text>
+<text class="t-sub" x="846" y="897">allocation, joinCode, report</text>
+<text class="t-mono" x="846" y="920">payments</text>
+<text class="t-sub" x="846" y="937">paymentService, ledger</text>
+<text class="t-mono" x="846" y="960">billing</text>
+<text class="t-sub" x="846" y="977">tableFee</text>
+<text class="t-mono" x="846" y="1000">email</text>
+<text class="t-sub" x="846" y="1017">sender (SES or console)</text>
+<text class="t-mono" x="846" y="1040">storage</text>
+<text class="t-sub" x="846" y="1057">one store per entity</text>
 <rect class="inner" x="576" y="1166" width="488" height="116" rx="7"/>
 <text class="t-inner" x="588" y="1188">Swappable providers (env)</text>
 <text class="t-mono" x="588" y="1210">Parser: Bedrock · fixture</text>

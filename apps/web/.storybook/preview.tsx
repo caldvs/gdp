@@ -1,5 +1,9 @@
 import type { Preview } from '@storybook/nextjs-vite';
+import { fontClasses } from '../app/fonts';
 import '../app/globals.css';
+
+// What the root layout puts on <html>: the fonts' CSS variables.
+document.documentElement.classList.add(...fontClasses.split(' '));
 
 const preview: Preview = {
   parameters: {

@@ -66,7 +66,8 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const rate = billExtrasRate(b);
   // Plus their round-up to the next whole pound.
   const fee = projectFeePence(s, b, meUserId);
-  const owed = Math.round(subtotal * (1 + rate)) + fee;
+  // What a payment is for, to the penny (core's owed.ts).
+  const owed = projectOwedPence(s, b, meUserId);
   // #121: after paying, what's left to send is the difference.
   const l = me ? ledger(me, owed) : null;
   const paidSome = !!l && l.sentPence > 0;

@@ -249,14 +249,15 @@ test('service charge: amounts are projected with service and match the lead’s 
   const tom = await diner(browser, api, users.tom);
 
   await sam.getByRole('button', { name: 'Claim Calamari' }).click();        // 22.50 → 25.31
-  await tom.getByRole('button', { name: 'Claim Lasagne' }).click();         // 17.25 → 19.40 (19.406, rounded down)
+  await tom.getByRole('button', { name: 'Claim Lasagne' }).click();         // 17.25 × 117.00 / 104.00 = 19.406, rounded down
   await expect(sam.getByTestId('your-share')).toHaveText('£25.31');
   await expect(sam.getByText('Your total incl. service')).toBeVisible();
   await expect(tom.getByTestId('your-share')).toHaveText('£19.40');
   await expect(lead.getByText('£25.31')).toBeVisible(POLL);
   await expect(lead.getByText('£19.40')).toBeVisible();
-  // The lead's own olives: 4.25 → 4.78.
-  await expect(lead.getByTestId('lead-share')).toHaveText('£4.78');
+  // The lead takes the rest: 117.00 − 25.31 − 19.40 − 67.50 nobody has
+  // claimed yet = 4.79 (their olives, 4.78, and the penny left over).
+  await expect(lead.getByTestId('lead-share')).toHaveText('£4.79');
 });
 
 test('picks freeze once the guest has said they’ve sent it', async ({ browser }) => {

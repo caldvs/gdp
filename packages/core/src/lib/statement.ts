@@ -1,7 +1,7 @@
 import type { components } from '../api';
 import { ledger } from './ledger';
 import { formatGBP } from './money';
-import { projectFeePence, projectOwedPence, sharePence, splitPricePence } from './owed';
+import { discountPartPence, discountPence, projectFeePence, projectOwedPence, sharePence, splitPricePence } from './owed';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -23,6 +23,8 @@ export type PersonStatement = {
   items: StatementLine[];
   /** Service and tax on their items. */
   extrasPence: number;
+  /** Their part of the bill's shared discount, as an amount off (8 Nov 2026). */
+  discountPence: number;
   /** Their round-up to the next whole pound on a hold; 0 for the lead. */
   feePence: number;
   totalPence: number;
@@ -39,10 +41,12 @@ export type PaymentLine = {
 export type Statement = {
   itemsPence: number;
   extrasPence: number;
+  /** The bill's shared discounts, as an amount off. */
+  discountPence: number;
   totalPence: number;
   people: PersonStatement[];
   /** What nobody claimed: it goes on the lead. Empty when everything is. */
-  unclaimed: { items: StatementLine[]; extrasPence: number; totalPence: number };
+  unclaimed: { items: StatementLine[]; extrasPence: number; discountPence: number; totalPence: number };
   payments: PaymentLine[];
   /** Guests who haven't paid yet, and what they owe. */
   unpaid: { name: string; pence: number }[];
@@ -137,13 +141,15 @@ export function billStatement(
             : 'not-paid';
     }
     const feePence = projectFeePence(s, b, p.userId);
-    return { userId: p.userId, name: nameOf(p), status, items, extrasPence: totalPence - sum(items) - feePence, feePence, totalPence };
+    const off = discountPartPence(b, sum(items));
+    return { userId: p.userId, name: nameOf(p), status, items, extrasPence: totalPence - sum(items) - feePence + off, discountPence: off, feePence, totalPence };
   });
 
   const unclaimed = unclaimedItems(s, b);
   // The bill's own money: the platform fee is on top of it.
   const claimedTotal = people.reduce((a, p) => a + p.totalPence - p.feePence, 0);
   const unclaimedTotal = unclaimed.length > 0 ? Math.max(0, b.totalPence - claimedTotal) : 0;
+  const unclaimedOff = unclaimed.length > 0 ? discountPartPence(b, sum(unclaimed)) : 0;
 
   const payments: PaymentLine[] = [];
   const unpaid: { name: string; pence: number }[] = [];
@@ -170,9 +176,15 @@ export function billStatement(
   return {
     itemsPence: b.subtotalPence,
     extrasPence: b.serviceChargePence + b.taxPence,
+    discountPence: discountPence(b),
     totalPence: b.totalPence,
     people,
-    unclaimed: { items: unclaimed, extrasPence: unclaimedTotal - sum(unclaimed), totalPence: unclaimedTotal },
+    unclaimed: {
+      items: unclaimed,
+      extrasPence: unclaimedTotal - sum(unclaimed) + unclaimedOff,
+      discountPence: unclaimedOff,
+      totalPence: unclaimedTotal,
+    },
     payments,
     unpaid,
     receivedPence,
@@ -208,12 +220,14 @@ export function statementText(
   const out: string[] = [head.title, ''];
   out.push('The bill', line('Items', st.itemsPence));
   if (st.extrasPence > 0) out.push(line('Service', st.extrasPence));
+  if (st.discountPence > 0) out.push(line('Discount', -st.discountPence));
   out.push(line('Bill total', st.totalPence));
   if (head.feePence) out.push(`Platform fee ${formatGBP(head.feePence)}, paid by ${head.leadName}.`);
   for (const p of st.people) {
     out.push('', `${p.name} · ${statusText(p.status)}`);
     for (const i of p.items) out.push(line(i.label, i.pence));
     if (p.extrasPence > 0) out.push(line('Service', p.extrasPence));
+    if (p.discountPence > 0) out.push(line('Discount', -p.discountPence));
     if (p.feePence > 0) out.push(line('Round-up', p.feePence));
     out.push(line('Total', p.totalPence));
   }
@@ -221,6 +235,7 @@ export function statementText(
     out.push('', `Nobody claimed · goes to ${head.leadName}`);
     for (const i of st.unclaimed.items) out.push(line(i.label, i.pence));
     if (st.unclaimed.extrasPence > 0) out.push(line('Service', st.unclaimed.extrasPence));
+    if (st.unclaimed.discountPence > 0) out.push(line('Discount', -st.unclaimed.discountPence));
     out.push(line('Total', st.unclaimed.totalPence));
   }
   out.push('', `Payments to ${head.leadName}`);

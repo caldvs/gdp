@@ -1,6 +1,6 @@
 import { apportionByWeight, splitShare } from './allocation.js';
 import { roundUpPence } from '../payments/ledger.js';
-import type { Bill } from '../../types/bills.js';
+import { discountPence, type Bill } from '../../types/bills.js';
 import type { Session, Participant } from '../../types/sessions.js';
 
 /**
@@ -31,6 +31,8 @@ export type DinerReport = {
   lines: ReportLine[];
   itemsPence: number;
   extrasPence: number;
+  /** Their part of the bill's shared discount (8 Nov 2026), as a positive amount off. */
+  discountPence: number;
   /** Their part of the lead's platform fee hold (#166); 0 for the lead. */
   feePence: number;
   totalPence: number;
@@ -116,14 +118,16 @@ export function buildReport(
   const weights = new Map(itemsByUser);
   if (unclaimedPence > 0) weights.set(UNCLAIMED, unclaimedPence);
   const extras = apportionByWeight(bill.serviceChargePence + bill.taxPence, weights);
+  const off = apportionByWeight(discountPence(bill), weights);
 
   const diners: DinerReport[] = session.participants.map((p) => {
     const itemsPence = itemsByUser.get(p.userId) ?? 0;
     const extrasPence = extras.get(p.userId) ?? 0;
+    const discount = off.get(p.userId) ?? 0;
     const feePence =
       p.userId === session.creatorUserId
         ? 0
-        : roundUpPence(session.platformFeePence ?? 0, itemsPence + extrasPence);
+        : roundUpPence(session.platformFeePence ?? 0, itemsPence + extrasPence - discount);
     return {
       userId: p.userId,
       displayName: p.displayName,
@@ -131,8 +135,9 @@ export function buildReport(
       lines: linesByUser.get(p.userId) ?? [],
       itemsPence,
       extrasPence,
+      discountPence: discount,
       feePence,
-      totalPence: itemsPence + extrasPence + feePence,
+      totalPence: itemsPence + extrasPence - discount + feePence,
       paid: paidState(p, session.creatorUserId, amounts),
     };
   });
@@ -157,7 +162,7 @@ export function buildReport(
     billTotalPence: bill.totalPence,
     diners,
     unclaimed,
-    unclaimedPence: unclaimedPence + (extras.get(UNCLAIMED) ?? 0),
+    unclaimedPence: unclaimedPence + (extras.get(UNCLAIMED) ?? 0) - (off.get(UNCLAIMED) ?? 0),
     collectedPence,
     toCollectPence,
   };
@@ -236,6 +241,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       t.push(`  ${l.name}${l.detail ? ` (${l.detail})` : ''}  ${money(l.pence)}`);
     if (d.lines.length === 0) t.push('  Nothing yet');
     t.push(`  Service and tax  ${money(d.extrasPence)}`);
+    if (d.discountPence > 0) t.push(`  Discount  −${money(d.discountPence)}`);
     if (d.feePence > 0) t.push(`  Round-up  ${money(d.feePence)}`);
     t.push(`  Total  ${money(d.totalPence)} · ${paidText(d, report.leadName, forLead)}`, '');
   }
@@ -271,6 +277,9 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
       `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:15px">` +
       lines +
       row('<span style="color:#6a6a6a">Service and tax</span>', money(d.extrasPence)) +
+      (d.discountPence > 0
+        ? row('<span style="color:#6a6a6a">Discount</span>', `−${money(d.discountPence)}`)
+        : '') +
       (d.feePence > 0
         ? row('<span style="color:#6a6a6a">Round-up</span>', money(d.feePence))
         : '') +

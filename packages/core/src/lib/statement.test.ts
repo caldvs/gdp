@@ -74,8 +74,39 @@ describe('billStatement', () => {
     const s = { creatorUserId: 'lead', participants: [{ userId: 'lead', displayName: 'C', claimedItemIds: ['cake'], sharedItemIds: [], payment: { status: 'self_paid' } }], shares: [] } as never;
     const b = { items: [(bill as { items: unknown[] }).items[3]], subtotalPence: 300, serviceChargePence: 0, taxPence: 0, totalPence: 300 } as never;
     const one = billStatement(s, b, () => 'Callum');
-    expect(one.unclaimed).toEqual({ items: [], extrasPence: 0, totalPence: 0 });
+    expect(one.unclaimed).toEqual({ items: [], extrasPence: 0, discountPence: 0, totalPence: 0 });
     expect(one.owedByGuestsPence).toBe(0);
+  });
+
+  it('shows a shared discount on the bill and each person, and still adds up (8 Nov 2026)', () => {
+    const s = {
+      creatorUserId: 'lead',
+      platformFeePence: 0,
+      participants: [
+        { userId: 'lead', displayName: 'C', claimedItemIds: ['a'], sharedItemIds: [], payment: { status: 'self_paid' } },
+        { userId: 'g', displayName: 'S', claimedItemIds: ['b'], sharedItemIds: [], payment: { status: 'not_started' } },
+      ],
+      shares: [],
+    } as never;
+    const b = {
+      items: [
+        { itemId: 'a', name: 'Roast Beef', unitPricePence: 2600, quantity: 1, category: 'food' },
+        { itemId: 'b', name: 'Roast Beef', unitPricePence: 2600, quantity: 1, category: 'food' },
+      ],
+      subtotalPence: 5200,
+      serviceChargePence: 650,
+      taxPence: 0,
+      discounts: [{ name: 'Loyalty', amountPence: 5000 }],
+      totalPence: 850,
+    } as never;
+    const st = billStatement(s, b, (p) => p.displayName);
+    expect(st.discountPence).toBe(5000);
+    for (const p of st.people) {
+      expect(p.discountPence).toBe(2500);
+      const items = p.items.reduce((acc, i) => acc + i.pence, 0);
+      expect(items + p.extrasPence - p.discountPence + p.feePence).toBe(p.totalPence);
+    }
+    expect(st.people.reduce((acc, p) => acc + p.totalPence, 0)).toBe(850);
   });
 });
 

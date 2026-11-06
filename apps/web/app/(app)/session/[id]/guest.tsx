@@ -14,7 +14,7 @@ import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { allClaimed, itemStatuses as coreItemStatuses, openedEarly, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { claimRows, openPence } from '@gdp/core/lib/claimRows';
-import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
+import { discountPartPence, extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
@@ -247,11 +247,14 @@ export function ShareReceipt({ s, b, meUserId, owed, stamp, children }: { s: Ses
   const mine = myLines(s, b, meUserId);
   const subtotal = mine.reduce((a, l) => a + l.pence, 0);
   const fee = projectFeePence(s, b, meUserId);
-  const extras = Math.max(0, owed - subtotal - fee);
+  // Their part of a discount that isn't one item's (8 Nov 2026), so the receipt adds up.
+  const off = discountPartPence(b, subtotal);
+  const extras = Math.max(0, owed - subtotal - fee + off);
   return (
     <Receipt label="Your share" head={b.venue?.name ?? 'Your share'}>
       {mine.map((l) => <ReceiptLine key={l.key} name={l.name} price={(l.pence / 100).toFixed(2)} />)}
       {extras > 0 ? <ReceiptLine quiet name="Service" price={(extras / 100).toFixed(2)} /> : null}
+      {off > 0 ? <ReceiptLine quiet name="Discount" price={`−${(off / 100).toFixed(2)}`} /> : null}
       {fee > 0 ? <ReceiptLine quiet name="Round-up" price={(fee / 100).toFixed(2)} /> : null}
       {children}
       {stamp ? <div className="receipt__stamp"><span className={stamp === 'sent' ? 'stamp-paid stamp-paid--sent' : 'stamp-paid'}>{stamp === 'sent' ? 'SENT' : 'PAID'}</span></div> : null}

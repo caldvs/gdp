@@ -24,7 +24,8 @@ const META_SK = 'META';
 export type SummaryBill = Pick<
   Bill,
   'items' | 'subtotalPence' | 'serviceChargePence' | 'taxPence' | 'totalPence'
->;
+> &
+  Partial<Pick<Bill, 'discounts'>>;
 export const summaryBillKey = (billId: string, versionNumber: number): string =>
   `${billId}#${versionNumber}`;
 export const summarySplitKey = (sessionId: string, itemId: string): string =>
@@ -120,6 +121,7 @@ export const billStore = {
       'items',
       'subtotalPence',
       'serviceChargePence',
+      'discounts',
       'taxPence',
       'totalPence',
       'itemId',

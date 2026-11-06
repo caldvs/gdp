@@ -205,4 +205,20 @@ describe('renderReportEmail', () => {
     expect(html).toContain('Bread &lt;warm&gt;');
     expect(html).not.toContain('<warm>');
   });
+
+  it('shows each diner their part of a shared discount, and still adds up (8 Nov 2026)', () => {
+    const withOff = {
+      ...bill,
+      discounts: [{ name: 'Loyalty', amountPence: 1700 }],
+      totalPence: 2040,
+    } as Bill;
+    const r = buildReport(session('claiming'), withOff, amounts);
+    const b = r.diners.find((d) => d.userId === 'b')!;
+    expect(b.discountPence).toBeGreaterThan(0);
+    expect(b.totalPence).toBe(b.itemsPence + b.extrasPence - b.discountPence + b.feePence);
+    const total = r.diners.reduce((a, d) => a + d.totalPence - d.feePence, 0) + r.unclaimedPence;
+    expect(total).toBe(withOff.totalPence);
+    const email = renderReportEmail(r, 'lead');
+    expect(email.text).toContain('Discount  −£');
+  });
 });

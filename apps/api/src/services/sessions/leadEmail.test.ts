@@ -9,6 +9,7 @@ const diner = (over: Partial<DinerReport>): DinerReport => ({
   lines: [],
   itemsPence: 0,
   extrasPence: 0,
+  discountPence: 0,
   feePence: 0,
   totalPence: 0,
   paid: { kind: 'not_paid' },

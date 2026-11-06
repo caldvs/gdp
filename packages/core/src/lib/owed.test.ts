@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectOwedPence, projectSubtotalPence, sharePence } from './owed';
+import { discountPartPence, discountPence, extrasRate, projectOwedPence, projectSubtotalPence, sharePence } from './owed';
 
 const bill = {
   billId: 'b1',
@@ -68,5 +68,20 @@ describe('owed projection edge cases', () => {
 
   it('is zero for someone not at the table', () => {
     expect(projectSubtotalPence({ participants: [], shares: [] } as never, bill, 'nobody')).toBe(0);
+  });
+});
+
+describe('shared discounts (8 Nov 2026)', () => {
+  const holland = { subtotalPence: 5575, serviceChargePence: 697, taxPence: 0, discounts: [{ name: 'Loyalty', amountPence: 5000 }] } as never;
+  it('adds up the bill’s discounts; none on older bills', () => {
+    expect(discountPence(holland)).toBe(5000);
+    expect(discountPence({} as never)).toBe(0);
+  });
+  it('takes the discount off the extras rate', () => {
+    expect(extrasRate(holland)).toBeCloseTo((697 - 5000) / 5575);
+  });
+  it('gives a diner their part of it by what they had', () => {
+    expect(discountPartPence(holland, 375)).toBe(336);
+    expect(discountPartPence({ subtotalPence: 0, discounts: [] } as never, 0)).toBe(0);
   });
 });

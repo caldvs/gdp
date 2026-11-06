@@ -1,4 +1,4 @@
-import type { Bill } from '../../types/bills.js';
+import { discountPence, type Bill } from '../../types/bills.js';
 import type { Participant, Session } from '../../types/sessions.js';
 
 /**
@@ -105,7 +105,8 @@ export function unclaimedItemIds(
 }
 
 export function computeOwed(
-  bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'>,
+  bill: Pick<Bill, 'items' | 'taxPence' | 'serviceChargePence' | 'totalPence'> &
+    Partial<Pick<Bill, 'discounts'>>,
   participants: ReadonlyArray<
     Pick<Participant, 'userId' | 'claimedItemIds'> & {
       // Optional in the function signature so older tests that predate
@@ -165,10 +166,17 @@ export function computeOwed(
 
   const serviceShares = apportionByWeight(bill.serviceChargePence, subtotalByUser);
   const taxShares = apportionByWeight(bill.taxPence, subtotalByUser);
+  // Shared discounts (8 Nov 2026) the same way, taken off. Never more than
+  // the items, so no one's part is more than what they had.
+  const discountShares = apportionByWeight(discountPence(bill), subtotalByUser);
 
   const owed = new Map<string, number>();
   for (const [userId, subtotal] of subtotalByUser) {
-    const owedPence = subtotal + (serviceShares.get(userId) ?? 0) + (taxShares.get(userId) ?? 0);
+    const owedPence =
+      subtotal +
+      (serviceShares.get(userId) ?? 0) +
+      (taxShares.get(userId) ?? 0) -
+      (discountShares.get(userId) ?? 0);
     owed.set(userId, owedPence);
   }
 

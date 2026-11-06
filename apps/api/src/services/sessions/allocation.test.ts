@@ -394,4 +394,21 @@ describe('computeOwed with a split covering several of a line', () => {
   it('counts an old split with no units as one of the line', () => {
     expect(() => computeOwed(wine, people, ways)).toThrow('CLAIMS_INCOMPLETE');
   });
+
+  it('takes a shared discount off by what each person had, to the penny (8 Nov 2026)', () => {
+    const base = billOf([item('beef', 2600, 2), item('coke', 375)], 0, 697);
+    const bill = {
+      ...base,
+      discounts: [{ name: 'Fork Loyalty Discount', amountPence: 5000 }],
+      totalPence: base.totalPence - 5000,
+    };
+    const owed = computeOwed(bill, [
+      { userId: 'a', claimedItemIds: ['beef', 'coke'] },
+      { userId: 'b', claimedItemIds: ['beef'] },
+    ]);
+    expect([...owed.values()].reduce((x, y) => x + y, 0)).toBe(1272);
+    // b had 2600 of 5575: 2332 of the discount off, 325 of the service on.
+    expect(owed.get('b')).toBe(2600 + 325 - 2332);
+    for (const v of owed.values()) expect(v).toBeGreaterThanOrEqual(0);
+  });
 });

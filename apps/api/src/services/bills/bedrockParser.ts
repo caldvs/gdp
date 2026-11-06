@@ -32,7 +32,9 @@ import {
 // surcharges are service; an `unsure` note on lines it can't read clearly.
 // v10: a charity or donation line is an item, not a discount; the venue's
 // name is never expanded from initials.
-const VERSION = 'v10';
+// v11: a discount that isn't one item's stays a line of the bill (cached
+// reads from before spread it into the prices).
+const VERSION = 'v11';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Sonnet by

@@ -68,7 +68,7 @@ y = 80
 y = place(1, y, 'Image hash index', 'bill', 'No TTL', [('pk', 'IMGHASH#{userId}#{sha256}'), ('sk', 'same as pk')], ['billId', 'dedupes a repeat photo per user', 'Start again (fork) moves it to the new bill']) + GAP
 y = place(1, y, 'Bill', 'bill', 'No TTL', [('pk', 'BILL#{billId}'), ('sk', 'V#001, V#002 … (immutable)'), ('sk', 'LATEST (mirror of newest)')],
           ['versionNumber, creatorUserId, currency GBP', 'items[] { itemId, name, unitPricePence,', '  quantity, category, course }',
-           'subtotalPence, taxPence,', '  serviceChargePence, totalPence', 'venue { name, address, placeId, lat, lng }',
+           'subtotalPence, taxPence,', '  serviceChargePence, discounts[], totalPence', 'venue { name, address, placeId, lat, lng }',
            'parsedFrom { imageHash, parser,', '  parserVersion, parsedAt, uploadId,', '  source parser|cache, analysedAt }']) + GAP
 y = place(1, y, 'Table fee', 'bill', 'No TTL', [('pk', 'FEE#{billId}'), ('sk', 'FEE (current)'), ('sk', 'FEE#{csId} (replaced)')], ['kind hold: £1 card hold (#165), amount,', '  capturedPence at close or releasedAt', 'sessionId: the one share it paid for', '  (set in the share transaction)', 'kept as a tax record', 'GSI1PK FEES#{userId} · GSI1SK paidAt']) + GAP
 y = place(1, y, 'Monthly credit', 'bill', 'No TTL', [('pk', 'CREDIT#{userId}#{yyyy-mm}'), ('sk', 'CREDIT')], ['one free bill a month (UK time)', 'sessionId, billId, claimedAt: put in the', '  share transaction if unclaimed', 'returnedAt: nobody joined, spend again', 'GSI1PK FEES#{userId} · GSI1SK claimedAt']) + GAP

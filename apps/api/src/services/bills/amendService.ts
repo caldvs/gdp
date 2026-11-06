@@ -3,7 +3,13 @@ import { billStore } from '../../storage/billStore.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { AppError } from '../../errors/AppError.js';
 import { retryOnConflict } from '../../storage/conflict.js';
-import { BillSchema, type Bill, type BillItem, type AmendBillRequest } from '../../types/bills.js';
+import {
+  BillSchema,
+  discountPence,
+  type Bill,
+  type BillItem,
+  type AmendBillRequest,
+} from '../../types/bills.js';
 import type { Participant } from '../../types/sessions.js';
 
 export const amendService = {
@@ -61,7 +67,16 @@ async function amendOnce(input: {
     ...(it.category === 'food' && it.course ? { course: it.course } : {}),
   }));
   const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
-  const totalPence = subtotalPence + input.amendment.taxPence + input.amendment.serviceChargePence;
+  // Absent keeps the bill's shared discounts; the lead can change or remove them.
+  const discounts = input.amendment.discounts ?? current.discounts ?? [];
+  const off = discountPence({ discounts });
+  if (off > subtotalPence) {
+    throw new AppError('INVALID_INPUT', 'The discount is more than the items come to', {
+      fieldErrors: { discounts: ['More than the items come to'] },
+    });
+  }
+  const totalPence =
+    subtotalPence + input.amendment.taxPence + input.amendment.serviceChargePence - off;
   // A venue the lead chose beats whatever the parser found; sending
   // nothing keeps the bill's current venue (parsed or previously set).
   const venueOverride = input.amendment.venue;
@@ -74,6 +89,7 @@ async function amendOnce(input: {
     subtotalPence,
     taxPence: input.amendment.taxPence,
     serviceChargePence: input.amendment.serviceChargePence,
+    discounts,
     totalPence,
     createdAt: new Date().toISOString(),
     ...(venueOverride ? { venue: venueOverride } : {}),

@@ -53,6 +53,10 @@ export const ParsedBillFromImageSchema = z.object({
     .min(1),
   taxPence: z.number().int().nonnegative(),
   serviceChargePence: z.number().int().nonnegative(),
+  // Discounts that aren't one item's, after foldDiscounts (8 Nov 2026).
+  discounts: z
+    .array(z.object({ name: z.string().min(1), amountPence: z.number().int().positive() }))
+    .optional(),
   totalPence: z.number().int().nonnegative().optional(),
   currency: z.literal('GBP'),
   // The model sometimes returns `null` for an unknown venue rather than omitting

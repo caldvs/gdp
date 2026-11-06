@@ -82,7 +82,7 @@ describe('client and server agree (property)', () => {
       fc.property(billAndSession(), ({ bill, session }) => {
         // Server subtotal: owed with no service or tax.
         const server = computeOwed(
-          { ...bill, serviceChargePence: 0, taxPence: 0, totalPence: bill.subtotalPence },
+          { ...bill, serviceChargePence: 0, taxPence: 0, discounts: [], totalPence: bill.subtotalPence },
           session.participants,
           ...splits(session),
         );
@@ -93,15 +93,16 @@ describe('client and server agree (property)', () => {
     );
   });
 
-  it('the projected total is within 2p of what the server charges', () => {
+  it('the projected total is within 3p of what the server charges, discounts too', () => {
     // The client rounds subtotal × (1 + rate) once; the server apportions
-    // service and tax separately by largest remainder (±1p each).
+    // service, tax and any shared discount separately by largest remainder
+    // (±1p each).
     fc.assert(
       fc.property(billAndSession(), ({ bill, session }) => {
         const server = computeOwed(bill, session.participants, ...splits(session));
         for (const p of session.participants) {
           const projected = projectOwedPence(session as never, bill as never, p.userId);
-          expect(Math.abs(projected - server.get(p.userId)!)).toBeLessThanOrEqual(2);
+          expect(Math.abs(projected - server.get(p.userId)!)).toBeLessThanOrEqual(3);
         }
       }),
     );
@@ -148,8 +149,11 @@ describe('server allocation (property)', () => {
 
   it('taking one more unit never lowers what you owe', () => {
     fc.assert(
-      fc.property(billAndSession(), fc.nat(), fc.nat(), ({ bill, session }, pickItem, pickPerson) => {
+      fc.property(billAndSession(), fc.nat(), fc.nat(), ({ bill: generated, session }, pickItem, pickPerson) => {
         // Add one more unit of an existing claimed item and see the claimer's total rise.
+        // A fixed discount re-shared over more items moves too: without one.
+        const off = generated.discounts.reduce((acc, d) => acc + d.amountPence, 0);
+        const bill = { ...generated, discounts: [], totalPence: generated.totalPence + off };
         const claimable = bill.items.filter((it) => !session.shares.some((s) => s.itemId === it.itemId));
         fc.pre(claimable.length > 0);
         const item = claimable[pickItem % claimable.length]!;
@@ -192,6 +196,20 @@ describe('server allocation (property)', () => {
           expect([...again].sort()).toEqual([...out].sort());
         },
       ),
+    );
+  });
+
+  it('a shared discount is taken off pro rata, and nobody owes below zero', () => {
+    fc.assert(
+      fc.property(billAndSession(), ({ bill, session }) => {
+        fc.pre(bill.discounts.length > 0);
+        const full = computeOwed({ ...bill, discounts: [], totalPence: bill.totalPence + bill.discounts[0]!.amountPence }, session.participants, ...splits(session));
+        const owed = computeOwed(bill, session.participants, ...splits(session));
+        for (const [u, v] of owed) {
+          expect(v).toBeGreaterThanOrEqual(0);
+          expect(v).toBeLessThanOrEqual(full.get(u)!);
+        }
+      }),
     );
   });
 

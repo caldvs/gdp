@@ -114,6 +114,7 @@ function ReadBill({ bill, onProceed }: { bill: Bill; onProceed: () => void }) {
     ...bill.items.map((it) => ({ key: it.itemId, name: it.quantity > 1 ? `${it.quantity} × ${it.name}` : it.name, pence: it.unitPricePence * it.quantity, quiet: false })),
     ...(bill.serviceChargePence > 0 ? [{ key: 'service', name: 'Service', pence: bill.serviceChargePence, quiet: true }] : []),
     ...(bill.taxPence > 0 ? [{ key: 'tax', name: 'Tax', pence: bill.taxPence, quiet: true }] : []),
+    ...(bill.discounts ?? []).map((d, i) => ({ key: `discount-${i}`, name: d.name, pence: -d.amountPence, quiet: true })),
   ];
   const all = lines.length + 1;
   const [shown, setShown] = useState(() => (reducedMotion() ? all : 0));
@@ -130,7 +131,7 @@ function ReadBill({ bill, onProceed }: { bill: Bill; onProceed: () => void }) {
         <Receipt label="The bill" head={bill.venue?.name ?? 'Your bill'}>
           {lines.map((l, i) => (
             <div key={l.key} className={`read-line${i < shown ? ' read-line--in' : ''}`} aria-hidden={i < shown ? undefined : true}>
-              <ReceiptLine quiet={l.quiet} name={l.name} price={(l.pence / 100).toFixed(2)} />
+              <ReceiptLine quiet={l.quiet} name={l.name} price={l.pence < 0 ? `−${(-l.pence / 100).toFixed(2)}` : (l.pence / 100).toFixed(2)} />
             </div>
           ))}
           <div className={`read-line${done ? ' read-line--in' : ''}`} aria-hidden={done ? undefined : true}>

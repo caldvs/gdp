@@ -2,8 +2,9 @@
  * Discount lines on a bill ("Coffee & Cannoli LRG  -4.00") are folded into
  * the item they came from, so whoever claims that item gets the discount and
  * every line stays claimable at zero or more. A discount the reader couldn't
- * tie to an item (or one bigger than its item) is shared across the whole bill
- * in proportion to each line's price.
+ * tie to an item (or what's left of one bigger than its item) stays a line of
+ * its own on the bill, shared by what each person had (Callum, 8 Nov 2026),
+ * never more than the items come to.
  */
 
 export type PricedLine = { name: string; unitPricePence: number; quantity: number };
@@ -63,53 +64,42 @@ function reduceLine<T extends PricedLine>(line: T, cut: number): T[] {
   return splitTotal(line, Math.max(0, line.unitPricePence * line.quantity - cut));
 }
 
-/** Splits `amount` across lines by line total (largest remainder), never more than a line is worth. */
-function share(totals: number[], amount: number): number[] {
-  const sum = totals.reduce((a, b) => a + b, 0);
-  if (sum === 0) return totals.map(() => 0);
-  const take = Math.min(amount, sum);
-  const exact = totals.map((t) => (t * take) / sum);
-  const cuts = exact.map(Math.floor);
-  let left = take - cuts.reduce((a, b) => a + b, 0);
-  const order = exact
-    .map((e, i) => ({ i, rem: e - Math.floor(e) }))
-    .sort((a, b) => b.rem - a.rem || a.i - b.i);
-  for (const { i } of order) {
-    if (left === 0) break;
-    if (cuts[i]! < totals[i]!) {
-      cuts[i]!++;
-      left--;
-    }
-  }
-  return cuts;
-}
+/** A discount left as its own line on the bill, shared by everyone. */
+export type SharedDiscount = { name: string; amountPence: number };
 
-export function applyDiscounts<T extends PricedLine>(items: T[], discounts: Discount[]): T[] {
+export function applyDiscounts<T extends PricedLine>(
+  items: T[],
+  discounts: Discount[],
+): { items: T[]; shared: SharedDiscount[] } {
   const lines = items.map((it) => ({ ...it }));
   const cuts = lines.map(() => 0);
-  let unplaced = 0;
+  const unplaced: SharedDiscount[] = [];
 
   for (const d of discounts) {
     const amount = Math.abs(d.amountPence);
     if (amount === 0) continue;
     const i = targetOf(lines, d);
     if (i < 0) {
-      unplaced += amount;
+      unplaced.push({ name: d.name, amountPence: amount });
       continue;
     }
     const room = lines[i]!.unitPricePence * lines[i]!.quantity - cuts[i]!;
     const here = Math.min(amount, room);
     cuts[i]! += here;
-    unplaced += amount - here;
+    if (amount > here) unplaced.push({ name: d.name, amountPence: amount - here });
   }
 
-  if (unplaced > 0) {
-    const shares = share(
-      lines.map((l, i) => l.unitPricePence * l.quantity - cuts[i]!),
-      unplaced,
-    );
-    shares.forEach((s, i) => (cuts[i]! += s));
+  // Never more off than the items come to.
+  let room = lines.reduce((acc, l, i) => acc + l.unitPricePence * l.quantity - cuts[i]!, 0);
+  const shared: SharedDiscount[] = [];
+  for (const d of unplaced) {
+    const here = Math.min(d.amountPence, room);
+    if (here <= 0) break;
+    room -= here;
+    const same = shared.find((s) => s.name === d.name);
+    if (same) same.amountPence += here;
+    else shared.push({ name: d.name.trim().slice(0, 200) || 'Discount', amountPence: here });
   }
 
-  return lines.flatMap((l, i) => reduceLine(l, cuts[i]!));
+  return { items: lines.flatMap((l, i) => reduceLine(l, cuts[i]!)), shared };
 }

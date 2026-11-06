@@ -52,6 +52,21 @@ export const ParsedFromSchema = z.object({
 });
 export type ParsedFrom = z.infer<typeof ParsedFromSchema>;
 
+/**
+ * A discount the reader couldn't tie to one item (8 Nov 2026): shown under
+ * the items and shared by what each person had, like service, but taken off.
+ * A discount on one item is folded into that item's price instead.
+ */
+export const BillDiscountSchema = z.object({
+  name: z.string().min(1).max(200),
+  amountPence: z.number().int().positive(),
+});
+export type BillDiscount = z.infer<typeof BillDiscountSchema>;
+
+/** The bill's shared discounts in all (0 for bills from before them). */
+export const discountPence = (b: { discounts?: ReadonlyArray<{ amountPence: number }> }): number =>
+  (b.discounts ?? []).reduce((acc, d) => acc + d.amountPence, 0);
+
 const BillBaseSchema = z.object({
   billId: z.string().uuid(),
   versionNumber: z.number().int().min(1),
@@ -60,6 +75,7 @@ const BillBaseSchema = z.object({
   subtotalPence: z.number().int().nonnegative(),
   taxPence: z.number().int().nonnegative(),
   serviceChargePence: z.number().int().nonnegative(),
+  discounts: z.array(BillDiscountSchema).max(20).default([]),
   totalPence: z.number().int().nonnegative(),
   // The total printed on the receipt itself, as read by the OCR parser.
   // Kept alongside the computed totalPence so the client can flag a
@@ -77,13 +93,16 @@ const BillBaseSchema = z.object({
 export const BillSchema = BillBaseSchema.refine(
   (b) => {
     const itemsSum = b.items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
+    const off = discountPence(b);
     return (
-      b.subtotalPence === itemsSum && b.totalPence === itemsSum + b.taxPence + b.serviceChargePence
+      b.subtotalPence === itemsSum &&
+      off <= itemsSum &&
+      b.totalPence === itemsSum + b.taxPence + b.serviceChargePence - off
     );
   },
   {
     message:
-      'Bill totals must reconcile: subtotal == sum(items); total == subtotal + tax + service',
+      'Bill totals must reconcile: subtotal == sum(items); discounts <= subtotal; total == subtotal + tax + service - discounts',
   },
 );
 export type Bill = z.infer<typeof BillSchema>;
@@ -127,7 +146,8 @@ export const AMEND_LIMITS = {
   nameLength: 200,
   quantity: 999,
   unitPricePence: 10_000_000, // £100,000
-  extraPence: 10_000_000, // tax or service
+  extraPence: 10_000_000, // tax, service or a discount
+  discounts: 20,
 } as const;
 
 export const AmendBillRequestSchema = z.object({
@@ -146,6 +166,16 @@ export const AmendBillRequestSchema = z.object({
     .max(AMEND_LIMITS.items),
   taxPence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
   serviceChargePence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
+  // The shared discount lines. Absent keeps the bill's; [] removes them.
+  discounts: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(AMEND_LIMITS.nameLength),
+        amountPence: z.number().int().positive().max(AMEND_LIMITS.extraPence),
+      }),
+    )
+    .max(AMEND_LIMITS.discounts)
+    .optional(),
   // Set to override the parsed venue. Absent keeps whatever the bill has.
   venue: z
     .object({

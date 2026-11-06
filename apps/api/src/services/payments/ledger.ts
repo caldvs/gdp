@@ -1,4 +1,5 @@
 import { splitShare } from '../sessions/allocation.js';
+import { discountPence } from '../../types/bills.js';
 import type { Participant, ParticipantPaymentEntry, Session } from '../../types/sessions.js';
 
 /**
@@ -116,6 +117,8 @@ type OwedBill = {
   subtotalPence: number;
   serviceChargePence: number;
   taxPence: number;
+  /** Shared discounts (8 Nov 2026): taken off pro rata, like service is added. */
+  discounts?: ReadonlyArray<{ amountPence: number }>;
 };
 
 /**
@@ -145,14 +148,17 @@ export function itemsPenceFor(bill: OwedBill, session: Session, participant: Par
   return claimSub + shareSub;
 }
 
-/** What a diner owes before any round-up: their items plus their part of service and tax. */
+/**
+ * What a diner owes before any round-up: their items plus their part of
+ * service and tax, less their part of any shared discount.
+ */
 export function owedBeforeRoundUp(
   bill: OwedBill,
   session: Session,
   participant: Participant,
 ): number {
   const items = itemsPenceFor(bill, session, participant);
-  const extras = bill.serviceChargePence + bill.taxPence;
+  const extras = bill.serviceChargePence + bill.taxPence - discountPence(bill);
   const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
   return Math.round(items * (1 + extrasRate));
 }

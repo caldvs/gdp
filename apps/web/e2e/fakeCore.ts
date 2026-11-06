@@ -76,6 +76,8 @@ export class FakeCore {
   protected signedIn = new Set<string>();
   items: Item[];
   serviceChargePence: number;
+  /** Discounts that aren't one item's (8 Nov 2026), shared like service. */
+  discounts: { name: string; amountPence: number }[];
   participants: Participant[];
   shares: Share[] = [];
   /** Who asked to be emailed a report, in order. */
@@ -143,12 +145,13 @@ export class FakeCore {
   /** #63: the venue the parser found, or the lead's own choice once amended. */
   private venue: { name: string; address?: string; placeId?: string } | undefined;
 
-  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeCore['status']; leadClaims?: string[]; noPrintedTotal?: boolean; printedTotalPence?: number; venue?: { name: string; address?: string } | null; platformFeePence?: number; paymentsOpen?: boolean } = {}) {
+  constructor(opts: { items?: Item[]; serviceRate?: number; status?: FakeCore['status']; leadClaims?: string[]; noPrintedTotal?: boolean; printedTotalPence?: number; venue?: { name: string; address?: string } | null; platformFeePence?: number; paymentsOpen?: boolean; discounts?: { name: string; amountPence: number }[] } = {}) {
     this.items = opts.items ?? items;
     this.platformFeePence = opts.platformFeePence;
     this.paymentsOpenedAt = opts.paymentsOpen === false ? undefined : '2026-10-31T20:00:00.000Z';
     const subtotal = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
     this.serviceChargePence = Math.round(subtotal * (opts.serviceRate ?? 0));
+    this.discounts = opts.discounts ?? [];
     this.status = opts.status ?? 'claiming';
     this.noPrintedTotal = opts.noPrintedTotal ?? false;
     this.printedTotalPence = opts.printedTotalPence;
@@ -160,11 +163,12 @@ export class FakeCore {
 
   get bill() {
     const subtotalPence = this.items.reduce((a, i) => a + i.unitPricePence * i.quantity, 0);
+    const off = this.discounts.reduce((a, d) => a + d.amountPence, 0);
     return {
-      billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, totalPence: subtotalPence + this.serviceChargePence, items: this.items,
+      billId: BID, versionNumber: this.pinnedBillVersion, creatorUserId: 'u-lead', currency: 'GBP', subtotalPence, taxPence: 0, serviceChargePence: this.serviceChargePence, discounts: this.discounts, totalPence: subtotalPence + this.serviceChargePence - off, items: this.items,
       // Matches the computed total by default, like a normal read; #65's
       // noPrintedTotal scenario is the cut-off-photo case.
-      ...(this.noPrintedTotal ? {} : { parsedTotalPence: this.printedTotalPence ?? subtotalPence + this.serviceChargePence }),
+      ...(this.noPrintedTotal ? {} : { parsedTotalPence: this.printedTotalPence ?? subtotalPence + this.serviceChargePence - off }),
       parsedFrom: { imageHash: 'a'.repeat(64), parser: 'eu.anthropic.claude-haiku-4-5-20251001-v1:0', parserVersion: 'v3', parsedAt: '2026-10-31T12:00:00.000Z' },
       ...(this.venue ? { venue: this.venue } : {}),
       createdAt: '2026-10-31T12:00:00.000Z',
@@ -216,7 +220,8 @@ export class FakeCore {
     let sub = p.claimedItemIds.reduce((a, id) => a + unit(id), 0);
     for (const sh of this.shares) if (sh.userIds.includes(userId)) sub += Math.ceil((unit(sh.itemId) * (sh.units ?? 1)) / sh.ways);
     const b = this.bill;
-    const before = Math.round(sub * (1 + (b.subtotalPence ? b.serviceChargePence / b.subtotalPence : 0)));
+    const off = b.discounts.reduce((a, d) => a + d.amountPence, 0);
+    const before = Math.round(sub * (1 + (b.subtotalPence ? (b.serviceChargePence - off) / b.subtotalPence : 0)));
     // On a hold, a guest rounds up to the next whole pound.
     const fee = userId !== 'u-lead' && this.platformFeePence && before > 0 ? (100 - (before % 100)) % 100 : 0;
     return before + fee;
@@ -388,9 +393,10 @@ export class FakeCore {
     }
     if (path === `/v1/bills/${BID}` && method === 'GET') return json(this.bill);
     if (path === `/v1/bills/${BID}/amend`) {
-      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; venue?: { name: string; placeId?: string; address?: string } };
+      const b = body() as { items: { itemId?: string; name: string; unitPricePence: number; quantity: number; category: string }[]; serviceChargePence: number; discounts?: { name: string; amountPence: number }[]; venue?: { name: string; placeId?: string; address?: string } };
       this.items = b.items.map((it) => ({ itemId: it.itemId ?? `00000000-0000-4000-8000-${String(900 + ++this.seq).padStart(12, '0')}`, name: it.name, unitPricePence: it.unitPricePence, quantity: it.quantity, category: it.category }));
       this.serviceChargePence = b.serviceChargePence;
+      if (b.discounts) this.discounts = b.discounts;
       if (b.venue) this.venue = b.venue;
       this.pinnedBillVersion += 1;
       return json(this.bill);

@@ -14,6 +14,8 @@ export type GenBill = {
   subtotalPence: number;
   serviceChargePence: number;
   taxPence: number;
+  /** Shared discounts (8 Nov 2026), never more than the items. */
+  discounts: { name: string; amountPence: number }[];
   totalPence: number;
 };
 export type GenSession = { participants: GenParticipant[]; shares: GenShare[] };
@@ -61,9 +63,11 @@ export const billAndSession = ({ complete = true }: { complete?: boolean } = {})
       itemIds: fc.uniqueArray(fc.uuid(), { minLength: 15, maxLength: 15 }),
       servicePct: fc.integer({ min: 0, max: 20 }),
       taxPence: fc.integer({ min: 0, max: 3_000 }),
+      // Half the bills have a shared discount, up to the whole of the items.
+      discountPct: fc.oneof(fc.constant(0), fc.integer({ min: 1, max: 100 })),
       gaps: complete ? fc.constant([] as boolean[]) : fc.array(fc.boolean(), { minLength: 15, maxLength: 15 }),
     })
-    .map(({ people, plans, itemIds, servicePct, taxPence, gaps }) => {
+    .map(({ people, plans, itemIds, servicePct, taxPence, discountPct, gaps }) => {
       const participants: GenParticipant[] = people.map((userId, i) => ({
         userId,
         displayName: `Diner ${i + 1}`,
@@ -97,13 +101,15 @@ export const billAndSession = ({ complete = true }: { complete?: boolean } = {})
       });
       const subtotalPence = items.reduce((acc, it) => acc + it.unitPricePence * it.quantity, 0);
       const serviceChargePence = Math.round((subtotalPence * servicePct) / 100);
+      const off = Math.floor((subtotalPence * discountPct) / 100);
       const bill: GenBill = {
         billId: '00000000-0000-4000-8000-000000000000',
         items,
         subtotalPence,
         serviceChargePence,
         taxPence,
-        totalPence: subtotalPence + serviceChargePence + taxPence,
+        discounts: off > 0 ? [{ name: 'Loyalty discount', amountPence: off }] : [],
+        totalPence: subtotalPence + serviceChargePence + taxPence - off,
       };
       const session: GenSession = { participants, shares };
       return { bill, session };

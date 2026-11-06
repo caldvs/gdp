@@ -46,8 +46,24 @@ export function sharePence(pricePence: number, userIds: readonly string[], ways:
   return base + (rank < remainder ? 1 : 0);
 }
 
+/** The bill's shared discounts in all (8 Nov 2026); 0 on bills from before them. */
+export function discountPence(bill: Pick<Bill, 'discounts'>): number {
+  return (bill.discounts ?? []).reduce((acc, d) => acc + d.amountPence, 0);
+}
+
+/**
+ * Service and tax per pound of items, less the shared discount, which is
+ * taken off pro rata the same way. Mirrors owedBeforeRoundUp in the API's ledger.ts.
+ */
 export function extrasRate(bill: Bill): number {
-  return bill.subtotalPence > 0 ? (bill.serviceChargePence + bill.taxPence) / bill.subtotalPence : 0;
+  return bill.subtotalPence > 0
+    ? (bill.serviceChargePence + bill.taxPence - discountPence(bill)) / bill.subtotalPence
+    : 0;
+}
+
+/** A diner's part of the shared discount, on `itemsPence` of items (for showing it). */
+export function discountPartPence(bill: Bill, itemsPence: number): number {
+  return bill.subtotalPence > 0 ? Math.round((itemsPence * discountPence(bill)) / bill.subtotalPence) : 0;
 }
 
 /**
@@ -61,7 +77,7 @@ export function roundUpPence(holdPence: number, owedPence: number): number {
   return (100 - (owedPence % 100)) % 100;
 }
 
-/** What a diner owes before any round-up: their items plus their part of service and tax. */
+/** What a diner owes before any round-up: their items plus their part of service and tax, less their part of any discount. */
 function owedBeforeRoundUp(session: Session, bill: Bill, userId: string): number {
   return Math.round(projectSubtotalPence(session, bill, userId) * (1 + extrasRate(bill)));
 }

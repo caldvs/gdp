@@ -311,3 +311,91 @@ describe('POST /v1/bills/:billId/amend', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('a discount that is not one item’s (8 Nov 2026)', () => {
+  // The Holland, 6 Jul 2025: £61.25 of items, a £50 loyalty discount, 12.5%
+  // service on the items, VAT printed inside the total. TOTAL £19.91.
+  const holland = new FixtureBillParser({
+    items: [
+      { name: 'Roast Beef', unitPricePence: 2600, quantity: 2, category: 'food' },
+      { name: 'Small Gravy', unitPricePence: 150, quantity: 1, category: 'food' },
+      { name: 'Diet Coke', unitPricePence: 375, quantity: 1, category: 'drink' },
+      { name: 'Flat White', unitPricePence: 400, quantity: 1, category: 'drink' },
+      { name: '>£1 SHIFT Charity Donation', unitPricePence: 100, quantity: 1, category: 'other' },
+    ],
+    discounts: [{ name: 'Fork Loyalty Discount £50', amountPence: 5000 }],
+    taxPence: 201,
+    serviceChargePence: 766,
+    totalPence: 1991,
+    currency: 'GBP',
+  });
+  const app = () => createApp({ idTokenVerifier: fakeVerifier, billParser: holland });
+  type Out = {
+    billId: string;
+    subtotalPence: number;
+    taxPence: number;
+    totalPence: number;
+    discounts: { name: string; amountPence: number }[];
+    items: {
+      itemId: string;
+      name: string;
+      unitPricePence: number;
+      quantity: number;
+      category: string;
+    }[];
+  };
+  const amend = (a: ReturnType<typeof app>, userId: string, b: Out, extra: object) =>
+    a.request(`/v1/bills/${b.billId}/amend`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(userId) },
+      body: JSON.stringify({
+        items: b.items.map(({ itemId, name, unitPricePence, quantity, category }) => ({
+          itemId,
+          name,
+          unitPricePence,
+          quantity,
+          category,
+        })),
+        taxPence: 0,
+        serviceChargePence: 766,
+        ...extra,
+      }),
+    });
+
+  it('reads it as its own line, items at their printed prices, the VAT left inside', async () => {
+    const a = app();
+    const userId = `u-${uuidv7()}`;
+    const bill = (await createBill(a, userId)) as unknown as Out;
+    expect(bill.subtotalPence).toBe(6225);
+    expect(bill.taxPence).toBe(0);
+    expect(bill.discounts).toEqual([{ name: 'Fork Loyalty Discount £50', amountPence: 5000 }]);
+    expect(bill.totalPence).toBe(1991);
+  });
+
+  it('an amend keeps it unless changed, can remove it, and can’t take off more than the items', async () => {
+    const a = app();
+    const userId = `u-${uuidv7()}`;
+    const bill = (await createBill(a, userId)) as unknown as Out;
+
+    const kept = (await (await amend(a, userId, bill, {})).json()) as Out;
+    expect(kept.discounts).toEqual(bill.discounts);
+    expect(kept.totalPence).toBe(1991);
+
+    const changed = (await (
+      await amend(a, userId, kept, { discounts: [{ name: 'Loyalty', amountPence: 4000 }] })
+    ).json()) as Out;
+    expect(changed.totalPence).toBe(2991);
+
+    const removed = (await (await amend(a, userId, changed, { discounts: [] })).json()) as Out;
+    expect(removed.discounts).toEqual([]);
+    expect(removed.totalPence).toBe(6991);
+
+    const tooMuch = await amend(a, userId, removed, {
+      discounts: [{ name: 'Loyalty', amountPence: 6226 }],
+    });
+    expect(tooMuch.status).toBe(400);
+    expect(((await tooMuch.json()) as { error: { code: string } }).error.code).toBe(
+      'INVALID_INPUT',
+    );
+  });
+});

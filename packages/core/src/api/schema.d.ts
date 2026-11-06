@@ -1529,6 +1529,14 @@ export interface components {
              */
             unsure?: string;
         };
+        BillDiscount: {
+            name: string;
+            /**
+             * Format: int64
+             * @description The amount off.
+             */
+            amountPence: number;
+        };
         Bill: {
             /** Format: uuid */
             billId: string;
@@ -1542,7 +1550,16 @@ export interface components {
             taxPence: number;
             /** Format: int64 */
             serviceChargePence: number;
-            /** Format: int64 */
+            /**
+             * @description Discounts that aren't one item's (8 Nov 2026), shown under the items and shared by what
+             *     each person had, like service, but taken off. A discount on one item is folded into that
+             *     item's price instead. Absent on older bills.
+             */
+            discounts?: components["schemas"]["BillDiscount"][];
+            /**
+             * Format: int64
+             * @description subtotal + tax + service − the discounts.
+             */
             totalPence: number;
             /**
              * Format: int64
@@ -1968,6 +1985,15 @@ export interface components {
             taxPence: number;
             /** Format: int64 */
             serviceChargePence: number;
+            /**
+             * @description The bill's shared discounts. Absent keeps them; [] removes them. More off than the
+             *     items come to is INVALID_INPUT.
+             */
+            discounts?: {
+                name: string;
+                /** Format: int64 */
+                amountPence: number;
+            }[];
             /** @description Set to override the parsed venue; absent keeps whatever the bill has. */
             venue?: {
                 name: string;

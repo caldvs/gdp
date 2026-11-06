@@ -81,7 +81,7 @@ describe('validateParsedBill', () => {
       ['LGR Cannoli', 150, 2],
       ['Espresso', 325, 1],
     ]);
-    expect(out).not.toHaveProperty('discounts');
+    expect(out.discounts).toEqual([]);
   });
 
   it('reads a bill whose model still gave a line a minus price', () => {
@@ -94,10 +94,12 @@ describe('validateParsedBill', () => {
       ],
     });
     const out = validateParsedBill(text, 'Bedrock');
+    // Not one item's: a line of the bill, shared (8 Nov 2026).
     expect(out.items.map((i) => [i.name, i.unitPricePence])).toEqual([
-      ['Pizza', 1350],
-      ['Beer', 450],
+      ['Pizza', 1500],
+      ['Beer', 500],
     ]);
+    expect(out.discounts).toEqual([{ name: 'Promo', amountPence: 200 }]);
   });
 
   it('ignores a malformed discount rather than failing the read', () => {
@@ -197,8 +199,14 @@ describe('validateParsedBill', () => {
         items: [...items, { name: '#CookForUkraine', quantity: 1, lineTotalPence: 100 }],
       }),
     ).toHaveLength(3);
-    // A real discount (the total says so) is still taken off.
-    expect(read({ ...charity, totalPence: 1250 }).map((i) => i[1])).toEqual([417, 833]);
+    // A real discount (the total says so) is still taken off, as a line of its own.
+    expect(read({ ...charity, totalPence: 1250 }).map((i) => i[1])).toEqual([450, 900]);
+    expect(
+      validateParsedBill(
+        JSON.stringify({ ...bill, serviceChargePence: 0, items, ...charity, totalPence: 1250 }),
+        'Bedrock',
+      ).discounts,
+    ).toEqual([{ name: '#CookForUkraine', amountPence: 100 }]);
     // No printed total to check against: the discount stands.
     expect(read(charity)).toHaveLength(2);
   });

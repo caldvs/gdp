@@ -109,7 +109,8 @@ const lineTotal = (it: RawItem): number => it.lineTotalPence ?? it.unitPricePenc
  * Turns the model's lines into priced items before validation. Each line's
  * printed total becomes a unit price (the model copies amounts; we do the
  * division, splitting a line that doesn't divide evenly). Discount lines are
- * folded into their items, so a bill with a "-4.00" deal line reads instead
+ * folded into their items (or kept as the bill's shared `discounts` when they
+ * aren't one item's), so a bill with a "-4.00" deal line reads instead
  * of failing: the `discounts` the prompt asks for, and any line the model
  * still gave a minus amount. Leaves anything it doesn't understand for the
  * schema to reject.
@@ -148,7 +149,8 @@ function foldDiscounts(parsed: unknown): unknown {
     return splitTotal({ ...it, unitPricePence: 0 }, lineTotal(raw));
   });
   for (const raw of minus) discounts.push({ name: raw.name, amountPence: lineTotal(raw) });
-  return { ...rest, items: applyDiscounts(items, discounts) };
+  const folded = applyDiscounts(items, discounts);
+  return { ...rest, items: folded.items, discounts: folded.shared };
 }
 
 type Totals = { totalPence?: unknown; serviceChargePence?: unknown; taxPence?: unknown };

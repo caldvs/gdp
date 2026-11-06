@@ -72,6 +72,7 @@ export default function SummaryPage() {
             <tbody>
               <tr><td>Items</td><td className="n">{formatGBP(st.itemsPence)}</td></tr>
               {st.extrasPence > 0 ? <tr><td>Service</td><td className="n">{formatGBP(st.extrasPence)}</td></tr> : null}
+              {st.discountPence > 0 ? <tr><td>Discount</td><td className="n">−{formatGBP(st.discountPence)}</td></tr> : null}
               <tr className="t"><td>Bill total</td><td className="n">{formatGBP(st.totalPence)}</td></tr>
             </tbody>
           </table>
@@ -86,6 +87,7 @@ export default function SummaryPage() {
               <tbody>
                 {p.items.length === 0 ? <tr><td className="muted">Nothing claimed</td><td className="n" /></tr> : lines(p.items)}
                 {p.extrasPence > 0 ? <tr><td>Service</td><td className="n">{formatGBP(p.extrasPence)}</td></tr> : null}
+                {p.discountPence > 0 ? <tr><td>Discount</td><td className="n">−{formatGBP(p.discountPence)}</td></tr> : null}
                 {p.feePence > 0 ? <tr><td>Round-up</td><td className="n">{formatGBP(p.feePence)}</td></tr> : null}
                 <tr className="t"><td>Total</td><td className="n">{formatGBP(p.totalPence)}</td></tr>
               </tbody>
@@ -97,6 +99,7 @@ export default function SummaryPage() {
               <tbody>
                 {lines(st.unclaimed.items)}
                 {st.unclaimed.extrasPence > 0 ? <tr><td>Service</td><td className="n">{formatGBP(st.unclaimed.extrasPence)}</td></tr> : null}
+                {st.unclaimed.discountPence > 0 ? <tr><td>Discount</td><td className="n">−{formatGBP(st.unclaimed.discountPence)}</td></tr> : null}
                 <tr className="t"><td>Total</td><td className="n">{formatGBP(st.unclaimed.totalPence)}</td></tr>
               </tbody>
             </table>

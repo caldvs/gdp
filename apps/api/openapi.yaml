@@ -2272,6 +2272,13 @@ components:
             lead to confirm these lines before Review bill. Absent on clear lines, and cleared by
             any amend.
 
+    BillDiscount:
+      type: object
+      required: [name, amountPence]
+      properties:
+        name: { type: string }
+        amountPence: { type: integer, format: int64, minimum: 1, description: The amount off. }
+
     Bill:
       type: object
       required:
@@ -2296,7 +2303,19 @@ components:
         subtotalPence: { type: integer, format: int64, minimum: 0 }
         taxPence: { type: integer, format: int64, minimum: 0 }
         serviceChargePence: { type: integer, format: int64, minimum: 0 }
-        totalPence: { type: integer, format: int64, minimum: 0 }
+        discounts:
+          description: |
+            Discounts that aren't one item's (8 Nov 2026), shown under the items and shared by what
+            each person had, like service, but taken off. A discount on one item is folded into that
+            item's price instead. Absent on older bills.
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/BillDiscount' }
+        totalPence:
+          type: integer
+          format: int64
+          minimum: 0
+          description: subtotal + tax + service − the discounts.
         parsedTotalPence:
           type: integer
           format: int64
@@ -2810,6 +2829,18 @@ components:
               course: { type: string, enum: [starter, main, side, dessert] }
         taxPence: { type: integer, format: int64, minimum: 0, maximum: 10000000 }
         serviceChargePence: { type: integer, format: int64, minimum: 0, maximum: 10000000 }
+        discounts:
+          description: |
+            The bill's shared discounts. Absent keeps them; [] removes them. More off than the
+            items come to is INVALID_INPUT.
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [name, amountPence]
+            properties:
+              name: { type: string, minLength: 1, maxLength: 200 }
+              amountPence: { type: integer, format: int64, minimum: 1, maximum: 10000000 }
         venue:
           type: object
           required: [name]

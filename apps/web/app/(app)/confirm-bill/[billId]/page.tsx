@@ -95,6 +95,8 @@ function CheckBill() {
   const [items, setItems] = useState<DraftItem[]>([]);
   const [servicePounds, setServicePounds] = useState('0.00');
   const [taxPounds, setTaxPounds] = useState('0.00');
+  // Discounts that aren't one item's (8 Nov 2026): shown under the items, shared by what each person had.
+  const [discounts, setDiscounts] = useState<{ name: string; pounds: string }[]>([]);
   const [venueName, setVenueName] = useState('');
   // A place the lead picked while the bill was read (#61): its ID and
   // address go with the name, as long as the name isn't changed.
@@ -135,13 +137,19 @@ function CheckBill() {
     setItems(b.items.map(fromBillItem));
     setServicePounds(pounds(b.serviceChargePence));
     setTaxPounds(pounds(b.taxPence));
+    setDiscounts((b.discounts ?? []).map((d) => ({ name: d.name, pounds: pounds(d.amountPence) })));
     setVenueName(b.venue?.name ?? '');
   };
 
   const subtotalPence = useMemo(() => items.reduce((acc, it) => acc + parsePence(it.unitPricePounds) * it.quantity, 0), [items]);
   const servicePence = parsePence(servicePounds);
   const taxPence = parsePence(taxPounds);
-  const totalPence = subtotalPence + servicePence + taxPence;
+  const discountList = useMemo(
+    () => discounts.map((d) => ({ name: d.name, amountPence: parsePence(d.pounds) })).filter((d) => d.amountPence > 0),
+    [discounts],
+  );
+  const discountPence = discountList.reduce((acc, d) => acc + d.amountPence, 0);
+  const totalPence = subtotalPence + servicePence + taxPence - discountPence;
   // No credit: a £1 hold on the lead's card (#165). Nothing is taken now.
   const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
   // This month's free bill: sharing spends it.
@@ -157,13 +165,15 @@ function CheckBill() {
     const b = bill.data;
     if (!b) return false;
     if (b.items.length !== items.length || b.serviceChargePence !== servicePence || b.taxPence !== taxPence) return true;
+    const had = b.discounts ?? [];
+    if (had.length !== discountList.length || had.some((d, i) => d.name !== discountList[i]!.name || d.amountPence !== discountList[i]!.amountPence)) return true;
     if (venueName.trim() && venueName.trim() !== (b.venue?.name ?? '')) return true;
     return items.some((local, i) => {
       const server = b.items[i];
       return !server || local.itemId !== server.itemId || local.name !== server.name ||
         parsePence(local.unitPricePounds) !== server.unitPricePence || local.quantity !== server.quantity;
     });
-  }, [bill.data, items, servicePence, taxPence, venueName]);
+  }, [bill.data, items, servicePence, taxPence, discountList, venueName]);
 
   // Save as soon as an edit is finished, so nothing is lost on leaving.
   useEffect(() => {
@@ -202,6 +212,7 @@ function CheckBill() {
     })),
     taxPence,
     serviceChargePence: servicePence,
+    discounts: discountList,
     ...(venue.trim()
       ? {
           venue: { name: venue.trim() },
@@ -403,6 +414,11 @@ function CheckBill() {
           {editing === 'tax'
             ? <MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} />
             : taxPence > 0 ? <EditLine quiet name="Tax" label="tax" price={pounds(taxPence)} disabled={busy || editing !== null} onEdit={() => setEditing('tax')} /> : null}
+          {discounts.map((d, i) =>
+            editing === `discount-${i}`
+              ? <MoneyEditor key={`d${i}`} label={d.name} value={d.pounds} onChange={(v) => setDiscounts((ds) => ds.map((x, j) => (j === i ? { ...x, pounds: v } : x)))} onDone={() => setEditing(null)} />
+              : parsePence(d.pounds) > 0 ? <EditLine key={`d${i}`} quiet name={d.name} label={d.name} price={`−${pounds(parsePence(d.pounds))}`} disabled={busy || editing !== null} onEdit={() => setEditing(`discount-${i}`)} /> : null,
+          )}
           <ReceiptLine strong name="Total" price={<span className="receipt__total" data-testid="bill-total">{formatGBP(totalPence)}</span>} />
         </Receipt>
         <div className="bill-tools">

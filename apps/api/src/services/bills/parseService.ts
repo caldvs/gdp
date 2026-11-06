@@ -9,7 +9,14 @@ import { AppError } from '../../errors/AppError.js';
 import { baseLogger } from '../../logging/logger.js';
 import { uploadKey } from './uploadService.js';
 import { duplicateContext, type DuplicateContext } from './duplicateContext.js';
-import { BillSchema, type Bill, type BillItem, type Venue } from '../../types/bills.js';
+import {
+  BillSchema,
+  discountPence,
+  type Bill,
+  type BillDiscount,
+  type BillItem,
+  type Venue,
+} from '../../types/bills.js';
 import {
   PARSE_BUDGET_MS,
   readByOf,
@@ -234,8 +241,10 @@ export function buildBillV1(args: {
     ...(it.unsure ? { unsure: it.unsure } : {}),
   }));
   const subtotalPence = items.reduce((acc, i) => acc + i.unitPricePence * i.quantity, 0);
-  const taxPence = addedTaxPence(args.parsed, subtotalPence);
-  const totalPence = subtotalPence + taxPence + args.parsed.serviceChargePence;
+  const discounts = capDiscounts(args.parsed.discounts ?? [], subtotalPence);
+  const taxPence = addedTaxPence(args.parsed, subtotalPence - discountPence({ discounts }));
+  const totalPence =
+    subtotalPence + taxPence + args.parsed.serviceChargePence - discountPence({ discounts });
 
   return {
     billId: uuidv7(),
@@ -245,6 +254,7 @@ export function buildBillV1(args: {
     subtotalPence,
     taxPence,
     serviceChargePence: args.parsed.serviceChargePence,
+    discounts,
     totalPence,
     // Persist the reader's read-of-the-printed-total alongside the computed
     // total. If they disagree the client surfaces a "check this bill"
@@ -300,6 +310,22 @@ export function mergeRepeatedLines(lines: ParsedLine[]): ParsedLine[] {
     merged.push(copy);
   }
   return merged;
+}
+
+/** Shared discounts, never more off than the items come to. */
+function capDiscounts(
+  discounts: ReadonlyArray<{ name: string; amountPence: number }>,
+  subtotalPence: number,
+): BillDiscount[] {
+  let room = subtotalPence;
+  const out: BillDiscount[] = [];
+  for (const d of discounts.slice(0, 20)) {
+    const here = Math.min(d.amountPence, room);
+    if (here <= 0) break;
+    room -= here;
+    out.push({ name: d.name.slice(0, 200), amountPence: here });
+  }
+  return out;
 }
 
 /**

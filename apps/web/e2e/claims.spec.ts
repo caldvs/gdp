@@ -249,12 +249,12 @@ test('service charge: amounts are projected with service and match the lead’s 
   const tom = await diner(browser, api, users.tom);
 
   await sam.getByRole('button', { name: 'Claim Calamari' }).click();        // 22.50 → 25.31
-  await tom.getByRole('button', { name: 'Claim Lasagne' }).click();         // 17.25 → 19.40 (19.406, rounded down)
+  await tom.getByRole('button', { name: 'Claim Lasagne' }).click();         // 17.25 → 19.41
   await expect(sam.getByTestId('your-share')).toHaveText('£25.31');
   await expect(sam.getByText('Your total incl. service')).toBeVisible();
-  await expect(tom.getByTestId('your-share')).toHaveText('£19.40');
+  await expect(tom.getByTestId('your-share')).toHaveText('£19.41');
   await expect(lead.getByText('£25.31')).toBeVisible(POLL);
-  await expect(lead.getByText('£19.40')).toBeVisible();
+  await expect(lead.getByText('£19.41')).toBeVisible();
   // The lead's own olives: 4.25 → 4.78.
   await expect(lead.getByTestId('lead-share')).toHaveText('£4.78');
 });

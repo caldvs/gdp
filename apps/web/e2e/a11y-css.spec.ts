@@ -83,7 +83,7 @@ test('a long button label wraps rather than clipping, at 200% text and with wide
   await page.setViewportSize({ width: 320, height: 640 });
   const api = new FakeApi({ serviceRate: 0.125 });
   await open(page, api, users.lead, `/confirm-bill/${api.bill.billId}`);
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await page.locator('.actionbar__in').evaluate((bar) => {
     bar.insertAdjacentHTML('afterbegin', '<button type="button" class="btn btn--primary">Pay £2.00 fee &amp; get QR code</button>');
   });

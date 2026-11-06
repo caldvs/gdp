@@ -186,7 +186,11 @@ export class FakeCore {
   private withTotals(s: Record<string, unknown>, userId: string): Record<string, unknown> {
     if (s.sessionId !== SID) return s;
     const inIt = this.participants.some((p) => p.userId === userId);
-    return { billTotalPence: this.bill.totalPence, ...(inIt ? { mySharePence: this.owed(userId) } : {}), ...s };
+    // #223: the lead's open bill says who's at the table and who still has to pay.
+    const table = userId === 'u-lead' && this.status === 'claiming'
+      ? { peopleCount: this.participants.length, toPayCount: this.participants.filter((p) => p.userId !== 'u-lead' && p.payment?.status !== 'succeeded').length }
+      : {};
+    return { billTotalPence: this.bill.totalPence, ...(inIt ? { mySharePence: this.owed(userId) } : {}), ...table, ...s };
   }
 
   /** What each participant owes, the way the app projects it. */

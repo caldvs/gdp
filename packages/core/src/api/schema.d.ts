@@ -1625,6 +1625,10 @@ export interface components {
             mySharePence?: number;
             /** @enum {string} */
             myPaymentStatus: "unpaid" | "self_paid" | "pending" | "succeeded" | "failed";
+            /** @description Open bills the caller leads only. Everyone at the table, the lead included. */
+            peopleCount?: number;
+            /** @description Open bills the caller leads only. Guests who haven't paid in full yet. */
+            toPayCount?: number;
         };
         /** @enum {string} */
         PaymentStatus: "pending" | "succeeded" | "failed";

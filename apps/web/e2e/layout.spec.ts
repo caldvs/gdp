@@ -62,7 +62,7 @@ test.describe('tap targets', { tag: '@webkit' }, () => {
 
   const screens: { name: string; user: User; to: (api: FakeApi) => string; api: () => FakeApi; ready: (p: Page) => Promise<void> }[] = [
     { name: 'bills home', user: users.lead, api: () => new FakeApi(), to: () => '/', ready: (p) => expect(p.getByRole('heading', { name: 'Bills' })).toBeVisible() },
-    { name: 'review bill', user: users.lead, api: () => new FakeApi(), to: (a) => `/confirm-bill/${a.bill.billId}`, ready: (p) => expect(p.getByRole('heading', { name: 'Review bill' })).toBeVisible() },
+    { name: 'review bill', user: users.lead, api: () => new FakeApi(), to: (a) => `/confirm-bill/${a.bill.billId}`, ready: (p) => expect(p.getByRole('heading', { name: 'Check it matches' })).toBeVisible() },
     { name: 'lead table', user: users.lead, api: busyTable, to: () => `/session/${SID}`, ready: (p) => expect(p.getByRole('button', { name: 'Mark as settled' })).toBeVisible() },
     { name: 'guest pick', user: users.tom, api: busyTable, to: () => `/session/${SID}`, ready: (p) => expect(p.getByRole('heading', { name: 'What did you have?' })).toBeVisible() },
   ];
@@ -95,17 +95,18 @@ test("the lead's bank details never reach a server", { tag: '@webkit' }, async (
   await open(page, api, users.lead, '/');
   await page.locator('input[capture]').setInputFiles(PHOTO);
   await page.getByRole('button', { name: 'Use photo' }).click();
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'Generate QR code' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);
   await page.getByLabel('Sort code').fill(LEAD_BANK.sortCode);
   await page.getByLabel('Account number').fill(LEAD_BANK.accountNumber);
   await page.getByRole('button', { name: 'Save and continue' }).click();
   // Wait for Review bill: 'Continue' alone would also match "Save and continue",
   // and a click before the page moves submits the form again.
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
+  await page.getByRole('button', { name: 'Generate QR code' }).click();
+  await expect(page.getByRole('heading', { name: 'Show the table' })).toBeVisible();
 
   const sent = api.requests.map((r) => `${r.method} ${r.path} ${r.body ?? ''}`);
   expect(sent.length).toBeGreaterThan(0);

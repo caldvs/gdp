@@ -493,6 +493,7 @@ export const ChevronRight = () => <span className="chev"><I d="m9 6 6 6-6 6" /><
 export const MenuIcon = () => <I d="M4 7h16M4 12h16M4 17h16" size={28} />;
 export const CloseIcon = () => <I d="M6 6l12 12M18 6 6 18" size={28} />;
 export const PlusIcon = () => <I d="M12 5v14M5 12h14" size={18} w={2.2} />;
+export const PencilIcon = () => <I d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" size={20} w={2} />;
 export const TickIcon = ({ size = 22 }: { size?: number }) => <I d="m5 12 5 5 9-10" size={size} w={2.5} />;
 export const WarnIcon = ({ size = 22 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 9v4M12 16.5h.01M10.3 3.9 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>

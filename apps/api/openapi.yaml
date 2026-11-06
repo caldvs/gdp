@@ -2258,6 +2258,14 @@ components:
         myPaymentStatus:
           type: string
           enum: [unpaid, self_paid, pending, succeeded, failed]
+        peopleCount:
+          type: integer
+          minimum: 0
+          description: Open bills the caller leads only. Everyone at the table, the lead included.
+        toPayCount:
+          type: integer
+          minimum: 0
+          description: Open bills the caller leads only. Guests who haven't paid in full yet.
 
     PaymentStatus:
       type: string

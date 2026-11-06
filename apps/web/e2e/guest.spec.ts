@@ -168,8 +168,8 @@ test('a guest can pass the QR on, and see who’s at the table', async ({ browse
   await sam.goto(`/join/${CODE}#p=${fragmentFor()}`);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
   await sam.getByRole('link', { name: 'QR code' }).click();
-  await expect(sam.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
-  await expect(sam.getByText('Point a phone camera here')).toBeVisible();
+  await expect(sam.getByRole('heading', { name: 'Show the table' })).toBeVisible();
+  await expect(sam.getByText('Gennaro · £104.00')).toBeVisible();
   await expect(sam.getByText(CODE)).toHaveCount(0);
   await expect(sam.getByRole('button', { name: /copy link|share link/i })).toHaveCount(0);
   await expect(sam.getByText('Show it to anyone at Callum’s table.')).toBeVisible();

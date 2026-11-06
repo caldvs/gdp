@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, type components } from '@gdp/core/api';
@@ -14,7 +14,7 @@ import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import { formatGBP } from '@gdp/core/lib/money';
 import { RESUMED_PARAM } from '@gdp/core/lib/duplicateRoute';
 import {
-  ActionBar, BackLink, BillSkeleton, Box, Button, Centre, Notice, Page, PlusIcon, RowButton, Title, TotalEdit, TotalLine, Totals,
+  ActionBar, BackLink, BillSkeleton, Button, Centre, Notice, Page, PencilIcon, PlusIcon, Receipt, ReceiptLine, TickIcon, Title,
 } from '@/components/ui';
 
 type Bill = components['schemas']['Bill'];
@@ -59,7 +59,7 @@ function existingSessionIdFromError(err: unknown): string | undefined {
 function BillLoading() {
   return (
     <Page sub>
-      <Title title="Review bill" />
+      <Title title="Check it matches" />
       <div role="status" className="vh">Loading the bill</div>
       <BillSkeleton />
     </Page>
@@ -102,6 +102,10 @@ function CheckBill() {
   const [editing, setEditing] = useState<string | null>(null); // draftId | 'service' | 'tax' | 'venue'
   const [snapshot, setSnapshot] = useState<DraftItem | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
+  // *Generate QR code* confirms in place, naming what it uses (#223).
+  const [asking, setAsking] = useState(false);
+  const askRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (asking) askRef.current?.focus(); }, [asking]);
   // The photo beside a total that doesn't add up, opened from its notice.
   const [showPhoto, setShowPhoto] = useState(false);
   const photo = useBillImageUrl(billId, !!check || showPhoto);
@@ -145,6 +149,14 @@ function CheckBill() {
   const creditsLeft = fee.data && 'boughtCredits' in fee.data
     ? (fee.data.status === 'free' ? 1 : 0) + (fee.data.boughtCredits ?? 0)
     : 1;
+
+  const freeCredit = fee.data?.status === 'free';
+  // Nothing to spend (no Stripe here, or an exempt lead): straight on.
+  const onGenerate = () => {
+    if (!payout.isPending && !payout.data) { void onShare(); return; }
+    if (feeDue !== null || credit) setAsking(true);
+    else void onShare();
+  };
 
   const isDirty = useMemo(() => {
     const b = bill.data;
@@ -240,7 +252,7 @@ function CheckBill() {
     try {
       const created = await createSession.mutateAsync({ billId });
       await shareSession(created.sessionId);
-      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' || status === 'credit' ? 'credit' : '1'}`);
+      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' ? 'free' : status === 'credit' ? 'credit' : '1'}`);
     } catch (err) {
       // The server asks for the fee (the credit went on another bill meanwhile).
       if (isFeeRequired(err)) { router.push(`/table-fee/${billId}`); return; }
@@ -315,20 +327,6 @@ function CheckBill() {
   // The lines don't make the printed total: the strongest sign a price was
   // misread, since the reader's own notes miss some (#107). Live as lines are fixed.
   const offBy = mismatch && items.length > 0 ? totalPence - printed : 0;
-  const restOfSub = [`${items.length} ${items.length === 1 ? 'item' : 'items'}`, !mismatch && printed !== undefined ? 'matches the receipt' : null].filter(Boolean).join(' · ');
-  const sub = items.length === 0
-    ? 'Nothing read. Add the items yourself, or scan again.'
-    : noVenue
-      ? restOfSub
-      : (
-        // The place's name is the link that changes it (7 Nov: a "change" at
-        // the end of the line didn't say what it changed).
-        <>
-          <button type="button" className="link-btn" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={`Change venue: ${b.venue!.name}`}>{b.venue!.name}</button>
-          {' · '}
-          {restOfSub}
-        </>
-      );
   // No printed total to check against (a cut-off photo, usually). Only
   // before sharing: once guests are claiming, retaking the photo would
   // throw their claims away.
@@ -339,7 +337,7 @@ function CheckBill() {
     <>
       <Page sub>
         {isMidSession ? <BackLink href={`/session/${sessionId}`}>Bill</BackLink> : <BackLink href="/">Bills</BackLink>}
-        <Title title={isMidSession ? 'Fix the bill' : 'Review bill'} sub={editing === 'venue' ? undefined : sub} />
+        <Title title={isMidSession ? 'Fix the bill' : 'Check it matches'} sub={isMidSession ? undefined : items.length === 0 ? 'Nothing read. Add the items yourself, or scan again.' : 'Same lines and total as the paper one? Tap a line to fix it.'} />
 
         {resumed ? <Notice title="Picked up where you left off" /> : null}
 
@@ -374,8 +372,14 @@ function CheckBill() {
           ) : photo.isError ? <p className="field__hint">Photo not available.</p> : null
         ) : null}
 
-        <h2 className="vh">Items</h2>
-        <Box list>
+        {/* L3: the bill as a receipt. A pencil on every line opens it in place (L3.1). */}
+        <Receipt
+          label="The bill"
+          head={noVenue || editing === 'venue'
+            ? 'Your bill'
+            : <button type="button" className="link-btn receipt__venue" onClick={() => setEditing('venue')} disabled={editing !== null} aria-label={`Change venue: ${b.venue!.name}`}>{b.venue!.name}</button>}
+          end={formatDay(b.createdAt)}
+        >
           {items.map((it) =>
             it.draftId === editing ? (
               <ItemEditor
@@ -388,61 +392,82 @@ function CheckBill() {
                 onRemove={() => { removeItem(it.draftId); finishEditing(); }}
               />
             ) : (
-              <RowButton
+              <EditLine
                 key={it.draftId}
-                onClick={() => startEditing(it)}
-                disabled={busy || (editing !== null)}
-                action="Edit"
-                title={it.quantity > 1 ? `${it.name || 'Item'} × ${it.quantity}` : it.name || 'Item'}
-                sub={it.quantity > 1 ? `${formatGBP(parsePence(it.unitPricePounds))} each` : undefined}
-                end={formatGBP(parsePence(it.unitPricePounds) * it.quantity)}
-                chevron
+                name={it.quantity > 1 ? `${it.quantity} × ${it.name || 'Item'}` : it.name || 'Item'}
+                label={it.name || 'Item'}
+                price={pounds(parsePence(it.unitPricePounds) * it.quantity)}
+                disabled={busy || editing !== null}
+                onEdit={() => startEditing(it)}
               />
             ),
           )}
-          <button type="button" className="row row--add" onClick={addAndEdit} disabled={busy || editing !== null}>
-            <PlusIcon />Add item
-          </button>
-        </Box>
-
-        <h2 className="vh">Totals</h2>
-        <Totals>
-          <TotalLine k="Subtotal" v={formatGBP(subtotalPence)} />
-          {editing === 'service' ? (
-            <TotalEdit label="Service"><MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} /></TotalEdit>
-          ) : (
-            <TotalLine
-              k={<>Service{servicePct} · <button type="button" className="link-btn" onClick={() => setEditing('service')} disabled={editing !== null} aria-label="Change service charge">change</button></>}
-              v={formatGBP(servicePence)}
-            />
-          )}
-          {editing === 'tax' ? (
-            <TotalEdit label="Tax"><MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} /></TotalEdit>
-          ) : (
-            <TotalLine
-              tone={taxPence > 0 ? undefined : 'mute'}
-              k={<>Tax · <button type="button" className="link-btn" onClick={() => setEditing('tax')} disabled={editing !== null} aria-label="Change tax">change</button></>}
-              v={taxPence > 0 ? formatGBP(taxPence) : 'None'}
-            />
-          )}
-          <TotalLine tone="total" k="Total" v={formatGBP(totalPence)} />
-        </Totals>
+          {editing === 'service'
+            ? <MoneyEditor label="Service" value={servicePounds} onChange={setServicePounds} onDone={() => setEditing(null)} />
+            : <EditLine quiet name={`Service${servicePct}`} label="service" price={pounds(servicePence)} disabled={busy || editing !== null} onEdit={() => setEditing('service')} />}
+          {editing === 'tax'
+            ? <MoneyEditor label="Tax" value={taxPounds} onChange={setTaxPounds} onDone={() => setEditing(null)} />
+            : taxPence > 0 ? <EditLine quiet name="Tax" label="tax" price={pounds(taxPence)} disabled={busy || editing !== null} onEdit={() => setEditing('tax')} /> : null}
+          <ReceiptLine strong name="Total" price={<span className="receipt__total" data-testid="bill-total">{formatGBP(totalPence)}</span>} />
+        </Receipt>
+        <div className="bill-tools">
+          <button type="button" className="link-btn" onClick={addAndEdit} disabled={busy || editing !== null}><PlusIcon />Add item</button>
+          {taxPence > 0 || editing === 'tax' ? null : <button type="button" className="link-btn" onClick={() => setEditing('tax')} disabled={busy || editing !== null}>Add tax</button>}
+        </div>
+        {!mismatch && printed !== undefined && items.length > 0 ? <p className="adds-up"><TickIcon size={16} />Adds up to the receipt</p> : null}
 
         {createSession.isError && !existingSessionId ? <Notice tone="error" title="Couldn’t start the bill.">{createSession.error.message}</Notice> : null}
         {amend.isError ? <Notice tone="error" title="Couldn’t save.">{amend.error.message}</Notice> : null}
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
+        {asking && !isMidSession ? (
+          <div ref={askRef} tabIndex={-1} className="confirm-inline" role="group" aria-labelledby="qr-t">
+            <h2 id="qr-t" className="confirm-inline__h">{feeDue !== null ? `Hold ${formatGBP(feeDue)} to share this bill?` : freeCredit ? 'Use your free credit?' : 'Spend 1 credit?'}</h2>
+            {feeDue !== null ? (
+              <p className="muted">Nothing is taken now. Your guests round their share up to the next pound to cover it: at most {formatGBP(feeDue)}, taken when you settle. Nobody joins? It’s released.</p>
+            ) : freeCredit ? (
+              <>
+                <p className="muted">One free bill a month. Next one {nextMonth()}.</p>
+                <p className="muted">Free for everyone at the table. Given back if nobody joins.</p>
+              </>
+            ) : (
+              <p className="muted">You have {creditsLeft} {creditsLeft === 1 ? 'credit' : 'credits'}. This bill uses 1.</p>
+            )}
+            <div className="confirm-inline__acts">
+              <Button tone="secondary" onClick={() => setAsking(false)}>Not yet</Button>
+              <Button busy={busy || fee.isFetching} onClick={() => void onShare()}>{feeDue !== null ? `Hold ${formatGBP(feeDue)} & get QR code` : freeCredit ? 'Use free credit' : 'Spend 1 credit'}</Button>
+            </div>
+          </div>
+        ) : null}
       </Page>
-      <ActionBar note={isMidSession ? undefined : credit ? `${creditsLeft} ${creditsLeft === 1 ? 'credit' : 'credits'} left · 1 free each month` : feeDue !== null ? 'Nothing taken now · your guests pay it back' : undefined}>
-        {isMidSession ? (
-          <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
-        ) : (
-          <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onShare}>
-            {feeDue !== null ? `Hold ${formatGBP(feeDue)} & get QR code` : credit ? 'Spend 1 credit & get QR code' : 'Continue'}
-          </Button>
-        )}
-      </ActionBar>
+      {asking && !isMidSession ? null : (
+        <ActionBar>
+          {isMidSession ? (
+            <Button grow busy={busy} disabled={editing !== null || !isDirty} onClick={onSaveMidSession}>{isDirty ? 'Save' : 'No changes'}</Button>
+          ) : (
+            <Button grow busy={busy || fee.isFetching} disabled={editing !== null || items.length === 0} onClick={onGenerate}>Generate QR code</Button>
+          )}
+        </ActionBar>
+      )}
     </>
   );
+}
+
+/** A receipt line with its pencil (#223): the row and the pencil both open it. */
+function EditLine({ name, label, price, quiet, disabled, onEdit }: { name: string; label: string; price: string; quiet?: boolean; disabled: boolean; onEdit: () => void }) {
+  return (
+    <div className={`receipt__line receipt__line--edit${quiet ? ' receipt__line--quiet' : ''}`} onClick={disabled ? undefined : onEdit}>
+      <span className="receipt__item">{name}</span>
+      <span className="receipt__price">{price}</span>
+      <button type="button" className="receipt__pen" aria-label={`Edit ${label}`} disabled={disabled} onClick={(e) => { e.stopPropagation(); onEdit(); }}><PencilIcon /></button>
+    </div>
+  );
+}
+
+const formatDay = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Europe/London' }).replace(',', '').toUpperCase();
+/** "1 Dec": when the next free bill comes (the first of next month, UK time). */
+function nextMonth(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 
 function ItemEditor({ item, claimed, onChange, onDone, onCancel, onRemove, doneLabel = 'Done' }: {

@@ -44,9 +44,14 @@ describe('GET /v1/me/sessions', () => {
         status: string;
         myOwedPence?: number;
         myPaymentStatus: string;
+        peopleCount?: number;
+        toPayCount?: number;
       }>;
     };
     expect(leadBody.sessions).toHaveLength(1);
+    // #223: the lead's open bill says who's at the table and who still has to pay.
+    expect(leadBody.sessions[0]?.peopleCount).toBe(2);
+    expect(leadBody.sessions[0]?.toPayCount).toBe(1);
     expect(leadBody.sessions[0]?.sessionId).toBe(sessionId);
     expect(leadBody.sessions[0]?.role).toBe('lead');
     expect(leadBody.sessions[0]?.status).toBe('paying');
@@ -55,10 +60,11 @@ describe('GET /v1/me/sessions', () => {
 
     const dinerRes = await app.request('/v1/me/sessions', { headers: makeAuth(diner) });
     const dinerBody = (await dinerRes.json()) as {
-      sessions: Array<{ sessionId: string; role: string }>;
+      sessions: Array<{ sessionId: string; role: string; peopleCount?: number }>;
     };
     expect(dinerBody.sessions).toHaveLength(1);
     expect(dinerBody.sessions[0]?.role).toBe('diner');
+    expect(dinerBody.sessions[0]?.peopleCount).toBeUndefined();
   });
 
   it('includes slimmed venue { name } for list-view strapline', async () => {

@@ -65,7 +65,7 @@ test('bills home', async ({ page }) => {
 test('review the bill', async ({ page }) => {
   const api = new FakeApi({ serviceRate: 0.125 });
   await open(page, api, users.lead, `/confirm-bill/${api.bill.billId}`);
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(page).toHaveScreenshot('review.png', shot);
 });
 

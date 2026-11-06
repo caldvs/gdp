@@ -64,10 +64,12 @@ test('bills: an open bill shows its total to the host and what a guest owes; pas
   const lead = await diner(browser, api, users.lead);
   await lead.goto('/');
   const open = lead.locator('.row--card').filter({ hasText: 'Gennaro' });
-  await expect(open.locator('.row__end')).toHaveText(total);
+  // #223: the place, date and people; the money and who still has to pay.
+  await expect(open.locator('.row__end')).toHaveText(`${total}1 to pay`);
+  await expect(open).toContainText('2 people');
   const past = lead.locator('.box a.row');
-  await expect(past.filter({ hasText: 'Bundobust' }).locator('.row__end')).toHaveText('£50.00');
-  await expect(past.filter({ hasText: 'Dishoom' }).locator('.row__end')).toHaveText('£28.40');
+  await expect(past.filter({ hasText: 'Bundobust' }).locator('.row__end')).toHaveText('£50.00Settled');
+  await expect(past.filter({ hasText: 'Dishoom' }).locator('.row__end')).toHaveText('£28.40Settled');
   await expect(past.filter({ hasText: 'Dishoom' })).toContainText('you joined · £96.00 bill');
 
   const sam = await diner(browser, api, users.sam);

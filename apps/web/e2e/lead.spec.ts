@@ -27,8 +27,9 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
 
   await lead.getByRole('button', { name: 'Use photo' }).click();
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
-  await expect(lead.getByText('Gennaro · 5 items')).toBeVisible();
+  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByRole('button', { name: 'Change venue: Gennaro' })).toBeVisible();
 
   // Fix the calamari's price and make it two.
   await lead.getByRole('button', { name: 'Edit Calamari' }).click();
@@ -37,19 +38,19 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await expect(lead.getByRole('button', { name: 'One fewer Calamari' })).toBeDisabled();
   await lead.getByRole('button', { name: 'One more Calamari' }).click();
   await lead.getByRole('button', { name: 'Done' }).click();
-  await expect(lead.getByText('£40.00')).toBeVisible();
+  await expect(lead.getByText('2 × Calamari')).toBeVisible();
 
   // First time: no bank details yet → asked for them, then straight on to share.
-  await lead.getByRole('button', { name: 'Continue' }).click();
+  await lead.getByRole('button', { name: 'Generate QR code' }).click();
   await expect(lead.getByRole('heading', { name: 'Bank details' })).toBeVisible();
   await lead.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);
   await lead.getByLabel('Sort code').fill(LEAD_BANK.sortCode);
   await lead.getByLabel('Account number').fill(LEAD_BANK.accountNumber);
   await lead.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Continue' }).click();
-  await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
-  await expect(lead.getByText('Point a phone camera here')).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Generate QR code' }).click();
+  await expect(lead.getByRole('heading', { name: 'Show the table' })).toBeVisible();
+  await expect(lead.getByText(/^Gennaro · £/)).toBeVisible();
   await expect(lead.getByText('Works until the bill’s settled.')).toBeVisible();
   await expect(lead.getByText('K7Q2MX')).toHaveCount(0);
   // The amend went through with the edited line.
@@ -62,16 +63,17 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await lead.goto('/');
   await lead.locator('input[capture]').setInputFiles(PHOTO);
   await lead.getByRole('button', { name: 'Use photo' }).click();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
-  await lead.getByRole('button', { name: 'Continue' }).click();
-  await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
+  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
+  await lead.getByRole('button', { name: 'Generate QR code' }).click();
+  await expect(lead.getByRole('heading', { name: 'Show the table' })).toBeVisible();
 });
 
 test('a cut-off photo: no printed total to check, Retake photo goes back to scanning', async ({ browser }) => {
   const api = new FakeApi({ noPrintedTotal: true });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(lead.getByText('No total on the photo')).toBeVisible();
   await expect(lead.getByText('Bottom cut off? We can\u2019t check the sum.')).toBeVisible();
 
@@ -83,9 +85,9 @@ test('a printed total that matches the sum: no notice, shown as matching', async
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(lead.getByText('No total on the photo')).toHaveCount(0);
-  await expect(lead.getByText('matches the receipt')).toBeVisible();
+  await expect(lead.getByText('Adds up to the receipt')).toBeVisible();
 });
 
 test('#107 lines that don’t make the printed total: a notice that goes once a price is fixed', async ({ browser }) => {
@@ -93,10 +95,10 @@ test('#107 lines that don’t make the printed total: a notice that goes once a 
   const api = new FakeApi({ printedTotalPence: 10650 });
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(lead.getByText('Doesn’t add up')).toBeVisible();
   await expect(lead.getByText(/£2\.50 under the receipt’s £106\.50/)).toBeVisible();
-  await expect(lead.getByText('matches the receipt')).toHaveCount(0);
+  await expect(lead.getByText('Adds up to the receipt')).toHaveCount(0);
   await lead.getByRole('button', { name: 'See photo' }).click();
   await expect(lead.getByRole('button', { name: 'Hide photo' })).toBeVisible();
 
@@ -104,7 +106,7 @@ test('#107 lines that don’t make the printed total: a notice that goes once a 
   await lead.getByLabel('Price each').fill('25.00');
   await lead.getByRole('button', { name: 'Done' }).click();
   await expect(lead.getByText('Doesn’t add up')).toHaveCount(0);
-  await expect(lead.getByText('matches the receipt')).toBeVisible();
+  await expect(lead.getByText('Adds up to the receipt')).toBeVisible();
 });
 
 test('no venue on the photo: asked once before Review bill; the name typed is saved', async ({ browser }) => {
@@ -114,8 +116,8 @@ test('no venue on the photo: asked once before Review bill; the name typed is sa
   await expect(lead.getByRole('heading', { name: 'Where was this?' })).toBeVisible();
   await lead.getByLabel('Restaurant').fill('The Dog & Partridge');
   await lead.getByRole('button', { name: 'Done' }).click();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Change venue: The Dog & Partridge' })).toBeVisible();
   await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
   expect(api.bill.venue?.name).toBe('The Dog & Partridge');
 });
@@ -125,9 +127,9 @@ test('#65 no venue, skipped: not asked again in this tab; a “Where was this?�
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
   await lead.getByRole('button', { name: 'Skip' }).click();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await lead.reload();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(lead.getByRole('button', { name: 'Add venue' })).toHaveCount(0);
   await expect(lead.getByRole('button', { name: 'Change venue' })).toHaveCount(0);
 
@@ -137,7 +139,7 @@ test('#65 no venue, skipped: not asked again in this tab; a “Where was this?�
   await field.fill('The Dog & Partridge');
   await field.press('Enter');
 
-  await expect(lead.getByText(/^The Dog & Partridge · 5 items/)).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Change venue: The Dog & Partridge' })).toBeVisible();
   await expect(lead.getByLabel('Where was this?')).toHaveCount(0);
   await expect(lead.getByRole('button', { name: 'Change venue' })).toBeVisible();
   expect(api.bill.venue?.name).toBe('The Dog & Partridge');
@@ -156,7 +158,7 @@ test('#65 the “Where was this?” field saves when it’s left, and an empty o
 
   await field.fill('Gusto');
   await field.blur();
-  await expect(lead.getByText(/^Gusto · 5 items/)).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Change venue: Gusto' })).toBeVisible();
   expect(api.bill.venue?.name).toBe('Gusto');
 });
 
@@ -175,19 +177,19 @@ test('#107 lines the reader was unsure of are checked one at a time, then Review
   await expect(lead.getByLabel('Item')).toHaveValue('Negroni');
   await lead.getByRole('button', { name: 'Looks right' }).click();
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   // Saved once: the fix is on the bill and the reader's notes are gone.
   expect(api.items[1]).toMatchObject({ name: 'Calamari', unitPricePence: 2350 });
   expect(api.items.some((it) => it.unsure)).toBe(false);
   await lead.reload();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
 });
 
 test('a venue the lead sets beats the parsed one, shown with a change link', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, `/confirm-bill/${api.bill.billId}`);
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
   await expect(lead.getByText('Gennaro')).toBeVisible();
   // One row: the name, never a second row with the address under it.
   await expect(lead.getByText('12 King Street, Manchester')).toHaveCount(0);
@@ -249,7 +251,7 @@ test('leave while the bill is read: Bills shows it, and coming back opens Review
   api.holdReads = false;
   await expect(lead.getByRole('link', { name: /Bill read/ })).toBeVisible({ timeout: 10_000 });
   await lead.getByRole('link', { name: /Bill read/ }).click();
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
 });
 
 test('a slow read keeps the photo, and Try again reads it', async ({ browser }) => {
@@ -264,7 +266,8 @@ test('a slow read keeps the photo, and Try again reads it', async ({ browser }) 
 
   await lead.getByRole('button', { name: 'Try again' }).click();
 
-  await expect(lead.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
+  await lead.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await expect(lead.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
 });
 
 test('fixing the bill mid-session: a picking guest and a sent guest both see the new price', async ({ browser }) => {

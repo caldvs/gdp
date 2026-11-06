@@ -38,27 +38,29 @@ test('reading asks nothing, then opens Review bill with the receipt’s place', 
   await expect(page.locator('input:not([type=file])')).toHaveCount(0);
 
   api.holdReads = false;
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(/^d Maiora - Italian Sandwich Shop · 5 items/)).toBeVisible();
+  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Change venue: d Maiora - Italian Sandwich Shop' })).toBeVisible();
 });
 
 test('no place on the receipt: asked once, Skip leaves none, and the table has no party size', async ({ browser }) => {
   const api = new FakeApi({ status: 'setup', venue: null });
   const page = await lead(browser, api);
   await scan(page).catch(() => undefined);
+  await page.getByRole('button', { name: 'Proceed' }).click({ timeout: 15_000 });
   await expect(page.getByRole('heading', { name: 'Where was this?' })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'Skip' }).click();
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await expect(page.getByText(/^5 items/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'The bill' }).getByText('Your bill')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Generate QR code' }).click();
   await page.getByLabel('Name on the account').fill(LEAD_BANK.accountHolderName);
   await page.getByLabel('Sort code').fill(LEAD_BANK.sortCode);
   await page.getByLabel('Account number').fill(LEAD_BANK.accountNumber);
   await page.getByRole('button', { name: 'Save and continue' }).click();
-  await expect(page.getByRole('heading', { name: 'Review bill' })).toBeVisible();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await expect(page.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Check it matches' })).toBeVisible();
+  await page.getByRole('button', { name: 'Generate QR code' }).click();
+  await expect(page.getByRole('heading', { name: 'Show the table' })).toBeVisible();
   expect(sent(api, 'POST', '/v1/sessions')[0]).not.toHaveProperty('expectedDiners');
   expect(sent(api, 'POST', `${BILL}/amend`).some((b) => b.venue)).toBe(false);
 });

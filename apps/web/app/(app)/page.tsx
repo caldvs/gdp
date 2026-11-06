@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useMySessions, type SessionSummary } from '@gdp/core/api/hooks/useMySessions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { useScanner } from '@/components/Scanner';
@@ -40,7 +41,7 @@ export default function BillsPage() {
         ) : null}
 
         {past.length > 0 ? (
-          <Section title="Past">
+          <Section title="Settled">
             <Box list>
               {past.map((s) => (
                 <RowLink key={s.sessionId} href={`/session/${s.sessionId}`} vt={billTitle(s.sessionId)} tall title={venue(s)} sub={pastSub(s)} end={pastEnd(s)} />
@@ -83,20 +84,27 @@ function billOf(s: SessionSummary): string {
 function pastSub(s: SessionSummary): string {
   const when = formatWhen(s.createdAt);
   if (s.status === 'abandoned') return `${when} · ${s.role === 'lead' ? 'you deleted it' : 'the host deleted it'}`;
-  return `${when} · ${s.role === 'lead' ? 'you hosted' : 'you joined'}${billOf(s)}`;
+  return `${when} · ${s.role === 'lead' ? 'you paid' : 'you joined'}${billOf(s)}`;
+}
+/** L1 (#223): the money, then where it stands, one above the other. */
+function endOf(pence: number | undefined, state: ReactNode) {
+  return <span className="bill-end">{pence !== undefined ? <b>{formatGBP(pence)}</b> : null}{state}</span>;
 }
 function pastEnd(s: SessionSummary) {
   if (s.status === 'abandoned') return <Badge>Deleted</Badge>;
-  const pence = s.role === 'lead' ? s.billTotalPence : shareOf(s);
-  return pence !== undefined ? formatGBP(pence) : undefined;
+  return endOf(s.role === 'lead' ? s.billTotalPence : shareOf(s), <Badge tone="ok">Settled</Badge>);
 }
 function openSub(s: SessionSummary): string {
   const when = formatWhen(s.createdAt);
   if (s.role !== 'lead') return `${when} · you joined${billOf(s)}`;
-  return s.status === 'setup' ? `${when} · not shared yet` : `${when} · you’re collecting`;
+  if (s.status === 'setup') return `${when} · not shared yet`;
+  return s.peopleCount !== undefined ? `${when} · ${s.peopleCount} ${s.peopleCount === 1 ? 'person' : 'people'}` : when;
 }
 function openEnd(s: SessionSummary) {
-  if (s.role === 'lead') return s.billTotalPence !== undefined ? formatGBP(s.billTotalPence) : undefined;
+  if (s.role === 'lead') {
+    const toPay = s.toPayCount ?? 0;
+    return endOf(s.billTotalPence, s.status === 'setup' ? null : <span className="bill-end__sub">{toPay > 0 ? `${toPay} to pay` : 'All paid'}</span>);
+  }
   if (s.myPaymentStatus === 'succeeded') return <Badge tone="ok">Paid</Badge>;
   const owe = shareOf(s);
   return owe ? <Badge tone="warn">You owe {formatGBP(owe)}</Badge> : undefined;

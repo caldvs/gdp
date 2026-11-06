@@ -78,8 +78,14 @@ export const proofService = {
   },
 
   /** The upload landed: the lead can see it now. */
-  async sent(input: { caller: VerifiedCaller; sessionId: string; proofId: string }) {
-    await load(input.caller, input.sessionId);
+  async sent(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    proofId: string;
+    /** #221: tell the lead, the first time this screenshot is sent. */
+    onFirstSent?: (sessionId: string, guestName: string) => Promise<void>;
+  }) {
+    const { me } = await load(input.caller, input.sessionId);
     const row = (await proofStore.list(input.sessionId, input.caller.userId)).find(
       (p) => p.proofId === input.proofId,
     );
@@ -96,6 +102,7 @@ export const proofService = {
     }
     const at = row.sentAt ?? new Date().toISOString();
     await proofStore.markSent(input.sessionId, input.caller.userId, input.proofId, at);
+    if (!row.sentAt) await input.onFirstSent?.(input.sessionId, me.displayName);
     return this.viewOf(input.sessionId, { ...row, sentAt: at });
   },
 

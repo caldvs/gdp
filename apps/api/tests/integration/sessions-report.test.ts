@@ -11,6 +11,9 @@ import {
   makeAuth,
   sampleParsedBill,
 } from './helpers.js';
+import { createReportService } from '../../src/services/sessions/reportService.js';
+import { runLeadEmails } from '../../src/ops/leadEmails.js';
+import { leadMailQueue, type QueuedLeadMail } from '../../src/storage/leadMailQueue.js';
 
 const capture = () => {
   const sent: SendEmailInput[] = [];
@@ -39,7 +42,7 @@ describe('bill reports', () => {
     await ensureBillsBucket();
   });
 
-  it('emails every diner their report when the lead closes the bill, once', async () => {
+  it('#221: settling emails nobody; the next morning the lead gets how it ended', async () => {
     const { sent, emailSender } = capture();
     const app = buildApp(emailSender);
     const lead = `c-${uuidv7()}`;
@@ -53,19 +56,30 @@ describe('bill reports', () => {
       headers: makeAuth(lead),
     });
     expect(res.status).toBe(200);
-    const reports = sent.filter((m) => m.category === 'report');
-    expect(reports.map((m) => m.to).sort()).toEqual(
-      [`${guest}@example.com`, `${lead}@example.com`].sort(),
-    );
-    expect(reports.find((m) => m.to.startsWith(lead))?.subject).toMatch(/^Who paid what/);
-    expect(reports.find((m) => m.to.startsWith(guest))?.subject).toMatch(/^Your bill/);
+    expect(sent).toHaveLength(0);
 
-    // Closing again changes nothing and sends nothing.
-    await app.request(`/v1/sessions/${sessionId}/close`, {
-      method: 'POST',
-      headers: makeAuth(lead),
-    });
-    expect(sent.filter((m) => m.category === 'report')).toHaveLength(2);
+    // Only this test's row: the queue is one partition shared by every test.
+    const mine = {
+      due: async (before: string) =>
+        (await leadMailQueue.due(before)).filter((q) => q.sessionId === sessionId),
+      remove: (q: QueuedLeadMail) => leadMailQueue.remove(q),
+    };
+    const reports = createReportService({ emailSender, appBaseUrl: 'https://test.paymeback.dev' });
+    const send = (id: string) => reports.sendLeadEmail(id);
+
+    // Same day: not due yet.
+    expect((await runLeadEmails({ queue: mine, send })).due).toBe(0);
+
+    const tomorrow = () => new Date(Date.now() + 36 * 3600_000);
+    const done = await runLeadEmails({ queue: mine, send, now: tomorrow });
+    expect(done).toMatchObject({ due: 1, sent: 1, failed: [] });
+    expect(sent.map((m) => m.to)).toEqual([`${lead}@example.com`]);
+    expect(sent[0]!.category).toBe('lead-settled');
+    expect(sent[0]!.subject).toMatch(/^g-[^ ]+ still owes you £\d+\.\d\d for /);
+    expect(sent[0]!.body.text).toContain(`https://test.paymeback.dev/session/${sessionId}`);
+
+    // Sent once: the row is gone.
+    expect((await runLeadEmails({ queue: mine, send, now: tomorrow })).due).toBe(0);
   });
 
   it('emails only the caller when asked, while the bill is open', async () => {

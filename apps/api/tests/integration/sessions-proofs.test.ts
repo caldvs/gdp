@@ -10,6 +10,8 @@ import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { s3, BILLS_BUCKET } from '../../src/storage/s3.js';
 import { proofKey } from '../../src/storage/proofStore.js';
 import type { Session } from '../../src/types/sessions.js';
+import type { EmailSender, SendEmailInput } from '../../src/services/email/sender.js';
+import { userStore } from '../../src/storage/userStore.js';
 import {
   createBillFor,
   ensureBillsBucket,
@@ -62,6 +64,33 @@ async function upload(app: App, sessionId: string, user: string) {
 }
 
 describe('proof of payment (#226)', () => {
+  it('#221: the lead is emailed once, with a link and no image', async () => {
+    const sent: SendEmailInput[] = [];
+    const emailSender: EmailSender = {
+      provider: 'test',
+      send: (m) => {
+        sent.push(m);
+        return Promise.resolve();
+      },
+    };
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(sampleParsedBill),
+      emailSender,
+    });
+    const { lead, sam, sessionId } = await table(app);
+    await userStore.putProfile({ userId: lead, email: `${lead}@example.com`, displayName: 'Lead' });
+    const proofId = await upload(app, sessionId, sam);
+    const path = `/v1/sessions/${sessionId}/proofs/${proofId}/sent`;
+    expect((await send(app, 'POST', path, sam)).status).toBe(200);
+    expect((await send(app, 'POST', path, sam)).status).toBe(200);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ to: `${lead}@example.com`, category: 'proof' });
+    expect(sent[0]!.subject).toMatch(/sent a screenshot of their payment/);
+    expect(sent[0]!.body.html).toContain(`/session/${sessionId}`);
+    expect(sent[0]!.body.html).not.toMatch(/<img|proofs\//);
+  });
+
   beforeAll(ensureBillsBucket);
 
   it('a guest uploads, confirms, and the lead sees it; strangers don’t', async () => {

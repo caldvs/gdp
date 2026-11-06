@@ -180,11 +180,11 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF#', 'Comments, payment screenshots'),
                    ('JCODE# PAY#', 'Join codes, guest payments to the lead'), ('WAWIN# WAMSG# WATPL#', 'WhatsApp windows, seen, sends'),
-                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
+                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
-c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge: daily hold', 'sweep invokes the Lambda'])
+c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge, daily: hold', 'sweep, lead emails'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
 c4card('location', 'Amazon Location', ['Venue lookup'])

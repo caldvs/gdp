@@ -18,6 +18,8 @@ import { testAccountsAllowed } from './services/auth/testAccounts.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from './services/auth.js';
 import { createDefaultEmailSender } from './services/email/factory.js';
 import { createReportService } from './services/sessions/reportService.js';
+import { runLeadEmails, type LeadEmailsReport } from './ops/leadEmails.js';
+import { leadMailQueue } from './storage/leadMailQueue.js';
 import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
@@ -213,7 +215,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     buildSessionRoutes({
       idTokenVerifier,
       ...(sessionJwtSecret ? { jwtSecret: sessionJwtSecret } : {}),
-      reports: createReportService({ emailSender }),
+      reports: createReportService({ emailSender, appBaseUrl: env.APP_BASE_URL }),
       ...(tableFees ? { tableFees } : {}),
     }),
   );
@@ -280,6 +282,25 @@ export const runHoldSweepNow = async (): Promise<HoldSweepReport | { skipped: st
   if (report.failed.length > 0) {
     throw new Error(`Hold sweep: ${report.failed.length} hold(s) not settled`);
   }
+  return report;
+};
+
+/**
+ * #221: the lead's emails about bills settled before today (London).
+ * EventBridge invokes this daily at 09:00 UTC. A failed send keeps its row
+ * for tomorrow and throws, so the Lambda errors alarm reports it.
+ */
+export const runLeadEmailsNow = async (): Promise<LeadEmailsReport> => {
+  const reports = createReportService({
+    emailSender: createDefaultEmailSender(),
+    appBaseUrl: env.APP_BASE_URL,
+  });
+  const report = await runLeadEmails({
+    queue: leadMailQueue,
+    send: (id) => reports.sendLeadEmail(id),
+  });
+  baseLogger.info({ event: 'lead_emails.done', ...report }, 'Lead emails');
+  if (report.failed.length > 0) throw new Error(`Lead emails: ${report.failed.length} not sent`);
   return report;
 };
 

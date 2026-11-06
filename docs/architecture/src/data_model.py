@@ -60,6 +60,7 @@ y = place(0, y, 'Sign-in code', 'id', '20 min', [('pk', 'SIGNIN#{id}'), ('sk', '
 y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', '{SIGNIN|CODE|GUEST|…}RATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#: 30 comments / h per person per bill', 'PROOFRATE#: 10 screenshot uploads / h, same', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 y = place(0, y, 'WhatsApp', 'id', '2 d', [('pk', 'WAWIN# · WAMSG# · WATPL#'), ('sk', 'WIN · SEEN · COUNT')], ['WAWIN#{e164}: lastInboundAt, free replies 24 h', 'WAMSG#{messageId}: webhook message handled', 'WATPL#{yyyy-mm}: paid template sends (capped)']) + GAP
+y = place(0, y, 'Lead email queue', 'id', '14 d', [('pk', 'LEADMAILQ'), ('sk', '{settledAt}#{sessionId}')], ['sessionId, settledAt: settled, emailed next morning', 'daily job reads sk < London midnight (#221)']) + GAP
 col1_end = y
 
 # ---- Column 2: bills

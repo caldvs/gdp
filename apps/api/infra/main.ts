@@ -338,6 +338,20 @@ class GdpBackendStack extends cdk.Stack {
       ],
     });
 
+    // The lead's email the day after settling (#221, src/ops/leadEmails.ts):
+    // 09:00 UTC (9 or 10 in London) for bills settled before today. A failed
+    // send stays queued for tomorrow and the Lambda errors alarm reports it.
+    new events.Rule(this, 'LeadEmailsDaily', {
+      description: "Email leads how yesterday's settled bills ended (#221)",
+      schedule: events.Schedule.cron({ minute: '0', hour: '9' }),
+      targets: [
+        new targets.LambdaFunction(fn, {
+          event: events.RuleTargetInput.fromObject({ gdpLeadEmails: true }),
+          retryAttempts: 2,
+        }),
+      ],
+    });
+
     // Custom API domain (api.paymeback.dev / api.test.paymeback.dev). DNS is
     // on Vercel, so the ACM certificate is requested and validated by hand and
     // its ARN comes from the GitHub environment (API_DOMAIN, API_CERT_ARN).

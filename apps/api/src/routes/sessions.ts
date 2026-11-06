@@ -374,7 +374,8 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     const session = await sessionService.close({
       caller,
       sessionId,
-      ...(reports ? { onClosed: (id: string) => reports.emailEveryone(id) } : {}),
+      // #221: no emails now; the lead's goes the next morning. Guests get none.
+      ...(reports ? { onClosed: (id: string) => reports.queueLeadEmail(id) } : {}),
     });
     await settleFee(session, false);
     return c.json(session);
@@ -431,10 +432,14 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
   );
 
   r.post('/:sessionId/proofs/:proofId/sent', requireAuth(deps.idTokenVerifier), async (c) => {
+    const reports = deps.reports;
     const proof = await proofService.sent({
       caller: callerOf(c),
       sessionId: c.req.param('sessionId'),
       proofId: c.req.param('proofId'),
+      ...(reports
+        ? { onFirstSent: (id: string, name: string) => reports.emailProofArrived(id, name) }
+        : {}),
     });
     return c.json(proof);
   });

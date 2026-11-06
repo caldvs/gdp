@@ -56,7 +56,13 @@ export type BillReport = {
 /** Amount the payer sent, by paymentId, for payments the report needs. */
 export type PaymentAmounts = ReadonlyMap<string, number>;
 
-export function buildReport(session: Session, bill: Bill, amounts: PaymentAmounts): BillReport {
+export function buildReport(
+  session: Session,
+  bill: Bill,
+  amounts: PaymentAmounts,
+  /** Keep lines nobody claimed in their own section even once settled (#221). */
+  opts: { keepUnclaimed?: boolean } = {},
+): BillReport {
   const settled = session.status === 'settled';
   const splitByItem = new Map((session.shareSettings ?? []).map((s) => [s.itemId, s]));
   const linesByUser = new Map<string, ReportLine[]>(
@@ -99,7 +105,7 @@ export function buildReport(session: Session, bill: Bill, amounts: PaymentAmount
   }
 
   const lead = session.participants.find((p) => p.userId === session.creatorUserId);
-  if (settled && lead && unclaimed.length > 0) {
+  if (settled && !opts.keepUnclaimed && lead && unclaimed.length > 0) {
     linesByUser.get(lead.userId)?.push(...unclaimed.map((l) => ({ ...l, detail: 'not claimed' })));
     unclaimed.length = 0;
   }
@@ -180,9 +186,9 @@ const sum = (lines: readonly ReportLine[]): number => lines.reduce((a, l) => a +
 
 export type ReportEmail = { subject: string; text: string; html: string };
 
-const money = (pence: number): string => `£${(pence / 100).toFixed(2)}`;
+export const money = (pence: number): string => `£${(pence / 100).toFixed(2)}`;
 
-const when = (iso: string): string =>
+export const when = (iso: string): string =>
   new Date(iso).toLocaleDateString('en-GB', {
     weekday: 'short',
     day: 'numeric',
@@ -190,7 +196,7 @@ const when = (iso: string): string =>
     timeZone: 'Europe/London',
   });
 
-const esc = (s: string): string =>
+export const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function paidText(d: DinerReport, leadName: string, forLead: boolean): string {

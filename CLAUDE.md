@@ -58,7 +58,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 
 ## Pushing to main: no pull requests
 
-Work goes straight to `main`: commit, `git pull --rebase origin main`, push. Don't open pull requests or feature branches, and never force-push `main`.
+Work goes straight to `main`: commit, `git pull --rebase origin main`, push. Don't open pull requests or long-lived branches (a `ci/<name>` branch only to get Checks to run e2e), and never force-push `main`.
 
 Before pushing, run what CI would, so `main` stays green:
 - always: the pre-commit hook (prettier, eslint, typecheck) and `npm test`

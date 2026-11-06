@@ -147,7 +147,14 @@ Once, in the AWS console (End User Messaging → SMS):
    ID, United Kingdom): `PayMeBack`. No registration for an unprotected
    name.
 
-Then set the GitHub environment variable `SMS_SENDER_ID=PayMeBack` (dev
+4. **UK only** (done 8 Nov): the account's default protect configuration
+   (`protect-359d04393d6d44dfb233e0a8784a1614`) blocks texts to every
+   country but GB, so a bot can't run up a bill on foreign premium numbers.
+
+Alarms (CDK, when `SMS_SENDER_ID` is set): over 100 sign-in codes in an
+hour, and (prod's stack, account-wide) SMS spend past $15 this month.
+
+Then set the GitHub environment variable `SMS_SENDER_ID=PAYMEBACK` (dev
 first) and deploy. `GET /v1/auth/methods` then says `sms: true` and Sign in
 asks for a mobile number. Without it, sign-in stays email only.
 

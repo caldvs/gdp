@@ -498,6 +498,48 @@ class GdpBackendStack extends cdk.Stack {
     api5xxAlarm.addAlarmAction(snsAction);
     api5xxAlarm.addOkAction(snsAction);
 
+    // #231: sign-in texts. Every one is paid, so a burst (a bot, SMS pumping)
+    // pages us; the send limits stop it at 200 an hour anyway.
+    if (smsSenderId) {
+      const textsSent = new logs.MetricFilter(this, 'SignInTextsFilter', {
+        logGroup: apiLogs,
+        filterPattern: logs.FilterPattern.stringValue('$.event', '=', 'signin.phone.sent'),
+        metricNamespace: `gdp-${envName}`,
+        metricName: 'SignInTextsSent',
+        metricValue: '1',
+      }).metric({ period: cdk.Duration.hours(1), statistic: 'Sum' });
+      new cw.Alarm(this, 'SignInTextsBurstAlarm', {
+        alarmName: `gdp-${envName}-sign-in-texts-burst`,
+        alarmDescription:
+          'Over 100 sign-in codes sent in an hour. Check for abuse before the SMS spend limit is hit.',
+        metric: textsSent,
+        threshold: 100,
+        evaluationPeriods: 1,
+        treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+        comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      }).addAlarmAction(snsAction);
+
+      // The account's SMS spend this month (one account for dev and prod, so
+      // prod's stack owns it). Warns at 75% of the $20 limit.
+      if (envName === 'prod') {
+        new cw.Alarm(this, 'SmsSpendAlarm', {
+          alarmName: 'gdp-sms-monthly-spend',
+          alarmDescription:
+            'SMS spend this month passed $15 of the $20 limit. Raise the limit or look for abuse.',
+          metric: new cw.Metric({
+            namespace: 'AWS/SMSVoice',
+            metricName: 'TextMessageMonthlySpend',
+            period: cdk.Duration.hours(1),
+            statistic: 'Maximum',
+          }),
+          threshold: 15,
+          evaluationPeriods: 1,
+          treatMissingData: cw.TreatMissingData.NOT_BREACHING,
+          comparisonOperator: cw.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        }).addAlarmAction(snsAction);
+      }
+    }
+
     const ddbThrottleAlarm = new cw.Alarm(this, 'DdbThrottleAlarm', {
       alarmName: `gdp-${envName}-ddb-throttles`,
       alarmDescription: 'DynamoDB throttled at least one request. See RUNBOOK.md "ddb-throttle".',

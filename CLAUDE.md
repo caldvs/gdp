@@ -32,7 +32,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 - `npm test`: unit tests.
 - `npm run test:cov -w apps/api` / `-w packages/core`: tests with coverage and the floors CI enforces (API needs the integration services).
 - `npm run test:int -w apps/api`: integration tests. Needs `npm run ddb:up -w apps/api`.
-- `npm run build && npm run e2e -w apps/web`: e2e against the in-memory `FakeApi`. Visual baselines are CI's; don't commit locally-made snapshots.
+- e2e (Playwright against the in-memory `FakeApi`): **never run it on Callum's Mac** (it crashed the machine, 8 Nov 2026). Push the commit to a `ci/<name>` branch; GitHub's Checks run it there. Visual baselines are CI's; don't commit locally-made snapshots.
 - `npm run gen:api`: after any change to `apps/api/openapi.yaml`. Commit the contract and client change together.
 
 ## Rules that keep breaking
@@ -63,7 +63,7 @@ Work goes straight to `main`: commit, `git pull --rebase origin main`, push. Don
 Before pushing, run what CI would, so `main` stays green:
 - always: the pre-commit hook (prettier, eslint, typecheck) and `npm test`
 - API changes: `npm run test:int -w apps/api` (needs `npm run ddb:up -w apps/api`)
-- web changes: `npm run build && npm run e2e -w apps/web` (visual baselines are CI's: don't commit local snapshots)
+- web changes: `npm run build -w apps/web` here, then push the commit to `ci/<name>` and wait for its Checks (e2e) to pass before fast-forwarding `main` (no local e2e; visual baselines are CI's)
 
 After pushing, check CI's `gate` on that commit (`.github/workflows/checks.yml`) and then the Deploy to test run that ships it (it starts when `gate` goes green). If either fails, fix it on `main` straight away, or revert the commit; don't leave `main` red.
 

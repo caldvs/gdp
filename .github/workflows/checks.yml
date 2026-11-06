@@ -9,7 +9,9 @@ name: Checks
 on:
   pull_request:
   push:
-    branches: [main]
+    # ci/* branches: a commit's checks (e2e included) before it goes to main,
+    # since the e2e suite isn't run on the Mac (it crashed it, 8 Nov 2026).
+    branches: [main, 'ci/**']
 
 # A PR's new push cancels its last run. On main every push gets its own run
 # (grouped by commit), so a push never waits behind the one before it and

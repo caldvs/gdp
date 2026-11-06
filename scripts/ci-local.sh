@@ -5,6 +5,7 @@
 #   scripts/ci-local.sh            jobs for what changed since main (like CI's path filter)
 #   scripts/ci-local.sh --all      every job
 #   scripts/ci-local.sh --base REF compare against REF instead of main
+#   scripts/ci-local.sh --e2e      run the e2e suite here too (not on a Mac: it crashed one)
 #
 # The integration tests (DynamoDB Local :8000, MinIO :9000) and the e2e suite
 # (:8081) use fixed ports, so runs from different worktrees take turns: a lock
@@ -14,9 +15,11 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 base=main
 all=false
+e2e=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) all=true ;;
+    --e2e) e2e=true ;;
     --base) base="$2"; shift ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -108,9 +111,15 @@ if [ "$web" = true ]; then
   [ -f "$envfile.ci-local-aside" ] && mv -f "$envfile.ci-local-aside" "$envfile"
   # Visual baselines are CI's Linux renders; elsewhere, skip the screenshot
   # comparisons (the flows in visual.spec still run).
-  e2e_args=()
-  [ "$(uname -s)" = Linux ] || e2e_args=(--ignore-snapshots)
-  step npm run e2e -w apps/web -- "${e2e_args[@]}"
+  # The e2e suite crashed Callum's Mac (8 Nov 2026), so it runs only on Linux
+  # or with --e2e. Elsewhere push a ci/<name> branch and let GitHub run it.
+  if [ "$(uname -s)" = Linux ] || $e2e; then
+    e2e_args=()
+    [ "$(uname -s)" = Linux ] || e2e_args=(--ignore-snapshots)
+    step npm run e2e -w apps/web -- "${e2e_args[@]}"
+  else
+    echo "(e2e skipped: push a ci/<name> branch and let GitHub's Checks run it)"
+  fi
 fi
 
 echo; echo "✓ ci-local passed: $(git rev-parse --short HEAD)"

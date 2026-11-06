@@ -47,7 +47,7 @@ export const SplitConfirm: Story = {
   parameters: screen({ user: users.tom, api: busyTable, path: `/session/${SID}` }),
   render: () => <Session />,
   play: async ({ canvasElement }) => {
-    fireEvent.click(await within(canvasElement).findByRole('button', { name: /^Split Olives with/ }));
+    fireEvent.click(await within(canvasElement).findByRole('button', { name: 'More for Olives' }));
     await within(canvasElement).findByRole('group', { name: 'Split Olives' });
   },
 };

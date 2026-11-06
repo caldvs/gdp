@@ -58,7 +58,7 @@ test('a sheet takes focus, keeps Tab inside, closes on Escape and hands focus ba
 
 test('a tap outside the sheet closes it and focus goes back', async ({ page }) => {
   await open(page, new FakeApi(), users.sam, `/session/${SID}`);
-  const trigger = page.getByRole('button', { name: 'More' });
+  const trigger = page.getByRole('button', { name: 'More', exact: true });
   await trigger.click();
   const sheet = page.getByRole('dialog');
   await expect(sheet).toBeFocused();

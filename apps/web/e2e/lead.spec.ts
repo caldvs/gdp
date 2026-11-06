@@ -301,7 +301,7 @@ test('deleting the bill ends it for everyone at the table', async ({ browser }) 
   const sam = await diner(browser, api, users.sam);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible();
 
-  await lead.getByRole('button', { name: 'More' }).click();
+  await lead.getByRole('button', { name: 'More', exact: true }).click();
   await lead.getByRole('button', { name: 'Delete this bill' }).click();
   await expect(lead.getByRole('dialog')).toContainText('1 person loses their picks');
   await lead.getByRole('dialog').getByRole('button', { name: 'Delete bill' }).click();
@@ -345,13 +345,13 @@ test('the lead’s QR page shows people as they arrive', async ({ browser }) => 
 test('anyone at the table can email themselves a report of the bill', async ({ browser }) => {
   const api = new FakeApi({ status: 'claiming' });
   const lead = await diner(browser, api, users.lead);
-  await lead.getByRole('button', { name: 'More' }).click(POLL);
+  await lead.getByRole('button', { name: 'More', exact: true }).click(POLL);
   await lead.getByRole('button', { name: 'Email me a report of this bill' }).click();
   await expect(lead.getByRole('button', { name: 'Report emailed to you' })).toBeDisabled();
   expect(api.reportsTo).toEqual(['u-lead']);
 
   const sam = await diner(browser, api, users.sam);
-  await sam.getByRole('button', { name: 'More' }).click();
+  await sam.getByRole('button', { name: 'More', exact: true }).click();
   await sam.getByRole('button', { name: 'Email me a report of this bill' }).click();
   await expect(sam.getByRole('button', { name: 'Report emailed to you' })).toBeVisible();
   expect(api.reportsTo).toEqual(['u-lead', 'u-sam']);

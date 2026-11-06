@@ -95,7 +95,7 @@ test('guest pick', async ({ page }) => {
 test('split in place', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.sam, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Split Olives with Callum' }).click();
+  await page.getByRole('button', { name: 'More for Olives' }).click();
   await expect(page.getByRole('group', { name: 'Split Olives' })).toBeVisible();
   await expect(page).toHaveScreenshot('split-panel.png', shot);
 });

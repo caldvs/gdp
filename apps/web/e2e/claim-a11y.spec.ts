@@ -73,10 +73,9 @@ test('#196: a busy button keeps its name', async ({ browser }) => {
 
   let posts = 0;
   tom.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/shares')) posts++; });
-  await tom.getByRole('button', { name: 'Split Calamari with Priya' }).click();
+  await tom.getByRole('button', { name: 'More for Calamari' }).click();
   const panel = tom.getByRole('group', { name: 'Split Calamari' });
   await expect(panel).toBeFocused();
-  await expect(panel).toHaveAccessibleDescription('Priya sees you’re sharing it.');
   const ok = panel.getByRole('button', { name: 'Split it' });
   await ok.focus();
   await tom.keyboard.press('Enter');

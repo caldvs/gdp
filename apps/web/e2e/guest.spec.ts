@@ -187,7 +187,7 @@ test('everyone can open the bill photo', async ({ browser }) => {
   const api = new FakeApi();
   const { page: sam } = await ctxFor(browser, api, users.sam);
   await sam.goto(`/session/${SID}`);
-  await sam.getByRole('button', { name: 'More' }).click();
+  await sam.getByRole('button', { name: 'More', exact: true }).click();
   await sam.getByRole('dialog', { name: 'This bill' }).getByRole('button', { name: 'Bill photo' }).click();
   const dialog = sam.getByRole('dialog', { name: 'Bill photo' });
   // The fake has no image, so it says so rather than spinning forever.

@@ -4,19 +4,19 @@
  * Claiming (#215, board G2 and G2.1): the bill as a receipt, one list in bill
  * order whose lines never move. Several of one thing show as a row per
  * portion ("Negroni 2 of 2"), each with Claim; claimed turns to ✓ Claimed
- * (tap to undo); someone else's says "Sam has it", with Split on a dish one
+ * (tap to undo); someone else's says "Sam has it", with ⋯ (split) on a dish one
  * person has. Split opens the row in place: how many ways and your share.
  * They're told, not asked (decisions: *Claiming is one list in bill order*).
  * Guests pick here, and the lead uses the same list for their own lines.
  */
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ApiError, type components } from '@gdp/core/api';
 import { useAddShare, useRemoveShare, useSetClaims, useSetShareWays } from '@gdp/core/api/hooks/useSession';
 import { claimPortions, type ClaimPortion } from '@gdp/core/lib/claimRows';
 import { itemStatuses as coreItemStatuses, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { formatGBP } from '@gdp/core/lib/money';
 import { sharePence, splitPricePence } from '@gdp/core/lib/owed';
-import { Button, Notice, Receipt, ReceiptLine, firstName } from '@/components/ui';
+import { Button, MoreIcon, Notice, Receipt, ReceiptLine, firstName } from '@/components/ui';
 
 const itemStatuses = (s: Session, b: Bill, meUserId: string) => coreItemStatuses(s, b, meUserId, (p) => firstName(p?.displayName));
 
@@ -168,11 +168,11 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     }
 
     if (r.state === 'theirs' && r.canSplit) {
-      const lost = raceLost === key;
       const ways = r.share ? r.share.userIds.length + 1 : 2;
       tools = (
-        <button type="button" className="claim-split" data-main aria-disabled={off} onClick={act(key, () => { addShare.reset(); setSplitting({ key, ways, mine: false }); })} aria-label={`Split ${item.name} with ${holder || 'them'}`}>
-          {lost ? `Split with ${holder}` : 'Split'}
+        // #225: ⋯ opens the split row in place; no word Split on the list.
+        <button type="button" className="claim-more" data-main aria-disabled={off} onClick={act(key, () => { addShare.reset(); setSplitting({ key, ways, mine: false }); })} aria-label={`More for ${item.name}`}>
+          <MoreIcon />
         </button>
       );
     }
@@ -278,15 +278,16 @@ function useRefocus(boxRef: RefObject<HTMLDivElement | null>) {
 
 
 /**
- * G2.1: Split, opened in place of the row. On someone else's dish: how many
- * ways (2 to start), your share, "Sam sees you're sharing it." Joining a
- * full split adds one way. On your own split: change how many ways.
+ * G2.1: Split, opened in place of the row by ⋯. On someone else's dish: how
+ * many ways (2 to start) and your share; they're told, not asked (#225 drops
+ * the line saying so). Joining a full split adds one way. On your own split:
+ * change how many ways.
  */
 function SplitPanel({ r: opened, ways, mine, meUserId, busy, error, onWays, onCancel, onOk }: {
   r: ClaimPortion; ways: number; mine: boolean; meUserId: string; busy: boolean; error?: string;
   onWays: (n: number) => void; onCancel: () => void; onOk: () => void;
 }) {
-  // The row as it was when Split was tapped: saving updates the list at once,
+  // The row as it was when ⋯ was tapped: saving updates the list at once,
   // and the panel shouldn't change under the button while it does.
   const [r] = useState(opened);
   const { item, share } = r;
@@ -298,11 +299,10 @@ function SplitPanel({ r: opened, ways, mine, meUserId, busy, error, onWays, onCa
   const userIds = share ? share.userIds : r.holders.map((p) => p.userId);
   const each = sharePence(price, userIds, ways, meUserId);
   const ref = useRef<HTMLDivElement>(null);
-  const noteId = useId();
   useEffect(() => { ref.current?.focus(); }, []);
   const title = `${item.name}${mine ? '' : ` · ${holder} ${share ? 'are sharing it' : 'has it'}`}`;
   return (
-    <div ref={ref} className="split-panel" role="group" aria-label={`Split ${item.name}`} aria-describedby={mine ? undefined : noteId} tabIndex={-1} data-row={r.key} data-group={mine ? 'yours' : 'others'}>
+    <div ref={ref} className="split-panel" role="group" aria-label={`Split ${item.name}`} tabIndex={-1} data-row={r.key} data-group={mine ? 'yours' : 'others'}>
       <div className="split-panel__head"><b>{title}</b><span className="receipt__price">{plain(price)}</span></div>
       <p className="split-panel__ask">{mine ? 'How many ways?' : `Split it with ${holder}?`}</p>
       {fixed ? null : (
@@ -320,7 +320,6 @@ function SplitPanel({ r: opened, ways, mine, meUserId, busy, error, onWays, onCa
         <Button tone="secondary" small onClick={onCancel}>Cancel</Button>
         <Button small busy={busy} onClick={onOk}>{mine ? 'Save' : 'Split it'}</Button>
       </div>
-      {mine ? null : <p id={noteId} className="split-panel__note">{holder} {r.holders.length > 1 ? 'see' : 'sees'} you’re sharing it.</p>}
       {error ? <Notice tone="error">{error}</Notice> : null}
     </div>
   );

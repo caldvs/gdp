@@ -44,12 +44,11 @@ test('#215: a guest claims two of three Espresso Martinis a row at a time and sp
   await expect(tom.getByTestId('your-share')).toHaveText('£26.00');
 
   // Sam's Lasagne: Split opens the row in place, no sheet.
-  await tom.getByRole('button', { name: 'Split Lasagne with Sam' }).click(POLL);
+  await tom.getByRole('button', { name: 'More for Lasagne' }).click(POLL);
   await expect(tom.getByRole('dialog')).toHaveCount(0);
   const panel = tom.getByRole('group', { name: 'Split Lasagne' });
   await expect(panel).toContainText('Split it with Sam?');
   await expect(panel).toContainText('Your share£8.62');
-  await expect(panel).toContainText('Sam sees you’re sharing it.');
   await panel.getByRole('button', { name: 'Split it' }).click();
   await expect(panel).toHaveCount(0);
   await expect(group(tom, 'Yours').filter({ hasText: 'Lasagne' })).toContainText('with Sam');
@@ -119,10 +118,10 @@ test('#130: Cancel leaves the dish with whoever claimed it', async ({ browser })
   api.join(users.priya);
   api.participants[1]!.claimedItemIds = [items[1]!.itemId];
   const tom = await diner(browser, api, users.tom);
-  await tom.getByRole('button', { name: 'Split Calamari with Priya' }).click();
+  await tom.getByRole('button', { name: 'More for Calamari' }).click();
   await tom.getByRole('group', { name: 'Split Calamari' }).getByRole('button', { name: 'Cancel' }).click();
   await expect(tom.getByRole('group', { name: 'Split Calamari' })).toHaveCount(0);
-  await expect(tom.getByRole('button', { name: 'Split Calamari with Priya' })).toBeFocused();
+  await expect(tom.getByRole('button', { name: 'More for Calamari' })).toBeFocused();
   expect(api.shares).toEqual([]);
 });
 
@@ -133,10 +132,10 @@ test('#130: no Split on a dish the person who has it has already paid for', asyn
   api.participants[1]!.payment = { status: 'succeeded', paymentId: 'pay-priya', paidAt: '2026-10-31T12:30:00Z' };
   const tom = await diner(browser, api, users.tom);
   await expect(group(tom, 'Claimed by others').filter({ hasText: 'Calamari' })).toContainText('Priya has it');
-  await expect(tom.getByRole('button', { name: /^Split Calamari/ })).toHaveCount(0);
+  await expect(tom.getByRole('button', { name: 'More for Calamari' })).toHaveCount(0);
 });
 
-test('#123: losing a race for a dish offers Split with Sam', async ({ browser }) => {
+test('#123: losing a race for a dish still offers a split with Sam', async ({ browser }) => {
   const api = new FakeApi({ leadClaims: [] });
   api.join(users.sam);
   const tom = await diner(browser, api, users.tom);
@@ -146,8 +145,8 @@ test('#123: losing a race for a dish offers Split with Sam', async ({ browser })
   await tom.getByRole('button', { name: 'Claim Calamari' }).click();
 
   await expect(group(tom, 'Claimed by others').filter({ hasText: 'Sam just took this' })).toBeVisible();
-  await expect(tom.getByRole('button', { name: 'Split Calamari with Sam' })).toHaveText('Split with Sam');
-  await tom.getByRole('button', { name: 'Split Calamari with Sam' }).click();
+  await expect(tom.getByRole('button', { name: 'More for Calamari' })).toBeVisible();
+  await tom.getByRole('button', { name: 'More for Calamari' }).click();
   await tom.getByRole('group', { name: 'Split Calamari' }).getByRole('button', { name: 'Split it' }).click();
   await expect(tom.getByTestId('your-share')).toHaveText('£11.25');
 });
@@ -174,12 +173,13 @@ test('splitting someone’s dish, then splitting the full split, adds a way and 
   const tom = await diner(browser, api, users.tom);
 
   await lead.getByRole('button', { name: 'Claim Calamari' }).click();
-  await sam.getByRole('button', { name: 'Split Calamari with Callum' }).click(POLL);
+  await sam.getByRole('button', { name: 'More for Calamari' }).click(POLL);
   await sam.getByRole('group', { name: 'Split Calamari' }).getByRole('button', { name: 'Split it' }).click();
   await expect(sam.getByTestId('your-share')).toHaveText('£11.25');
 
   // Split is full (2 of 2). Tom splits it too → 3 ways, £7.50 each.
-  await tom.getByRole('button', { name: 'Split Calamari with Callum and Sam' }).click(POLL);
+  await expect(tom.getByText(/Callum and Sam/).first()).toBeVisible(POLL);
+  await tom.getByRole('button', { name: 'More for Calamari' }).click();
   const panel = tom.getByRole('group', { name: 'Split Calamari' });
   await expect(panel).toContainText('£7.50');
   await expect(panel.getByRole('button', { name: 'More ways' })).toHaveCount(0);

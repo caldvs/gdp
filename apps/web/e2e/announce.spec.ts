@@ -104,7 +104,7 @@ test('#204: the Close and Delete dialogs are described by what they say', async 
   await expect(dialog).toHaveAccessibleDescription(/It goes on you\./);
   await dialog.getByRole('button', { name: 'Not yet' }).click();
 
-  await lead.getByRole('button', { name: 'More' }).click();
+  await lead.getByRole('button', { name: 'More', exact: true }).click();
   await lead.getByRole('button', { name: 'Delete this bill' }).click();
   await expect(lead.getByRole('dialog', { name: 'Delete this bill?' })).toHaveAccessibleDescription('This can’t be undone.');
 });

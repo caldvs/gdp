@@ -130,7 +130,7 @@ test('splitting someone else’s dish', async ({ page }) => {
   api.join(users.priya);
   api.participants[1]!.claimedItemIds = [items[2]!.itemId];
   await open(page, api, users.tom, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Split Lasagne with Priya' }).click();
+  await page.getByRole('button', { name: 'More for Lasagne' }).click();
   await expect(page.getByRole('group', { name: 'Split Lasagne' })).toBeVisible();
   await audit(page);
 });

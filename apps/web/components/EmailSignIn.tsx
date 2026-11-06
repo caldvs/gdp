@@ -7,6 +7,8 @@ import { useDevEmailSignIn, useStartEmailSignIn, useVerifyEmailCode } from '@gdp
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { DEV_SIGNED_OUT_KEY, DEV_SIGNIN_ENABLED } from '@/lib/config';
 import { Button, Page, Title } from './ui';
+import { PhoneSignIn } from './PhoneSignIn';
+import { useSignInMethods } from '@gdp/core/api/hooks/usePhoneSignIn';
 
 type Stage = 'EMAIL' | 'CODE';
 const LAST_EMAIL_KEY = 'gdp.dev.lastEmail';
@@ -268,8 +270,22 @@ export function EmailCodeFlow({ cta, hint = true }: { cta: string; /** The "Weâ€
   );
 }
 
-/** M4 on the redesign board: its own screen, reached from Sign in. */
+/**
+ * M4 on the redesign board: its own screen, reached from Sign in. Phone
+ * first where this server has it on (#213), with email still a way in until
+ * phone sign-in is live everywhere.
+ */
 export function SignInScreen() {
+  const methods = useSignInMethods();
+  const [useEmail, setUseEmail] = useState(false);
+  if (methods.isPending) return <Page>{null}</Page>;
+  if (methods.data?.phone && !useEmail && !readPending()) {
+    return (
+      <Page>
+        <PhoneSignIn onUseEmail={() => setUseEmail(true)} />
+      </Page>
+    );
+  }
   return (
     <Page>
       <Title title="Sign in or create an account" sub="Weâ€™ll email you a code. No password." />

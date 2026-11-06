@@ -30,9 +30,12 @@ export const buildMeRoutes = (verifier?: IdTokenVerifier, jwtSecret?: Uint8Array
     const stored = await userStore.get(userId);
     // A phone account (#213) keeps its name and bill email on the user row.
     const email = c.var.userEmail || stored?.email;
+    const name = c.var.userName || stored?.displayName;
     return c.json({
       userId,
-      displayName: c.var.userName || stored?.displayName || 'Unknown',
+      displayName: name || 'Unknown',
+      // A new phone account (#213): the web app asks for a name first.
+      ...(!name && !c.var.guestSessionId ? { needsName: true } : {}),
       ...(email ? { email } : {}),
       ...(c.var.userPicture ? { avatarUrl: c.var.userPicture } : {}),
       // A guest (#183): the web app shows them only this bill.

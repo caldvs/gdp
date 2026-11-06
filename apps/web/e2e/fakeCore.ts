@@ -46,6 +46,7 @@ export const FORK_BID = '0193ab12-0001-7e00-9a1b-2c3d4e5f6a7b';
 export const CODE = 'K7Q2MX';
 /** What the fake /email/start hands the asking tab, and the code it emails. */
 export const SIGN_IN_REQUEST = 'req.waiting-tab-secret';
+export const PHONE_CODE = '4829';
 export const SIGN_IN_CODE = '482913';
 export const LEAD_BANK = { accountHolderName: 'Callum Davies', sortCode: '040668', accountNumber: '00079660' };
 
@@ -108,6 +109,11 @@ export class FakeCore {
   signIn: 'none' | 'pending' | 'used' = 'none';
   /** Tries left on the emailed code (the API allows 5). */
   codeTries = 5;
+  /** #213: GET /v1/auth/methods says phone is on. */
+  phoneSignIn = false;
+  /** #213: the phone account is new (no name yet). */
+  phoneIsNew = false;
+  readonly profilePatches: { displayName?: string; email?: string }[] = [];
   /** Sign-outs everywhere (#155), by user. */
   signedOutEverywhere: string[] = [];
   /** The lead's fingerprint of their link's bank details (#151). */
@@ -272,6 +278,29 @@ export class FakeCore {
 
     // ---- auth
     if (path === '/v1/auth/email/dev-sign-in') return err('NOT_FOUND', 'no', 404);
+    // #213: phone sign-in, on only when a test turns it on.
+    if (path === '/v1/auth/methods') return json({ email: true, phone: this.phoneSignIn, sms: false });
+    if (path === '/v1/auth/phone/start') {
+      const phone = String(body().phone ?? '').replace(/\D/g, '').replace(/^0/, '');
+      this.codeTries = 5; this.signIn = 'pending';
+      return json({ ok: true, requestId: SIGN_IN_REQUEST, phone: `+44${phone.replace(/^44/, '')}` });
+    }
+    if (path === '/v1/auth/phone/verify') {
+      const { code } = body() as { code?: string };
+      if (this.codeTries <= 0 || this.signIn !== 'pending') return json({ status: 'expired' });
+      this.codeTries -= 1;
+      if (code === PHONE_CODE) {
+        this.signIn = 'used'; this.signedIn.add(user.userId);
+        return json({ status: 'signedIn', token: 'test-token', isNew: this.phoneIsNew, user: this.phoneIsNew ? { ...user, displayName: '', email: '' } : user });
+      }
+      return json({ status: 'wrong', attemptsLeft: this.codeTries });
+    }
+    if (path === '/v1/me' && method === 'PATCH') {
+      const b = body() as { displayName?: string; email?: string };
+      this.profilePatches.push(b);
+      this.phoneIsNew = false;
+      return json({ token: 'test-token', user: { ...user, ...b } });
+    }
     if (path === '/v1/auth/email/start') { this.signIn = 'pending'; this.codeTries = 5; return json({ ok: true, requestId: SIGN_IN_REQUEST }); }
     if (path === '/v1/auth/email/verify') {
       const { requestId, code } = body() as { requestId?: string; code?: string };
@@ -288,6 +317,7 @@ export class FakeCore {
       const auth = req.authorization;
       if (!auth) return err('AUTH_MISSING', 'No token', 401);
       const guest = this.guestNames.get(user.userId);
+      if (this.phoneIsNew && this.signIn === 'used') return json({ ...user, displayName: 'Unknown', needsName: true });
       return json(auth === 'Bearer guest-token' && guest ? { userId: user.userId, displayName: guest, guestSessionId: SID } : user);
     }
     // #183: the QR's landing page and joining with just a name.

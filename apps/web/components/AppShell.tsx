@@ -8,7 +8,8 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { useIdleSignOut } from '@gdp/core/lib/idle';
 import { stashJoinFragment } from '@/lib/joinFragment';
-import { Button, CentreMain, CloseIcon, Dialog, MenuIcon, Notice, Spinner } from './ui';
+import { Button, CentreMain, CloseIcon, Dialog, MenuIcon, Notice, Page, Spinner } from './ui';
+import { AboutYou } from './PhoneSignIn';
 import { TestBar } from './TestBar';
 
 /** The site header: name on the left, burger on the right. */
@@ -153,6 +154,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   let body: ReactNode = children;
   if (unauthenticated && publicPath) body = children;
   else if (me.isPending || unauthenticated) body = <CentreMain><Spinner /></CentreMain>;
+  // A new phone account (#213): its name, and where bill emails go, first.
+  else if (me.data?.needsName) body = <Page><AboutYou /></Page>;
   else if (me.isError) {
     body = (
       <CentreMain>

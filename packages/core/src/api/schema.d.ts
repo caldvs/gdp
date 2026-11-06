@@ -1451,6 +1451,8 @@ export interface components {
             email?: string;
             /** Format: uri */
             avatarUrl?: string;
+            /** @description A phone account with no name yet (#213); the web app asks for one before anything else. */
+            needsName?: boolean;
             /**
              * Format: uuid
              * @description Set for a guest who joined with just a name (#183); their token works for this session only.

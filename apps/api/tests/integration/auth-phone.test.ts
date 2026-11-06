@@ -78,6 +78,10 @@ describe('phone sign-in (#213)', () => {
       isNew: true,
       user: { email: '', displayName: '' },
     });
+    const before = (await (
+      await call(app, 'GET', '/v1/me', undefined, first.token)
+    ).json()) as Record<string, unknown>;
+    expect(before.needsName).toBe(true);
 
     // Name and bill email, then a fresh token that carries the name.
     const patched = await call(
@@ -98,6 +102,7 @@ describe('phone sign-in (#213)', () => {
       displayName: 'Callum',
       email: 'c@example.com',
     });
+    expect(me.needsName).toBeUndefined();
 
     // The same number again (after the 30 s gap): same account, not new.
     const { app: app2, messenger: m2 } = build();

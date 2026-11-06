@@ -2182,6 +2182,9 @@ components:
         displayName: { type: string }
         email: { type: string, format: email }
         avatarUrl: { type: string, format: uri }
+        needsName:
+          type: boolean
+          description: A phone account with no name yet (#213); the web app asks for one before anything else.
         guestSessionId:
           type: string
           format: uuid

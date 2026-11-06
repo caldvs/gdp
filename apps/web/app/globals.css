@@ -214,6 +214,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .affix { display: flex; align-items: center; height: auto; min-height: 52px; padding: 0; }
 .affix:focus-within { outline: 2px solid var(--ink); outline-offset: -1px; border-color: var(--ink); }
 .affix > span { flex: none; padding-left: 14px; color: var(--mute); }
+.affix--gap > span { padding-right: 8px; color: var(--ink); font-weight: 600; }
 .affix > input { flex: 1; min-width: 0; min-height: 50px; padding: 0 14px 0 0; border: 0; background: none; font: inherit; color: inherit; outline: none; }
 .check { display: flex; align-items: center; gap: 12px; min-height: 52px; font-size: 16px; cursor: pointer; }
 .check input { width: 24px; height: 24px; margin: 0; accent-color: var(--ink); }
@@ -751,3 +752,9 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 @keyframes wait-pulse { 50% { transform: scale(.82); opacity: .7; } }
 @media (prefers-reduced-motion: reduce) { .wait-box__ring b { animation-duration: 4s; } }
 .proof__full { display: block; width: 100%; height: auto; margin-top: 12px; border-radius: 8px; border: 1px solid var(--card-line); }
+
+/* #213 M4.1: four boxes drawn over one one-time-code input, so autofill, paste and screen readers see a single field. */
+.code4 { position: relative; display: flex; gap: 12px; }
+.code4 > input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: 0; caret-color: transparent; }
+.code4__box { width: 64px; height: 72px; display: flex; align-items: center; justify-content: center; border: 2px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.code4:focus-within .code4__box--on { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }

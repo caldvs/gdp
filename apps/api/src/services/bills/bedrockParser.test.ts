@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import { BedrockBillParser, createBillParser, parseBox } from './bedrockParser.js';
-import { encodeJpeg } from './receiptImages.js';
+import sharp from 'sharp';
 import { PROMPT, validateParsedBill } from './billPrompt.js';
 import type { ParsedBillFromImage } from './parser.js';
 
@@ -258,10 +258,13 @@ describe('BedrockBillParser receipt parts', () => {
   afterEach(() => vi.restoreAllMocks());
 
   const reply = (text: string) => ({ output: { message: { content: [{ text }] } } });
-  const photo = encodeJpeg({
-    width: 600,
-    height: 2400,
-    data: new Uint8Array(600 * 2400 * 4).fill(255),
+  let photo: Uint8Array;
+  beforeAll(async () => {
+    photo = new Uint8Array(
+      await sharp({ create: { width: 600, height: 2400, channels: 3, background: '#fff' } })
+        .jpeg()
+        .toBuffer(),
+    );
   });
   type Sent = { input: { messages: { content: { image?: unknown; text?: string }[] }[] } };
   const contentOf = (call: unknown[]) => (call[0] as Sent).input.messages[0]!.content;
@@ -277,6 +280,17 @@ describe('BedrockBillParser receipt parts', () => {
     const content = contentOf(send.mock.calls[1]!);
     expect(content.filter((c) => c.image)).toHaveLength(4);
     expect(content.at(-1)?.text).toMatch(/^These 4 images are parts of ONE receipt/);
+  });
+
+  it('sends a photo it can’t open as it came, without asking where the receipt is', async () => {
+    const send = vi
+      .spyOn(BedrockRuntimeClient.prototype, 'send')
+      .mockResolvedValueOnce(reply(JSON.stringify(bill)) as never);
+    const odd = new Uint8Array([1, 2, 3, 4]);
+    await new BedrockBillParser('eu.model', 'eu-west-2').parse(odd, 'r');
+    expect(send).toHaveBeenCalledTimes(1);
+    const images = contentOf(send.mock.calls[0]!).filter((c) => c.image);
+    expect(images).toEqual([{ image: { format: 'jpeg', source: { bytes: odd } } }]);
   });
 
   it('reads the whole photo when finding the receipt fails', async () => {

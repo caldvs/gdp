@@ -164,8 +164,9 @@ class GdpBackendStack extends cdk.Stack {
       projectRoot: REPO_ROOT,
       depsLockFilePath: path.join(REPO_ROOT, 'package-lock.json'),
       handler: 'handler',
-      // Lambda CPU scales with memory. Bill reads decode, crop and re-encode
-      // photos in pure JS (jpeg-js): ~3.5s of a 10.7s read at 1024 MB (#172).
+      // Lambda CPU scales with memory. Bill reads crop and re-encode photos
+      // with sharp (native libvips), well under a second; the pure-JS jpeg-js
+      // it replaced took ~3.5s of a 10.7s read at 1024 MB (#172).
       memorySize: 2048,
       // API Gateway gives up on a request at 30s whatever this says, and the
       // synchronous /v1/bills/parse budgets itself under that. 60s is for
@@ -224,6 +225,15 @@ class GdpBackendStack extends cdk.Stack {
         // can resolve them at module load.
         banner:
           "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+        // sharp is native (libvips): installed into the bundle, not inlined,
+        // with the binaries for Lambda's Linux x64 (glibc) whatever machine
+        // synthesises the stack.
+        nodeModules: ['sharp'],
+        environment: {
+          npm_config_os: 'linux',
+          npm_config_cpu: 'x64',
+          npm_config_libc: 'glibc',
+        },
         // Ship openapi.yaml alongside the bundled lambda.js so the
         // /docs and /openapi.yaml routes can resolve it at runtime
         // (routes/docs.ts already looks for it next to import.meta.url).
@@ -236,6 +246,9 @@ class GdpBackendStack extends cdk.Stack {
           beforeInstall: () => [],
           afterBundling: (inputDir: string, outputDir: string) => [
             `cp ${inputDir}/${API_DIR_FROM_REPO_ROOT}/openapi.yaml ${outputDir}/openapi.yaml`,
+            // npm ignores npm_config_libc, so drop the musl and wasm builds of
+            // sharp Lambda never loads (~27 MB).
+            `rm -rf ${outputDir}/node_modules/@img/sharp-linuxmusl-x64 ${outputDir}/node_modules/@img/sharp-libvips-linuxmusl-x64 ${outputDir}/node_modules/@img/sharp-wasm32 ${outputDir}/node_modules/@emnapi`,
           ],
         },
       },

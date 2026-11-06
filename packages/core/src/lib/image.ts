@@ -19,19 +19,12 @@ const JPEG_QUALITIES = [0.85, 0.75, 0.6];
 const MAX_BYTES = 4.5 * 1024 * 1024;
 
 /**
- * Browser version of gdp-mobile's processImage: convert HEIC if needed,
- * scale to at most 3200px on the long side, re-encode as JPEG (under the
- * API's 5 MB) and hash it.
+ * Browser version of gdp-mobile's processImage: decode (HEIC too), scale to
+ * at most 3200px on the long side, re-encode as JPEG (under the API's 5 MB)
+ * and hash it.
  */
 export async function processImage(file: Blob, fileName?: string): Promise<ProcessedImage> {
-  let source: Blob = file;
-  // Chrome and Firefox can't decode HEIC; Safari can, but converting
-  // everywhere keeps one code path. libheif (heic2any) is loaded lazily.
-  if (isHeicLike(file.type, fileName)) {
-    source = await convertHeicToJpeg(file);
-  }
-
-  const bitmap = await decode(source);
+  const bitmap = await decodeAny(file, fileName);
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const width = Math.round(bitmap.width * scale);
   const height = Math.round(bitmap.height * scale);
@@ -67,6 +60,21 @@ export async function processImage(file: Blob, fileName?: string): Promise<Proce
     mimeType: 'image/jpeg',
     sha256,
   };
+}
+
+/**
+ * Safari (so every browser on an iPhone) decodes HEIC itself. Desktop Chrome
+ * and Firefox can't, and only then is libheif (heic2any, ~1 MB, slow) loaded
+ * to convert it. The server can't do it either: sharp's prebuilt libvips
+ * reads AVIF but not HEVC-coded HEIC.
+ */
+async function decodeAny(file: Blob, fileName?: string): Promise<Decoded> {
+  if (!isHeicLike(file.type, fileName)) return decode(file);
+  try {
+    return await decode(file);
+  } catch {
+    return decode(await convertHeicToJpeg(file));
+  }
 }
 
 type Decoded = { image: CanvasImageSource; width: number; height: number; close: () => void };

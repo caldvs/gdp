@@ -7,14 +7,7 @@ import {
 import { AppError } from '../../errors/AppError.js';
 import { timed } from '../../logging/timed.js';
 import { PROMPT, validateParsedBill } from './billPrompt.js';
-import {
-  decodeJpeg,
-  downscale,
-  encodeJpeg,
-  receiptParts,
-  type Box,
-  type Raster,
-} from './receiptImages.js';
+import { openPhoto, receiptParts, smallCopy, type Box, type Photo } from './receiptImages.js';
 import {
   fingerprintOf,
   parseTimeout,
@@ -85,24 +78,20 @@ export class BedrockBillParser implements BillParser {
     requestId: string,
     opts: ParseOptions,
   ): Promise<Uint8Array[]> {
-    let photo: Raster;
-    try {
-      photo = decodeJpeg(image);
-    } catch {
-      return [image];
-    }
+    const photo = await openPhoto(image);
+    if (!photo) return [image];
     const box = await this.findReceipt(photo, requestId, opts);
     return receiptParts(photo, box);
   }
 
   /** Asks the model where the receipt is in a small copy of the photo. Null if it can't say. */
   private async findReceipt(
-    photo: Raster,
+    photo: Photo,
     requestId: string,
     opts: ParseOptions,
   ): Promise<Box | null> {
     try {
-      const small = encodeJpeg(downscale(photo, 1024), 80);
+      const small = await smallCopy(photo, 1024, 80);
       const text = await this.converse(
         [{ image: { format: 'jpeg', source: { bytes: small } } }, { text: FIND_RECEIPT_PROMPT }],
         200,

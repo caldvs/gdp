@@ -1,4 +1,4 @@
-import jpeg from 'jpeg-js';
+import type { Sharp, SharpConstructor } from 'sharp';
 
 /**
  * Turning a bill photo into what the model reads best.
@@ -8,71 +8,75 @@ import jpeg from 'jpeg-js';
  * text is a few pixels high and prices and quantities get misread. Cropping
  * to the receipt and cutting a tall one into overlapping parts lets each part
  * reach the model at close to full detail.
+ *
+ * The pixel work is sharp (libvips, native). It replaced pure-JS jpeg-js,
+ * which took about 3.5s of a 10.7s read on Lambda (#172). Every step starts
+ * from the uploaded JPEG: libvips decodes only what an extract needs, and
+ * shrinks while decoding for the small copy.
+ *
+ * sharp loads on the first photo, not with the module: most requests never
+ * touch a photo and shouldn't pay for libvips at cold start, and the bundle
+ * (with Lambda's Linux binaries) still loads on a Mac for validate:bundle.
  */
-
-/** RGBA pixels. */
-export type Raster = { width: number; height: number; data: Uint8Array };
-
-/** Where the receipt is, as fractions of the photo's width and height. */
-export type Box = { left: number; top: number; right: number; bottom: number };
+let lib: Promise<SharpConstructor> | undefined;
+function sharp(): Promise<SharpConstructor> {
+  lib ??= import('sharp').then((m) => m.default);
+  return lib;
+}
 
 /** The model's own resize limit: anything bigger is shrunk before it's read. */
 export const MODEL_MAX_EDGE = 1568;
 
-export function decodeJpeg(bytes: Uint8Array): Raster {
-  const img = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 512 });
-  return { width: img.width, height: img.height, data: img.data };
+/** Where the receipt is, as fractions of the photo's width and height. */
+export type Box = { left: number; top: number; right: number; bottom: number };
+
+/** A photo and its size in pixels. */
+export type Photo = { bytes: Uint8Array; width: number; height: number };
+
+/**
+ * The photo's size, read from its header. Null when it isn't an image sharp
+ * can open, so the caller can send it on as it came. sharp failing to load
+ * at all still throws: that's a broken deploy, not a bad photo.
+ */
+export async function openPhoto(bytes: Uint8Array): Promise<Photo | null> {
+  const s = await sharp();
+  try {
+    const meta = await s(bytes, { failOn: 'error' }).metadata();
+    return meta.width && meta.height ? { bytes, width: meta.width, height: meta.height } : null;
+  } catch {
+    return null;
+  }
 }
 
-export function encodeJpeg(r: Raster, quality = 85): Uint8Array {
-  return new Uint8Array(
-    jpeg.encode({ data: r.data, width: r.width, height: r.height }, quality).data,
+/** The whole photo, no more than `maxEdge` on its long side, as a JPEG. */
+export async function smallCopy(photo: Photo, maxEdge: number, quality = 80): Promise<Uint8Array> {
+  const s = await sharp();
+  return jpegOf(
+    s(photo.bytes).resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true }),
+    quality,
   );
 }
 
-/** A copy of part of the raster, in pixels. */
-export function crop(r: Raster, x: number, y: number, w: number, h: number): Raster {
-  const data = new Uint8Array(w * h * 4);
-  for (let row = 0; row < h; row++) {
-    const from = ((y + row) * r.width + x) * 4;
-    data.set(r.data.subarray(from, from + w * 4), row * w * 4);
-  }
-  return { width: w, height: h, data };
+/** Part of the photo, in pixels, no more than `maxEdge` on its long side, as a JPEG. */
+export async function cropTo(
+  photo: Photo,
+  area: { x: number; y: number; w: number; h: number },
+  maxEdge: number,
+  quality = 85,
+): Promise<Uint8Array> {
+  const s = await sharp();
+  return jpegOf(
+    s(photo.bytes)
+      .extract({ left: area.x, top: area.y, width: area.w, height: area.h })
+      .resize(maxEdge, maxEdge, { fit: 'inside', withoutEnlargement: true }),
+    quality,
+  );
 }
 
-/** Shrinks so the long side is at most `maxEdge`, averaging the pixels each new one covers. */
-export function downscale(r: Raster, maxEdge: number): Raster {
-  const scale = Math.min(1, maxEdge / Math.max(r.width, r.height));
-  if (scale === 1) return r;
-  const w = Math.max(1, Math.round(r.width * scale));
-  const h = Math.max(1, Math.round(r.height * scale));
-  const data = new Uint8Array(w * h * 4);
-  for (let y = 0; y < h; y++) {
-    const y0 = Math.floor((y * r.height) / h);
-    const y1 = Math.max(y0 + 1, Math.floor(((y + 1) * r.height) / h));
-    for (let x = 0; x < w; x++) {
-      const x0 = Math.floor((x * r.width) / w);
-      const x1 = Math.max(x0 + 1, Math.floor(((x + 1) * r.width) / w));
-      let rr = 0,
-        g = 0,
-        b = 0;
-      for (let sy = y0; sy < y1; sy++) {
-        let i = (sy * r.width + x0) * 4;
-        for (let sx = x0; sx < x1; sx++, i += 4) {
-          rr += r.data[i]!;
-          g += r.data[i + 1]!;
-          b += r.data[i + 2]!;
-        }
-      }
-      const n = (y1 - y0) * (x1 - x0);
-      const o = (y * w + x) * 4;
-      data[o] = rr / n;
-      data[o + 1] = g / n;
-      data[o + 2] = b / n;
-      data[o + 3] = 255;
-    }
-  }
-  return { width: w, height: h, data };
+async function jpegOf(img: Sharp, quality: number): Promise<Uint8Array> {
+  // White behind any transparency (a PNG), as the app's canvas does.
+  const buf = await img.flatten({ background: '#ffffff' }).jpeg({ quality }).toBuffer();
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
 /**
@@ -120,10 +124,17 @@ export function planSlices(
  * The parts to send for one bill photo: cropped to `box` when given, cut into
  * overlapping parts when tall, each no bigger than the model will read.
  */
-export function receiptParts(photo: Raster, box: Box | null): Uint8Array[] {
-  const area = box ? cropArea(photo.width, photo.height, box) : null;
-  const receipt = area ? crop(photo, area.x, area.y, area.w, area.h) : photo;
-  return planSlices(receipt.width, receipt.height).map((s) =>
-    encodeJpeg(downscale(crop(receipt, 0, s.y, receipt.width, s.h), MODEL_MAX_EDGE)),
+export async function receiptParts(photo: Photo, box: Box | null): Promise<Uint8Array[]> {
+  const area = (box ? cropArea(photo.width, photo.height, box) : null) ?? {
+    x: 0,
+    y: 0,
+    w: photo.width,
+    h: photo.height,
+  };
+  // libvips runs each on its own thread.
+  return Promise.all(
+    planSlices(area.w, area.h).map((s) =>
+      cropTo(photo, { x: area.x, y: area.y + s.y, w: area.w, h: s.h }, MODEL_MAX_EDGE),
+    ),
   );
 }

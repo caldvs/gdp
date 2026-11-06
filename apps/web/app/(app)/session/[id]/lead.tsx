@@ -14,6 +14,7 @@ import type { components } from '@gdp/core/api';
 import { isFeeRequired, useAbandonSession, useCloseSession, useOpenPayments, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
 import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
+import { useGuestTexts, useRemind, type GuestRemind } from '@gdp/core/api/hooks/useTexts';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { claimRows, openPence } from '@gdp/core/lib/claimRows';
@@ -83,6 +84,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const router = useRouter();
   const abandon = useAbandonSession(s.sessionId);
   const received = useReceived(s, b);
+  // #219: Remind, once payments are open.
+  const reminders = useReminders(s, paymentsOpen(s, b));
   const me = s.participants.find((p) => p.userId === meUserId);
   const [binning, setBinning] = useState(false);
   // #64: how many the lead said are eating, lead included. Display only.
@@ -153,7 +156,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         >
           <Box list>
             {guests.map((p) => (
-              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} proof={proofs.data?.some((x) => x.userId === p.userId)} onSeeProof={() => setSeeing(p.userId)} />
+              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} proof={proofs.data?.some((x) => x.userId === p.userId)} onSeeProof={() => setSeeing(p.userId)} remind={reminders} />
             ))}
             <Row title="You" sub="Your share" end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>} />
           </Box>
@@ -341,7 +344,7 @@ export function claimedNames(b: Bill, p: Participant): string {
  * to, live, and Received for when their money lands (the lead usually sees
  * it as a banking app notification), whether or not they've said they paid.
  */
-function PersonRow({ s, b, p, onReceived, busy, proof, onSeeProof }: { s: Session; b: Bill; p: Participant; onReceived: (p: Participant) => void; busy: boolean; proof?: boolean; onSeeProof?: () => void }) {
+function PersonRow({ s, b, p, onReceived, busy, proof, onSeeProof, remind }: { s: Session; b: Bill; p: Participant; onReceived: (p: Participant) => void; busy: boolean; proof?: boolean; onSeeProof?: () => void; remind?: ReminderControl }) {
   const name = firstName(p.displayName, 'Guest');
   const av = <Avatar name={p.displayName || name} />;
   const owed = owedFor(s, b, p);
@@ -365,6 +368,7 @@ function PersonRow({ s, b, p, onReceived, busy, proof, onSeeProof }: { s: Sessio
         <>
           {status ? `${status} · ${items}` : items}
           {proof ? <> · Sent a screenshot · <button type="button" className="link-btn" onClick={onSeeProof}>See screenshot</button></> : null}
+          {remind ? <RemindLink p={p} name={name} control={remind} /> : null}
         </>
       }
       end={
@@ -375,6 +379,40 @@ function PersonRow({ s, b, p, onReceived, busy, proof, onSeeProof }: { s: Sessio
       }
     />
   );
+}
+
+/** #219: *Remind* on each guest who still owes, where texts are on. */
+type ReminderControl = { state: (userId: string) => GuestRemind | undefined; send: (userId: string) => void; sending: string | null; error: { userId: string; message: string } | null };
+
+function useReminders(s: Session, open: boolean): ReminderControl | undefined {
+  const texts = useGuestTexts(s.sessionId, { enabled: open });
+  const remind = useRemind(s.sessionId);
+  const [error, setError] = useState<{ userId: string; message: string } | null>(null);
+  if (!open || !texts.data?.enabled) return undefined;
+  return {
+    state: (userId) => texts.data?.guests[userId],
+    send: (userId) => { setError(null); remind.mutate(userId, { onError: (e) => setError({ userId, message: e.message }) }); },
+    sending: remind.isPending ? (remind.variables ?? null) : null,
+    error,
+  };
+}
+
+function RemindLink({ p, name, control }: { p: Participant; name: string; control: ReminderControl }) {
+  const st = control.state(p.userId);
+  if (!st) return null;
+  const err = control.error?.userId === p.userId ? control.error.message : null;
+  if (st.remind === 'ready') {
+    return (
+      <>
+        {' · '}
+        <button type="button" className="link-btn" disabled={control.sending === p.userId} onClick={() => control.send(p.userId)} aria-label={`Remind ${name}`}>Remind</button>
+        {err ? <span className="field__err" role="alert"> {err}</span> : null}
+      </>
+    );
+  }
+  if (st.remind === 'today') return <span role="status"> · Reminded today</span>;
+  if (st.remind === 'stopped') return <> · Stopped reminders</>;
+  return null;
 }
 
 /** Received, asked once first: it tells the guest they're paid up, and can't be undone. */
@@ -410,6 +448,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   const received = useReceived(s, b);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const outstanding = guests.filter((p) => !isPaid(s, b, p));
+  const reminders = useReminders(s, outstanding.length > 0);
   const st = billStatement(s, b, (p) => firstName(p.displayName, 'Guest'));
   const own = st.people.find((p) => p.status === 'lead')?.totalPence ?? 0;
   const back = guests.map((p) => ({ name: firstName(p.displayName, 'Guest'), pence: confirmedFor(s, b, p) })).filter((x) => x.pence > 0);
@@ -436,7 +475,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         {outstanding.length > 0 ? (
           <Section title="Still to pay">
             <Box list>{outstanding.map((p) => (
-              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
+              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} remind={reminders} />
             ))}</Box>
           </Section>
         ) : guests.length > 0 ? <Notice tone="ok" title="Everyone’s paid" /> : null}

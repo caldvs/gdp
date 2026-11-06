@@ -107,7 +107,7 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>23</b> item types</span><span><b>1</b> GSI</span><span><b>13</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>24</b> item types</span><span><b>1</b> GSI</span><span><b>14</b> expiring types</span></div>
   </header>
 
   <div class="board">
@@ -234,16 +234,28 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="1404">ttlAt pushed on by each new text</text>
 <rect class="node" x="30" y="1466" width="320" height="142" rx="10"/>
 <rect class="band band-id" x="30" y="1466" width="6" height="142" rx="3"/>
-<text class="t-title" x="48" y="1493">Lead email queue</text>
+<text class="t-title" x="48" y="1493">Reminder queue</text>
 <rect class="chip-ttl" x="299.6" y="1479" width="36.4" height="20" rx="10"/>
 <text class="t-chip" x="317.8" y="1493" text-anchor="middle">14 d</text>
 <text class="t-keylab" x="48" y="1518">pk</text>
-<text class="t-key" x="104" y="1518">LEADMAILQ</text>
+<text class="t-key" x="104" y="1518">REMINDQ</text>
 <text class="t-keylab" x="48" y="1540">sk</text>
-<text class="t-key" x="104" y="1540">{settledAt}#{sessionId}</text>
+<text class="t-key" x="104" y="1540">{sessionId}</text>
 <line class="rule" x1="48" y1="1554" x2="332" y2="1554"/>
-<text class="t-attr" x="48" y="1572">sessionId, settledAt: settled, emailed next morning</text>
-<text class="t-attr" x="48" y="1590">daily job reads sk &lt; London midnight (#221)</text>
+<text class="t-attr" x="48" y="1572">added on share; openSeenAt: first seen open</text>
+<text class="t-attr" x="48" y="1590">daily job texts a day after it (#219)</text>
+<rect class="node" x="30" y="1652" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="1652" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="1679">Lead email queue</text>
+<rect class="chip-ttl" x="299.6" y="1665" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1679" text-anchor="middle">14 d</text>
+<text class="t-keylab" x="48" y="1704">pk</text>
+<text class="t-key" x="104" y="1704">LEADMAILQ</text>
+<text class="t-keylab" x="48" y="1726">sk</text>
+<text class="t-key" x="104" y="1726">{settledAt}#{sessionId}</text>
+<line class="rule" x1="48" y1="1740" x2="332" y2="1740"/>
+<text class="t-attr" x="48" y="1758">sessionId, settledAt: settled, emailed next morning</text>
+<text class="t-attr" x="48" y="1776">daily job reads sk &lt; London midnight (#221)</text>
 <rect class="node" x="410" y="80" width="320" height="160" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="160" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>

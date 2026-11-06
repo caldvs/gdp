@@ -23,6 +23,8 @@ import { createDefaultEmailSender } from './services/email/factory.js';
 import { createReportService } from './services/sessions/reportService.js';
 import { runLeadEmails, type LeadEmailsReport } from './ops/leadEmails.js';
 import { leadMailQueue } from './storage/leadMailQueue.js';
+import { runReminders, type RemindersReport } from './ops/reminders.js';
+import { reminderQueue } from './storage/reminderQueue.js';
 import type { EmailSender } from './services/email/sender.js';
 import type { BillParser } from './services/bills/parser.js';
 import { createBillParser } from './services/bills/bedrockParser.js';
@@ -323,6 +325,22 @@ export const runLeadEmailsNow = async (): Promise<LeadEmailsReport> => {
   });
   baseLogger.info({ event: 'lead_emails.done', ...report }, 'Lead emails');
   if (report.failed.length > 0) throw new Error(`Lead emails: ${report.failed.length} not sent`);
+  return report;
+};
+
+/**
+ * #219: the automatic reminder texts. EventBridge invokes this daily at
+ * 10:00 UTC. A bill that fails stays queued for tomorrow, and the run
+ * throws so the Lambda errors alarm reports it.
+ */
+export const runRemindersNow = async (): Promise<RemindersReport> => {
+  const texts = createGuestTexts({ sms: smsFromEnv(), appBaseUrl: env.APP_BASE_URL });
+  const report = await runReminders({
+    queue: reminderQueue,
+    autoRemind: (id, openSeenAt) => texts.autoRemind(id, openSeenAt),
+  });
+  baseLogger.info({ event: 'reminders.done', ...report }, 'Reminders');
+  if (report.failed.length > 0) throw new Error(`Reminders: ${report.failed.length} bills failed`);
   return report;
 };
 

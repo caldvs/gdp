@@ -3,6 +3,7 @@ import { baseLogger } from '../../logging/logger.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { guestPhoneStore } from '../../storage/guestPhoneStore.js';
 import { guestTextStore, type GuestTextState } from '../../storage/guestTextStore.js';
+import { reminderQueue } from '../../storage/reminderQueue.js';
 import { countInWindow } from '../../storage/rateCounter.js';
 import { maskPhone } from '../messaging/phone.js';
 import type { SmsSender } from '../messaging/sms.js';
@@ -12,6 +13,7 @@ import { paymentsAreOpen } from './allocation.js';
 import { loadReport } from './reportService.js';
 import type { BillReport, DinerReport } from './report.js';
 import { paidText, reminderText } from './texts.js';
+import type { AutoRemindResult } from '../../ops/reminders.js';
 
 /**
  * #219/#220: texts to guests about a bill, through AWS SMS (#231), to the
@@ -21,7 +23,7 @@ import { paidText, reminderText } from './texts.js';
  *   bill's link (`/b/{token}`, 30 days).
  * - Reminders (#219): the lead's *Remind*, at most one a day and three in
  *   all per guest, plus one automatic reminder a day after payments open
- *   (`runDailyReminders`). Each carries `/s/{token}` to stop them.
+ *   (`ops/reminders.ts`, queued when the lead shares the bill). Each carries `/s/{token}` to stop them.
  *
  * Every text is paid, so a bill sends at most `TEXTS_PER_BILL` in all.
  * Numbers are never returned or logged whole.
@@ -271,17 +273,32 @@ export function createGuestTexts(deps: GuestTextDeps) {
       return guestRemind(session, report, userId);
     },
 
+    /** #219: the lead shared the bill: queue its automatic reminder. */
+    async queueAuto(sessionId: string): Promise<void> {
+      if (!deps.sms) return;
+      try {
+        await reminderQueue.add(sessionId);
+      } catch (err) {
+        // A missed automatic reminder isn't worth failing the share for.
+        baseLogger.warn({ event: 'texts.queue_failed', sessionId, err }, 'Reminder not queued');
+      }
+    },
+
     /**
      * #219: the automatic reminder, a day after payments open: one text to
      * each guest who still hasn't paid and hasn't had a reminder in the last
-     * day. True once the bill needs no more checking.
+     * day. `opened`: open, and nobody noted when (payments opened by the
+     * last claim, not the lead); the job notes it and comes back tomorrow.
      */
-    async autoRemind(sessionId: string, openSince: string): Promise<'done' | 'wait'> {
+    async autoRemind(sessionId: string, openSeenAt?: string): Promise<AutoRemindResult> {
       if (!deps.sms) return 'done';
       const session = await sessionStore.get(sessionId);
       if (!session || session.status === 'abandoned') return 'done';
       const report = await loadReport(session);
       if (!paymentsAreOpen(session, report.unclaimed.length === 0)) return 'wait';
+      const openSince = session.paymentsOpenedAt ?? openSeenAt;
+      if (!openSince) return 'opened';
+      // An hour's slack, so a daily run a day after the last one counts.
       if (Date.parse(openSince) > now().getTime() - DAY_MS + 60 * 60 * 1000) return 'wait';
       for (const p of session.participants) {
         if (p.userId === session.creatorUserId) continue;

@@ -336,6 +336,8 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
           }
         : {}),
     });
+    // #219: one automatic reminder, a day after payments open.
+    await deps.texts?.queueAuto(session.sessionId);
     return c.json(session);
   });
 
@@ -571,6 +573,27 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       // #220: the guest hears it went in, with the bill's link.
       await deps.texts?.paid(sessionId, userId);
       return c.json(await sessionService.get({ caller, sessionId }));
+    },
+  );
+
+  // #219: what *Remind* can do for each guest. The lead only.
+  r.get('/:sessionId/texts', requireAuth(deps.idTokenVerifier), async (c) => {
+    if (!deps.texts) return c.json({ enabled: false, guests: {} });
+    return c.json(await deps.texts.states(callerOf(c), c.req.param('sessionId')));
+  });
+
+  // #219: the lead taps *Remind*: one text to the guest.
+  r.post(
+    '/:sessionId/participants/:userId/remind',
+    requireAuth(deps.idTokenVerifier),
+    async (c) => {
+      if (!deps.texts) throw new AppError('CHANNEL_UNAVAILABLE', 'Texts aren’t available here');
+      const result = await deps.texts.remind(
+        callerOf(c),
+        c.req.param('sessionId'),
+        c.req.param('userId'),
+      );
+      return c.json(result);
     },
   );
 

@@ -537,6 +537,22 @@ export class FakeCore {
       this.reportsTo.push(user.userId);
       return json({ sent: true }, 202);
     }
+    // #219: Remind, where this fake server texts guests (`textsOn`).
+    if (path === `/v1/sessions/${SID}/texts` && method === 'GET') {
+      if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      if (!this.textsOn) return json({ enabled: false, guests: {} });
+      return json({ enabled: true, guests: Object.fromEntries(this.participants.filter((p) => p.userId !== 'u-lead').map((p) => [p.userId, this.remindState(p.userId)])) });
+    }
+    const remindMatch = path.match(new RegExp(`^/v1/sessions/${SID}/participants/([^/]+)/remind$`));
+    if (remindMatch && method === 'POST') {
+      if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      if (!this.textsOn) return err('CHANNEL_UNAVAILABLE', 'Texts aren’t available here', 503);
+      const st = this.remindState(remindMatch[1]!);
+      if (st.remind === 'today') return err('RATE_LIMITED', 'Reminded today. Try again tomorrow.', 429);
+      if (st.remind !== 'ready') return err('SESSION_INVALID_STATE', `Can't remind: ${st.remind}`, 409);
+      this.texts.push({ userId: remindMatch[1]!, kind: 'reminder' });
+      return json(this.remindState(remindMatch[1]!));
+    }
     // #220: a guest's receipt by email.
     if (path === `/v1/sessions/${SID}/receipt` && method === 'POST') {
       if (user.userId === 'u-lead') return err('INVALID_INPUT', 'Not for the lead', 400);
@@ -689,6 +705,18 @@ export class FakeCore {
       return json(this.linkView(guestId));
     }
     return err('NOT_FOUND', `unhandled ${method} ${path}`, 404);
+  }
+
+  /** #219: what Remind can do for a guest, as the API works it out (no day passes here). */
+  remindState(userId: string): { remind: string; reminders: number } {
+    const reminders = this.texts.filter((t) => t.userId === userId && t.kind === 'reminder').length;
+    const p = this.participants.find((x) => x.userId === userId);
+    const remind = !p || p.payment?.status === 'succeeded' ? 'not_owed'
+      : this.stopped.includes(userId) ? 'stopped'
+      : reminders >= 3 ? 'used_up'
+      : reminders > 0 ? 'today'
+      : 'ready';
+    return { remind, reminders };
   }
 
   /** #220 G5: the bill as the API's /v1/links/{token} shows it. */

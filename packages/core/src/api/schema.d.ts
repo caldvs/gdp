@@ -990,6 +990,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/texts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What Remind can do for each guest (#219)
+         * @description The lead only. Per guest: `ready` (*Remind* sends a text), `today`
+         *     (reminded in the last day), `used_up` (three reminders sent),
+         *     `stopped` (they opted out), `no_number`, `not_owed` or `not_open`
+         *     (payments aren't open yet). `enabled: false` where texts are off.
+         *     Never a phone number.
+         */
+        get: operations["getGuestTexts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/participants/{userId}/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                /** @description The guest to remind */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The lead texts a guest who still owes a reminder (#219)
+         * @description One text by AWS SMS: what they owe, the bill's link
+         *     (`/b/{token}`) and a link to stop reminders (`/s/{token}`). At most
+         *     one a day per guest and three in all (the automatic one counts),
+         *     and never more than 30 texts a bill. 429 when it's too soon or used
+         *     up; 409 when the guest can't be reminded (paid, no number, opted
+         *     out, payments not open); 503 where texts are off.
+         */
+        post: operations["remindGuest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/receipt": {
         parameters: {
             query?: never;
@@ -1628,6 +1683,23 @@ export interface components {
             name: string;
             detail?: string;
             pence: number;
+        };
+        /** @description #219: whether Remind can text this guest now. */
+        GuestRemind: {
+            /** @enum {string} */
+            remind: "ready" | "today" | "used_up" | "stopped" | "no_number" | "not_owed" | "not_open";
+            /** @description Reminders sent so far */
+            reminders: number;
+            /** Format: date-time */
+            lastRemindedAt?: string;
+        };
+        GuestTexts: {
+            /** @description False where texts are off */
+            enabled: boolean;
+            /** @description By guest userId */
+            guests: {
+                [key: string]: components["schemas"]["GuestRemind"];
+            };
         };
         /** @description #220 G5: a bill seen from a guest's text. No numbers, no bank details. */
         BillLinkView: {
@@ -4036,6 +4108,75 @@ export interface operations {
             };
             /** @description Session is in setup or deleted */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getGuestTexts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reminder state per guest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTexts"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    remindGuest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                /** @description The guest to remind */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent; the guest's reminder state now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestRemind"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description This guest can't be reminded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Texts aren't available here */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

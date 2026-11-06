@@ -42,7 +42,7 @@ def group(x, y, w, title, base, eps):
     return y + h
 
 # ---------- geometry ----------
-W, H = 1640, 1378
+W, H = 1640, 1448
 LX, LW = 560, 520            # lambda
 C4X, C4W = 1150, 220         # aws services nodes
 C5X, C5W = 1435, 185         # external nodes
@@ -51,13 +51,13 @@ C5X, C5W = 1435, 185         # external nodes
 nodes_start = len(S)
 
 # Zones
-a(f'<rect class="zone" x="20" y="20" width="220" height="1388" rx="14"/>')
+a(f'<rect class="zone" x="20" y="20" width="220" height="1458" rx="14"/>')
 a('<text class="zone-label" x="38" y="48">Clients</text>')
-a(f'<rect class="zone" x="270" y="20" width="240" height="1388" rx="14"/>')
+a(f'<rect class="zone" x="270" y="20" width="240" height="1458" rx="14"/>')
 a('<text class="zone-label" x="288" y="48">Frontend · apps/web</text>')
-a(f'<rect class="zone aws" x="530" y="20" width="870" height="1388" rx="14"/>')
+a(f'<rect class="zone aws" x="530" y="20" width="870" height="1458" rx="14"/>')
 a('<text class="zone-label" x="548" y="48">AWS · eu-west-2 · CDK stack gdp-{env}</text>')
-a(f'<rect class="zone" x="1420" y="20" width="200" height="1388" rx="14"/>')
+a(f'<rect class="zone" x="1420" y="20" width="200" height="1458" rx="14"/>')
 a('<text class="zone-label" x="1435" y="48">Third parties</text>')
 zones = S[nodes_start:]; del S[nodes_start:]
 
@@ -76,7 +76,7 @@ for k, v in c4:
     prev = 'gap' if k == 'gap' else 'node'
 # adjust: sns follows cw with 20 gap (already)
 # The routes list sets the height: room for it plus the providers strip.
-LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1352) + 44
+LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1422) + 44
 
 edges = []
 def E(*args, **kw):
@@ -139,7 +139,7 @@ y = 308
 y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join/start'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
-    ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'), ('POST', '/{id}/receipt'),
+    ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'), ('POST', '/{id}/receipt'), ('GET', '/{id}/texts'), ('POST', '/{id}/…/{uid}/remind'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments'), ('POST', '/{id}/proofs'), ('GET', '/{id}/proofs'), ('POST', '/{id}/proofs/{pid}/sent'), ('DELETE', '/{id}/proofs/{pid}')]) + 10
 svc_top = y
 svc = [
@@ -182,12 +182,12 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF# GUESTPHONE#', 'Comments, proofs, guest numbers'),
                    ('JCODE# PAY#', 'Join codes, guest payments to the lead'),
-                   ('FEE# CREDIT# HOLDQ# CARD#', 'Platform fee holds, free credits, saved cards'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails'),
+                   ('FEE# CREDIT# HOLDQ# CARD#', 'Fee holds, free credits, saved cards'), ('IDMP# VENUEQ# LEADMAILQ REMINDQ', 'Idempotency, venues, job queues'),
                    ('BLINK# GUESTTEXT# RECEIPTTO#', 'Bill links, guest texts, receipt addresses')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
-c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge, daily: hold', 'sweep, lead emails'])
+c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge, daily: hold', 'sweep, lead emails, reminders'])
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
 c4card('location', 'Amazon Location', ['Venue lookup'])
@@ -220,10 +220,10 @@ for key, lab, both in [('stripe', 'Checkout · webhooks', True)]:
     gy = gaps[key]
     E(f'M1080,{gy} L{C5X-2},{gy}', [(1260, gy - 7, lab, 'middle')], both=both)
 E(f'M{C5X},{s3y+45} L1402,{s3y+45}', [(1418, s3y+37, 'OIDC', 'middle')], cls='dashed')
-E(f'M390,470 L390,1433 L1260,1433 L1260,{s3y+pos["s3"][1]+2}', [(760, 1427, 'Presigned PUT / GET · bill photo', 'middle')])
+E(f'M390,470 L390,1503 L1260,1503 L1260,{s3y+pos["s3"][1]+2}', [(760, 1497, 'Presigned PUT / GET · bill photo', 'middle')])
 
 svg = '\n'.join(zones + edges + nodes)
-VB_H = 1453
+VB_H = 1523
 
 page = (HERE / 'system.template.html').read_text()
 page = page.replace('%%SVG%%', svg).replace('%%VBH%%', str(VB_H)).replace('%%EPS%%', str(COUNTS['eps'])).replace('%%GROUPS%%', str(COUNTS['groups']))

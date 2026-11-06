@@ -6,6 +6,7 @@
  * Everything updates on the session's poll.
  */
 import { Comments } from '@/components/Comments';
+import { useProofs } from '@gdp/core/api/hooks/useProofs';
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -88,6 +89,10 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   // #64: how many the lead said are eating, lead included. Display only.
   const setExpected = useSetExpectedDiners(s.sessionId);
   const [sizing, setSizing] = useState<number | null>(null);
+  // #226: guests' payment screenshots; whose the lead is looking at.
+  const anyWaiting = s.participants.some((p) => (p.payments ?? []).some((e) => e.status === 'pending' && !!e.payerClaimedPaidAt));
+  const proofs = useProofs(s.sessionId, { poll: 10_000, enabled: anyWaiting });
+  const [seeing, setSeeing] = useState<string | null>(null);
   const joined = s.participants.length;
   const everyoneHere = s.expectedDiners !== undefined && joined >= s.expectedDiners;
 
@@ -149,7 +154,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         >
           <Box list>
             {guests.map((p) => (
-              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
+              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} proof={proofs.data?.some((x) => x.userId === p.userId)} onSeeProof={() => setSeeing(p.userId)} />
             ))}
             <Row title="You" sub="Your share" end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>} />
           </Box>
@@ -164,6 +169,19 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
               </Page>
 
       {received.sheet}
+      {seeing ? (
+        <Dialog
+          title={`${firstName(s.participants.find((p) => p.userId === seeing)?.displayName, 'Their')}’s screenshot`}
+          onClose={() => startTransition(() => setSeeing(null))}
+          actions={<Button tone="secondary" onClick={() => startTransition(() => setSeeing(null))}>Close</Button>}
+        >
+          <p className="small muted">A screenshot isn’t payment. Mark it received once it’s in your account.</p>
+          {(proofs.data ?? []).filter((x) => x.userId === seeing).map((x) => (
+            // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed S3 URL
+            <img key={x.proofId} src={x.url} alt="Their payment screenshot" className="proof__full" />
+          ))}
+        </Dialog>
+      ) : null}
       {sizing !== null ? (
         <PartySizeSheet
           n={sizing}
@@ -319,7 +337,7 @@ export function claimedNames(b: Bill, p: Participant): string {
  * to, live, and Received for when their money lands (the lead usually sees
  * it as a banking app notification), whether or not they've said they paid.
  */
-function PersonRow({ s, b, p, onReceived, busy }: { s: Session; b: Bill; p: Participant; onReceived: (p: Participant) => void; busy: boolean }) {
+function PersonRow({ s, b, p, onReceived, busy, proof, onSeeProof }: { s: Session; b: Bill; p: Participant; onReceived: (p: Participant) => void; busy: boolean; proof?: boolean; onSeeProof?: () => void }) {
   const name = firstName(p.displayName, 'Guest');
   const av = <Avatar name={p.displayName || name} />;
   const owed = owedFor(s, b, p);
@@ -339,7 +357,12 @@ function PersonRow({ s, b, p, onReceived, busy }: { s: Session; b: Bill; p: Part
     <Row
       lead={av}
       title={name}
-      sub={status ? `${status} · ${items}` : items}
+      sub={
+        <>
+          {status ? `${status} · ${items}` : items}
+          {proof ? <> · Sent a screenshot · <button type="button" className="link-btn" onClick={onSeeProof}>See screenshot</button></> : null}
+        </>
+      }
       end={
         <span className="person__end">
           {amount}

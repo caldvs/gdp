@@ -94,6 +94,8 @@ class GdpBackendStack extends cdk.Stack {
           ],
           expiration: cdk.Duration.days(365),
         },
+        // #226: proof-of-payment screenshots go after a month.
+        { prefix: 'proofs/', expiration: cdk.Duration.days(30) },
       ],
       removalPolicy,
       autoDeleteObjects: envName !== 'prod',

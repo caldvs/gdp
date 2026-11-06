@@ -138,6 +138,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>A bill's comments</td><td><code>SESS#{id}</code>, <code>begins_with(COMMENT#)</code></td><td class="op">Query</td></tr>
+            <tr><td>Payment screenshots</td><td><code>SESS#{id}</code>, <code>begins_with(PROOF#[{userId}#])</code></td><td class="op">Query</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>My sessions' totals</td><td>META rows, then pinned <code>BILL# / V#</code> rows + the caller's <code>SHARE#</code> rows</td><td class="op">BatchGet ×2</td></tr>

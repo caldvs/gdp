@@ -28,6 +28,8 @@ import { mintSessionToken } from '../services/auth/sessionToken.js';
 import { sourceIpOf } from './auth.js';
 import { commentService } from '../services/sessions/commentService.js';
 import { PostCommentRequestSchema } from '../types/comments.js';
+import { proofService } from '../services/sessions/proofService.js';
+import { StartProofRequestSchema } from '../types/proofs.js';
 
 // Looking up join codes (#151): 30 tries per user per 10 minutes, so
 // guessing six-character codes is slow. Plenty for mistyping a few.
@@ -412,6 +414,47 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
       return c.json(comment, 201);
     },
   );
+
+  // #226: proof-of-payment screenshots. Guests upload; the lead sees them.
+  r.post(
+    '/:sessionId/proofs',
+    requireAuth(deps.idTokenVerifier),
+    validJson(StartProofRequestSchema),
+    async (c) => {
+      const slot = await proofService.start({
+        caller: callerOf(c),
+        sessionId: c.req.param('sessionId'),
+        sizeBytes: c.req.valid('json').sizeBytes,
+      });
+      return c.json(slot, 201);
+    },
+  );
+
+  r.post('/:sessionId/proofs/:proofId/sent', requireAuth(deps.idTokenVerifier), async (c) => {
+    const proof = await proofService.sent({
+      caller: callerOf(c),
+      sessionId: c.req.param('sessionId'),
+      proofId: c.req.param('proofId'),
+    });
+    return c.json(proof);
+  });
+
+  r.get('/:sessionId/proofs', requireAuth(deps.idTokenVerifier), async (c) => {
+    const proofs = await proofService.list({
+      caller: callerOf(c),
+      sessionId: c.req.param('sessionId'),
+    });
+    return c.json({ proofs });
+  });
+
+  r.delete('/:sessionId/proofs/:proofId', requireAuth(deps.idTokenVerifier), async (c) => {
+    await proofService.remove({
+      caller: callerOf(c),
+      sessionId: c.req.param('sessionId'),
+      proofId: c.req.param('proofId'),
+    });
+    return c.body(null, 204);
+  });
 
   r.post('/:sessionId/abandon', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);

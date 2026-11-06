@@ -139,7 +139,7 @@ y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
-    ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments')]) + 10
+    ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments'), ('POST', '/{id}/proofs'), ('GET', '/{id}/proofs'), ('POST', '/{id}/proofs/{pid}/sent'), ('DELETE', '/{id}/proofs/{pid}')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
@@ -178,9 +178,9 @@ text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
-                   ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE# COMMENT#', 'Sessions, diners, splits, comments'),
-                   ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
-                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
+                   ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'), ('COMMENT# PROOF#', 'Comments, payment screenshots'),
+                   ('JCODE# PAY#', 'Join codes, guest payments to the lead'),
+                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])
@@ -188,7 +188,7 @@ c4card('cw', 'CloudWatch', ['Logs, dashboard, alarms', 'EventBridge: daily hold'
 c4card('sns', 'SNS', ['Alert topic'])
 c4card('bedrock', 'Bedrock', ['Claude Sonnet 4.6 reads the bill,', 'venue name and address'])
 c4card('location', 'Amazon Location', ['Venue lookup'])
-c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d'])
+c4card('s3', 'S3', ['gdp-bills-raw-{env}', 'Private · Glacier IR at 30 d', 'Deleted at 365 d · proofs/ at 30 d'])
 
 # ---- Column 5 externals at gap y's
 def ext(key, title, lines, h=72):

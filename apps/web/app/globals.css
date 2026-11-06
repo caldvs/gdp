@@ -731,3 +731,23 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .confirm-inline__acts > * { flex: 1; }
 /* The PAID stamp. */
 .stamp-paid { display: inline-block; padding: 2px 12px; border: 3px solid var(--loud); border-radius: 4px; color: var(--loud); font-family: var(--display); font-weight: 800; letter-spacing: .08em; transform: rotate(-7deg); }
+/* #226 proof of payment: crop frame with four corners; the sent thumbnail. */
+.crop { position: relative; overflow: hidden; border-radius: 12px; touch-action: none; user-select: none; margin-top: 12px; background: #000; }
+.crop img { display: block; width: 100%; height: auto; pointer-events: none; }
+.crop__frame { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .55); }
+.crop__corner { position: absolute; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: grab; touch-action: none; }
+/* An L-shaped bracket just inside each corner, so none is clipped at the image's edge. */
+.crop__corner::after { content: ''; position: absolute; width: 22px; height: 22px; border: 0 solid #fff; filter: drop-shadow(0 0 1px rgba(0,0,0,.6)); }
+.crop__corner:focus-visible { outline: 3px solid var(--accent); outline-offset: -4px; border-radius: 8px; }
+.crop__corner--tl { left: -12px; top: -12px; } .crop__corner--tl::after { left: 12px; top: 12px; border-left-width: 5px; border-top-width: 5px; }
+.crop__corner--tr { right: -12px; top: -12px; } .crop__corner--tr::after { right: 12px; top: 12px; border-right-width: 5px; border-top-width: 5px; }
+.crop__corner--bl { left: -12px; bottom: -12px; } .crop__corner--bl::after { left: 12px; bottom: 12px; border-left-width: 5px; border-bottom-width: 5px; }
+.crop__corner--br { right: -12px; bottom: -12px; } .crop__corner--br::after { right: 12px; bottom: 12px; border-right-width: 5px; border-bottom-width: 5px; }
+.proof__acts { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.proof__sent { display: flex; gap: 14px; align-items: flex-start; }
+.proof__thumb { width: 88px; height: auto; max-height: 160px; object-fit: cover; object-position: top; border-radius: 8px; border: 1px solid var(--card-line); }
+.proof__sent-text { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.wait-box__ring b { animation: wait-pulse 1.6s ease-in-out infinite; }
+@keyframes wait-pulse { 50% { transform: scale(.82); opacity: .7; } }
+@media (prefers-reduced-motion: reduce) { .wait-box__ring b { animation-duration: 4s; } }
+.proof__full { display: block; width: 100%; height: auto; margin-top: 12px; border-radius: 8px; border: 1px solid var(--card-line); }

@@ -66,6 +66,9 @@ export type Fault =
   | { kind: 'initiate-500'; times: number }
   | { kind: 'parse'; code: 'PARSE_FAILED' | 'IMAGE_TOO_LARGE' | 'PARSE_LOW_CONFIDENCE' | 'PARSE_TIMEOUT' | 'INTERNAL_ERROR'; message: string; details?: Record<string, unknown> };
 
+/** A 2×2 PNG, so the fake's proof screenshots render (CSP allows data:). */
+const PROOF_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP8z8DwnwEJMDEgAQBGAQEDzwWnRAAAAABJRU5ErkJggg==';
+
 export class FakeCore {
   status: 'setup' | 'claiming' | 'settled' | 'abandoned';
   /** Users who have signed in with the emailed code (and so pass /v1/me). */
@@ -76,6 +79,8 @@ export class FakeCore {
   shares: Share[] = [];
   /** Who asked to be emailed a report, in order. */
   reportsTo: string[] = [];
+  proofs: { proofId: string; userId: string; sentAt?: string }[] = [];
+  proofUploads = 0;
   comments: { commentId: string; userId: string; displayName: string; text: string; createdAt: string }[] = [];
   faults: Fault[] = [];
   /** How many polls a background read stays `reading` before it finishes. */
@@ -400,6 +405,27 @@ export class FakeCore {
       if (n !== null && (!Number.isInteger(n) || n < 2 || n > 10)) return err('INVALID_INPUT', 'Validation failed', 400);
       this.expectedDiners = n ?? undefined;
       return json(this.session());
+    }
+    // #226: proof-of-payment screenshots. The lead sees everyone's; a guest their own.
+    if (path === '/v1/_s3/proof' && method === 'PUT') { this.proofUploads += 1; return { status: 200, contentType: 'text/plain', body: '' }; }
+    if (path.startsWith(`/v1/sessions/${SID}/proofs`)) {
+      const isLead = user.userId === 'u-lead';
+      if (!this.participants.some((p) => p.userId === user.userId)) return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      const view = (p: { proofId: string; userId: string; sentAt?: string }) => ({ proofId: p.proofId, userId: p.userId, sentAt: p.sentAt!, url: PROOF_IMAGE });
+      if (path === `/v1/sessions/${SID}/proofs` && method === 'POST') {
+        if (isLead) return err('SESSION_NOT_FOUND', 'Session not found', 404);
+        const proofId = `00000000-0000-7000-9000-${String(this.proofs.length + 1).padStart(12, '0')}`;
+        this.proofs.push({ proofId, userId: user.userId });
+        return json({ proofId, url: 'http://localhost:9000/v1/_s3/proof', expiresAt: '2099-01-01T00:00:00Z' }, 201);
+      }
+      if (path === `/v1/sessions/${SID}/proofs` && method === 'GET') {
+        return json({ proofs: this.proofs.filter((p) => p.sentAt && (isLead || p.userId === user.userId)).map(view) });
+      }
+      const id = path.split('/')[5];
+      const proof = this.proofs.find((p) => p.proofId === id && p.userId === user.userId);
+      if (!proof) return err('NOT_FOUND', 'Screenshot not found', 404);
+      if (path.endsWith('/sent') && method === 'POST') { proof.sentAt ??= new Date().toISOString(); return json(view(proof)); }
+      if (method === 'DELETE') { this.proofs = this.proofs.filter((p) => p !== proof); return { status: 204, contentType: 'text/plain', body: '' }; }
     }
     // #218: comments, for anyone at the table.
     if (path === `/v1/sessions/${SID}/comments`) {

@@ -1407,6 +1407,113 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /v1/sessions/{sessionId}/proofs:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: startProof
+      summary: Start uploading a proof-of-payment screenshot
+      description: |
+        A guest (not the lead) at a live bill (#226). The browser crops the screenshot and
+        re-encodes it as JPEG (no EXIF) first; only that is uploaded, with a presigned PUT
+        (`content-type: image/jpeg`, exactly `sizeBytes`, at most 2 MB, 5 minutes). Then call
+        `…/proofs/{proofId}/sent`. At most 3 per guest per bill; deleted after 30 days.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartProofRequest' }
+      responses:
+        '201':
+          description: Where to PUT the image
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProofUploadSlot' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session or screenshot not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: The bill is deleted or not shared yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [sessions]
+      operationId: listProofs
+      summary: Proof-of-payment screenshots
+      description: |
+        The lead gets every guest's; a guest gets their own (#226). Sent ones only, oldest first,
+        each with a signed URL that lasts 5 minutes.
+      responses:
+        '200':
+          description: Screenshots
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proofs]
+                properties:
+                  proofs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Proof' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session or screenshot not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/proofs/{proofId}/sent:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - { name: proofId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [sessions]
+      operationId: proofSent
+      summary: The screenshot has uploaded
+      description: Checks the object is there, then shows it to the lead (#226). Idempotent.
+      responses:
+        '200':
+          description: The screenshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Proof' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session or screenshot not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Nothing uploaded yet
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/proofs/{proofId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - { name: proofId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [sessions]
+      operationId: deleteProof
+      summary: Remove your screenshot
+      description: The guest who sent it (#226). Deletes the image too.
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session or screenshot not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/payments:
     parameters:
       - $ref: '#/components/parameters/SessionId'
@@ -1770,6 +1877,26 @@ components:
         displayName: { type: string }
         text: { type: string }
         createdAt: { type: string, format: date-time }
+    StartProofRequest:
+      type: object
+      required: [sizeBytes]
+      properties:
+        sizeBytes: { type: integer, minimum: 1, maximum: 2097152 }
+    ProofUploadSlot:
+      type: object
+      required: [proofId, url, expiresAt]
+      properties:
+        proofId: { type: string, format: uuid }
+        url: { type: string, format: uri, description: 'Presigned PUT, image/jpeg' }
+        expiresAt: { type: string, format: date-time }
+    Proof:
+      type: object
+      required: [proofId, userId, sentAt, url]
+      properties:
+        proofId: { type: string, format: uuid }
+        userId: { type: string }
+        sentAt: { type: string, format: date-time }
+        url: { type: string, format: uri, description: 'Signed GET, 5 minutes' }
     ErrorResponse:
       type: object
       required: [error]

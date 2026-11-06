@@ -6,6 +6,7 @@
  * (GuestTable). Pay lives in ./pay.
  */
 import { Comments } from '@/components/Comments';
+import { ProofOfPayment, useProofOffered } from '@/components/Proof';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
@@ -301,6 +302,10 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
   const more = !closed && open.length > 0 && onMore
     ? <Button tone="text" onClick={onMore}>I had something else</Button>
     : null;
+  // #226: proof of payment, offered 30s after *I've paid* (server time).
+  const saidPaidAt = l?.waiting.map((e) => e.payerClaimedPaidAt).filter((x): x is string => !!x).sort()[0];
+  const proofOffered = useProofOffered(saidPaidAt);
+  const [cropping, setCropping] = useState(false);
 
   // G4.3 All square: the lead has all of it.
   if (me && l?.settled) {
@@ -336,12 +341,15 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
             <span className="wait-box__ring" aria-hidden="true"><b>£</b></span>
             <span><b>Waiting for {hostFirst} to mark it received</b><span>This page updates by itself.</span></span>
           </div>
+          {proofOffered ? <ProofOfPayment sessionId={s.sessionId} host={hostFirst} onCropping={setCropping} /> : null}
           <Comments sessionId={s.sessionId} meUserId={meUserId} />
         </Page>
-        <ActionBar stack>
-          <Button tone="secondary" href={`/session/${s.sessionId}/pay`}>See {hostFirst}’s bank details</Button>
-          {more}
-        </ActionBar>
+        {cropping ? null : (
+          <ActionBar stack>
+            <Button tone="secondary" href={`/session/${s.sessionId}/pay`}>See {hostFirst}’s bank details</Button>
+            {more}
+          </ActionBar>
+        )}
       </>
     );
   }

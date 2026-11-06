@@ -928,6 +928,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/proofs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Proof-of-payment screenshots
+         * @description The lead gets every guest's; a guest gets their own (#226). Sent ones only, oldest first,
+         *     each with a signed URL that lasts 5 minutes.
+         */
+        get: operations["listProofs"];
+        put?: never;
+        /**
+         * Start uploading a proof-of-payment screenshot
+         * @description A guest (not the lead) at a live bill (#226). The browser crops the screenshot and
+         *     re-encodes it as JPEG (no EXIF) first; only that is uploaded, with a presigned PUT
+         *     (`content-type: image/jpeg`, exactly `sizeBytes`, at most 2 MB, 5 minutes). Then call
+         *     `…/proofs/{proofId}/sent`. At most 3 per guest per bill; deleted after 30 days.
+         */
+        post: operations["startProof"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/proofs/{proofId}/sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The screenshot has uploaded
+         * @description Checks the object is there, then shows it to the lead (#226). Idempotent.
+         */
+        post: operations["proofSent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/proofs/{proofId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove your screenshot
+         * @description The guest who sent it (#226). Deletes the image too.
+         */
+        delete: operations["deleteProof"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/payments": {
         parameters: {
             query?: never;
@@ -1215,6 +1291,32 @@ export interface components {
             text: string;
             /** Format: date-time */
             createdAt: string;
+        };
+        StartProofRequest: {
+            sizeBytes: number;
+        };
+        ProofUploadSlot: {
+            /** Format: uuid */
+            proofId: string;
+            /**
+             * Format: uri
+             * @description Presigned PUT, image/jpeg
+             */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        Proof: {
+            /** Format: uuid */
+            proofId: string;
+            userId: string;
+            /** Format: date-time */
+            sentAt: string;
+            /**
+             * Format: uri
+             * @description Signed GET, 5 minutes
+             */
+            url: string;
         };
         ErrorResponse: {
             error: {
@@ -3438,6 +3540,160 @@ export interface operations {
                 };
             };
             429: components["responses"]["RateLimited"];
+        };
+    };
+    listProofs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Screenshots */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proofs: components["schemas"]["Proof"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartProofRequest"];
+            };
+        };
+        responses: {
+            /** @description Where to PUT the image */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofUploadSlot"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The bill is deleted or not shared yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    proofSent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The screenshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proof"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Nothing uploaded yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deleteProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     initiatePayment: {

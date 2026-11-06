@@ -136,8 +136,8 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M804,380 L732,380" marker-end="url(#ah)"/>
 <text x="760.0" y="372" text-anchor="middle">billId</text>
 </g>
-<g class="edge "><path d="M950.0,898 L950.0,856" marker-end="url(#ah)"/>
-<text x="960.0" y="881" text-anchor="start">sessionId</text>
+<g class="edge "><path d="M950.0,978 L950.0,936" marker-end="url(#ah)"/>
+<text x="960.0" y="961" text-anchor="start">sessionId</text>
 </g>
 <g class="edge dashed"><path d="M804,576 L760,576 L760,596 L380,596 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
 <text x="610.0" y="589" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
@@ -200,7 +200,7 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="852">SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h</text>
 <text class="t-attr" x="48" y="870">CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews</text>
 <text class="t-attr" x="48" y="888">GUESTRATE#ip: 20 guest joins / h · #session: 60 / h</text>
-<text class="t-attr" x="48" y="906">COMMENTRATE#{session}#{user}: 30 comments / h</text>
+<text class="t-attr" x="48" y="906">COMMENTRATE#{session}#{user}: 30 comments / h · PROOFRATE#: 10 / h</text>
 <text class="t-attr" x="48" y="924">(conditional add; key drops +tags, Gmail dots)</text>
 <rect class="node" x="30" y="986" width="320" height="124" rx="10"/>
 <rect class="band band-id" x="30" y="986" width="6" height="124" rx="3"/>
@@ -356,8 +356,8 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="808" y1="168" x2="1092" y2="168"/>
 <text class="t-attr" x="808" y="186">sessionId, lockedAt</text>
 <text class="t-attr" x="808" y="204">create-if-absent; deleted on close or abandon</text>
-<rect class="node key" x="790" y="266" width="320" height="588" rx="10"/>
-<rect class="band band-sess" x="790" y="266" width="6" height="588" rx="3"/>
+<rect class="node key" x="790" y="266" width="320" height="668" rx="10"/>
+<rect class="band band-sess" x="790" y="266" width="6" height="668" rx="3"/>
 <text class="t-title" x="808" y="293">Session</text>
 <rect class="chip-ttl" x="1039.8" y="279" width="56.199999999999996" height="20" rx="10"/>
 <text class="t-chip" x="1067.9" y="293" text-anchor="middle">30 days</text>
@@ -395,19 +395,24 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="797">COMMENT#{uuidv7}</text>
 <text class="t-attr" x="816" y="816">userId, displayName, text (≤ 280), createdAt</text>
 <text class="t-attr" x="816" y="834">anyone at the table (#218); oldest first</text>
-<rect class="node" x="790" y="898" width="320" height="160" rx="10"/>
-<rect class="band band-sess" x="790" y="898" width="6" height="160" rx="3"/>
-<text class="t-title" x="808" y="925">Join code</text>
-<rect class="chip-ttl" x="1039.8" y="911" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="1067.9" y="925" text-anchor="middle">30 days</text>
-<text class="t-keylab" x="808" y="950">pk</text>
-<text class="t-key" x="864" y="950">JCODE#{token}</text>
-<text class="t-keylab" x="808" y="972">sk</text>
-<text class="t-key" x="864" y="972">same as pk</text>
-<line class="rule" x1="808" y1="986" x2="1092" y2="986"/>
-<text class="t-attr" x="808" y="1004">sessionId</text>
-<text class="t-attr" x="808" y="1022">22-char QR token (old: 6 letters)</text>
-<text class="t-attr" x="808" y="1040">create-if-absent (collision check)</text>
+<rect class="inner" x="804" y="858" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="877">sk</text>
+<text class="t-key" x="842" y="877">PROOF#{userId}#{proofId}</text>
+<text class="t-attr" x="816" y="896">payment screenshot (#226): createdAt, sentAt</text>
+<text class="t-attr" x="816" y="914">S3 proofs/{sessionId}/{userId}/{proofId}.jpg</text>
+<rect class="node" x="790" y="978" width="320" height="160" rx="10"/>
+<rect class="band band-sess" x="790" y="978" width="6" height="160" rx="3"/>
+<text class="t-title" x="808" y="1005">Join code</text>
+<rect class="chip-ttl" x="1039.8" y="991" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="1005" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="1030">pk</text>
+<text class="t-key" x="864" y="1030">JCODE#{token}</text>
+<text class="t-keylab" x="808" y="1052">sk</text>
+<text class="t-key" x="864" y="1052">same as pk</text>
+<line class="rule" x1="808" y1="1066" x2="1092" y2="1066"/>
+<text class="t-attr" x="808" y="1084">sessionId</text>
+<text class="t-attr" x="808" y="1102">22-char QR token (old: 6 letters)</text>
+<text class="t-attr" x="808" y="1120">create-if-absent (collision check)</text>
 <rect class="node gsi" x="1170" y="80" width="320" height="165" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>
@@ -460,6 +465,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Whole session</td><td><code>pk = SESS#{id}</code> (META + PART# + SHARE# + CLAIMS)</td><td class="op">Query</td></tr>
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>A bill's comments</td><td><code>SESS#{id}</code>, <code>begins_with(COMMENT#)</code></td><td class="op">Query</td></tr>
+            <tr><td>Payment screenshots</td><td><code>SESS#{id}</code>, <code>begins_with(PROOF#[{userId}#])</code></td><td class="op">Query</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>My sessions' totals</td><td>META rows, then pinned <code>BILL# / V#</code> rows + the caller's <code>SHARE#</code> rows</td><td class="op">BatchGet ×2</td></tr>

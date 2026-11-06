@@ -83,7 +83,7 @@ A shared item (a bottle of wine) is split into `ways`, the number of people who 
 
   See [table-fee.md](table-fee.md).
 
-- **Bill reports** (changed 7 Nov 2026, Callum; not built). Screens say *Mark as settled* and *Settled*, not close. The lead gets an email the day after settling: everyone paid, or who still owes. Guests get no email: when the lead marks them received they get a text linking to the bill (who had what, who's paid, their share marked), which works for a month and then is deleted. Lines nobody claimed show in their own *Nobody claimed* section, on the bill and in emails, not mixed into the lead's items. Built today: closing emails every diner what they had and paid.
+- **Bill reports** (changed 7 Nov 2026, Callum; not built). Screens say *Mark as settled* and *Settled*, not close. The lead gets an email the day after settling: everyone paid, or who still owes. When the lead marks a guest received they get a text linking to the bill (who had what, who's paid, their share marked), which works for a month and then is deleted. On *All square* a guest can also type an email address to get the receipt by email (Callum, 7 Nov 2026): optional, not a sign-in, used only to send it and deleted with the bill. Lines nobody claimed show in their own *Nobody claimed* section, on the bill and in emails, not mixed into the lead's items. Built today: closing emails every diner what they had and paid.
 
 ## Technical
 

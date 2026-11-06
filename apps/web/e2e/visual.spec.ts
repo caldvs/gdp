@@ -92,12 +92,12 @@ test('guest pick', async ({ page }) => {
   await expect(page).toHaveScreenshot('pick.png', shot);
 });
 
-test('split dialog', async ({ page }) => {
+test('split in place', async ({ page }) => {
   const api = new FakeApi();
   await open(page, api, users.sam, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Split Lasagne' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page).toHaveScreenshot('split-dialog.png', shot);
+  await page.getByRole('button', { name: 'Split Olives with Callum' }).click();
+  await expect(page.getByRole('group', { name: 'Split Olives' })).toBeVisible();
+  await expect(page).toHaveScreenshot('split-panel.png', shot);
 });
 
 test('pay', async ({ page }) => {

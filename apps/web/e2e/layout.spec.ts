@@ -173,7 +173,7 @@ test.describe('screen sizes', { tag: '@webkit' }, () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const api = new FakeApi();
     await open(page, api, users.sam, `/session/${SID}`);
-    const last = page.locator('.claim').last();
+    const last = page.locator('[data-row]').last();
     await expect(last).toBeVisible();
     const [row, bar] = await Promise.all([last.boundingBox(), page.locator('.actionbar').boundingBox()]);
     expect(bar!.y - (row!.y + row!.height)).toBeLessThan(120);

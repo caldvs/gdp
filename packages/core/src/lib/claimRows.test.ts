@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claimRows, hasPaid } from './claimRows';
+import { claimPortions, claimRows, hasPaid } from './claimRows';
 
 const bill = {
   billId: 'b1',
@@ -99,5 +99,55 @@ describe('claimRows: a split covering some of a longer line', () => {
   it('drops the claim row once the split covers the whole line', () => {
     const whole = { ...(s as object), shares: [{ itemId: 'rioja', userIds: ['tom'], ways: 2, units: 4, activity: [] }] } as never;
     expect(claimRows(whole, b, 'tom').map((r) => r.key)).toEqual(['rioja:split']);
+  });
+});
+
+describe('claimPortions', () => {
+  const ids = (rows: ReturnType<typeof claimPortions>) => rows.map((r) => [r.key, r.state, r.holders.map((p) => p.userId).join()]);
+
+  it('shows several of one thing as a row per portion, mine first, in bill order', () => {
+    const rows = claimPortions(session, bill, 'tom');
+    expect(ids(rows).slice(0, 6)).toEqual([
+      ['bread#1', 'mine', ''],
+      ['bread#2', 'theirs', 'priya'],
+      ['bread#3', 'open', ''],
+      ['bread#4', 'open', ''],
+      ['calamari', 'theirs', 'priya'],
+      ['lasagne', 'mine', ''],
+    ]);
+    expect(rows[0]).toMatchObject({ kind: 'portion', n: 1, of: 4, left: 2 });
+    expect(rows.find((r) => r.key === 'calamari')!.canSplit).toBe(true);
+    expect(rows.find((r) => r.key === 'wine')).toMatchObject({ kind: 'share', state: 'open', left: 1 });
+  });
+
+  it('keeps my portion where I tapped it', () => {
+    const rows = claimPortions(session, bill, 'tom', { bread: [4] });
+    expect(ids(rows).slice(0, 4)).toEqual([
+      ['bread#1', 'theirs', 'priya'],
+      ['bread#2', 'open', ''],
+      ['bread#3', 'open', ''],
+      ['bread#4', 'mine', ''],
+    ]);
+  });
+
+  it('ignores a tap that no longer fits, and never offers Split on a portion', () => {
+    const rows = claimPortions(session, bill, 'tom', { bread: [9, 0], negroni: [1] });
+    expect(rows[0]!.key).toBe('bread#1');
+    expect(rows[0]!.state).toBe('mine');
+    expect(rows.filter((r) => r.item.itemId === 'negroni').map((r) => [r.state, r.canSplit])).toEqual([
+      ['theirs', false],
+      ['theirs', false],
+    ]);
+  });
+
+  it('numbers the rest of a longer line after its split', () => {
+    const s = { participants: [{ userId: 'tom', claimedItemIds: [], sharedItemIds: ['bread'], payment: unpaid }], shares: [{ itemId: 'bread', userIds: ['tom'], ways: 2, units: 2, activity: [] }] } as never;
+    const rows = claimPortions(s, bill, 'tom').filter((r) => r.item.itemId === 'bread');
+    expect(rows.map((r) => [r.key, r.kind, r.state])).toEqual([
+      ['bread:split', 'share', 'mine'],
+      ['bread#3', 'portion', 'open'],
+      ['bread#4', 'portion', 'open'],
+    ]);
+    expect(rows[0]!.units).toBe(2);
   });
 });

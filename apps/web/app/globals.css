@@ -656,5 +656,21 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* Claim on a receipt line: 44px, outlined; claimed is blue. */
 .receipt .claim-btn { flex: none; min-width: 104px; height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--ink); background: var(--bg); color: var(--ink); font: 700 14px var(--font); letter-spacing: 0; cursor: pointer; }
 .receipt .claim-btn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Claiming on the receipt (#215): rows never move; a split opens in place. */
+.receipt .claim-btn[aria-disabled='true'] { cursor: progress; }
+.claim-line__tools { flex: none; display: flex; align-items: center; gap: 12px; }
+.receipt .claim-split { flex: none; min-width: 104px; min-height: 44px; border: 0; background: none; color: var(--accent); font: 700 14px var(--font); letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.split-panel { margin: 0 -10px; padding: 12px 10px 14px; border-radius: 8px; background: var(--bg); border: 2px solid var(--accent); font-family: var(--font); letter-spacing: 0; display: flex; flex-direction: column; gap: 10px; }
+.split-panel:focus { outline: none; }
+.split-panel:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.split-panel__head { display: flex; align-items: baseline; gap: 10px; font-size: 16px; }
+.split-panel__head b { flex: 1; }
+.split-panel__head .receipt__price { font-family: var(--mono); }
+.split-panel__ask { margin: 0; font-size: 15px; }
+.split-panel__row { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-variant-numeric: tabular-nums; }
+.split-panel__acts { display: flex; gap: 8px; }
+.split-panel__acts > * { flex: 1; }
+.split-panel__acts > :last-child { flex: 1.4; }
+.split-panel__note { margin: 0; font-size: 14px; color: var(--quiet); }
 /* The PAID stamp. */
 .stamp-paid { display: inline-block; padding: 2px 12px; border: 3px solid var(--loud); border-radius: 4px; color: var(--loud); font-family: var(--display); font-weight: 800; letter-spacing: .08em; transform: rotate(-7deg); }

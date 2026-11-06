@@ -1,14 +1,14 @@
 /**
  * The bill stays open until the lead closes it.
  *
- * Sam splits the calamari two ways, pays, and the lead confirms. That must
+ * Sam is splitting the calamari two ways, pays, and the lead confirms. That must
  * NOT settle the bill: the other seat in the split is still empty. Tom
  * joins late, takes the seat, and only then does the lead close.
  *
  * Runs against the in-memory FakeApi, one browser context per diner.
  */
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { FakeApi, SID, users, type User } from './fakeApi';
+import { FakeApi, SID, items, users, type User } from './fakeApi';
 
 async function diner(browser: Browser, api: FakeApi, user: User): Promise<Page> {
   const ctx = await browser.newContext();
@@ -20,12 +20,14 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   const sam = await diner(browser, api, users.sam);
+  // Sam is splitting the calamari two ways and has the other seat to fill.
+  api.join(users.sam);
+  api.shares.push({ itemId: items[1]!.itemId, userIds: ['u-sam'], ways: 2, activity: [] });
+  api.participants.find((p) => p.userId === 'u-sam')!.sharedItemIds = [items[1]!.itemId];
 
-  // --- Sam: split the calamari two ways, take the lasagne, pay.
+  // --- Sam: take the lasagne, pay.
   await sam.goto(`/session/${SID}`);
   await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible();
-  await sam.getByRole('button', { name: 'Split Calamari' }).click();
-  await sam.getByRole('button', { name: '£11.25 each' }).click();
   await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
   await expect(sam.getByTestId('your-share')).toHaveText('£28.50');
   await sam.getByRole('link', { name: 'Continue to payment' }).click();

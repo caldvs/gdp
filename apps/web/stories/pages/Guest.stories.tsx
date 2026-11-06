@@ -32,17 +32,17 @@ export const AfterClaiming: Story = {
     const c = within(canvasElement);
     fireEvent.click(await c.findByRole('button', { name: /^Claim Calamari/ }));
     await new Promise((r) => setTimeout(r, 600));
-    fireEvent.click(await c.findByRole('button', { name: /^Claim one Espresso Martini/ }));
+    fireEvent.click(await c.findByRole('button', { name: /^Claim Espresso Martini 2 of 3/ }));
   },
 };
 
 export const SplitConfirm: Story = {
-  name: 'G2.3 Tap Split: confirm with Callum',
+  name: 'G2.1 Split: the row opens in place',
   parameters: screen({ user: users.tom, api: busyTable, path: `/session/${SID}` }),
   render: () => <Session />,
   play: async ({ canvasElement }) => {
     fireEvent.click(await within(canvasElement).findByRole('button', { name: /^Split Olives with/ }));
-    await dom.findByRole('dialog');
+    await within(canvasElement).findByRole('group', { name: 'Split Olives' });
   },
 };
 

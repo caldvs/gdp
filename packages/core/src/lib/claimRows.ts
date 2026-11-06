@@ -102,3 +102,80 @@ export function claimRows(s: Session, b: Bill, meUserId: string): ClaimRow[] {
     return out;
   });
 }
+
+/**
+ * One row on the claim list (#215): a dish, one portion of several of one
+ * thing ("Negroni 2 of 2"), or a split. Lines stay in bill order and never
+ * move; only their state changes.
+ */
+export type ClaimPortion = {
+  /** `<itemId>` for a dish or split, `<itemId>#<n>` for a portion. */
+  key: string;
+  item: BillItem;
+  kind: 'single' | 'portion' | 'share';
+  /** Portion number and how many were ordered (portion only). */
+  n?: number;
+  of?: number;
+  state: 'mine' | 'open' | 'theirs';
+  /** Who has this portion or dish, or the split's other people. */
+  holders: Participant[];
+  /** Open portions of this line (portion), open spots (share). */
+  left: number;
+  share?: Share;
+  /** Units the split covers (share on a longer line). */
+  units?: number;
+  canSplit: boolean;
+};
+
+/**
+ * Every row of the claim list. The bill stores several of one thing as one
+ * line with a quantity (ADR-0006) and claims as counts, so which portion row
+ * is whose is ours to choose: mine go where I tapped (`prefer`, slot numbers
+ * per itemId, kept by the screen) else the first free ones, then everyone
+ * else's in the order they joined. A longer line's split comes first and
+ * takes the first numbers.
+ */
+export function claimPortions(
+  s: Session,
+  b: Bill,
+  meUserId: string,
+  prefer: Readonly<Record<string, readonly number[]>> = {},
+): ClaimPortion[] {
+  return claimRows(s, b, meUserId).flatMap((r): ClaimPortion[] => {
+    const state = r.group === 'yours' ? 'mine' : r.group === 'open' ? 'open' : 'theirs';
+    if (r.kind === 'share') {
+      return [{ key: r.key, item: r.item, kind: 'share', state, holders: r.others, left: r.left, share: r.share, units: r.count, canSplit: r.canSplit }];
+    }
+    if (r.kind === 'single') {
+      return [{ key: r.key, item: r.item, kind: 'single', state, holders: r.others, left: r.left, canSplit: r.canSplit }];
+    }
+    const of = r.item.quantity;
+    const first = of - r.count + 1; // after any split's units
+    const slots: (Participant | 'me' | null)[] = Array.from({ length: r.count }, () => null);
+    const free = () => slots.findIndex((x) => x === null);
+    let mine = r.mine;
+    for (const n of prefer[r.item.itemId] ?? []) {
+      const i = n - first;
+      if (mine > 0 && i >= 0 && i < slots.length && slots[i] === null) {
+        slots[i] = 'me';
+        mine--;
+      }
+    }
+    for (; mine > 0; mine--) slots[free()] = 'me';
+    for (const p of r.others) {
+      const k = p.claimedItemIds.filter((id) => id === r.item.itemId).length;
+      for (let j = 0; j < k && free() >= 0; j++) slots[free()] = p;
+    }
+    return slots.map((who, i) => ({
+      key: `${r.item.itemId}#${first + i}`,
+      item: r.item,
+      kind: 'portion',
+      n: first + i,
+      of,
+      state: who === 'me' ? 'mine' : who ? 'theirs' : 'open',
+      holders: who && who !== 'me' ? [who] : [],
+      left: r.left,
+      canSplit: false,
+    }));
+  });
+}

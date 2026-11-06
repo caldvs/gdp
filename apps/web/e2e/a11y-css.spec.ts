@@ -44,7 +44,7 @@ async function clippedButtons(page: Page): Promise<string[]> {
 async function ringInsideCard(page: Page) {
   return page.evaluate(() => {
     const el = document.activeElement as HTMLElement;
-    const box = el.closest('.box')!;
+    const box = el.closest('.box, .receipt')!;
     const s = getComputedStyle(el);
     const grow = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
     const r = el.getBoundingClientRect();
@@ -68,7 +68,7 @@ test('a focused row in a card has its whole ring showing (#201)', async ({ page 
   expect(await ringInsideCard(page)).toEqual({ visible: true, inside: true });
 });
 
-test('a focused claim button in a card keeps its ring outside, and it shows (#201)', async ({ page }) => {
+test('a focused claim button on the receipt keeps its ring outside, and it shows (#201)', async ({ page }) => {
   await open(page, new FakeApi(), users.sam, `/session/${SID}`);
   const claim = page.getByRole('button', { name: `Claim ${items[2]!.name}` });
   await expect(claim).toBeVisible();

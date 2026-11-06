@@ -92,7 +92,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
           </Button>
         ) : (
           <Button href={`/session/${s.sessionId}/pay`} disabled={owed <= 0}>
-            {owed > 0 ? 'Continue to payment' : 'Claim something to continue'}
+            {owed > 0 ? 'Continue to payment' : 'Claim what you had'}
           </Button>
         )}
       </ActionBar>

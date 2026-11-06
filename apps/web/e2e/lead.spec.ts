@@ -291,7 +291,8 @@ test('fixing the bill mid-session: a picking guest and a sent guest both see the
   await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
 
   await expect(sam.getByText('£19.00').first()).toBeVisible(POLL);
-  await expect(tom.getByText('£19.00').first()).toBeVisible(POLL);
+  // Tom's still claiming: the receipt prints prices without the £.
+  await expect(tom.getByText('19.00', { exact: true }).first()).toBeVisible(POLL);
 });
 
 test('deleting the bill ends it for everyone at the table', async ({ browser }) => {

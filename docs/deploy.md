@@ -133,6 +133,23 @@ After step 1, CI keeps the role stack up to date: the dev deploy job redeploys
 `GdpGithubDeploy` as its last step. If a change to its trust locks CI out, rerun
 step 1 from your Mac.
 
+### Turn on WhatsApp (#229, #230)
+
+Off until the Meta app exists. Once you have its details:
+
+```bash
+for s in phone-number-id access-token app-secret verify-token; do
+  aws secretsmanager create-secret --profile gdp-dev --region eu-west-2 \
+    --name "gdp-dev/whatsapp-$s" --secret-string "<value>"
+done
+```
+
+Then set the `dev` environment variable `WHATSAPP_ENABLED=true` (GitHub →
+Settings → Environments → dev) and deploy. In the Meta app, subscribe the
+webhook to `https://<dev api>/webhooks/whatsapp` with the same verify token,
+field `messages`. Without the secrets the webhook isn't mounted and messages
+go to the console logger.
+
 ### Checks after every deploy
 
 The workflow runs two checks once `cdk deploy` finishes:

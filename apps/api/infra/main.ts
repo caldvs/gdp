@@ -138,6 +138,20 @@ class GdpBackendStack extends cdk.Stack {
         STRIPE_WEBHOOK_SECRET: `gdp-${envName}/stripe-webhook-secret`,
       });
     }
+    // WhatsApp (#229, #230) is off until the Meta app is set up. Turn it on with
+    // WHATSAPP_ENABLED=true (GitHub environment variable, or `-c whatsapp=true`)
+    // once these four are in Secrets Manager. Then subscribe Meta's webhook to
+    // https://<api>/webhooks/whatsapp with the verify token.
+    const whatsappEnabled =
+      process.env.WHATSAPP_ENABLED === 'true' || this.node.tryGetContext('whatsapp') === 'true';
+    if (whatsappEnabled) {
+      Object.assign(secretSources, {
+        WHATSAPP_PHONE_NUMBER_ID: `gdp-${envName}/whatsapp-phone-number-id`,
+        WHATSAPP_ACCESS_TOKEN: `gdp-${envName}/whatsapp-access-token`,
+        WHATSAPP_APP_SECRET: `gdp-${envName}/whatsapp-app-secret`,
+        WHATSAPP_VERIFY_TOKEN: `gdp-${envName}/whatsapp-verify-token`,
+      });
+    }
 
     // The bill reader: Claude Sonnet 4.6 on Bedrock through the EU cross-region
     // inference profile (requests stay in EU regions). Override with

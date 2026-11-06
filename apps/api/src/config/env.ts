@@ -46,6 +46,14 @@ const EnvSchema = z.object({
   // mounted. For dev the values come from SSM per stage.
   STRIPE_SECRET_KEY: z.string().optional().transform(unwrapSecret),
   STRIPE_WEBHOOK_SECRET: z.string().optional().transform(unwrapSecret),
+  // WhatsApp through Meta's Cloud API (#229, #230). Off unless all four are
+  // set (Secrets Manager when deployed, WHATSAPP_ENABLED in infra).
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional().transform(unwrapSecret),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional().transform(unwrapSecret),
+  WHATSAPP_APP_SECRET: z.string().optional().transform(unwrapSecret),
+  WHATSAPP_VERIFY_TOKEN: z.string().optional().transform(unwrapSecret),
+  // Paid template sends a month before we stop (and alarm).
+  WHATSAPP_TEMPLATE_CAP: z.coerce.number().int().nonnegative().default(500),
   // Comma list of email addresses that never pay the table fee (the
   // owner, friends testing it). Case and spaces don't matter. From the
   // GitHub environment's TABLE_FEE_EXEMPT_EMAILS at deploy.

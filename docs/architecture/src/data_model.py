@@ -57,8 +57,9 @@ y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), 
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
 y = place(0, y, 'Sign-in code', 'id', '20 min', [('pk', 'SIGNIN#{id}'), ('sk', 'same as pk')], ['email, requestHash, codeHash (6 digits, salted)', 'status pending → used; attempts ≤ 5 (ADD)', '  (right code again for 5 min after use)', 'expiresAt (15 min)']) + GAP
-y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#… | GUESTRATE#… | COMMENTRATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#{session}#{user}: 30 comments / h · PROOFRATE#: 10 / h', '(conditional add; key drops +tags, Gmail dots)']) + GAP
+y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', '{SIGNIN|CODE|GUEST|…}RATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#: 30 comments / h per person per bill', 'PROOFRATE#: 10 screenshot uploads / h, same', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
+y = place(0, y, 'WhatsApp', 'id', '2 d', [('pk', 'WAWIN# · WAMSG# · WATPL#'), ('sk', 'WIN · SEEN · COUNT')], ['WAWIN#{e164}: lastInboundAt, free replies 24 h', 'WAMSG#{messageId}: webhook message handled', 'WATPL#{yyyy-mm}: paid template sends (capped)']) + GAP
 col1_end = y
 
 # ---- Column 2: bills

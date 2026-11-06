@@ -1725,6 +1725,68 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /webhooks/whatsapp:
+    get:
+      tags: [webhooks]
+      operationId: whatsappWebhookVerify
+      summary: Meta's WhatsApp webhook subscribe handshake
+      description: |
+        #230. Echoes `hub.challenge` when `hub.mode` is `subscribe` and `hub.verify_token` matches
+        `WHATSAPP_VERIFY_TOKEN`. Only mounted once the WhatsApp secrets are set (#229).
+      security: []
+      parameters:
+        - { name: hub.mode, in: query, schema: { type: string } }
+        - { name: hub.verify_token, in: query, schema: { type: string } }
+        - { name: hub.challenge, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: The challenge, as plain text
+          content:
+            text/plain:
+              schema: { type: string }
+        '401':
+          description: Wrong verify token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: WhatsApp isn't set up here
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [webhooks]
+      operationId: whatsappWebhook
+      summary: Meta's WhatsApp messages webhook
+      description: |
+        #230. Verified with `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with
+        `WHATSAPP_APP_SECRET`). Each new message opens the sender's 24-hour reply window and is
+        handled once (Meta retries; repeats are skipped). Status updates are ignored. Message
+        bodies and whole phone numbers are never logged.
+      security: []
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, handled]
+                properties:
+                  ok: { type: boolean }
+                  handled: { type: integer, description: New messages in this delivery }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: Invalid signature
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '404':
+          description: WhatsApp isn't set up here
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
 components:
   securitySchemes:
     bearerAuth:

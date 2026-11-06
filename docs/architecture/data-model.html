@@ -107,7 +107,7 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>20</b> item types</span><span><b>1</b> GSI</span><span><b>11</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>21</b> item types</span><span><b>1</b> GSI</span><span><b>12</b> expiring types</span></div>
   </header>
 
   <div class="board">
@@ -186,33 +186,47 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="630">status pending → used; attempts ≤ 5 (ADD)</text>
 <text class="t-attr" x="48" y="648">  (right code again for 5 min after use)</text>
 <text class="t-attr" x="48" y="666">expiresAt (15 min)</text>
-<rect class="node" x="30" y="728" width="320" height="214" rx="10"/>
-<rect class="band band-id" x="30" y="728" width="6" height="214" rx="3"/>
+<rect class="node" x="30" y="728" width="320" height="232" rx="10"/>
+<rect class="band band-id" x="30" y="728" width="6" height="232" rx="3"/>
 <text class="t-title" x="48" y="755">Rate limits</text>
 <rect class="chip-ttl" x="293.0" y="741" width="43.0" height="20" rx="10"/>
 <text class="t-chip" x="314.5" y="755" text-anchor="middle">≤ 1 h</text>
 <text class="t-keylab" x="48" y="780">pk</text>
-<text class="t-key" x="104" y="780">SIGNINRATE#… | CODERATE#… | GUESTRATE#… | COMMENTRATE#…</text>
+<text class="t-key" x="104" y="780">{SIGNIN|CODE|GUEST|…}RATE#…</text>
 <text class="t-keylab" x="48" y="802">sk</text>
 <text class="t-key" x="104" y="802">W#{window} | LAST</text>
 <line class="rule" x1="48" y1="816" x2="332" y2="816"/>
 <text class="t-attr" x="48" y="834">SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s</text>
 <text class="t-attr" x="48" y="852">SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h</text>
-<text class="t-attr" x="48" y="870">CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews</text>
+<text class="t-attr" x="48" y="870">CODERATE#user: 30 lookups / 10 min · #ip: 60 previews</text>
 <text class="t-attr" x="48" y="888">GUESTRATE#ip: 20 guest joins / h · #session: 60 / h</text>
-<text class="t-attr" x="48" y="906">COMMENTRATE#{session}#{user}: 30 comments / h · PROOFRATE#: 10 / h</text>
-<text class="t-attr" x="48" y="924">(conditional add; key drops +tags, Gmail dots)</text>
-<rect class="node" x="30" y="986" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="986" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="1013">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="999" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="1013" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="1038">pk</text>
-<text class="t-key" x="104" y="1038">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="1060">sk</text>
-<text class="t-key" x="104" y="1060">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="1074" x2="332" y2="1074"/>
-<text class="t-attr" x="48" y="1092">stored status + response body</text>
+<text class="t-attr" x="48" y="906">COMMENTRATE#: 30 comments / h per person per bill</text>
+<text class="t-attr" x="48" y="924">PROOFRATE#: 10 screenshot uploads / h, same</text>
+<text class="t-attr" x="48" y="942">(conditional add; key drops +tags, Gmail dots)</text>
+<rect class="node" x="30" y="1004" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="1004" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="1031">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="1017" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1031" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="1056">pk</text>
+<text class="t-key" x="104" y="1056">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="1078">sk</text>
+<text class="t-key" x="104" y="1078">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="1092" x2="332" y2="1092"/>
+<text class="t-attr" x="48" y="1110">stored status + response body</text>
+<rect class="node" x="30" y="1172" width="320" height="160" rx="10"/>
+<rect class="band band-id" x="30" y="1172" width="6" height="160" rx="3"/>
+<text class="t-title" x="48" y="1199">WhatsApp</text>
+<rect class="chip-ttl" x="306.2" y="1185" width="29.799999999999997" height="20" rx="10"/>
+<text class="t-chip" x="321.1" y="1199" text-anchor="middle">2 d</text>
+<text class="t-keylab" x="48" y="1224">pk</text>
+<text class="t-key" x="104" y="1224">WAWIN# · WAMSG# · WATPL#</text>
+<text class="t-keylab" x="48" y="1246">sk</text>
+<text class="t-key" x="104" y="1246">WIN · SEEN · COUNT</text>
+<line class="rule" x1="48" y1="1260" x2="332" y2="1260"/>
+<text class="t-attr" x="48" y="1278">WAWIN#{e164}: lastInboundAt, free replies 24 h</text>
+<text class="t-attr" x="48" y="1296">WAMSG#{messageId}: webhook message handled</text>
+<text class="t-attr" x="48" y="1314">WATPL#{yyyy-mm}: paid template sends (capped)</text>
 <rect class="node" x="410" y="80" width="320" height="160" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="160" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -466,6 +480,7 @@ ul.plain strong { color: var(--ink); }
             <tr><td>Join by code</td><td><code>JCODE#{code}</code> → sessionId</td><td class="op">Get</td></tr>
             <tr><td>A bill's comments</td><td><code>SESS#{id}</code>, <code>begins_with(COMMENT#)</code></td><td class="op">Query</td></tr>
             <tr><td>Payment screenshots</td><td><code>SESS#{id}</code>, <code>begins_with(PROOF#[{userId}#])</code></td><td class="op">Query</td></tr>
+            <tr><td>Free WhatsApp reply?</td><td><code>WAWIN#{e164}</code></td><td class="op">Get</td></tr>
             <tr><td>Is the bill in use?</td><td><code>BILLLOCK#{billId}</code></td><td class="op">Get</td></tr>
             <tr><td>My sessions, newest first</td><td>GSI1 <code>GSI1PK = USER#{userId}</code>, reverse</td><td class="op">Query</td></tr>
             <tr><td>My sessions' totals</td><td>META rows, then pinned <code>BILL# / V#</code> rows + the caller's <code>SHARE#</code> rows</td><td class="op">BatchGet ×2</td></tr>

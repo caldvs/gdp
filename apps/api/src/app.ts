@@ -53,6 +53,7 @@ import { runHoldSweep, type HoldSweepReport } from './ops/holdSweep.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
 import { buildStripeWebhookRoutes } from './routes/stripeWebhook.js';
+import { buildWhatsAppWebhookRoutes, type WhatsAppWebhookDeps } from './routes/whatsappWebhook.js';
 
 export interface AppDeps {
   /** Comma list of allowed browser origins; overrides ALLOWED_ORIGINS (tests). */
@@ -80,6 +81,8 @@ export interface AppDeps {
    */
   stripe?: Stripe | null;
   stripeWebhookSecret?: string;
+  /** #230: WhatsApp webhook secrets; defaults to env, `null` leaves it unmounted. */
+  whatsapp?: WhatsAppWebhookDeps | null;
   tableFeeStore?: TableFeeStore;
   /** The free monthly bill. Omit for DynamoDB; `null` turns credits off (every share pays). */
   creditStore?: CreditStore | null;
@@ -224,6 +227,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
     }
   }
 
+  // #230: WhatsApp's webhook, once the Meta app is set up (#229).
+  const wa = deps.whatsapp === null ? null : (deps.whatsapp ?? whatsappFromEnv());
+  if (wa) app.route('/webhooks', buildWhatsAppWebhookRoutes(wa));
+
   app.notFound((c) =>
     c.json(
       {
@@ -275,3 +282,9 @@ export const runHoldSweepNow = async (): Promise<HoldSweepReport | { skipped: st
   }
   return report;
 };
+
+/** WhatsApp webhook settings from env, when the Meta app's secrets are there. */
+function whatsappFromEnv(): WhatsAppWebhookDeps | null {
+  if (!env.WHATSAPP_APP_SECRET || !env.WHATSAPP_VERIFY_TOKEN) return null;
+  return { appSecret: env.WHATSAPP_APP_SECRET, verifyToken: env.WHATSAPP_VERIFY_TOKEN };
+}

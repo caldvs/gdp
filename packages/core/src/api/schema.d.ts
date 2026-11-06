@@ -1187,6 +1187,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhooks/whatsapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta's WhatsApp webhook subscribe handshake
+         * @description #230. Echoes `hub.challenge` when `hub.mode` is `subscribe` and `hub.verify_token` matches
+         *     `WHATSAPP_VERIFY_TOKEN`. Only mounted once the WhatsApp secrets are set (#229).
+         */
+        get: operations["whatsappWebhookVerify"];
+        put?: never;
+        /**
+         * Meta's WhatsApp messages webhook
+         * @description #230. Verified with `X-Hub-Signature-256` (HMAC-SHA256 of the raw body with
+         *     `WHATSAPP_APP_SECRET`). Each new message opens the sender's 24-hour reply window and is
+         *     handled once (Meta retries; repeats are skipped). Status updates are ignored. Message
+         *     bodies and whole phone numbers are never logged.
+         */
+        post: operations["whatsappWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3967,6 +3995,91 @@ export interface operations {
             };
             /** @description Invalid signature */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    whatsappWebhookVerify: {
+        parameters: {
+            query?: {
+                "hub.mode"?: string;
+                "hub.verify_token"?: string;
+                "hub.challenge"?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The challenge, as plain text */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Wrong verify token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description WhatsApp isn't set up here */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    whatsappWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                        /** @description New messages in this delivery */
+                        handled: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Invalid signature */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description WhatsApp isn't set up here */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

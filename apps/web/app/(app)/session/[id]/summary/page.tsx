@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The lead's bill summary (#131, board L6): a plain statement like the
+ * The whole bill (#131, #217, board L6): a plain statement like the
  * emailed report. The bill, the platform fee, each person's items with
  * service and whether they've paid, what nobody claimed, payments with
  * times, and where the lead stands. Email this / Copy as text.
@@ -54,7 +54,7 @@ export default function SummaryPage() {
     ? (spent.fee.releasedAt ? undefined : spent.fee.capturedPence ?? (st.feesPence || undefined))
     : spent.fee && !spent.fee.refundedAt ? spent.fee.amountPence : undefined;
   const venue = b.venue?.name ?? s.venue?.name;
-  const title = venue ? `Bill summary: ${venue}` : 'Bill summary';
+  const title = venue ? `The whole bill: ${venue}` : 'The whole bill';
   const when = new Date(s.createdAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/London' });
   const own = st.people.find((p) => p.status === 'lead')?.totalPence ?? 0;
 
@@ -93,7 +93,7 @@ export default function SummaryPage() {
           ))}
           {st.unclaimed.items.length > 0 ? (
             <table aria-label="Nobody claimed">
-              <thead><tr><th>Nobody claimed</th><th className="n">Goes to {leadName}</th></tr></thead>
+              <thead><tr><th>Nobody claimed</th><th className="n">{s.status === 'settled' ? `${leadName} covered it` : `Goes on ${leadName}`}</th></tr></thead>
               <tbody>
                 {lines(st.unclaimed.items)}
                 {st.unclaimed.extrasPence > 0 ? <tr><td>Service</td><td className="n">{formatGBP(st.unclaimed.extrasPence)}</td></tr> : null}

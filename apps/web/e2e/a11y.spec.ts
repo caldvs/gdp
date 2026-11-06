@@ -114,7 +114,7 @@ test('the lead’s bill and Mark as settled', async ({ page }) => {
 test('the whole bill', async ({ page }) => {
   await open(page, busyTable(), users.lead, `/session/${SID}`);
   await page.getByRole('link', { name: 'The whole bill' }).click();
-  await expect(page.getByRole('heading', { name: /Bill summary/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /The whole bill/ })).toBeVisible();
   await audit(page);
 });
 

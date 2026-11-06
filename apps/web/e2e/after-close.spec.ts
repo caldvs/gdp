@@ -43,7 +43,8 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
   await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
   await lead.getByRole('button', { name: 'Sam’s £17.25 received' }).click();
   await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
-  await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
+  await expect(lead.getByText('Everyone’s paid')).toBeVisible(POLL);
+  await expect(lead.locator('.totals__line', { hasText: 'Back from friends' })).toContainText('Sam £17.25');
 });
 
 test('a newcomer opening the link after the bill is closed is told so, and not seated', async ({ browser }) => {

@@ -310,7 +310,7 @@ test('#131: the full summary is a plain statement the lead can email or copy', a
   const lead = await diner(browser, api, users.lead, { clipboard: browserName === 'chromium' });
 
   await lead.getByRole('link', { name: 'The whole bill' }).click();
-  await expect(lead.getByRole('heading', { name: 'Bill summary: Gennaro' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'The whole bill: Gennaro' })).toBeVisible();
   await expect(lead.getByRole('table', { name: 'Callum' })).toContainText('Olives£4.25');
   await expect(lead.getByRole('table', { name: 'Sam' })).toContainText('Paid');
   await expect(lead.getByRole('table', { name: 'Sam' })).toContainText('Calamari£22.50');
@@ -328,7 +328,7 @@ test('#131: the full summary is a plain statement the lead can email or copy', a
     await lead.getByRole('button', { name: 'Copy as text' }).click();
     await expect(lead.getByRole('button', { name: 'Copied' })).toBeVisible();
     const text = await lead.evaluate(() => navigator.clipboard.readText());
-    expect(text).toContain('Bill summary: Gennaro');
+    expect(text).toContain('The whole bill: Gennaro');
     expect(text).toContain('Sam · Paid');
     expect(text).toContain('Nobody claimed · goes to Callum');
   }

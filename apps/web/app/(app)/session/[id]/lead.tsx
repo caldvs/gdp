@@ -19,13 +19,13 @@ import { claimRows, openPence } from '@gdp/core/lib/claimRows';
 import { extrasRate, projectFeePence, projectOwedPence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowLink, Section, Title, TotalLine, Totals, firstName,
+  ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { useTableFeed } from '@/components/useTableFeed';
 import { billTitle } from '@/components/PageTransition';
-import { itemStatuses } from './guest';
 import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
+import { billStatement } from '@gdp/core/lib/statement';
 import { ClaimList } from './claim';
 
 type Session = components['schemas']['Session'];
@@ -369,67 +369,67 @@ function useReceived(s: Session, b: Bill) {
 
 /* ============================ closed ============================ */
 
+/**
+ * L7 Settled (#217): where the lead stands. The bill, the platform fee, their
+ * share, what nobody claimed (they covered it), what's come back from
+ * friends and what's still to come, then who still owes, with *Received*:
+ * guests can pay after. Numbers come from `billStatement`, as on *The whole
+ * bill* and in the email.
+ */
 export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
-  // Guests can still pay after the bill is closed, so the lead can still mark it received.
   const received = useReceived(s, b);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const outstanding = guests.filter((p) => !isPaid(s, b, p));
-  const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
-  // The guests' platform fee is on top of the bill, so it isn't taken off the lead's part.
-  const yourPart = Math.max(0, b.totalPence - guests.reduce((acc, p) => acc + owedFor(s, b, p) - projectFeePence(s, b, p.userId), 0));
-  const unclaimed = itemStatuses(s, b, s.creatorUserId).filter((x) => x.left > 0);
+  const st = billStatement(s, b, (p) => firstName(p.displayName, 'Guest'));
+  const own = st.people.find((p) => p.status === 'lead')?.totalPence ?? 0;
+  const back = guests.map((p) => ({ name: firstName(p.displayName, 'Guest'), pence: confirmedFor(s, b, p) })).filter((x) => x.pence > 0);
+  const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
   const spent = useSpent(s.sessionId);
+  const fee = feeLine(spent);
   const feed = useTableFeed(s.participants, s.creatorUserId, (p) => owedFor(s, b, p));
   return (
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Settled" aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
-        {outstanding.length === 0
-          ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>
-          : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}
-        {guests.length > 0 ? (
-          <Section title="People">
-            <Box list>{guests.map((p) => (
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={<><Badge tone="ok">Settled</Badge> {formatDay(s.createdAt)}</>} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
+        <Box>
+          <Totals label="Where you stand">
+            <TotalLine k="Bill" v={formatGBP(b.totalPence)} />
+            {fee ? <TotalLine k={<>Platform fee{fee.sub ? <span className="totals__sub">{fee.sub}</span> : null}</>} v={fee.v} /> : null}
+            <TotalLine k="Your share" v={formatGBP(own)} />
+            {st.unclaimed.totalPence > 0 ? <TotalLine k="Nobody claimed · you covered" v={formatGBP(st.unclaimed.totalPence)} /> : null}
+            <TotalLine tone="total" k={<>Back from friends{back.length > 0 ? <span className="totals__sub">{back.map((x) => `${x.name} ${formatGBP(x.pence)}`).join(' + ')}</span> : null}</>} v={formatGBP(st.receivedPence)} />
+            {toCome > 0 ? <TotalLine tone="total" k="Still to come" v={formatGBP(toCome)} /> : null}
+          </Totals>
+        </Box>
+        {outstanding.length > 0 ? (
+          <Section title="Still to pay">
+            <Box list>{outstanding.map((p) => (
               <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
             ))}</Box>
           </Section>
-        ) : null}
-        {unclaimed.length > 0 ? (
-          <Section title="Nobody claimed these">
-            <Box list>{unclaimed.map(({ item, left }) => (
-              <Row key={item.itemId} title={left > 1 ? `${item.name} × ${left}` : item.name} end={formatGBP(item.unitPricePence * left)} />
-            ))}</Box>
-          </Section>
-        ) : null}
-        {spent.fee ? (
-          <Section title="Platform fee">
-            {spent.fee.kind === 'hold' ? (
-              <Box>
-                {spent.fee.capturedAt
-                  ? <Row title="Taken from your hold" sub="Your guests’ round-ups" end={formatGBP(spent.fee.capturedPence ?? 0)} />
-                  : <Row title={spent.fee.releasedAt ? 'Hold released' : 'Hold on your card'} end={formatGBP(spent.fee.amountPence)} />}
-              </Box>
-            ) : (
-              <Box><Row title={spent.fee.refundedAt ? 'Refunded' : 'Paid when you shared'} end={formatGBP(spent.fee.amountPence)} /></Box>
-            )}
-          </Section>
-        ) : spent.credit?.returnedAt ? (
-          <Section title="Platform fee">
-            <Box><Row title="Credit given back" end="1 credit" /></Box>
-          </Section>
-        ) : null}
-        <Totals>
-          <TotalLine k="Bill" v={formatGBP(b.totalPence)} />
-          <TotalLine tone="total" k="Your part" v={formatGBP(yourPart)} />
-        </Totals>
-        <Box><RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" /></Box>
+        ) : guests.length > 0 ? <Notice tone="ok" title="Everyone’s paid" /> : null}
+        <div className="lead-links">
+          <Link href={`/session/${s.sessionId}/summary`} className="link-btn">The whole bill</Link>
+        </div>
       </Page>
       <ActionBar><Button grow href="/" replace>Done</Button></ActionBar>
       {received.sheet}
     </>
   );
+}
+
+/** The platform fee line on the settled bill, as built today (#167). */
+function feeLine(spent: ReturnType<typeof useSpent>): { v: string; sub?: string } | null {
+  if (spent.fee?.kind === 'hold') {
+    if (spent.fee.capturedAt) return { v: `${formatGBP(spent.fee.capturedPence ?? 0)} from your hold`, sub: 'Your guests’ round-ups' };
+    if (spent.fee.releasedAt) return { v: formatGBP(0), sub: 'Your hold is released' };
+    return { v: `${formatGBP(spent.fee.amountPence)} hold`, sub: 'Settling it now' };
+  }
+  if (spent.fee) return { v: formatGBP(spent.fee.refundedAt ? 0 : spent.fee.amountPence), sub: spent.fee.refundedAt ? 'Refunded' : undefined };
+  if (spent.credit) return { v: spent.credit.returnedAt ? 'Given back' : 'Free credit' };
+  return null;
 }
 
 /** The platform fee or credit that paid for sharing this session, if any. */

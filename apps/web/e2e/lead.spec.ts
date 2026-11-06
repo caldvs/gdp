@@ -334,7 +334,9 @@ test('settling with everything claimed and paid: the confirm says so and "your p
   await expect(lead.getByText('Settled', { exact: true })).toBeVisible();
   // Sam owed 22.50 + 17.25 + 21.00 + 39.00 = 99.75; bill is 104.00; your part = 4.25.
   await expect(lead.getByText('£99.75').first()).toBeVisible();
-  await expect(lead.locator('.totals__line', { hasText: 'Your part' })).toContainText('£4.25');
+  await expect(lead.locator('.totals__line', { hasText: 'Your share' })).toContainText('£4.25');
+  await expect(lead.locator('.totals__line', { hasText: 'Back from friends' })).toContainText('Sam £99.75');
+  await expect(lead.getByText('Everyone’s paid')).toBeVisible();
 });
 
 test('the lead’s QR page shows people as they arrive', async ({ browser }) => {

@@ -95,3 +95,17 @@ test('#231 texts when both are on: Callum chose SMS', async ({ browser }) => {
   await page.reload();
   await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
 });
+
+test('a last-active time left from yesterday doesn’t sign a new sign-in straight out', async ({ browser }) => {
+  const api = new FakeApi();
+  api.phoneSignIn = true;
+  api.phoneChannel = 'sms';
+  const page = await signedOut(browser, api);
+  await page.evaluate(() => window.localStorage.setItem('gdp.lastActiveAt', String(Date.now() - 24 * 60 * 60 * 1000)));
+  await page.getByLabel('Your mobile number').fill('07700 900123');
+  await page.getByRole('button', { name: 'Send me a code' }).click();
+  await page.getByLabel('4-digit code').fill(PHONE_CODE);
+  await expect(page).not.toHaveURL(/sign-in/);
+  await page.waitForTimeout(6000);
+  await expect(page).not.toHaveURL(/sign-in/);
+});

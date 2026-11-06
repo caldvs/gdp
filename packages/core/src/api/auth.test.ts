@@ -1,10 +1,16 @@
 import { beforeEach, describe, it, expect } from 'vitest';
-import { clearToken, getStoredToken, isTabSignedIn, storeToken } from './auth';
+import { clearToken, getStoredToken, isTabSignedIn, readLastActive, storeToken } from './auth';
 
 describe('session token storage', () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+  });
+
+  it('a fresh sign-in restarts the idle hour, so a stale one can’t sign it out', async () => {
+    window.localStorage.setItem('gdp.lastActiveAt', String(Date.now() - 3 * 60 * 60 * 1000));
+    await storeToken('lead');
+    expect(Date.now() - readLastActive()!).toBeLessThan(1000);
   });
 
   it('keeps an ordinary sign-in for every tab', async () => {

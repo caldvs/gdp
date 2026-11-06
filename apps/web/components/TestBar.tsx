@@ -76,7 +76,8 @@ function Bar({ startOpen, reload }: { startOpen: boolean; reload: boolean }) {
     window.location.reload();
   };
 
-  const who = me.data?.email ?? 'Signed out';
+  // Phone accounts (#213) may have no email.
+  const who = me.data ? (me.data.email ?? me.data.displayName) : 'Signed out';
 
   return (
     <div className="testbar" role="region" aria-label="Test tools">

@@ -40,6 +40,10 @@ export async function getStoredToken(): Promise<string | null> {
 export async function storeToken(token: string, opts: { tabOnly?: boolean } = {}): Promise<void> {
   if (opts.tabOnly || isTabSignedIn()) tabStore()?.setItem(TAB_TOKEN_KEY, token);
   else store()?.setItem(TOKEN_KEY, token);
+  // A fresh sign-in starts the idle hour. A last-active time left over from
+  // an earlier session (one that ended without signing out) would otherwise
+  // sign this one straight back out.
+  writeLastActive(Date.now());
 }
 
 /** Sign out. In a tab signed in on its own, only that tab's sign-in goes. */

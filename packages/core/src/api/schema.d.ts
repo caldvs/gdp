@@ -1306,9 +1306,11 @@ export interface paths {
         /**
          * Start the £1 hold for a bill
          * @description Without a credit, sharing a bill puts a £1 hold on the lead's card (#165): authorised
-         *     now, and at close the guests' part is taken and the rest released. Creates a Stripe
-         *     Checkout Session (manual capture) for the embedded form (`ui_mode: form`) and returns
-         *     its client secret. The hold is recorded by the Stripe webhook.
+         *     now and always released at settle. Creates a Stripe Checkout Session (manual capture)
+         *     for the embedded form (`ui_mode: form`) and returns its client secret. The session is
+         *     for the lead's Stripe customer with `setup_future_usage: off_session` (#228), so the
+         *     card is saved for one charge at settle: the round-ups of the guests the lead marked
+         *     received. The hold is recorded by the Stripe webhook.
          */
         post: operations["startTableFeeCheckout"];
         delete?: never;
@@ -1335,6 +1337,72 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/table-fee/saved-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place the £1 hold on the saved card
+         * @description #228: the hold on the card saved with the lead's last hold, in one tap. `held` when the
+         *     bank authorised it; `requires_action` when it wants the lead to confirm (3D Secure):
+         *     the page finishes it with Stripe.js and polls the status with `payment_intent`.
+         */
+        post: operations["holdOnSavedCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/fee-charge/{billId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The round-ups charge at settle, to confirm it
+         * @description #228: when the bank wanted the lead to confirm the charge made at settle, this gives the
+         *     page the PaymentIntent's client secret and the saved card. Checks with Stripe, so a
+         *     charge just confirmed comes back `charged`. The lead's own bill only.
+         */
+        get: operations["getFeeCharge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove the saved card
+         * @description #228: detaches the card saved with the last hold. The Stripe customer stays.
+         */
+        delete: operations["removeSavedCard"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1370,7 +1438,9 @@ export interface paths {
          * Stripe event webhook
          * @description Verified with the `Stripe-Signature` header and `STRIPE_WEBHOOK_SECRET`.
          *     `checkout.session.completed` (and `checkout.session.async_payment_succeeded`) with
-         *     `payment_status: paid` records the bill's table fee. Every verified event gets `200`,
+         *     `payment_status: paid` records the bill's table fee. #228:
+         *     `payment_intent.amount_capturable_updated` records a hold on the saved card, and
+         *     `payment_intent.succeeded` a round-ups charge the lead confirmed. Every verified event gets `200`,
          *     including repeats; an invalid signature gets `401`.
          */
         post: operations["stripeWebhook"];
@@ -1423,7 +1493,35 @@ export interface components {
              */
             nextCreditOn?: string;
         };
+        SavedCardHold: {
+            /** @enum {string} */
+            status: "held" | "requires_action";
+            amountPence?: number;
+            /** @description For Stripe.js handleNextAction */
+            clientSecret?: string;
+            paymentIntentId?: string;
+        };
+        FeeCharge: {
+            /** Format: uuid */
+            billId: string;
+            /** @enum {string} */
+            status: "charged" | "needs_confirming" | "none";
+            amountPence: number;
+            /** @description The PaymentIntent to confirm in the page */
+            clientSecret?: string;
+            /** @description The saved card, offered first */
+            paymentMethodId?: string;
+            card?: components["schemas"]["CardSummary"];
+        };
+        CardSummary: {
+            /** @description `visa`, `mastercard`… */
+            brand?: string;
+            last4?: string;
+            /** @description `apple_pay`, `google_pay`… */
+            wallet?: string;
+        };
         BillingSummary: {
+            card?: components["schemas"]["CardSummary"];
             /** @enum {integer} */
             creditsLeft: 0 | 1;
             /** Format: date */
@@ -1443,7 +1541,7 @@ export interface components {
                 /** Format: date-time */
                 paidAt: string;
                 /**
-                 * @description A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`).
+                 * @description A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`) or charged at settle (`chargePence`).
                  * @enum {string}
                  */
                 kind?: "hold";
@@ -1453,6 +1551,21 @@ export interface components {
                 capturedPence?: number;
                 /** Format: date-time */
                 capturedAt?: string;
+                /**
+                 * @description #228: the hold saved the card, so settle charges it the round-ups, no cap.
+                 * @enum {boolean}
+                 */
+                savedCard?: true;
+                /**
+                 * @description #228: the charge at settle on the saved card: the round-ups of the guests the
+                 *     lead marked received, no cap. `needs_confirming`: the bank wants the lead to
+                 *     confirm it. `none`: under 30p, or nobody paid.
+                 * @enum {string}
+                 */
+                chargeStatus?: "charged" | "needs_confirming" | "none";
+                chargePence?: number;
+                /** Format: date-time */
+                chargedAt?: string;
                 /** Format: date-time */
                 refundedAt?: string;
             }[];
@@ -4514,6 +4627,8 @@ export interface operations {
             query?: {
                 /** @description The Checkout Session the page just confirmed (`cs_…`). */
                 session_id?: string;
+                /** @description A hold on the saved card the page just confirmed (`pi_…`, #228). */
+                payment_intent?: string;
             };
             header?: never;
             path: {
@@ -4534,6 +4649,93 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    holdOnSavedCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartTableFeeRequest"];
+            };
+        };
+        responses: {
+            /** @description Held, or waiting for the lead to confirm */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedCardHold"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill already has a hold (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The card didn't go through, or a Stripe error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getFeeCharge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The charge */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeeCharge"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeSavedCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed (or there was none) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getMyBilling: {

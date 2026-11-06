@@ -434,7 +434,7 @@ function CheckBill() {
           <div ref={askRef} tabIndex={-1} className="confirm-inline" role="group" aria-labelledby="qr-t">
             <h2 id="qr-t" className="confirm-inline__h">{feeDue !== null ? `Hold ${formatGBP(feeDue)} to share this bill?` : 'Use your free credit?'}</h2>
             {feeDue !== null ? (
-              <p className="muted">Nothing is taken now. Your guests round their share up to the next pound to cover it: at most {formatGBP(feeDue)}, taken when you settle. Nobody joins? It’s released.</p>
+              <p className="muted">Nothing is taken now. Your guests round their share up to the next pound to cover it. When you settle, the hold is released and we charge your card their round-ups. Nobody joins? Nothing.</p>
             ) : (
               <>
                 <p className="muted">One free bill a month. Next one {nextMonth()}.</p>

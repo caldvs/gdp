@@ -1,24 +1,25 @@
 'use client';
 
 /**
- * M1 Account (#224): this month's free credit, bank details (this phone
- * only), the email bill emails go to, every bill, sign out.
+ * M1 Account (#224): this month's free credit, the card saved for the
+ * platform fee (#228), bank details (this phone only), the email bill emails
+ * go to, every bill, sign out.
  */
 import { useRouter } from 'next/navigation';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { useSignOut } from '@gdp/core/api/hooks/useSignOut';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
-import { creditDate, useMyBilling } from '@gdp/core/api/hooks/useTableFee';
-import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { BackLink, Box, Button, Centre, Page, Row, RowLink, Spinner, Title } from '@/components/ui';
+import { cardLabel, creditDate, useMyBilling, useRemoveCard } from '@gdp/core/api/hooks/useTableFee';
+import { BackLink, Box, Button, Centre, Notice, Page, Row, RowButton, RowLink, Spinner, Title } from '@/components/ui';
 
 export default function AccountPage() {
   const router = useRouter();
   const me = useMe();
   const payout = usePayoutAccount();
   const signOut = useSignOut();
-  // Credits and fees, when the platform fee is on.
-  const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY });
+  // Credits, fees and the saved card; null when the platform fee is off.
+  const billing = useMyBilling();
+  const removeCard = useRemoveCard();
 
   if (me.isPending) return <Centre><Spinner /></Centre>;
   const name = me.data?.displayName ?? 'You';
@@ -45,11 +46,23 @@ export default function AccountPage() {
         </div>
       ) : null}
       <Box list>
+        {credit?.card ? (
+          <RowButton
+            tall
+            title="Card"
+            sub={<>{cardLabel(credit.card)} · For the platform fee</>}
+            end={removeCard.isPending ? 'Removing…' : 'Remove'}
+            label={`Remove ${cardLabel(credit.card)}`}
+            disabled={removeCard.isPending}
+            onClick={() => removeCard.mutate()}
+          />
+        ) : null}
         <RowLink href="/payout-account?returnTo=%2Faccount" tall title="Bank details" sub={bank ? <>{bankSub}<br />On this phone only</> : 'Not saved'} />
         {me.data?.email ? <Row tall title="Email" sub={<>{me.data.email} · For your bill emails.</>} /> : null}
         <RowLink href="/history" tall title="Every bill" />
         <RowLink href="/help" tall title="Help" sub="How claiming and paying work" />
       </Box>
+      {removeCard.error ? <Notice tone="error" title="Couldn’t remove the card.">{removeCard.error.message}</Notice> : null}
       <Button tone="secondary" onClick={() => { void signOut({ everywhere: true }).then(() => router.replace('/sign-in')); }}>Sign out</Button>
     </Page>
   );

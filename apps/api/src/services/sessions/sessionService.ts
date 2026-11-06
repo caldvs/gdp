@@ -309,11 +309,13 @@ export const sessionService = {
   },
 
   /**
-   * What the lead is charged from their hold (4 Nov 2026): the round-ups of
+   * The platform fee at settle (4 Nov 2026; #228, 8 Nov): the round-ups of
    * the guests whose payment the lead confirmed. When guests say they've
-   * paid but the lead confirmed none, the whole hold. The caller caps it at
-   * the hold. Reads the stored session (with each split's ways) and the
-   * pinned bill. 0 when no hold paid for it.
+   * paid but the lead confirmed none, the round-ups of those who say they
+   * have, so never confirming isn't a way out of it. A hold from before #228
+   * caps it at the hold; the saved card is charged it in full. Reads the
+   * stored session (with each split's ways) and the pinned bill. 0 when no
+   * hold paid for it.
    */
   async guestsFeePence(sessionId: string): Promise<number> {
     const session = await sessionStore.get(sessionId);
@@ -322,8 +324,9 @@ export const sessionService = {
     if (!bill) return 0;
     const guests = session.participants.filter((p) => p.userId !== session.creatorUserId);
     const confirmed = guests.filter((p) => paymentsOf(p, 0).some((e) => e.status === 'succeeded'));
-    if (confirmed.length === 0 && guests.some((p) => paymentsOf(p, 0).some(isSent))) {
-      return session.platformFeePence;
+    if (confirmed.length === 0) {
+      const sent = guests.filter((p) => paymentsOf(p, 0).some(isSent));
+      return sent.reduce((acc, p) => acc + feeFor(bill, session, p), 0);
     }
     return confirmed.reduce((acc, p) => acc + feeFor(bill, session, p), 0);
   },

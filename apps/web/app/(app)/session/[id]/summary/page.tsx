@@ -49,9 +49,12 @@ export default function SummaryPage() {
   const lead = s.participants.find((p) => p.userId === s.creatorUserId);
   const leadName = firstName(lead?.displayName, 'You');
   const st = billStatement(s, b, (p) => firstName(p.displayName, 'Guest'));
-  // A hold (#165): what the guests owe of it, taken at close (#167); none once released.
+  // A hold (#165): what was taken from it at close (#167), or charged to the
+  // saved card at settle (#228); none once released with nothing charged.
   const fee = spent.fee?.kind === 'hold'
-    ? (spent.fee.releasedAt ? undefined : spent.fee.capturedPence ?? (st.feesPence || undefined))
+    ? spent.fee.chargeStatus
+      ? spent.fee.chargePence || undefined
+      : spent.fee.releasedAt ? undefined : spent.fee.capturedPence ?? (st.feesPence || undefined)
     : spent.fee && !spent.fee.refundedAt ? spent.fee.amountPence : undefined;
   const venue = b.venue?.name ?? s.venue?.name;
   const title = venue ? `The whole bill: ${venue}` : 'The whole bill';

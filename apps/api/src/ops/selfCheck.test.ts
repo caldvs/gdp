@@ -3,6 +3,7 @@ import type Stripe from 'stripe';
 import {
   isSelfCheckEvent,
   holdRoundTrip,
+  savedCardRoundTrip,
   runSelfCheck,
   stripeKeyModeProblem,
   testAccountsProblem,
@@ -128,6 +129,80 @@ describe('holdRoundTrip', () => {
     );
     await expect(holdRoundTrip(fake({ afterStatus: 'requires_capture' }).stripe)).rejects.toThrow(
       /not canceled/,
+    );
+  });
+});
+
+describe('savedCardRoundTrip (#228)', () => {
+  const fake = (over: { chargeError?: boolean } = {}) => {
+    let creates = 0;
+    const piCreate = vi.fn(
+      (params: { amount: number; off_session?: boolean; payment_method?: string }) => {
+        creates += 1;
+        if (params.off_session && params.payment_method === 'pm_3ds' && !over.chargeError) {
+          return Promise.reject(
+            Object.assign(new Error('Authentication required'), {
+              type: 'StripeCardError',
+              code: 'authentication_required',
+              payment_intent: { id: 'pi_ask' },
+            }),
+          );
+        }
+        if (params.off_session) {
+          return Promise.resolve({
+            id: 'pi_charge',
+            status: 'succeeded',
+            amount_received: params.amount,
+          });
+        }
+        return Promise.resolve({
+          id: `pi_hold${creates}`,
+          status: 'requires_capture',
+          payment_method: 'pm_saved',
+        });
+      },
+    );
+    const piRetrieve = vi.fn((id: string) =>
+      Promise.resolve(
+        id === 'pi_charge'
+          ? { id, status: 'succeeded', amount_received: 184 }
+          : { id, status: 'canceled' },
+      ),
+    );
+    const stripe = {
+      customers: {
+        create: vi.fn(() => Promise.resolve({ id: 'cus_smoke' })),
+        del: vi.fn(() => Promise.resolve({})),
+      },
+      paymentMethods: { attach: vi.fn(() => Promise.resolve({ id: 'pm_3ds' })) },
+      paymentIntents: {
+        create: piCreate,
+        cancel: vi.fn(() => Promise.resolve({ status: 'canceled' })),
+        retrieve: piRetrieve,
+      },
+    } as unknown as Stripe;
+    return { stripe, piCreate };
+  };
+
+  it('saves the card, releases the hold, charges £1.84 off-session, and a 3D Secure card needs confirming', async () => {
+    const { stripe, piCreate } = fake();
+    await expect(savedCardRoundTrip(stripe)).resolves.toMatch(
+      /hold released, charged £1.84 \(pi_charge\); 3D Secure card needs confirming/,
+    );
+    expect(piCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ setup_future_usage: 'off_session', customer: 'cus_smoke' }),
+    );
+    expect(piCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 184, off_session: true, payment_method: 'pm_saved' }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(/^table-fee-charge-smoke-/) as string,
+      }),
+    );
+  });
+
+  it('fails when the 3D Secure card is charged without asking', async () => {
+    await expect(savedCardRoundTrip(fake({ chargeError: true }).stripe)).rejects.toThrow(
+      /not needs_confirming/,
     );
   });
 });

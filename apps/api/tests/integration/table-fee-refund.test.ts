@@ -154,7 +154,7 @@ describe('the £1 hold at close (#167)', () => {
   };
 
   /** Shared on a £1 hold (no credits), and a guest has claimed the pizza (£14.50 of £28.50). */
-  async function heldTableWithGuest(stripe: Stripe) {
+  async function heldTableWithGuest(stripe: Stripe, opts: { savedCard?: boolean } = {}) {
     const app = createApp({
       idTokenVerifier: fakeVerifier,
       billParser: new FixtureBillParser(sampleParsedBill),
@@ -178,6 +178,8 @@ describe('the £1 hold at close (#167)', () => {
       kind: 'hold',
       amountPence: 100,
       paidAt: new Date().toISOString(),
+      // #228: the hold saved the lead's card.
+      ...(opts.savedCard ? { customerId: 'cus_lead', paymentMethodId: 'pm_visa' } : {}),
     });
     await setPayoutFor(app, lead);
     expect((await post(app, `/v1/sessions/${sessionId}/share`, lead)).status).toBe(200);
@@ -231,7 +233,7 @@ describe('the £1 hold at close (#167)', () => {
     expect(capture).toHaveBeenCalledTimes(1);
   });
 
-  it('a lead who confirms nobody when guests say they’ve paid is charged the whole hold', async () => {
+  it('a lead who confirms nobody is still charged the round-ups of guests who say they’ve paid', async () => {
     const { stripe, capture } = holdStripe();
     const { app, lead, guest, sessionId, billId } = await heldTableWithGuest(stripe);
     const payment = await guestPays(app, sessionId, guest);
@@ -242,9 +244,10 @@ describe('the £1 hold at close (#167)', () => {
     expect(marked.status).toBe(200);
 
     expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    // #228 (8 Nov): no longer the whole hold, the 69p the guest says they paid.
     expect(capture).toHaveBeenCalledWith(
       `pi_${billId}`,
-      { amount_to_capture: 100 },
+      { amount_to_capture: 69 },
       { idempotencyKey: `table-fee-capture-cs_${billId}` },
     );
   });
@@ -266,5 +269,140 @@ describe('the £1 hold at close (#167)', () => {
     expect(capture).not.toHaveBeenCalled();
     expect(cancel).toHaveBeenCalledTimes(1);
     expect((await tableFeeStore.get(billId))?.releasedAt).toBeDefined();
+  });
+});
+
+describe('#228 at settle: the hold is released, the saved card charged the round-ups', () => {
+  const savedStripe = (charge: 'ok' | 'auth') => {
+    const cancel = vi.fn((_id: string, _p: object, _o: object) => Promise.resolve({}));
+    const capture = vi.fn();
+    const create = vi.fn((p: { amount: number }, _o?: object) =>
+      charge === 'ok'
+        ? Promise.resolve({ id: 'pi_charge', status: 'succeeded', amount_received: p.amount })
+        : Promise.reject(
+            Object.assign(new Error('Authentication required'), {
+              type: 'StripeCardError',
+              code: 'authentication_required',
+              payment_intent: { id: 'pi_charge' },
+            }),
+          ),
+    );
+    const retrieve = vi.fn((id: string) =>
+      Promise.resolve({ id, status: 'requires_payment_method', client_secret: `${id}_secret_x` }),
+    );
+    const stripe = {
+      paymentIntents: { capture, cancel, create, retrieve },
+      refunds: { create: vi.fn() },
+      checkout: { sessions: { retrieve: vi.fn() } },
+    } as unknown as Stripe;
+    return { stripe, capture, cancel, create };
+  };
+
+  async function confirmedTable(stripe: Stripe) {
+    const app = createApp({
+      idTokenVerifier: fakeVerifier,
+      billParser: new FixtureBillParser(sampleParsedBill),
+      stripe,
+      creditStore: null,
+    });
+    const lead = `c-${uuidv7()}`;
+    const guest = `g-${uuidv7()}`;
+    const bill = await createBillFor(app, lead);
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(lead) },
+      body: JSON.stringify({ billId: bill.billId }),
+    });
+    const { sessionId } = (await create.json()) as { sessionId: string };
+    await tableFeeStore.putIfAbsent({
+      billId: bill.billId,
+      userId: lead,
+      checkoutSessionId: `cs_${bill.billId}`,
+      paymentIntentId: `pi_${bill.billId}`,
+      kind: 'hold',
+      amountPence: 100,
+      paidAt: new Date().toISOString(),
+      customerId: 'cus_lead',
+      paymentMethodId: 'pm_visa',
+    });
+    await setPayoutFor(app, lead);
+    expect((await post(app, `/v1/sessions/${sessionId}/share`, lead)).status).toBe(200);
+    await post(app, `/v1/sessions/${sessionId}/join`, guest);
+    const pizza = bill.items.find((i) => i.name === 'Margherita Pizza')!;
+    await app.request(`/v1/sessions/${sessionId}/claims`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...makeAuth(guest) },
+      body: JSON.stringify({ claimedItemIds: [pizza.itemId] }),
+    });
+    expect((await post(app, `/v1/sessions/${sessionId}/open-payments`, lead)).status).toBe(200);
+    const res = await app.request(`/v1/sessions/${sessionId}/payments`, {
+      method: 'POST',
+      headers: { 'idempotency-key': newIdempotencyKey(), ...makeAuth(guest) },
+    });
+    const { payment } = (await res.json()) as { payment: { paymentId: string } };
+    const confirm = await app.request(`/v1/payments/${payment.paymentId}/confirm`, {
+      method: 'POST',
+      headers: makeAuth(lead),
+    });
+    expect(confirm.status).toBe(200);
+    return { app, lead, guest, sessionId, billId: bill.billId };
+  }
+
+  it('settling charges the 69p round-up off-session, once, and releases the £1 hold', async () => {
+    const { stripe, capture, cancel, create } = savedStripe('ok');
+    const { app, lead, sessionId, billId } = await confirmedTable(stripe);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    expect(capture).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 69,
+        customer: 'cus_lead',
+        payment_method: 'pm_visa',
+        off_session: true,
+        confirm: true,
+      }),
+      { idempotencyKey: `table-fee-charge-${sessionId}` },
+    );
+    expect(cancel).toHaveBeenCalledWith(
+      `pi_${billId}`,
+      { cancellation_reason: 'abandoned' },
+      { idempotencyKey: `table-fee-release-cs_${billId}` },
+    );
+    expect(await tableFeeStore.get(billId)).toMatchObject({
+      chargeStatus: 'charged',
+      chargePence: 69,
+      releasedAt: expect.any(String) as string,
+    });
+
+    const me = (await (
+      await app.request('/v1/billing/me', { headers: makeAuth(lead) })
+    ).json()) as { paidPence: number };
+    expect(me.paidPence).toBe(0); // no credit store here, so no fee history
+    await post(app, `/v1/sessions/${sessionId}/close`, lead);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('the bank wants the lead to confirm: the page gets the client secret, the lead only', async () => {
+    const { stripe, cancel } = savedStripe('auth');
+    const { app, lead, guest, sessionId, billId } = await confirmedTable(stripe);
+
+    expect((await post(app, `/v1/sessions/${sessionId}/close`, lead)).status).toBe(200);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(await tableFeeStore.get(billId)).toMatchObject({
+      chargeStatus: 'needs_confirming',
+      chargePence: 69,
+    });
+    const page = await app.request(`/v1/billing/fee-charge/${billId}`, { headers: makeAuth(lead) });
+    expect(page.status).toBe(200);
+    expect(await page.json()).toMatchObject({
+      status: 'needs_confirming',
+      amountPence: 69,
+      clientSecret: 'pi_charge_secret_x',
+    });
+    const other = await app.request(`/v1/billing/fee-charge/${billId}`, {
+      headers: makeAuth(guest),
+    });
+    expect(other.status).toBe(404);
   });
 });

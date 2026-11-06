@@ -151,6 +151,13 @@ export class FakeCore {
   paymentsOpenedAt: string | undefined;
   /** #166: the lead's £1 hold, which the guests pay back by what they ordered. */
   platformFeePence: number | undefined;
+  /**
+   * #228: the lead's `/v1/billing/me`, when a test sets it (unset: the API
+   * has no billing routes). `feeCharge` is what `/v1/billing/fee-charge/…`
+   * answers.
+   */
+  billing: { creditsLeft: 0 | 1; nextCreditOn: string; paidPence: number; refundedPence: number; card?: { brand?: string; last4?: string; wallet?: string }; fees: Record<string, unknown>[]; credits: Record<string, unknown>[] } | undefined;
+  feeCharge: { billId: string; status: 'charged' | 'needs_confirming' | 'none'; amountPence: number; clientSecret?: string; paymentMethodId?: string; card?: { brand?: string; last4?: string } } | undefined;
   /** #65: the photo's printed total wasn't read (cut-off, usually). */
   private noPrintedTotal: boolean;
   /** #107: a printed total the lines don't make (a misread price). */
@@ -382,6 +389,16 @@ export class FakeCore {
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions.map((s) => this.withTotals(s, user.userId)) });
     if (path === '/v1/me/payout-account') return method === 'GET' ? err('NOT_FOUND', 'none', 404) : json({ ok: true });
+
+    // ---- billing (#228), only when a test sets it
+    if (this.billing && user.userId === 'u-lead') {
+      if (path === '/v1/billing/me' && method === 'GET') return json(this.billing);
+      if (path === '/v1/billing/card' && method === 'DELETE') {
+        delete this.billing.card;
+        return { status: 204, contentType: 'application/json', body: '' };
+      }
+      if (path.startsWith('/v1/billing/fee-charge/') && this.feeCharge) return json(this.feeCharge);
+    }
 
     // ---- bills
     if (path === '/v1/bills/uploads' && this.rememberPhotos) {

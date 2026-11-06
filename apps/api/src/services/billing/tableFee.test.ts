@@ -54,6 +54,21 @@ const memoryStore = (): TableFeeStore & { rows: Map<string, TableFee> } => {
       rows.set(billId, { ...existing, ...capture });
       return Promise.resolve('recorded' as const);
     },
+    markCharge: (billId, charge) => {
+      const existing = rows.get(billId);
+      const ok =
+        !!existing &&
+        (!existing.chargeStatus ||
+          (charge.chargeStatus === 'charged' && existing.chargeStatus === 'needs_confirming'));
+      if (!ok) return Promise.resolve('duplicate' as const);
+      rows.set(billId, { ...existing, ...charge });
+      return Promise.resolve('recorded' as const);
+    },
+    setChargeIntent: (billId, chargeIntentId) => {
+      const existing = rows.get(billId);
+      if (existing) rows.set(billId, { ...existing, chargeIntentId });
+      return Promise.resolve();
+    },
     markRefunded: (billId, refund) => {
       const existing = rows.get(billId);
       if (!existing || existing.refundedAt) return Promise.resolve('duplicate' as const);

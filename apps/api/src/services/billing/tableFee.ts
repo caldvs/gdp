@@ -7,8 +7,10 @@ import type { Bill } from '../../types/bills.js';
 
 /**
  * Sharing without a credit puts a £1 hold on the lead's card (decisions:
- * Pricing, #165). Nothing is taken then; at close the platform takes what
- * the guests owe from it and releases the rest.
+ * Pricing, #165). Nothing is taken then. Placing it saves the card (#228):
+ * at settle the hold is always released and the saved card is charged the
+ * guests' round-ups the lead received, with no cap. Holds from before #228
+ * (no saved card) are still taken from at close, at most the hold (#167).
  */
 export const HOLD_PENCE = 100;
 
@@ -36,6 +38,21 @@ export interface TableFee {
   /** What was taken from a hold at close: the guests' part, at most the hold (#167). */
   capturedPence?: number;
   capturedAt?: string;
+  /**
+   * #228: the Stripe customer and the card saved with this hold, for the
+   * charge at settle. Absent on holds placed before #228.
+   */
+  customerId?: string;
+  paymentMethodId?: string;
+  /**
+   * #228: the charge at settle, decided once. `charged`: the round-ups were
+   * taken from the saved card. `needs_confirming`: the bank wanted the lead
+   * to confirm it (they're emailed a link). `none`: under 30p or nobody paid.
+   */
+  chargeStatus?: 'charged' | 'needs_confirming' | 'none';
+  chargePence?: number;
+  chargeIntentId?: string;
+  chargedAt?: string;
   /** Set once the fee has gone back to the lead's card. */
   refundId?: string;
   refundedAt?: string;
@@ -120,11 +137,56 @@ export interface TableFeeStore {
     billId: string,
     capture: { capturedPence: number; capturedAt: string },
   ): Promise<'recorded' | 'duplicate'>;
+  /**
+   * #228: records the charge at settle, once (`needs_confirming` can later
+   * become `charged`). `duplicate` if it was already recorded.
+   */
+  markCharge(
+    billId: string,
+    charge: {
+      chargeStatus: NonNullable<TableFee['chargeStatus']>;
+      chargePence: number;
+      chargeIntentId?: string;
+      chargedAt?: string;
+    },
+  ): Promise<'recorded' | 'duplicate'>;
+  /** #228: the PaymentIntent the lead confirms a `needs_confirming` charge with. */
+  setChargeIntent(billId: string, chargeIntentId: string): Promise<void>;
   /** Marks the fee refunded, once. `duplicate` if it already was, or there's no fee. */
   markRefunded(
     billId: string,
     refund: { refundId: string; refundedAt: string },
   ): Promise<'recorded' | 'duplicate'>;
+}
+
+/** #228: what the confirm-the-charge page needs. */
+export interface FeeCharge {
+  billId: string;
+  status: 'charged' | 'needs_confirming' | 'none';
+  amountPence: number;
+  /** The PaymentIntent's client secret, to confirm it in the page. */
+  clientSecret?: string;
+  /** The saved card, offered first. */
+  paymentMethodId?: string;
+  card?: { brand?: string; last4?: string };
+}
+
+/** #228: the lead's Stripe customer and saved card (Stripe ids and what the card shows only). */
+export interface SavedCard {
+  userId: string;
+  customerId: string;
+  /** Absent once the lead removed the card. */
+  paymentMethodId?: string;
+  /** `visa`, `mastercard`…; the wallet it came from, if any. */
+  brand?: string;
+  last4?: string;
+  wallet?: string;
+  savedAt?: string;
+}
+
+export interface SavedCardStore {
+  get(userId: string): Promise<SavedCard | null>;
+  put(card: SavedCard): Promise<void>;
 }
 
 /** What `refundIfNobodyJoined` did, for logs and tests. */
@@ -138,7 +200,14 @@ export type RefundOutcome =
   | 'no_payment_intent';
 
 /** What `takeFromHold` did, for logs and tests. */
-export type CaptureOutcome = 'captured' | 'released' | 'lapsed' | 'no_hold' | 'already_settled';
+export type CaptureOutcome =
+  | 'captured'
+  | 'charged'
+  | 'needs_confirming'
+  | 'released'
+  | 'lapsed'
+  | 'no_hold'
+  | 'already_settled';
 
 /** The parts of a session the refund policy looks at. */
 export interface ClosedSession {
@@ -165,6 +234,8 @@ export const checkoutSessionParams = (input: {
   billId: string;
   userId: string;
   email?: string;
+  /** #228: the lead's Stripe customer; the card is saved to it for the charge at settle. */
+  customerId?: string;
   returnUrl: string;
 }): Stripe.Checkout.SessionCreateParams => ({
   // fixed_by_ui (Checkout Studio)
@@ -194,8 +265,15 @@ export const checkoutSessionParams = (input: {
   payment_intent_data: {
     capture_method: 'manual',
     metadata: { billId: input.billId, userId: input.userId, kind: 'hold' },
+    // #228: keep the card for one charge at settle, made while the lead is
+    // away (they agree to it in the confirm before the form).
+    ...(input.customerId ? { setup_future_usage: 'off_session' as const } : {}),
   },
-  ...(input.email ? { customer_email: input.email } : {}),
+  ...(input.customerId
+    ? { customer: input.customerId }
+    : input.email
+      ? { customer_email: input.email }
+      : {}),
 });
 
 export interface TableFeeServiceDeps {
@@ -207,6 +285,19 @@ export interface TableFeeServiceDeps {
   exemptEmails?: ReadonlySet<string>;
   /** The free bill each month. Absent: every share pays. */
   credits?: CreditStore;
+  /** #228: the lead's saved card. Absent: holds don't save the card (the #167 flow). */
+  cards?: SavedCardStore;
+  /**
+   * #228: tells the lead the bank wants them to confirm the charge at
+   * settle, with a link to do it. Best effort: a failure is logged.
+   */
+  notifyNeedsConfirming?: (input: {
+    userId: string;
+    billId: string;
+    sessionId: string;
+    amountPence: number;
+    confirmUrl: string;
+  }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -225,6 +316,8 @@ export type TableFeeStatus =
 
 /** The lead's account: credits this month and the fees they've paid. */
 export interface BillingSummary extends CreditInfo {
+  /** #228: the card saved with the lead's last hold, if they kept it. */
+  card?: { brand?: string; last4?: string; wallet?: string };
   paidPence: number;
   refundedPence: number;
   fees: Array<{
@@ -237,6 +330,12 @@ export interface BillingSummary extends CreditInfo {
     releasedAt?: string;
     capturedPence?: number;
     capturedAt?: string;
+    /** #228: this hold saved the card, so settle charges it the round-ups, no cap. */
+    savedCard?: true;
+    /** #228: the charge at settle on the saved card. */
+    chargeStatus?: 'charged' | 'needs_confirming' | 'none';
+    chargePence?: number;
+    chargedAt?: string;
     refundedAt?: string;
   }>;
   credits: Array<{
@@ -268,16 +367,41 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     return bill;
   };
 
-  const startCheckoutUnsafe = async (input: { caller: VerifiedCaller; billId: string }) => {
-    const bill = await loadOwnBill(input.billId, input.caller);
+  /** #228: the lead's Stripe customer, made once and kept on their `CARD#` row. */
+  const ensureCustomer = async (caller: VerifiedCaller): Promise<string | undefined> => {
+    if (!deps.cards) return undefined;
+    const card = await deps.cards.get(caller.userId);
+    if (card?.customerId) return card.customerId;
+    const customer = await timed('stripe', 'customers.create', () =>
+      deps.stripe.customers.create(
+        {
+          ...(caller.email ? { email: caller.email } : {}),
+          metadata: { userId: caller.userId },
+        },
+        { idempotencyKey: `customer-${caller.userId}` },
+      ),
+    );
+    await deps.cards.put({ userId: caller.userId, customerId: customer.id });
+    return customer.id;
+  };
+
+  /** A bill that can take a new hold: the caller's, no usable hold, not exempt. */
+  const holdableBill = async (caller: VerifiedCaller, billId: string): Promise<Bill> => {
+    const bill = await loadOwnBill(billId, caller);
     // A fee spent on an earlier share doesn't stop a new one.
     const existing = usableFor(await deps.store.get(bill.billId), undefined);
     if (existing) {
       throw new AppError('TABLE_FEE_PAID', 'This bill already has a hold');
     }
-    if (isExempt(input.caller)) {
+    if (isExempt(caller)) {
       throw new AppError('TABLE_FEE_WAIVED', 'No fee is due: this account is exempt');
     }
+    return bill;
+  };
+
+  const startCheckoutUnsafe = async (input: { caller: VerifiedCaller; billId: string }) => {
+    const bill = await holdableBill(input.caller, input.billId);
+    const customerId = await ensureCustomer(input.caller);
     const returnUrl = `${deps.appBaseUrl}/table-fee/${bill.billId}?session_id={CHECKOUT_SESSION_ID}`;
     const session = await timed('stripe', 'checkout.sessions.create', () =>
       deps.stripe.checkout.sessions.create(
@@ -286,6 +410,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
           billId: bill.billId,
           userId: input.caller.userId,
           ...(input.caller.email ? { email: input.caller.email } : {}),
+          ...(customerId ? { customerId } : {}),
           returnUrl,
         }),
       ),
@@ -294,6 +419,91 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       throw new AppError('PAYMENT_PROVIDER_ERROR', 'Stripe returned no client secret');
     }
     return { clientSecret: session.client_secret, amountPence: HOLD_PENCE };
+  };
+
+  /**
+   * Records an authorised hold (#165): from a Checkout Session, or placed on
+   * the saved card (#228, keyed by its PaymentIntent). A hold made to save
+   * the card (`setup_future_usage`) keeps the customer and card on the row
+   * and on the lead's `CARD#` row, for the charge at settle.
+   */
+  const recordHold = async (
+    intent: Stripe.PaymentIntent,
+    at: { billId: string; userId: string; checkoutSessionId: string; paidAt: string },
+  ): Promise<'recorded' | 'duplicate' | 'ignored'> => {
+    if (intent.status !== 'requires_capture') return 'ignored';
+    const customerId = typeof intent.customer === 'string' ? intent.customer : intent.customer?.id;
+    const paymentMethodId =
+      typeof intent.payment_method === 'string' ? intent.payment_method : intent.payment_method?.id;
+    const saved =
+      !!deps.cards &&
+      !!customerId &&
+      !!paymentMethodId &&
+      (intent.setup_future_usage === 'off_session' || intent.metadata?.savedCard === 'true');
+    const written = await deps.store.putIfAbsent({
+      billId: at.billId,
+      userId: at.userId,
+      checkoutSessionId: at.checkoutSessionId,
+      paymentIntentId: intent.id,
+      kind: 'hold',
+      amountPence: intent.amount_capturable,
+      paidAt: at.paidAt,
+      ...(saved ? { customerId, paymentMethodId } : {}),
+    });
+    if (saved && written === 'recorded') await rememberCard(at.userId, customerId, paymentMethodId);
+    return written;
+  };
+
+  /** Keeps what the card shows (brand, last four) on the lead's `CARD#` row. Never fails the hold. */
+  const rememberCard = async (userId: string, customerId: string, paymentMethodId: string) => {
+    try {
+      const pm = await timed('stripe', 'paymentMethods.retrieve', () =>
+        deps.stripe.paymentMethods.retrieve(paymentMethodId),
+      );
+      await deps.cards!.put({
+        userId,
+        customerId,
+        paymentMethodId,
+        ...(pm.card?.brand ? { brand: pm.card.brand } : {}),
+        ...(pm.card?.last4 ? { last4: pm.card.last4 } : {}),
+        ...(pm.card?.wallet?.type ? { wallet: pm.card.wallet.type } : {}),
+        savedAt: now().toISOString(),
+      });
+    } catch (err) {
+      baseLogger.warn(
+        { event: 'table_fee.card_not_saved', userId, err },
+        'Saved card not recorded',
+      );
+    }
+  };
+
+  /**
+   * #228: a hold placed on the saved card. The webhook may not cover it, so
+   * the page's poll asks Stripe about its own PaymentIntent.
+   */
+  const reconcileIntent = async (bill: Bill, caller: VerifiedCaller, paymentIntentId: string) => {
+    let intent: Stripe.PaymentIntent;
+    try {
+      intent = await timed('stripe', 'paymentIntents.retrieve', () =>
+        deps.stripe.paymentIntents.retrieve(paymentIntentId),
+      );
+    } catch {
+      return null;
+    }
+    if (
+      intent.metadata?.kind !== 'hold' ||
+      intent.metadata?.billId !== bill.billId ||
+      intent.metadata?.userId !== caller.userId
+    ) {
+      return null;
+    }
+    const written = await recordHold(intent, {
+      billId: bill.billId,
+      userId: caller.userId,
+      checkoutSessionId: intent.id,
+      paidAt: now().toISOString(),
+    });
+    return written === 'ignored' ? null : deps.store.get(bill.billId);
   };
 
   /**
@@ -318,16 +528,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       const intent = await timed('stripe', 'paymentIntents.retrieve', () =>
         deps.stripe.paymentIntents.retrieve(paymentIntentId),
       );
-      if (intent.status !== 'requires_capture') return 'ignored';
-      return deps.store.putIfAbsent({
-        billId,
-        userId,
-        checkoutSessionId: session.id,
-        paymentIntentId,
-        kind: 'hold',
-        amountPence: intent.amount_capturable,
-        paidAt,
-      });
+      return recordHold(intent, { billId, userId, checkoutSessionId: session.id, paidAt });
     }
     if (session.payment_status !== 'paid') return 'ignored';
     return deps.store.putIfAbsent({
@@ -365,6 +566,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     caller: VerifiedCaller;
     billId: string;
     checkoutSessionId?: string;
+    paymentIntentId?: string;
     sessionId?: string;
   }): Promise<{ status: TableFeeStatus; month: string }> => {
     const bill = await loadOwnBill(input.billId, input.caller);
@@ -375,6 +577,12 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     if (!fee && input.checkoutSessionId) {
       fee = usableFor(
         await reconcile(bill, input.caller, input.checkoutSessionId),
+        input.sessionId,
+      );
+    }
+    if (!fee && input.paymentIntentId) {
+      fee = usableFor(
+        await reconcileIntent(bill, input.caller, input.paymentIntentId),
         input.sessionId,
       );
     }
@@ -449,23 +657,283 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     return written === 'recorded' ? 'released' : 'already_refunded';
   };
 
+  /** Turns a Stripe error into a plain message for the client; Stripe's own goes to the logs (#155). */
+  const providerError = (err: unknown, message: string): never => {
+    if (err instanceof AppError) throw err;
+    const e = err as { type?: string; message?: string };
+    if (e.type?.startsWith('Stripe')) {
+      baseLogger.error({ event: 'table_fee.stripe_error', type: e.type, err }, e.message);
+      throw new AppError('PAYMENT_PROVIDER_ERROR', message);
+    }
+    throw err;
+  };
+
+  /**
+   * #228: the charge at settle. Charges the saved card `amount` (the
+   * round-ups, no cap) while the lead is away, once per session (the
+   * idempotency key), and records it. The bank asking the lead to confirm
+   * (or declining) leaves it `needs_confirming` and emails them a link.
+   * Under Stripe's 30p minimum: nothing is charged (`none`).
+   */
+  const chargeSavedCard = async (
+    fee: TableFee,
+    session: ClosedSession,
+    amount: number,
+  ): Promise<'charged' | 'needs_confirming' | 'none'> => {
+    if (amount < STRIPE_MIN_PENCE) {
+      await deps.store.markCharge(fee.billId, {
+        chargeStatus: 'none',
+        chargePence: 0,
+        chargedAt: now().toISOString(),
+      });
+      return 'none';
+    }
+    let intent: Stripe.PaymentIntent;
+    try {
+      intent = await timed('stripe', 'paymentIntents.create', () =>
+        deps.stripe.paymentIntents.create(
+          {
+            amount,
+            currency: 'gbp',
+            customer: fee.customerId!,
+            payment_method: fee.paymentMethodId!,
+            off_session: true,
+            confirm: true,
+            description: 'Platform fee: your guests’ round-ups',
+            metadata: {
+              billId: fee.billId,
+              userId: fee.userId,
+              sessionId: session.sessionId,
+              kind: 'roundups',
+            },
+          },
+          { idempotencyKey: `table-fee-charge-${session.sessionId}` },
+        ),
+      );
+    } catch (err) {
+      const e = err as { type?: string; code?: string; payment_intent?: { id?: string } };
+      // A card the bank won't charge with the lead away (3D Secure, a
+      // decline, an expired card): they confirm it themselves.
+      if (e.type !== 'StripeCardError') throw err;
+      baseLogger.info(
+        { event: 'table_fee.charge_needs_confirming', billId: fee.billId, code: e.code },
+        'Round-ups charge needs the lead',
+      );
+      return needsConfirming(fee, session, amount, e.payment_intent?.id);
+    }
+    if (intent.status === 'succeeded') {
+      await deps.store.markCharge(fee.billId, {
+        chargeStatus: 'charged',
+        chargePence: intent.amount_received || amount,
+        chargeIntentId: intent.id,
+        chargedAt: now().toISOString(),
+      });
+      return 'charged';
+    }
+    return needsConfirming(fee, session, amount, intent.id);
+  };
+
+  const needsConfirming = async (
+    fee: TableFee,
+    session: ClosedSession,
+    amount: number,
+    intentId: string | undefined,
+  ): Promise<'needs_confirming'> => {
+    const written = await deps.store.markCharge(fee.billId, {
+      chargeStatus: 'needs_confirming',
+      chargePence: amount,
+      ...(intentId ? { chargeIntentId: intentId } : {}),
+    });
+    if (written === 'recorded' && deps.notifyNeedsConfirming) {
+      try {
+        await deps.notifyNeedsConfirming({
+          userId: fee.userId,
+          billId: fee.billId,
+          sessionId: session.sessionId,
+          amountPence: amount,
+          confirmUrl: `${deps.appBaseUrl}/fee-charge/${fee.billId}`,
+        });
+      } catch (err) {
+        baseLogger.error(
+          { event: 'table_fee.confirm_email_failed', billId: fee.billId, err },
+          'Couldn’t email the lead to confirm the charge',
+        );
+      }
+    }
+    return 'needs_confirming';
+  };
+
   return {
     /** Starts the embedded checkout for this bill's fee and returns the form's client secret. */
     async startCheckout(input: { caller: VerifiedCaller; billId: string }) {
       try {
         return await startCheckoutUnsafe(input);
       } catch (err) {
-        if (err instanceof AppError) throw err;
-        // A Stripe error (bad key, test/live mix-up, missing price, a
-        // parameter this account doesn't support): a plain message for the
-        // client, Stripe's own in the logs only (#155).
-        const e = err as { type?: string; message?: string };
-        if (e.type?.startsWith('Stripe')) {
-          baseLogger.error({ event: 'table_fee.stripe_error', type: e.type, err }, e.message);
-          throw new AppError('PAYMENT_PROVIDER_ERROR', 'Couldn’t start the payment. Try again.');
-        }
-        throw err;
+        // A Stripe error (bad key, test/live mix-up, a parameter this
+        // account doesn't support): a plain message for the client.
+        return providerError(err, 'Couldn’t start the payment. Try again.');
       }
+    },
+
+    /**
+     * #228: the £1 hold on the card saved with the lead's last hold, in one
+     * tap. `held` when the bank said yes; `requires_action` when it wants
+     * the lead to confirm (3D Secure): the page finishes it with Stripe.js
+     * and polls with the PaymentIntent.
+     */
+    async holdOnSavedCard(input: {
+      caller: VerifiedCaller;
+      billId: string;
+    }): Promise<
+      | { status: 'held'; amountPence: number }
+      | { status: 'requires_action'; clientSecret: string; paymentIntentId: string }
+    > {
+      const bill = await holdableBill(input.caller, input.billId);
+      const card = deps.cards ? await deps.cards.get(input.caller.userId) : null;
+      if (!card?.paymentMethodId) {
+        throw new AppError('NOT_FOUND', 'No saved card');
+      }
+      let intent: Stripe.PaymentIntent;
+      try {
+        intent = await timed('stripe', 'paymentIntents.create', () =>
+          deps.stripe.paymentIntents.create({
+            amount: HOLD_PENCE,
+            currency: 'gbp',
+            customer: card.customerId,
+            payment_method: card.paymentMethodId!,
+            capture_method: 'manual',
+            confirm: true,
+            // The lead is here: Stripe.js finishes any 3D Secure in the page.
+            use_stripe_sdk: true,
+            automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+            description: 'Platform fee hold',
+            metadata: {
+              billId: bill.billId,
+              userId: input.caller.userId,
+              kind: 'hold',
+              savedCard: 'true',
+            },
+          }),
+        );
+      } catch (err) {
+        const e = err as { type?: string };
+        if (e.type === 'StripeCardError') {
+          throw new AppError(
+            'PAYMENT_PROVIDER_ERROR',
+            'Your card didn’t go through. Use another card.',
+          );
+        }
+        return providerError(err, 'Couldn’t start the payment. Try again.');
+      }
+      if (intent.status === 'requires_capture') {
+        await recordHold(intent, {
+          billId: bill.billId,
+          userId: input.caller.userId,
+          checkoutSessionId: intent.id,
+          paidAt: now().toISOString(),
+        });
+        return { status: 'held', amountPence: HOLD_PENCE };
+      }
+      if (intent.status === 'requires_action' && intent.client_secret) {
+        return {
+          status: 'requires_action',
+          clientSecret: intent.client_secret,
+          paymentIntentId: intent.id,
+        };
+      }
+      throw new AppError(
+        'PAYMENT_PROVIDER_ERROR',
+        'Your card didn’t go through. Use another card.',
+      );
+    },
+
+    /**
+     * #228: the charge the bank wanted the lead to confirm. Returns what the
+     * confirm page needs (the PaymentIntent's client secret and the saved
+     * card), or that it's done. Asks Stripe, so a charge confirmed a moment
+     * ago shows as charged even before its webhook.
+     */
+    async feeCharge(input: { caller: VerifiedCaller; billId: string }): Promise<FeeCharge> {
+      const fee = await deps.store.get(input.billId);
+      if (!fee || fee.userId !== input.caller.userId || !fee.chargeStatus) {
+        throw new AppError('NOT_FOUND', 'No charge for this bill');
+      }
+      const amountPence = fee.chargePence ?? 0;
+      if (fee.chargeStatus !== 'needs_confirming') {
+        return { billId: fee.billId, status: fee.chargeStatus, amountPence };
+      }
+      let intent: Stripe.PaymentIntent | null = null;
+      if (fee.chargeIntentId) {
+        intent = await timed('stripe', 'paymentIntents.retrieve', () =>
+          deps.stripe.paymentIntents.retrieve(fee.chargeIntentId!),
+        );
+      }
+      if (intent?.status === 'succeeded') {
+        await deps.store.markCharge(fee.billId, {
+          chargeStatus: 'charged',
+          chargePence: intent.amount_received || amountPence,
+          chargeIntentId: intent.id,
+          chargedAt: now().toISOString(),
+        });
+        return { billId: fee.billId, status: 'charged', amountPence };
+      }
+      if (!intent || intent.status === 'canceled') {
+        // The off-session try left no PaymentIntent we can use: make one
+        // for the lead to confirm here.
+        intent = await timed('stripe', 'paymentIntents.create', () =>
+          deps.stripe.paymentIntents.create(
+            {
+              amount: amountPence,
+              currency: 'gbp',
+              ...(fee.customerId ? { customer: fee.customerId } : {}),
+              automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+              description: 'Platform fee: your guests’ round-ups',
+              metadata: {
+                billId: fee.billId,
+                userId: fee.userId,
+                ...(fee.sessionId ? { sessionId: fee.sessionId } : {}),
+                kind: 'roundups',
+              },
+            },
+            { idempotencyKey: `table-fee-charge-confirm-${fee.billId}` },
+          ),
+        );
+        await deps.store.setChargeIntent(fee.billId, intent.id);
+      }
+      const card = deps.cards ? await deps.cards.get(fee.userId) : null;
+      return {
+        billId: fee.billId,
+        status: 'needs_confirming',
+        amountPence,
+        ...(intent.client_secret ? { clientSecret: intent.client_secret } : {}),
+        ...(card?.paymentMethodId && card.paymentMethodId === fee.paymentMethodId
+          ? {
+              paymentMethodId: card.paymentMethodId,
+              card: {
+                ...(card.brand ? { brand: card.brand } : {}),
+                ...(card.last4 ? { last4: card.last4 } : {}),
+              },
+            }
+          : {}),
+      };
+    },
+
+    /** #228: *Remove* on Account: detaches the saved card from the lead's customer. */
+    async removeCard(caller: VerifiedCaller): Promise<void> {
+      const card = deps.cards ? await deps.cards.get(caller.userId) : null;
+      if (!card?.paymentMethodId) return;
+      try {
+        await timed('stripe', 'paymentMethods.detach', () =>
+          deps.stripe.paymentMethods.detach(card.paymentMethodId!),
+        );
+      } catch (err) {
+        // Already detached in Stripe: forget it here too.
+        const e = err as { type?: string };
+        if (e.type !== 'StripeInvalidRequestError') {
+          return providerError(err, 'Couldn’t remove the card. Try again.');
+        }
+      }
+      await deps.cards!.put({ userId: card.userId, customerId: card.customerId });
     },
 
     async status(input: {
@@ -473,6 +941,8 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       billId: string;
       /** The Checkout Session the page just confirmed, to check with Stripe directly. */
       checkoutSessionId?: string;
+      /** #228: the saved-card hold the page just confirmed. */
+      paymentIntentId?: string;
       /** The session being shared: a fee or credit already spent on it still counts. */
       sessionId?: string;
     }): Promise<TableFeeStatus> {
@@ -529,6 +999,7 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         ? await deps.credits.listForUser(caller.userId)
         : { fees: [], credits: [] };
       const current = history.credits.find((c) => c.month === month);
+      const card = deps.cards ? await deps.cards.get(caller.userId) : null;
       const fees = history.fees.map((f) => ({
         billId: f.billId,
         ...(f.sessionId ? { sessionId: f.sessionId } : {}),
@@ -537,14 +1008,36 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
         ...(f.kind ? { kind: f.kind } : {}),
         ...(f.releasedAt ? { releasedAt: f.releasedAt } : {}),
         ...(f.capturedAt ? { capturedPence: f.capturedPence ?? 0, capturedAt: f.capturedAt } : {}),
+        ...(f.paymentMethodId && f.customerId ? { savedCard: true as const } : {}),
+        ...(f.chargeStatus
+          ? {
+              chargeStatus: f.chargeStatus,
+              chargePence: f.chargePence ?? 0,
+              ...(f.chargedAt ? { chargedAt: f.chargedAt } : {}),
+            }
+          : {}),
         ...(f.refundedAt ? { refundedAt: f.refundedAt } : {}),
       }));
       return {
+        ...(card?.paymentMethodId
+          ? {
+              card: {
+                ...(card.brand ? { brand: card.brand } : {}),
+                ...(card.last4 ? { last4: card.last4 } : {}),
+                ...(card.wallet ? { wallet: card.wallet } : {}),
+              },
+            }
+          : {}),
         creditsLeft: deps.credits && (!current || current.returnedAt) ? 1 : 0,
         nextCreditOn: nextCreditOn(month),
-        // A hold is only paid for what was taken from it at close (#167).
+        // A hold is only paid for what was taken from it at close (#167),
+        // or charged to the saved card at settle (#228).
         paidPence: fees.reduce(
-          (acc, f) => acc + (f.kind === 'hold' ? (f.capturedPence ?? 0) : f.amountPence),
+          (acc, f) =>
+            acc +
+            (f.kind === 'hold'
+              ? (f.capturedPence ?? 0) + (f.chargeStatus === 'charged' ? (f.chargePence ?? 0) : 0)
+              : f.amountPence),
           0,
         ),
         refundedPence: fees.reduce((acc, f) => acc + (f.refundedAt ? f.amountPence : 0), 0),
@@ -632,6 +1125,20 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
     async takeFromHold(session: ClosedSession, guestsFeePence: number): Promise<CaptureOutcome> {
       const fee = await deps.store.get(session.billId);
       if (!fee || fee.kind !== 'hold' || fee.sessionId !== session.sessionId) return 'no_hold';
+      if (fee.paymentMethodId && fee.customerId) {
+        // #228: charge the saved card the round-ups (no cap), then release
+        // the hold. Each step happens once; a retry (the next close, or the
+        // daily sweep) finishes whichever didn't.
+        if (fee.refundedAt || fee.capturedAt) return 'already_settled';
+        let charged: 'charged' | 'needs_confirming' | 'none' | null = null;
+        if (!fee.chargeStatus) {
+          charged = await chargeSavedCard(fee, session, Math.max(0, guestsFeePence));
+        }
+        const released = fee.releasedAt ? 'already_refunded' : await releaseHold(fee);
+        if (charged === 'charged' || charged === 'needs_confirming') return charged;
+        if (charged === 'none' || released === 'released') return 'released';
+        return 'already_settled';
+      }
       if (fee.capturedAt || fee.releasedAt || fee.refundedAt) return 'already_settled';
       if (!fee.paymentIntentId) return 'no_hold';
       const amount = Math.min(Math.max(0, guestsFeePence), fee.amountPence);
@@ -671,8 +1178,39 @@ export const createTableFeeService = (deps: TableFeeServiceDeps) => {
       return written === 'recorded' ? 'captured' : 'already_settled';
     },
 
+    /** #228: cancels a saved-card hold before it lapses (the daily sweep); the charge waits for settle. */
+    releaseBeforeLapse: releaseHold,
+
     /** Applies a verified Stripe event. Safe to receive the same event twice. */
     async handleEvent(event: Stripe.Event): Promise<'applied' | 'duplicate' | 'ignored'> {
+      if (event.type === 'payment_intent.succeeded') {
+        // #228: a round-ups charge the lead confirmed on the page.
+        const intent = event.data.object;
+        if (intent.metadata?.kind !== 'roundups' || !intent.metadata.billId) return 'ignored';
+        const fee = await deps.store.get(intent.metadata.billId);
+        if (!fee || fee.chargeStatus !== 'needs_confirming') return 'duplicate';
+        const written = await deps.store.markCharge(fee.billId, {
+          chargeStatus: 'charged',
+          chargePence: intent.amount_received,
+          chargeIntentId: intent.id,
+          chargedAt: new Date(event.created * 1000).toISOString(),
+        });
+        return written === 'recorded' ? 'applied' : 'duplicate';
+      }
+      if (event.type === 'payment_intent.amount_capturable_updated') {
+        // #228: a hold on the saved card (no Checkout Session).
+        const intent = event.data.object;
+        const { billId, userId, kind, savedCard } = intent.metadata ?? {};
+        if (kind !== 'hold' || savedCard !== 'true' || !billId || !userId) return 'ignored';
+        const written = await recordHold(intent, {
+          billId,
+          userId,
+          checkoutSessionId: intent.id,
+          paidAt: new Date(event.created * 1000).toISOString(),
+        });
+        if (written === 'ignored') return 'ignored';
+        return written === 'recorded' ? 'applied' : 'duplicate';
+      }
       if (
         event.type !== 'checkout.session.completed' &&
         event.type !== 'checkout.session.async_payment_succeeded'

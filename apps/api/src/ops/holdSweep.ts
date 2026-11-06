@@ -15,6 +15,13 @@ import type { Session } from '../types/sessions.js';
  *   binned releases it.
  * - Nobody joined: the hold is released.
  *
+ * A hold that saved the lead's card (#228) is never taken from: on a bill
+ * still open after 6 days it's released (the charge waits for settle, on the
+ * saved card); a settled bill whose charge or release didn't happen at close
+ * gets them now. Its index row stays until both are done, so a failed settle
+ * is retried; a bill never settled is never charged, and its row goes when
+ * the session expires.
+ *
  * Runs in the API Lambda when EventBridge invokes it with
  * `{ "gdpHoldSweep": true }`. API Gateway never sends that shape.
  */
@@ -33,6 +40,8 @@ export interface HoldSweepDeps {
   guestsFeePence(sessionId: string): Promise<number>;
   tableFees: {
     refundIfNobodyJoined(session: Session): Promise<RefundOutcome>;
+    /** #228: cancels a saved-card hold before it lapses; the charge waits for settle. */
+    releaseBeforeLapse(fee: TableFee): Promise<RefundOutcome>;
     takeFromHold(
       session: Pick<Session, 'sessionId' | 'billId' | 'creatorUserId' | 'participants'>,
       guestsFeePence: number,
@@ -69,6 +78,14 @@ export async function runHoldSweep(deps: HoldSweepDeps): Promise<HoldSweepReport
     report.looked += 1;
     try {
       const fee = await deps.getFee(hold.billId);
+      if (fee && fee.sessionId === hold.sessionId && fee.paymentMethodId && fee.customerId) {
+        const outcome = await sweepSavedCard(deps, now, hold, fee);
+        if (outcome === 'waiting') report.waiting += 1;
+        else if (outcome === 'released') report.released += 1;
+        else if (outcome === 'charged') report.captured += 1;
+        else report.alreadySettled += 1;
+        continue;
+      }
       if (
         !fee ||
         fee.sessionId !== hold.sessionId ||
@@ -112,4 +129,46 @@ export async function runHoldSweep(deps: HoldSweepDeps): Promise<HoldSweepReport
     }
   }
   return report;
+}
+
+/**
+ * #228: a hold that saved the lead's card. Open bill: release it once it's
+ * 6 days old and keep watching. Settled: charge and release, whichever is
+ * still to do. Binned, or the session gone: release, charge nothing.
+ */
+async function sweepSavedCard(
+  deps: HoldSweepDeps,
+  now: Date,
+  hold: PendingHold,
+  fee: TableFee,
+): Promise<'waiting' | 'released' | 'charged' | 'settled'> {
+  if (fee.refundedAt || fee.capturedAt || (fee.releasedAt && fee.chargeStatus)) {
+    await deps.holds.clear(hold.billId);
+    return 'settled';
+  }
+  const session = await deps.getSession(hold.sessionId);
+  if (session && OPEN.includes(session.status)) {
+    if (fee.releasedAt || now.getTime() - Date.parse(hold.heldAt) < SWEEP_AFTER_MS) {
+      return 'waiting';
+    }
+    const released = await deps.tableFees.releaseBeforeLapse(fee);
+    return released === 'released' ? 'released' : 'waiting';
+  }
+  if (!session || session.status === 'abandoned') {
+    if (!fee.releasedAt) await deps.tableFees.releaseBeforeLapse(fee);
+    await deps.holds.clear(hold.billId);
+    return 'released';
+  }
+  // Settled.
+  const nobody = await deps.tableFees.refundIfNobodyJoined(session);
+  if (nobody !== 'guests_joined') {
+    await deps.holds.clear(hold.billId);
+    return 'released';
+  }
+  const outcome = await deps.tableFees.takeFromHold(
+    session,
+    await deps.guestsFeePence(session.sessionId),
+  );
+  await deps.holds.clear(hold.billId);
+  return outcome === 'charged' ? 'charged' : outcome === 'released' ? 'released' : 'settled';
 }

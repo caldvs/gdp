@@ -10,6 +10,8 @@ const store: TableFeeStore = {
   putIfAbsent: () => Promise.resolve('recorded'),
   markReleased: () => Promise.resolve('recorded'),
   markCaptured: () => Promise.resolve('recorded'),
+  markCharge: () => Promise.resolve('recorded'),
+  setChargeIntent: () => Promise.resolve(),
   markRefunded: () => Promise.resolve('recorded'),
 };
 

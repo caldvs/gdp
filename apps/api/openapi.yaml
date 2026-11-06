@@ -1959,9 +1959,11 @@ paths:
       summary: Start the £1 hold for a bill
       description: |
         Without a credit, sharing a bill puts a £1 hold on the lead's card (#165): authorised
-        now, and at close the guests' part is taken and the rest released. Creates a Stripe
-        Checkout Session (manual capture) for the embedded form (`ui_mode: form`) and returns
-        its client secret. The hold is recorded by the Stripe webhook.
+        now and always released at settle. Creates a Stripe Checkout Session (manual capture)
+        for the embedded form (`ui_mode: form`) and returns its client secret. The session is
+        for the lead's Stripe customer with `setup_future_usage: off_session` (#228), so the
+        card is saved for one charge at settle: the round-ups of the guests the lead marked
+        received. The hold is recorded by the Stripe webhook.
       requestBody:
         required: true
         content:
@@ -2005,6 +2007,11 @@ paths:
           required: false
           description: The Checkout Session the page just confirmed (`cs_…`).
           schema: { type: string }
+        - in: query
+          name: payment_intent
+          required: false
+          description: 'A hold on the saved card the page just confirmed (`pi_…`, #228).'
+          schema: { type: string }
       responses:
         '200':
           description: Fee status
@@ -2013,6 +2020,72 @@ paths:
               schema: { $ref: '#/components/schemas/TableFeeStatus' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/billing/table-fee/saved-card:
+    post:
+      tags: [billing]
+      operationId: holdOnSavedCard
+      summary: Place the £1 hold on the saved card
+      description: |
+        #228: the hold on the card saved with the lead's last hold, in one tap. `held` when the
+        bank authorised it; `requires_action` when it wants the lead to confirm (3D Secure):
+        the page finishes it with Stripe.js and polls the status with `payment_intent`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StartTableFeeRequest' }
+      responses:
+        '200':
+          description: Held, or waiting for the lead to confirm
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedCardHold' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The bill already has a hold (`TABLE_FEE_PAID`), or none is due (`TABLE_FEE_WAIVED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '502':
+          description: The card didn't go through, or a Stripe error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/billing/fee-charge/{billId}:
+    parameters:
+      - in: path
+        name: billId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [billing]
+      operationId: getFeeCharge
+      summary: The round-ups charge at settle, to confirm it
+      description: |
+        #228: when the bank wanted the lead to confirm the charge made at settle, this gives the
+        page the PaymentIntent's client secret and the saved card. Checks with Stripe, so a
+        charge just confirmed comes back `charged`. The lead's own bill only.
+      responses:
+        '200':
+          description: The charge
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeeCharge' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/billing/card:
+    delete:
+      tags: [billing]
+      operationId: removeSavedCard
+      summary: Remove the saved card
+      description: '#228: detaches the card saved with the last hold. The Stripe customer stays.'
+      responses:
+        '204': { description: Removed (or there was none) }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/billing/me:
     get:
@@ -2035,7 +2108,9 @@ paths:
       description: |
         Verified with the `Stripe-Signature` header and `STRIPE_WEBHOOK_SECRET`.
         `checkout.session.completed` (and `checkout.session.async_payment_succeeded`) with
-        `payment_status: paid` records the bill's table fee. Every verified event gets `200`,
+        `payment_status: paid` records the bill's table fee. #228:
+        `payment_intent.amount_capturable_updated` records a hold on the saved card, and
+        `payment_intent.succeeded` a round-ups charge the lead confirmed. Every verified event gets `200`,
         including repeats; an invalid signature gets `401`.
       security: []
       responses:
@@ -2150,10 +2225,35 @@ components:
           type: string
           format: date
           description: The 1st of next month, when the next credit comes (on `free` and `unpaid`).
+    SavedCardHold:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [held, requires_action] }
+        amountPence: { type: integer }
+        clientSecret: { type: string, description: 'For Stripe.js handleNextAction' }
+        paymentIntentId: { type: string }
+    FeeCharge:
+      type: object
+      required: [billId, status, amountPence]
+      properties:
+        billId: { type: string, format: uuid }
+        status: { type: string, enum: [charged, needs_confirming, none] }
+        amountPence: { type: integer }
+        clientSecret: { type: string, description: 'The PaymentIntent to confirm in the page' }
+        paymentMethodId: { type: string, description: 'The saved card, offered first' }
+        card: { $ref: '#/components/schemas/CardSummary' }
+    CardSummary:
+      type: object
+      properties:
+        brand: { type: string, description: '`visa`, `mastercard`…' }
+        last4: { type: string }
+        wallet: { type: string, description: '`apple_pay`, `google_pay`…' }
     BillingSummary:
       type: object
       required: [creditsLeft, nextCreditOn, paidPence, refundedPence, fees, credits]
       properties:
+        card: { $ref: '#/components/schemas/CardSummary' }
         creditsLeft: { type: integer, enum: [0, 1] }
         nextCreditOn: { type: string, format: date }
         paidPence: { type: integer, description: 'Every fee paid, refunded ones included' }
@@ -2171,12 +2271,25 @@ components:
               kind:
                 type: string
                 enum: [hold]
-                description: A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`).
+                description: A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`) or charged at settle (`chargePence`).
               releasedAt: { type: string, format: date-time }
               capturedPence:
                 type: integer
                 description: What was taken from the hold at close, the guests' part (#167).
               capturedAt: { type: string, format: date-time }
+              savedCard:
+                type: boolean
+                enum: [true]
+                description: '#228: the hold saved the card, so settle charges it the round-ups, no cap.'
+              chargeStatus:
+                type: string
+                enum: [charged, needs_confirming, none]
+                description: |
+                  #228: the charge at settle on the saved card: the round-ups of the guests the
+                  lead marked received, no cap. `needs_confirming`: the bank wants the lead to
+                  confirm it. `none`: under 30p, or nobody paid.
+              chargePence: { type: integer }
+              chargedAt: { type: string, format: date-time }
               refundedAt: { type: string, format: date-time }
         credits:
           type: array

@@ -7,13 +7,12 @@
  */
 import { Comments } from '@/components/Comments';
 import { useProofs } from '@gdp/core/api/hooks/useProofs';
-import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { components } from '@gdp/core/api';
 import { isFeeRequired, useAbandonSession, useCloseSession, useOpenPayments, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
-import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
@@ -238,7 +237,11 @@ function Settle({ s, b, meUserId, leftPence, giveBack }: { s: Session; b: Bill; 
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
   const hold = s.platformFeePence ?? 0;
-  const fee = Math.min(hold, holdTaken(s, b));
+  // #228: a hold that saved the card is released; the card is charged the round-ups, no cap.
+  const saved = useSpent(s.sessionId, hold > 0).fee?.savedCard === true;
+  const taken = saved ? holdTaken(s, b) : Math.min(hold, holdTaken(s, b));
+  // Under Stripe's 30p minimum, nothing is charged.
+  const fee = taken < 30 ? 0 : taken;
   // Focus moves into the confirm when it opens, and back when it's put away.
   const askRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -257,10 +260,11 @@ function Settle({ s, b, meUserId, leftPence, giveBack }: { s: Session; b: Bill; 
         <Totals>
           <TotalLine k="Still to come" v={formatGBP(toCome)} />
           <TotalLine k="Your share" v={formatGBP(projectOwedPence(s, b, meUserId))} />
-          {hold > 0 ? <TotalLine k="Platform fee · from your hold" v={formatGBP(fee)} /> : null}
+          {hold > 0 ? <TotalLine k={saved ? 'Platform fee · charged to your card' : 'Platform fee · from your hold'} v={formatGBP(fee)} /> : null}
           {leftPence > 0 ? <TotalLine k="Nobody claimed · goes on you" v={formatGBP(leftPence)} /> : null}
         </Totals>
       )}
+      {saved && !giveBack ? <p className="small muted">Your {formatGBP(hold)} hold is released.</p> : null}
       {toCome > 0 ? <p className="small muted">Anyone who still owes can pay after.</p> : null}
       <div className="confirm-inline__acts">
         <Button tone="secondary" small onClick={() => { back.current = true; setAsking(false); }}>Not yet</Button>
@@ -272,16 +276,16 @@ function Settle({ s, b, meUserId, leftPence, giveBack }: { s: Session; b: Bill; 
 }
 
 /**
- * What comes off the hold at settle: the round-ups of the payments the lead
- * has confirmed. Guests say they've paid but none is confirmed: the whole
- * hold (#167, as the API does it).
+ * The platform fee at settle: the round-ups of the payments the lead has
+ * confirmed. None confirmed: the round-ups of the guests who say they've
+ * paid (#228, as the API's `guestsFeePence` does it). A hold from before
+ * #228 caps it at the hold.
  */
 function holdTaken(s: Session, b: Bill): number {
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
-  const hold = s.platformFeePence ?? 0;
   const confirmed = guests.filter((p) => (p.payments ?? []).some((e) => e.status === 'succeeded') || p.payment.status === 'succeeded');
-  const anySent = guests.some((p) => (p.payments ?? []).some((e) => e.status === 'succeeded' || !!e.payerClaimedPaidAt) || p.payment.status === 'succeeded' || ('payerClaimedPaidAt' in p.payment && !!p.payment.payerClaimedPaidAt));
-  return confirmed.length === 0 && anySent ? hold : confirmed.reduce((acc, p) => acc + projectFeePence(s, b, p.userId), 0);
+  const sent = guests.filter((p) => (p.payments ?? []).some((e) => e.status === 'succeeded' || !!e.payerClaimedPaidAt) || p.payment.status === 'succeeded' || ('payerClaimedPaidAt' in p.payment && !!p.payment.payerClaimedPaidAt));
+  return (confirmed.length > 0 ? confirmed : sent).reduce((acc, p) => acc + projectFeePence(s, b, p.userId), 0);
 }
 
 /**
@@ -446,8 +450,14 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
   );
 }
 
-/** The platform fee line on the settled bill, as built today (#167). */
-function feeLine(spent: ReturnType<typeof useSpent>): { v: string; sub?: string } | null {
+/** The platform fee line on the settled bill (#167, #228). */
+function feeLine(spent: ReturnType<typeof useSpent>): { v: string; sub?: ReactNode } | null {
+  const f = spent.fee;
+  if (f?.kind === 'hold' && f.chargeStatus === 'charged') return { v: formatGBP(f.chargePence ?? 0), sub: 'Charged to your card · hold released' };
+  if (f?.kind === 'hold' && f.chargeStatus === 'needs_confirming') {
+    return { v: formatGBP(f.chargePence ?? 0), sub: <Link href={`/fee-charge/${f.billId}`}>Confirm the charge</Link> };
+  }
+  if (f?.kind === 'hold' && f.chargeStatus === 'none') return { v: formatGBP(0), sub: 'Your hold is released' };
   if (spent.fee?.kind === 'hold') {
     if (spent.fee.capturedAt) return { v: `${formatGBP(spent.fee.capturedPence ?? 0)} from your hold`, sub: 'Your guests’ round-ups' };
     if (spent.fee.releasedAt) return { v: formatGBP(0), sub: 'Your hold is released' };
@@ -460,7 +470,8 @@ function feeLine(spent: ReturnType<typeof useSpent>): { v: string; sub?: string 
 
 /** The platform fee or credit that paid for sharing this session, if any. */
 export function useSpent(sessionId: string, enabled = true) {
-  const billing = useMyBilling({ enabled: enabled && !!STRIPE_PUBLISHABLE_KEY });
+  // No billing routes (Stripe not set up) comes back null: no fee to show.
+  const billing = useMyBilling({ enabled });
   const data = enabled ? billing.data : null;
   return {
     fee: data?.fees.find((f) => f.sessionId === sessionId),

@@ -107,7 +107,12 @@ async function placeSmokeHold(stripe: Stripe, smokeId: string): Promise<Stripe.P
 }
 
 /** The real fee service over an in-memory row for one smoke-test hold. */
-function smokeService(stripe: Stripe, smokeId: string, hold: Stripe.PaymentIntent) {
+function smokeService(
+  stripe: Stripe,
+  smokeId: string,
+  hold: Stripe.PaymentIntent,
+  saved: { customerId?: string; paymentMethodId?: string } = {},
+) {
   const rows = new Map<string, TableFee>();
   rows.set(smokeId, {
     billId: smokeId,
@@ -118,6 +123,7 @@ function smokeService(stripe: Stripe, smokeId: string, hold: Stripe.PaymentInten
     amountPence: HOLD_PENCE,
     paidAt: new Date().toISOString(),
     sessionId: smokeId,
+    ...saved,
   });
   const store: TableFeeStore = {
     get: (billId) => Promise.resolve(rows.get(billId) ?? null),
@@ -133,6 +139,21 @@ function smokeService(stripe: Stripe, smokeId: string, hold: Stripe.PaymentInten
       if (!fee || fee.capturedAt || fee.releasedAt) return Promise.resolve('duplicate');
       rows.set(billId, { ...fee, ...capture });
       return Promise.resolve('recorded');
+    },
+    markCharge: (billId, charge) => {
+      const existing = rows.get(billId);
+      const ok =
+        !!existing &&
+        (!existing.chargeStatus ||
+          (charge.chargeStatus === 'charged' && existing.chargeStatus === 'needs_confirming'));
+      if (!ok) return Promise.resolve('duplicate');
+      rows.set(billId, { ...existing, ...charge });
+      return Promise.resolve('recorded');
+    },
+    setChargeIntent: (billId, chargeIntentId) => {
+      const existing = rows.get(billId);
+      if (existing) rows.set(billId, { ...existing, chargeIntentId });
+      return Promise.resolve();
     },
     markRefunded: () => Promise.resolve('duplicate'),
   };
@@ -192,6 +213,99 @@ export async function holdRoundTrip(stripe: Stripe): Promise<string> {
   }
   return `held ${hold.id} £1.00, released; held ${second.id} £1.00, took £0.66`;
 }
+
+/**
+ * #228 smoke test, against real Stripe through the same code settle uses: a
+ * £1 hold that saves `pm_card_visa` to a fresh customer, then at settle the
+ * hold released and the saved card charged £1.84 off-session; then a card
+ * whose bank always asks to confirm (`pm_card_authenticationRequired`) is
+ * left needing the lead. Test mode only; fee rows stay in memory.
+ */
+export async function savedCardRoundTrip(stripe: Stripe): Promise<string> {
+  const smokeId = `smoke-${Date.now()}-card`;
+  const customer = await stripe.customers.create({
+    description: 'Deploy smoke test: saved card',
+    metadata: { smoke: 'saved-card' },
+  });
+  try {
+    const hold = await stripe.paymentIntents.create({
+      amount: HOLD_PENCE,
+      currency: 'gbp',
+      capture_method: 'manual',
+      customer: customer.id,
+      payment_method: 'pm_card_visa',
+      setup_future_usage: 'off_session',
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      confirm: true,
+      description: 'Deploy smoke test: platform fee hold that saves the card',
+      metadata: { billId: smokeId, smoke: 'saved-card' },
+    });
+    if (hold.status !== 'requires_capture') {
+      throw new Error(`hold ${hold.id} is ${hold.status}, not requires_capture`);
+    }
+    const pm =
+      typeof hold.payment_method === 'string' ? hold.payment_method : hold.payment_method?.id;
+    if (!pm) throw new Error(`hold ${hold.id} has no saved payment method`);
+    const { rows, fees } = smokeService(stripe, smokeId, hold, {
+      customerId: customer.id,
+      paymentMethodId: pm,
+    });
+    const table = {
+      sessionId: smokeId,
+      billId: smokeId,
+      creatorUserId: smokeId,
+      participants: [{ userId: smokeId }, { userId: 'guest' }],
+    };
+    const charged = await fees.takeFromHold(table, 184);
+    if (charged !== 'charged') throw new Error(`settle outcome was ${charged}, not charged`);
+    const row = rows.get(smokeId);
+    const after = await stripe.paymentIntents.retrieve(hold.id);
+    if (after.status !== 'canceled')
+      throw new Error(`hold ${hold.id} is ${after.status}, not canceled`);
+    const charge = await stripe.paymentIntents.retrieve(row?.chargeIntentId ?? '');
+    if (charge.status !== 'succeeded' || charge.amount_received !== 184) {
+      throw new Error(`charge ${charge.id} is ${charge.status} with ${charge.amount_received}p`);
+    }
+
+    // A bank that wants the lead to confirm: needs confirming, not an error.
+    const asks = await stripe.paymentMethods.attach('pm_card_authenticationRequired', {
+      customer: customer.id,
+    });
+    const askId = `${smokeId}-3ds`;
+    const second = await stripe.paymentIntents.create({
+      amount: HOLD_PENCE,
+      currency: 'gbp',
+      capture_method: 'manual',
+      payment_method: 'pm_card_visa',
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+      confirm: true,
+      description: 'Deploy smoke test: platform fee hold',
+      metadata: { billId: askId, smoke: 'saved-card' },
+    });
+    const ask = smokeService(stripe, askId, second, {
+      customerId: customer.id,
+      paymentMethodId: asks.id,
+    });
+    const outcome = await ask.fees.takeFromHold({ ...table, sessionId: askId, billId: askId }, 184);
+    if (outcome !== 'needs_confirming') {
+      throw new Error(`3D Secure card outcome was ${outcome}, not needs_confirming`);
+    }
+    return `saved card on ${customer.id}: hold released, charged £1.84 (${charge.id}); 3D Secure card needs confirming`;
+  } finally {
+    await stripe.customers.del(customer.id).catch(() => undefined);
+  }
+}
+
+const savedCardCheck: Check = {
+  name: 'Stripe saved card (settle charge)',
+  required: true,
+  run: async () => {
+    const key = env.STRIPE_SECRET_KEY;
+    if (!key) throw skip('Stripe not enabled (no STRIPE_SECRET_KEY)');
+    if (!key.includes('_test_')) throw skip('live key: charges are only smoke-tested in test mode');
+    return savedCardRoundTrip(new Stripe(key, { timeout: TIMEOUT_MS, maxNetworkRetries: 0 }));
+  },
+};
 
 const holdCheck: Check = {
   name: 'Stripe hold (nobody joined)',
@@ -315,6 +429,7 @@ const testAccountsCheck: Check = {
 export const CHECKS: readonly Check[] = [
   stripeCheck,
   holdCheck,
+  savedCardCheck,
   bedrockCheck,
   venueCheck,
   sesCheck,

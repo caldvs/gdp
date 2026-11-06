@@ -10,6 +10,8 @@ import {
 import { ddb, TABLE_NAME } from './ddb.js';
 import type {
   CreditStore,
+  SavedCard,
+  SavedCardStore,
   MonthlyCredit,
   ShareEntitlement,
   TableFee,
@@ -146,6 +148,55 @@ export const tableFeeStore: TableFeeStore = {
     }
   },
 
+  async markCharge(billId, charge) {
+    // A charge is decided once; one that needed confirming can then succeed.
+    const condition =
+      charge.chargeStatus === 'charged'
+        ? 'attribute_exists(pk) AND (attribute_not_exists(chargeStatus) OR chargeStatus = :needs)'
+        : 'attribute_exists(pk) AND attribute_not_exists(chargeStatus)';
+    const sets = ['chargeStatus = :st', 'chargePence = :p'];
+    const values: Record<string, unknown> = {
+      ':st': charge.chargeStatus,
+      ':p': charge.chargePence,
+    };
+    if (charge.chargeStatus === 'charged') values[':needs'] = 'needs_confirming';
+    if (charge.chargeIntentId) {
+      sets.push('chargeIntentId = :pi');
+      values[':pi'] = charge.chargeIntentId;
+    }
+    if (charge.chargedAt) {
+      sets.push('chargedAt = :at');
+      values[':at'] = charge.chargedAt;
+    }
+    try {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: TABLE_NAME,
+          Key: { pk: feePk(billId), sk: FEE_SK },
+          UpdateExpression: `SET ${sets.join(', ')}`,
+          ConditionExpression: condition,
+          ExpressionAttributeValues: values,
+        }),
+      );
+      return 'recorded';
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return 'duplicate';
+      throw err;
+    }
+  },
+
+  async setChargeIntent(billId, chargeIntentId) {
+    await ddb.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk: feePk(billId), sk: FEE_SK },
+        UpdateExpression: 'SET chargeIntentId = :pi',
+        ConditionExpression: 'chargeStatus = :needs',
+        ExpressionAttributeValues: { ':pi': chargeIntentId, ':needs': 'needs_confirming' },
+      }),
+    );
+  },
+
   async markRefunded(billId, refund) {
     try {
       await ddb.send(
@@ -162,6 +213,32 @@ export const tableFeeStore: TableFeeStore = {
       if (err instanceof ConditionalCheckFailedException) return 'duplicate';
       throw err;
     }
+  },
+};
+
+const cardPk = (userId: string) => `CARD#${userId}`;
+const CARD_SK = 'CARD';
+
+/**
+ * #228: the lead's Stripe customer and the card saved with their last hold,
+ * one row per lead. Only Stripe ids and what the card shows (brand, last
+ * four): no card data. Removing the card keeps the customer.
+ */
+export const savedCardStore: SavedCardStore = {
+  async get(userId) {
+    const result = await ddb.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: { pk: cardPk(userId), sk: CARD_SK } }),
+    );
+    return result.Item ? strip<SavedCard>(result.Item) : null;
+  },
+
+  async put(card) {
+    await ddb.send(
+      new PutCommand({
+        TableName: TABLE_NAME,
+        Item: { pk: cardPk(card.userId), sk: CARD_SK, ...card },
+      }),
+    );
   },
 };
 

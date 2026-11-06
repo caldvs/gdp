@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 
 const PORT = process.env.PORT ?? '3000';
 const FORWARD_TO = `localhost:${PORT}/webhooks/stripe`;
-const EVENTS = 'checkout.session.completed,checkout.session.async_payment_succeeded';
+const EVENTS = 'checkout.session.completed,checkout.session.async_payment_succeeded,payment_intent.amount_capturable_updated,payment_intent.succeeded';
 
 const ENV_LOCAL = join(dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'api', '.env.local');
 

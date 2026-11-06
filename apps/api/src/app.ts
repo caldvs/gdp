@@ -44,16 +44,19 @@ import Stripe from 'stripe';
 import {
   createTableFeeService,
   type CreditStore,
+  type SavedCardStore,
   type TableFeeStore,
 } from './services/billing/tableFee.js';
 import { parseEmailList } from './config/exemptEmails.js';
 import {
   creditStore as defaultCreditStore,
+  savedCardStore as defaultSavedCardStore,
   holdIndex,
   tableFeeStore as defaultTableFeeStore,
 } from './storage/tableFeeStore.js';
 import { sessionStore } from './storage/sessionStore.js';
 import { sessionService } from './services/sessions/sessionService.js';
+import { confirmChargeEmailer } from './services/billing/confirmChargeEmail.js';
 import { runHoldSweep, type HoldSweepReport } from './ops/holdSweep.js';
 import { billStore } from './storage/billStore.js';
 import { buildBillingRoutes } from './routes/billing.js';
@@ -94,6 +97,8 @@ export interface AppDeps {
   tableFeeStore?: TableFeeStore;
   /** The free monthly bill. Omit for DynamoDB; `null` turns credits off (every share pays). */
   creditStore?: CreditStore | null;
+  /** #228: the lead's saved card. Null: holds don't save the card (the #167 flow). */
+  savedCardStore?: SavedCardStore | null;
   /** Clock for the monthly credit, for tests. */
   now?: () => Date;
   /** How a background bill read is started. Omit: a self-invoke on Lambda, in-process elsewhere. */
@@ -213,6 +218,10 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         stripe,
         store: deps.tableFeeStore ?? defaultTableFeeStore,
         ...(deps.creditStore === null ? {} : { credits: deps.creditStore ?? defaultCreditStore }),
+        ...(deps.savedCardStore === null
+          ? {}
+          : { cards: deps.savedCardStore ?? defaultSavedCardStore }),
+        notifyNeedsConfirming: confirmChargeEmailer(emailSender),
         ...(deps.now ? { now: deps.now } : {}),
         getBill: (billId) => billStore.getLatest(billId),
         appBaseUrl: env.APP_BASE_URL,
@@ -279,6 +288,8 @@ export const runHoldSweepNow = async (): Promise<HoldSweepReport | { skipped: st
     stripe: new Stripe(env.STRIPE_SECRET_KEY),
     store: defaultTableFeeStore,
     credits: defaultCreditStore,
+    cards: defaultSavedCardStore,
+    notifyNeedsConfirming: confirmChargeEmailer(createDefaultEmailSender()),
     getBill: (billId) => billStore.getLatest(billId),
     appBaseUrl: env.APP_BASE_URL,
   });

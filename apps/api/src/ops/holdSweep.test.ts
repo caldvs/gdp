@@ -44,16 +44,17 @@ const setup = (rows: { hold: PendingHold; fee: TableFee | null; session: Session
   const refundIfNobodyJoined = vi.fn((s: Session) =>
     Promise.resolve(s.participants.length > 1 ? ('guests_joined' as const) : ('released' as const)),
   );
+  const releaseBeforeLapse = vi.fn((_fee: unknown) => Promise.resolve('released' as const));
   const deps: HoldSweepDeps = {
     holds: { list: () => Promise.resolve(rows.map((r) => r.hold)), clear },
     getFee: (billId) => Promise.resolve(rows.find((r) => r.hold.billId === billId)?.fee ?? null),
     getSession: (sessionId) =>
       Promise.resolve(rows.find((r) => r.hold.sessionId === sessionId)?.session ?? null),
     guestsFeePence: () => Promise.resolve(66),
-    tableFees: { refundIfNobodyJoined, takeFromHold },
+    tableFees: { refundIfNobodyJoined, takeFromHold, releaseBeforeLapse },
     now: () => NOW,
   };
-  return { deps, clear, takeFromHold, refundIfNobodyJoined };
+  return { deps, clear, takeFromHold, refundIfNobodyJoined, releaseBeforeLapse };
 };
 
 describe('isHoldSweepEvent', () => {
@@ -137,5 +138,71 @@ describe('runHoldSweep (#168)', () => {
     expect(report.captured).toBe(1);
     expect(clear).toHaveBeenCalledTimes(1);
     expect(clear).toHaveBeenCalledWith('b2');
+  });
+});
+
+describe('runHoldSweep: holds that saved the card (#228)', () => {
+  const saved = (billId: string, over: Partial<TableFee> = {}) =>
+    fee(billId, { customerId: 'cus_1', paymentMethodId: 'pm_1', ...over });
+
+  it('releases one on a bill open after 6 days, takes nothing, and keeps watching it', async () => {
+    const { deps, takeFromHold, releaseBeforeLapse, clear } = setup([
+      { hold: hold('b1', ago(6.5)), fee: saved('b1'), session: session('b1', 'claiming') },
+    ]);
+    expect(await runHoldSweep(deps)).toMatchObject({ released: 1, captured: 0 });
+    expect(releaseBeforeLapse).toHaveBeenCalledTimes(1);
+    expect(takeFromHold).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it('a released one on a still-open bill waits for settle', async () => {
+    const { deps, releaseBeforeLapse, clear } = setup([
+      {
+        hold: hold('b1', ago(8)),
+        fee: saved('b1', { releasedAt: ago(1) }),
+        session: session('b1', 'paying'),
+      },
+    ]);
+    expect(await runHoldSweep(deps)).toMatchObject({ waiting: 1 });
+    expect(releaseBeforeLapse).not.toHaveBeenCalled();
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it('a settled bill whose charge didn’t happen at close is charged now, then cleared', async () => {
+    const { deps, takeFromHold, clear } = setup([
+      {
+        hold: hold('b1', ago(8)),
+        fee: saved('b1', { releasedAt: ago(1) }),
+        session: session('b1', 'settled'),
+      },
+    ]);
+    await runHoldSweep(deps);
+    expect(takeFromHold).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 's-b1' }), 66);
+    expect(clear).toHaveBeenCalledWith('b1');
+  });
+
+  it('charged and released: cleared without calling Stripe', async () => {
+    const { deps, takeFromHold, releaseBeforeLapse, clear } = setup([
+      {
+        hold: hold('b1', ago(2)),
+        fee: saved('b1', { releasedAt: ago(1), chargeStatus: 'charged', chargePence: 184 }),
+        session: session('b1', 'settled'),
+      },
+    ]);
+    expect(await runHoldSweep(deps)).toMatchObject({ alreadySettled: 1 });
+    expect(takeFromHold).not.toHaveBeenCalled();
+    expect(releaseBeforeLapse).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledWith('b1');
+  });
+
+  it('binned, or the session gone: released, never charged', async () => {
+    const { deps, takeFromHold, releaseBeforeLapse, clear } = setup([
+      { hold: hold('b1', ago(1)), fee: saved('b1'), session: session('b1', 'abandoned') },
+      { hold: hold('b2', ago(1)), fee: saved('b2'), session: null },
+    ]);
+    expect(await runHoldSweep(deps)).toMatchObject({ released: 2 });
+    expect(releaseBeforeLapse).toHaveBeenCalledTimes(2);
+    expect(takeFromHold).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(2);
   });
 });

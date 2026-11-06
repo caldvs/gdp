@@ -4,7 +4,14 @@ import { use, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { shareSession, useCreateSession } from '@gdp/core/api/hooks/useSession';
-import { creditDate, useStartTableFee, useTableFeeStatus } from '@gdp/core/api/hooks/useTableFee';
+import {
+  cardLabel,
+  creditDate,
+  useHoldOnSavedCard,
+  useMyBilling,
+  useStartTableFee,
+  useTableFeeStatus,
+} from '@gdp/core/api/hooks/useTableFee';
 import { StripeForm, sessionIdOf, stripePromise } from '@/components/StripeForm';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ActionBar, BackLink, Box, Button, Centre, Notice, Page, QrIcon, Row, Spinner, TickIcon, Title } from '@/components/ui';
@@ -16,9 +23,10 @@ const WAIT_MS = 30_000;
 
 /**
  * F3: the lead puts a £1 hold on their card in Stripe's embedded form (#165),
- * then goes back to share the bill. Nothing is taken now; at close the
- * guests' part is taken and the rest released. Card details stay inside
- * Stripe's iframe.
+ * then goes back to share the bill. Nothing is taken now. The form saves the
+ * card (#228): at settle the hold is released and the card charged the
+ * guests' round-ups. Next time, the saved card is one tap. Card details stay
+ * inside Stripe's iframe.
  */
 export default function TableFeePage({ params }: { params: Promise<{ billId: string }> }) {
   const { billId } = use(params);
@@ -27,9 +35,15 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const returnedId = useSearchParams().get('session_id');
   const [confirmed, setConfirmed] = useState(returnedId !== null);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(returnedId);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   // Stop polling after WAIT_MS so a lost webhook can't spin forever.
   const [slow, setSlow] = useState(false);
-  const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
+  const status = useTableFeeStatus(billId, {
+    poll: confirmed && !slow,
+    checkoutSessionId,
+    paymentIntentId,
+  });
+  const card = useMyBilling().data?.card;
   // A hold, an exempt lead or this month's credit are as good as paid.
   const s = status.data?.status;
   const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free';
@@ -148,6 +162,16 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
           : 'Then your QR code'}
       />
       <Box><Row title="Platform fee hold" end={formatGBP(status.data.amountPence)} /></Box>
+      {card ? (
+        <SavedCard
+          billId={billId}
+          label={cardLabel(card)}
+          onConfirmed={(id) => {
+            setPaymentIntentId(id);
+            setConfirmed(true);
+          }}
+        />
+      ) : null}
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {
@@ -182,8 +206,48 @@ function FeeForm({ billId, onConfirmed }: { billId: string; onConfirmed: (checko
       onConfirmed={() => {
         void clientSecret.current?.then((secret) => onConfirmed(sessionIdOf(secret)));
       }}
-      note="Nothing taken now · Your guests pay it back · Released if nobody joins"
+      note="Nothing taken now. Released at settle, when we charge this card your guests’ round-ups."
     />
+  );
+}
+
+/** #228: the card saved with the last hold, in one tap. 3D Secure finishes in Stripe.js. */
+function SavedCard({
+  billId,
+  label,
+  onConfirmed,
+}: {
+  billId: string;
+  label: string;
+  onConfirmed: (paymentIntentId: string | null) => void;
+}) {
+  const hold = useHoldOnSavedCard();
+  const [error, setError] = useState<string | null>(null);
+  const go = async () => {
+    setError(null);
+    try {
+      const r = await hold.mutateAsync({ billId });
+      if (r.status === 'requires_action' && r.clientSecret) {
+        const stripe = await stripePromise;
+        const out = await stripe?.handleNextAction({ clientSecret: r.clientSecret });
+        if (!out || out.error) {
+          setError(out?.error?.message ?? 'Your bank didn’t confirm it.');
+          return;
+        }
+      }
+      onConfirmed(r.paymentIntentId ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Your card didn’t go through.');
+    }
+  };
+  return (
+    <>
+      {error ? <Notice tone="error" title="Couldn’t place the hold.">{error}</Notice> : null}
+      <Button onClick={() => void go()} disabled={hold.isPending}>
+        {hold.isPending ? 'Holding…' : `Use ${label}`}
+      </Button>
+      <p className="muted small" style={{ textAlign: 'center' }}>Or another card</p>
+    </>
   );
 }
 

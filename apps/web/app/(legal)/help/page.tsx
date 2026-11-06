@@ -31,7 +31,7 @@ export default function HelpPage() {
       <section>
         <h2>The platform fee</h2>
         <p>
-          Your first bill each month is free. After that, sharing a bill holds £1 on your card. Your friends round their share up to the next pound to cover it, so you pay nothing. Nobody joins? Nothing’s taken. See <Link href="/refunds">Refunds</Link>.
+          Your first bill each month is free. After that, sharing a bill holds £1 on your card. Your friends round their share up to the next pound to cover it, so you pay nothing: when you settle, we release the hold and charge your card their round-ups. Nobody joins? Nothing’s charged. See <Link href="/refunds">Refunds</Link>.
         </p>
       </section>
 

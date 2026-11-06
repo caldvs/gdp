@@ -131,7 +131,7 @@ y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PATCH', '/'), ('POST', '/s
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend'), ('POST', '/{billId}/fork')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
 y = group(AX, y, AW, 'Links', '/v1/links', [('GET', '/{token}'), ('POST', '/{token}/stop')]) + 10
-y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('GET', '/me')]) + 10
+y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('POST', '/table-fee/saved-card'), ('GET', '/table-fee/{billId}'), ('GET', '/fee-charge/{billId}'), ('DELETE', '/card'), ('GET', '/me')]) + 10
 y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe')]) + 10
 colA_end = y
 
@@ -182,7 +182,7 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF# GUESTPHONE#', 'Comments, proofs, guest numbers'),
                    ('JCODE# PAY#', 'Join codes, guest payments to the lead'),
-                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails'),
+                   ('FEE# CREDIT# HOLDQ# CARD#', 'Platform fee holds, free credits, saved cards'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails'),
                    ('BLINK# GUESTTEXT# RECEIPTTO#', 'Bill links, guest texts, receipt addresses')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])

@@ -37,17 +37,19 @@ export default function TermsPage() {
         <ul>
           <li>Each lead gets one free bill a month.</li>
           <li>
-            Without the free bill, sharing a bill puts a £1 hold on the lead’s card. Nothing is taken when you share. Card
-            payments are handled by Stripe.
+            Without the free bill, sharing a bill puts a £1 hold on the lead’s card. Nothing is taken when you share.
+            Placing the hold saves the card with Stripe for one charge when the bill is settled, and for the next hold.
+            The lead can remove it on Account. Card payments are handled by Stripe; we never see the card number.
           </li>
           <li>
             Guests cover the platform fee: each guest’s share is rounded up to the next pound, and the lead pays
-            nothing towards it. When the lead marks the bill as settled, we take the guests’ round-ups from the hold,
-            never more than £1, and release the rest.
+            nothing towards it. When the lead marks the bill as settled, we release the hold and charge the saved card
+            the round-ups of the guests the lead marked as paid. They paid those round-ups to the lead with their share,
+            so the lead nets nothing. If the lead’s bank asks them to confirm the charge, we email a link to do it.
           </li>
           <li>
-            If nobody joins, if the lead deletes the bill, or if the guests’ part is under 30p, we release the hold and
-            take nothing.
+            If nobody joins, if the lead deletes the bill, if the round-ups are under 30p, or if the bill is never
+            settled, we release the hold and charge nothing.
           </li>
           <li>
             The fee pays for a service we supply straight away. When you share, you agree to that, which means the

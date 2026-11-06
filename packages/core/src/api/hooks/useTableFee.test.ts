@@ -17,3 +17,13 @@ describe('isFeeRequired', () => {
     expect(isFeeRequired(new Error('x'))).toBe(false);
   });
 });
+
+describe('cardLabel (#228)', () => {
+  it('names the saved card', async () => {
+    const { cardLabel } = await import('./useTableFee');
+    expect(cardLabel({ brand: 'visa', last4: '4417' })).toBe('Visa ending 4417');
+    expect(cardLabel({ brand: 'visa', last4: '4417', wallet: 'apple_pay' })).toBe('Apple Pay');
+    expect(cardLabel({ brand: 'unionpay', last4: '1234' })).toBe('Card ending 1234');
+    expect(cardLabel({})).toBe('Card');
+  });
+});

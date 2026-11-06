@@ -1204,7 +1204,7 @@ export interface components {
             }[];
         };
         PostCommentRequest: {
-            /** @description Plain text */
+            /** @description Plain text, trimmed */
             text: string;
         };
         Comment: {

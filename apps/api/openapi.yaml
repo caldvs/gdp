@@ -1760,7 +1760,7 @@ components:
       type: object
       required: [text]
       properties:
-        text: { type: string, minLength: 1, maxLength: 280, description: Plain text, trimmed }
+        text: { type: string, minLength: 1, maxLength: 280, description: 'Plain text, trimmed' }
     Comment:
       type: object
       required: [commentId, userId, displayName, text, createdAt]

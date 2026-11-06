@@ -1,17 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-// The server's maths, imported by path: the client projection must agree
-// with what the API charges (ADR-0006).
-import { apportionByWeight, computeOwed, splitShare } from '../../../../apps/api/src/services/sessions/allocation';
-import { extrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, roundUpPence, sharePence } from './owed';
+// The split maths, which the API and the app share (owed.ts). The API's
+// own ways in (its sessions keep splits in shareSettings) are imported by
+// path to check they read the same splits as the app.
+import {
+  apportionByWeight,
+  computeOwed as owedOnBill,
+  extrasRate,
+  projectFeePence,
+  projectOwedPence,
+  projectSubtotalPence,
+  roundUpPence,
+  sharePence,
+  splitShare,
+  splitsOf,
+  type Split,
+} from './owed';
+import { computeOwed as apiComputeOwed } from '../../../../apps/api/src/services/sessions/allocation';
 import { computeOwedForParticipant, feeFor } from '../../../../apps/api/src/services/payments/ledger';
 import { billAndSession, split, type GenSession } from '../test/arbitraries';
 
-/** Each split's ways and units, the way the API reads them from shareSettings. */
-const splits = (session: GenSession): [Map<string, number>, Map<string, number>] => [
-  new Map(session.shares.map((s) => [s.itemId, s.ways])),
-  new Map(session.shares.map((s) => [s.itemId, s.units])),
-];
+/** The shares as the app reads them; `computeOwed(bill, participants, ...splits(session))`. */
+const splits = (session: GenSession): [GenSession['shares']] => [session.shares];
+const computeOwed = (bill: Parameters<typeof owedOnBill>[0] & { totalPence?: number }, participants: Parameters<typeof owedOnBill>[1], shares: readonly Split[]) =>
+  owedOnBill(bill, participants, shares);
 
 describe('sharePence (property)', () => {
   it('gives each person the floor or ceiling of price ÷ ways', () => {
@@ -68,7 +80,7 @@ describe('sharePence (property)', () => {
 });
 
 describe('client and server agree (property)', () => {
-  it('sharePence (core) equals splitShare (API) for every member', () => {
+  it('sharePence is each member’s part of splitShare', () => {
     fc.assert(
       fc.property(split(), ({ price, members, ways }) => {
         const server = splitShare(price, members, ways);
@@ -93,10 +105,39 @@ describe('client and server agree (property)', () => {
     );
   });
 
-  it('the projected total is within 3p of what the server charges, discounts too', () => {
-    // The client rounds subtotal × (1 + rate) once; the server apportions
-    // service, tax and any shared discount separately by largest remainder
-    // (±1p each).
+  it('what the app shows is what a payment is for, to the penny, discounts too', () => {
+    fc.assert(
+      fc.property(billAndSession({ complete: false }), ({ bill, session }) => {
+        const s = { ...session, shareSettings: session.shares.map(({ itemId, ways, units }) => ({ itemId, ways, units })), creatorUserId: session.participants[0]!.userId } as never;
+        for (const p of session.participants) {
+          expect(projectOwedPence(s, bill as never, p.userId)).toBe(
+            computeOwedForParticipant(bill, s, { payment: { status: 'unpaid' }, ...p } as never),
+          );
+        }
+      }),
+    );
+  });
+
+  it('the API reads its splits (sharedItemIds and shareSettings) as the app reads shares', () => {
+    fc.assert(
+      fc.property(billAndSession(), ({ bill, session }) => {
+        const viaApi = apiComputeOwed(
+          bill,
+          session.participants,
+          new Map(session.shares.map((s) => [s.itemId, s.ways])),
+          new Map(session.shares.map((s) => [s.itemId, s.units])),
+        );
+        expect(viaApi).toEqual(computeOwed(bill, session.participants, session.shares));
+        const fromSettings = splitsOf(session.participants, session.shares.map(({ itemId, ways, units }) => ({ itemId, ways, units })));
+        expect(computeOwed(bill, session.participants, fromSettings)).toEqual(viaApi);
+      }),
+    );
+  });
+
+  it('a payment and the locked bill differ by at most 3p a person', () => {
+    // A payment rounds subtotal × (1 + rate) once (it works on a bill still
+    // being claimed); locking apportions service, tax and any shared discount
+    // separately by largest remainder so the bill adds up (±1p each).
     fc.assert(
       fc.property(billAndSession(), ({ bill, session }) => {
         const server = computeOwed(bill, session.participants, ...splits(session));
@@ -173,6 +214,33 @@ describe('server allocation (property)', () => {
         ).get(person.userId)!;
         // Service and tax are re-apportioned, so allow their rounding (±1p each).
         expect(after).toBeGreaterThanOrEqual(before + item.unitPricePence - 2);
+      }),
+    );
+  });
+
+  it('with a shared discount, taking one more unit still never lowers what you owe', () => {
+    // The fixed discount is re-shared over more items, so most of the new
+    // unit's price can go on the discount; what you owe can't go down,
+    // beyond the three apportionings' rounding.
+    fc.assert(
+      fc.property(billAndSession(), fc.nat(), fc.nat(), ({ bill, session }, pickItem, pickPerson) => {
+        const claimable = bill.items.filter((it) => !session.shares.some((s) => s.itemId === it.itemId));
+        fc.pre(claimable.length > 0 && bill.discounts.length > 0);
+        const item = claimable[pickItem % claimable.length]!;
+        const person = session.participants[pickPerson % session.participants.length]!;
+        const before = computeOwed(bill, session.participants, session.shares).get(person.userId)!;
+        const bigger = {
+          ...bill,
+          items: bill.items.map((it) => (it.itemId === item.itemId ? { ...it, quantity: it.quantity + 1 } : it)),
+          subtotalPence: bill.subtotalPence + item.unitPricePence,
+          totalPence: bill.totalPence + item.unitPricePence,
+        };
+        const after = computeOwed(
+          bigger,
+          session.participants.map((p) => (p.userId === person.userId ? { ...p, claimedItemIds: [...p.claimedItemIds, item.itemId] } : p)),
+          session.shares,
+        ).get(person.userId)!;
+        expect(after).toBeGreaterThanOrEqual(before - 3);
       }),
     );
   });

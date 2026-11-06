@@ -1,4 +1,5 @@
 import type { components } from '../api';
+import { paymentsAreOpen, unclaimedItemIds } from './owed';
 
 type Session = components['schemas']['Session'];
 type Bill = components['schemas']['Bill'];
@@ -83,12 +84,11 @@ export function coverLeftovers(
 
 /**
  * Lines not yet fully taken: some of the quantity nobody has claimed, or a
- * split with a spot open. Mirrors the API's `unclaimedItemIds` (allocation.ts).
+ * split with a spot open (owed.ts, the API's own test).
  */
 export function unclaimedLines(s: Session, b: Bill): BillItem[] {
-  return itemStatuses(s, b, '', () => '')
-    .filter((st) => st.left > 0 || (!!st.share && st.share.userIds.length < st.share.ways))
-    .map((st) => st.item);
+  const open = new Set(unclaimedItemIds(b.items, s.participants, s.shares ?? []));
+  return b.items.filter((it) => open.has(it.itemId));
 }
 
 /**
@@ -99,8 +99,7 @@ export function unclaimedLines(s: Session, b: Bill): BillItem[] {
  * (PAYMENTS_NOT_OPEN).
  */
 export function paymentsOpen(s: Session, b: Bill): boolean {
-  if (s.status === 'setup') return false;
-  return s.status !== 'claiming' || !!s.paymentsOpenedAt || allClaimed(s, b);
+  return paymentsAreOpen(s, allClaimed(s, b));
 }
 
 /** #216: the lead opened payments before every line was claimed. */

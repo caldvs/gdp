@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { discountPence } from '@gdp/core/lib/owed';
 
 export const BillItemCategory = z.enum(['food', 'drink', 'other']);
 export type BillItemCategory = z.infer<typeof BillItemCategory>;
@@ -63,9 +64,9 @@ export const BillDiscountSchema = z.object({
 });
 export type BillDiscount = z.infer<typeof BillDiscountSchema>;
 
-/** The bill's shared discounts in all (0 for bills from before them). */
-export const discountPence = (b: { discounts?: ReadonlyArray<{ amountPence: number }> }): number =>
-  (b.discounts ?? []).reduce((acc, d) => acc + d.amountPence, 0);
+// The bill's shared discounts in all (0 for bills from before them): the
+// split maths' own (packages/core/src/lib/owed.ts).
+export { discountPence };
 
 const BillBaseSchema = z.object({
   billId: z.string().uuid(),

@@ -1,6 +1,7 @@
-import { splitShare } from '../sessions/allocation.js';
-import { discountPence } from '../../types/bills.js';
+import { feePence, owedPence, splitsOf } from '@gdp/core/lib/owed';
 import type { Participant, ParticipantPaymentEntry, Session } from '../../types/sessions.js';
+
+export { roundUpPence } from '@gdp/core/lib/owed';
 
 /**
  * A guest's payments to the lead (#121). A guest can pay more than once:
@@ -100,89 +101,21 @@ export function withPayment(
   return { ...p, payments: list, payment: aggregatePayment(list) };
 }
 
-// Per-participant owed-amount calc tolerant of partial / unclaimed
-// bills. Used when the lead hasn't locked claims yet — each diner pays
-// for their CURRENT claims + a proportional share of service / tax.
-// Mirrors the indicative math the frontend shows as the running total.
-//
-// Differs from `computeOwed` in allocation.ts: that one enforces the
-// CLAIMS_INCOMPLETE invariant (every item must be claimed or shared)
-// and apportions extras via largest-remainder rounding for exact
-// reconciliation. The trust-based path can't enforce completeness —
-// some items may legitimately be unclaimed at pay time — so we use
-// the simpler ratio approach and accept slight rounding drift across
-// participants (a few pennies, well within manual-mode tolerance).
-type OwedBill = {
-  items: ReadonlyArray<{ itemId: string; unitPricePence: number }>;
-  subtotalPence: number;
-  serviceChargePence: number;
-  taxPence: number;
-  /** Shared discounts (8 Nov 2026): taken off pro rata, like service is added. */
-  discounts?: ReadonlyArray<{ amountPence: number }>;
-};
-
 /**
- * A diner's items: whole-unit claims plus their part of each split. Share
- * subtotal (ADR-0006): the split's units of the line divided equally,
- * remainder pennies to the lowest userIds.
+ * What a diner owes now, on a bill that may still be being claimed: the split
+ * maths in packages/core/src/lib/owed.ts (the app shows the same), with the
+ * API's splits (participants' `sharedItemIds` and `shareSettings`).
  */
-export function itemsPenceFor(bill: OwedBill, session: Session, participant: Participant): number {
-  let claimSub = 0;
-  for (const id of participant.claimedItemIds) {
-    const item = bill.items.find((it) => it.itemId === id);
-    if (item) claimSub += item.unitPricePence;
-  }
-  let shareSub = 0;
-  for (const itemId of participant.sharedItemIds ?? []) {
-    const item = bill.items.find((it) => it.itemId === itemId);
-    if (!item) continue;
-    const sharers = session.participants
-      .filter((p) => (p.sharedItemIds ?? []).includes(itemId))
-      .map((p) => p.userId);
-    if (sharers.length === 0) continue;
-    const st = session.shareSettings?.find((s) => s.itemId === itemId);
-    const ways = st?.ways ?? sharers.length;
-    const price = item.unitPricePence * (st?.units ?? 1);
-    shareSub += splitShare(price, sharers, ways).get(participant.userId) ?? 0;
-  }
-  return claimSub + shareSub;
-}
-
-/**
- * What a diner owes before any round-up: their items plus their part of
- * service and tax, less their part of any shared discount.
- */
-export function owedBeforeRoundUp(
-  bill: OwedBill,
-  session: Session,
-  participant: Participant,
-): number {
-  const items = itemsPenceFor(bill, session, participant);
-  const extras = bill.serviceChargePence + bill.taxPence - discountPence(bill);
-  const extrasRate = bill.subtotalPence > 0 ? extras / bill.subtotalPence : 0;
-  return Math.round(items * (1 + extrasRate));
-}
+type OwedBill = Parameters<typeof owedPence>[0];
+const splitsIn = (session: Session) => splitsOf(session.participants, session.shareSettings ?? []);
 
 /** The round-up this diner pays the lead on top of their share. The lead pays none. */
-export function feeFor(bill: OwedBill, session: Session, participant: Participant): number {
-  if (participant.userId === session.creatorUserId) return 0;
-  return roundUpPence(session.platformFeePence ?? 0, owedBeforeRoundUp(bill, session, participant));
-}
+export const feeFor = (bill: OwedBill, session: Session, participant: Participant): number =>
+  feePence(bill, session, participant, splitsIn(session));
 
-export function computeOwedForParticipant(
+/** Their share (items, service and tax, less any shared discount) and their round-up. */
+export const computeOwedForParticipant = (
   bill: OwedBill,
   session: Session,
   participant: Participant,
-): number {
-  return owedBeforeRoundUp(bill, session, participant) + feeFor(bill, session, participant);
-}
-
-/**
- * A guest's round-up (4 Nov 2026): what takes what they owe up to the next
- * whole pound, 0 when it's already a whole pound. Only on a bill shared on
- * the lead's hold. Mirrors roundUpPence in packages/core/src/lib/owed.ts.
- */
-export function roundUpPence(holdPence: number, owedPence: number): number {
-  if (holdPence <= 0 || owedPence <= 0) return 0;
-  return (100 - (owedPence % 100)) % 100;
-}
+): number => owedPence(bill, session, participant, splitsIn(session));

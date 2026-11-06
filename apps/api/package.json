@@ -34,6 +34,7 @@
     "golden": "tsx scripts/golden-receipts.ts"
   },
   "dependencies": {
+    "@gdp/core": "*",
     "@aws-sdk/client-bedrock-runtime": "^3.1161.0",
     "@aws-sdk/client-cost-explorer": "^3.1161.0",
     "@aws-sdk/client-dynamodb": "^3.700.0",

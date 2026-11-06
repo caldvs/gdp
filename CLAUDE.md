@@ -37,7 +37,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 
 ## Rules that keep breaking
 
-- `splitShare` (API, `allocation.ts`) and `sharePence` (core, `owed.ts`) must agree, and so must `computeOwedForParticipant` and `owed.ts`. Change both or neither.
+- The split maths lives once, in `packages/core/src/lib/owed.ts`, and the API imports it (`@gdp/core/lib/owed`). Change money maths there, never in a copy; keep it pure (no imports) and at 100% coverage.
 - Never write `shares` or `shareSettings` into the session META row; `sessionStore.metaOnly()` strips them.
 - Bank details never go to the server (ADR-0002).
 - Read [docs/decisions.md](docs/decisions.md) before changing product behaviour, and update it in the same commit when a decision changes.

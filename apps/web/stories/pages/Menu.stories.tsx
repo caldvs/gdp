@@ -13,7 +13,7 @@ type Story = StoryObj<typeof meta>;
 
 export const AccountPage: Story = {
   name: 'M1 Account',
-  parameters: screen({ user: users.lead, api: () => withBills(), path: '/account', billing: { creditsLeft: 1, boughtCredits: 3 } }),
+  parameters: screen({ user: users.lead, api: () => withBills(), path: '/account', billing: { creditsLeft: 1 } }),
   render: () => <Account />,
 };
 

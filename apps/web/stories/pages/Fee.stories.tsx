@@ -23,7 +23,7 @@ export const SpendACredit: Story = {
 
 export const CreditSpent: Story = {
   name: 'F1 Credit spent, QR ready',
-  parameters: screen({ user: users.lead, api: newTable, path: `/session/${SID}/share?new=credit`, billing: { fee: 'free', creditsLeft: 0 } }),
+  parameters: screen({ user: users.lead, api: newTable, path: `/session/${SID}/share?new=free`, billing: { fee: 'free', creditsLeft: 0 } }),
   render: () => <Share />,
 };
 

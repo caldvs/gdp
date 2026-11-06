@@ -14,7 +14,7 @@ export default function RefundsPage() {
       <section>
         <p>
           Sharing a bill without a free credit puts a £1 hold on your card. When you mark the bill as settled, we take only what
-          your guests owe of it (they pay it back to you with their share), and release the rest. The service is
+          your guests owe of it (their shares rounded up to the next pound, which they pay to you), and release the rest. The service is
           supplied as soon as you share, so the usual 14-day cancellation period doesn’t apply.
         </p>
       </section>
@@ -22,15 +22,7 @@ export default function RefundsPage() {
       <section>
         <h2>When we take nothing</h2>
         <p>If nobody joins the bill, or you delete it, we release the hold: nothing is taken.</p>
-        <p>A credit spent on a bill nobody joined is given back.</p>
-      </section>
-
-      <section>
-        <h2>Credits</h2>
-        <p>
-          Credits are yours as soon as you pay, so the 14-day cancellation period doesn’t apply and they can’t be
-          refunded. They never expire.
-        </p>
+        <p>A free credit spent on a bill nobody joined is given back.</p>
       </section>
 
       <section>

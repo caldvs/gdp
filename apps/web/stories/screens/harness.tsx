@@ -26,9 +26,8 @@ type BillingSummary = components['schemas']['BillingSummary'];
 export type Billing = {
   /** This month's free bill. */
   creditsLeft?: 0 | 1;
-  boughtCredits?: number;
-  /** This bill's fee: free/credit spends a credit, held/paid is the £1 hold. */
-  fee?: 'unpaid' | 'held' | 'paid' | 'free' | 'credit' | 'waived';
+  /** This bill's fee: free spends the month's credit, held/paid is the £1 hold. */
+  fee?: 'unpaid' | 'held' | 'paid' | 'free' | 'waived';
 };
 
 export type ScreenParams = {
@@ -71,19 +70,18 @@ function routeParams(pathname: string): Record<string, string> {
 }
 
 function billing(b: Billing) {
-  const credits = { creditsLeft: b.creditsLeft ?? 1, boughtCredits: b.boughtCredits ?? 0 };
+  const credits = { creditsLeft: b.creditsLeft ?? 1 };
   const at = '2026-10-31T12:05:00Z';
   return (method: string, path: string): unknown => {
     if (path === '/v1/billing/me') {
       const summary: BillingSummary = {
         ...credits,
-        packs: [],
         nextCreditOn: '2026-12-01',
         paidPence: b.fee === 'paid' ? 100 : 0,
         refundedPence: 0,
         // This bill's fee or credit, so the share page and the bill say what paid for it.
         fees: b.fee === 'paid' || b.fee === 'held' ? [{ billId: BID, sessionId: SID, amountPence: 100, paidAt: at, kind: 'hold', ...(b.fee === 'paid' ? { capturedPence: 100, capturedAt: at } : {}) }] : [],
-        credits: b.fee === 'free' || b.fee === 'credit' ? [{ month: '2026-10', billId: BID, sessionId: SID, claimedAt: at }] : [],
+        credits: b.fee === 'free' ? [{ month: '2026-10', billId: BID, sessionId: SID, claimedAt: at }] : [],
       };
       return summary;
     }

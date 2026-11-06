@@ -9,12 +9,7 @@ import { v7 as uuidv7 } from 'uuid';
 import type Stripe from 'stripe';
 import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
-import {
-  boughtCreditStore,
-  creditStore,
-  holdIndex,
-  tableFeeStore,
-} from '../../src/storage/tableFeeStore.js';
+import { creditStore, holdIndex, tableFeeStore } from '../../src/storage/tableFeeStore.js';
 import { monthOf, nextCreditOn } from '../../src/services/billing/tableFee.js';
 import {
   createBillFor,
@@ -308,71 +303,5 @@ describe('one free bill a month', () => {
       share(app, b.sessionId, lead),
     ]);
     expect([ra.status, rb.status].sort()).toEqual([200, 402]);
-  });
-});
-
-describe('bought credits (#169)', () => {
-  const pack = (lead: string, cs: string) =>
-    boughtCreditStore.addPack(lead, {
-      checkoutSessionId: cs,
-      credits: 10,
-      amountPence: 500,
-      boughtAt: new Date().toISOString(),
-    });
-
-  it('a pack adds 10 credits once, however often Stripe tells us', async () => {
-    const lead = `c-${uuidv7()}`;
-    expect(await pack(lead, `cs_${uuidv7()}`)).toBe('recorded');
-    const cs = `cs_${uuidv7()}`;
-    expect(await pack(lead, cs)).toBe('recorded');
-    expect(await pack(lead, cs)).toBe('duplicate');
-    expect(await boughtCreditStore.balance(lead)).toBe(20);
-    expect(await boughtCreditStore.packs(lead)).toHaveLength(2);
-  });
-
-  it('with the free credit spent, a share spends a bought one; nobody joining gives it back', async () => {
-    const app = buildApp({ credits: false });
-    const lead = `c-${uuidv7()}`;
-    await pack(lead, `cs_${uuidv7()}`);
-    const { sessionId, billId } = await newSession(app, lead);
-    const before = await app.request(`/v1/billing/table-fee/${billId}`, {
-      headers: makeAuth(lead),
-    });
-    expect(await before.json()).toMatchObject({ status: 'credit', boughtCredits: 10 });
-
-    const res = await share(app, sessionId, lead);
-    expect(res.status).toBe(200);
-    // A credit, not a hold: the guests pay no fee.
-    expect(((await res.json()) as { platformFeePence?: number }).platformFeePence).toBeUndefined();
-    expect(await boughtCreditStore.balance(lead)).toBe(9);
-
-    const close = await app.request(`/v1/sessions/${sessionId}/close`, {
-      method: 'POST',
-      headers: makeAuth(lead),
-    });
-    expect(close.status).toBe(200);
-    expect(await boughtCreditStore.balance(lead)).toBe(10);
-    // Closing again doesn't give back twice.
-    await boughtCreditStore.giveBack(lead, sessionId, new Date().toISOString());
-    expect(await boughtCreditStore.balance(lead)).toBe(10);
-  });
-
-  it('two shares racing for the last credit: one gets it, the balance never goes below 0', async () => {
-    const app = buildApp({ credits: false });
-    const lead = `c-${uuidv7()}`;
-    await boughtCreditStore.addPack(lead, {
-      checkoutSessionId: `cs_${uuidv7()}`,
-      credits: 1,
-      amountPence: 50,
-      boughtAt: new Date().toISOString(),
-    });
-    const a = await newSession(app, lead);
-    const b = await newSession(app, lead);
-    const [ra, rb] = await Promise.all([
-      share(app, a.sessionId, lead),
-      share(app, b.sessionId, lead),
-    ]);
-    expect([ra.status, rb.status].sort()).toEqual([200, 402]);
-    expect(await boughtCreditStore.balance(lead)).toBe(0);
   });
 });

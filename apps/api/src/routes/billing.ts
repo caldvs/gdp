@@ -12,7 +12,6 @@ export interface BillingRoutesDeps {
 }
 
 const StartTableFeeSchema = z.object({ billId: z.string().uuid() });
-const StartCreditPackSchema = z.object({ returnTo: z.string().max(200).optional() });
 
 export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
   const r = new Hono();
@@ -28,36 +27,6 @@ export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
       return c.json({ client_secret: result.clientSecret, amountPence: result.amountPence });
     },
   );
-
-  // A credit pack (#169): 10 credits for £5, in the same embedded form.
-  r.post(
-    '/credit-packs',
-    requireAuth(deps.idTokenVerifier),
-    zValidator('json', StartCreditPackSchema),
-    async (c) => {
-      const { returnTo } = c.req.valid('json');
-      const result = await deps.tableFees.startCreditPack({
-        caller: callerOf(c),
-        ...(returnTo ? { returnTo } : {}),
-      });
-      return c.json({
-        client_secret: result.clientSecret,
-        amountPence: result.amountPence,
-        credits: result.credits,
-      });
-    },
-  );
-
-  // Whether a pack's payment has been recorded; checks Stripe if the webhook is late.
-  r.get('/credit-packs/:checkoutSessionId', requireAuth(deps.idTokenVerifier), async (c) => {
-    const id = c.req.param('checkoutSessionId');
-    if (!/^cs_[A-Za-z0-9_]+$/.test(id)) {
-      return c.json({ recorded: false, boughtCredits: 0 });
-    }
-    return c.json(
-      await deps.tableFees.creditPackStatus({ caller: callerOf(c), checkoutSessionId: id }),
-    );
-  });
 
   // The lead's credits this month and the fees they've paid (the account page).
   r.get('/me', requireAuth(deps.idTokenVerifier), async (c) => {

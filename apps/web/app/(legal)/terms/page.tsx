@@ -37,17 +37,13 @@ export default function TermsPage() {
         <ul>
           <li>Each lead gets one free bill a month.</li>
           <li>
-            You can also buy 10 credits for £5. Each one shares a bill with no fee for anyone. Credits never expire.
-            They’re yours as soon as you pay, so you agree the 14-day cancellation period doesn’t apply, and they
-            can’t be refunded. A free bill is used before a bought credit.
-          </li>
-          <li>
-            Without a credit, sharing a bill puts a £1 hold on the lead’s card. Nothing is taken when you share. Card
+            Without the free bill, sharing a bill puts a £1 hold on the lead’s card. Nothing is taken when you share. Card
             payments are handled by Stripe.
           </li>
           <li>
-            Each guest pays back part of the £1 with their share of the bill, in proportion to what they had. When the
-            lead marks the bill as settled, we take what the guests owe from the hold, never more than £1, and release the rest.
+            Guests cover the platform fee: each guest’s share is rounded up to the next pound, and the lead pays
+            nothing towards it. When the lead marks the bill as settled, we take the guests’ round-ups from the hold,
+            never more than £1, and release the rest.
           </li>
           <li>
             If nobody joins, if the lead deletes the bill, or if the guests’ part is under 30p, we release the hold and

@@ -1,11 +1,7 @@
-import {
-  ConditionalCheckFailedException,
-  TransactionCanceledException,
-} from '@aws-sdk/client-dynamodb';
+import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   GetCommand,
-  TransactWriteCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
@@ -13,8 +9,6 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from './ddb.js';
 import type {
-  BoughtCreditStore,
-  CreditPack,
   CreditStore,
   MonthlyCredit,
   ShareEntitlement,
@@ -38,22 +32,6 @@ const feesIdx = (userId: string) => `FEES#${userId}`;
 const holdQPk = (billId: string) => `HOLDQ#${billId}`;
 const HOLDQ_SK = 'HOLDQ';
 const HOLDS_IDX = 'HOLDS';
-
-/**
- * Bought credits (#169): `CREDITS#<userId>` holds a `BALANCE` row and one
- * row per pack bought (`BUY#<checkoutSessionId>`), credit spent
- * (`SPEND#<sessionId>`) and credit given back (`RETURN#<sessionId>`). No
- * TTL: they never expire, and the packs are a tax record.
- */
-const boughtPk = (userId: string) => `CREDITS#${userId}`;
-const BALANCE_SK = 'BALANCE';
-const buySk = (checkoutSessionId: string) => `BUY#${checkoutSessionId}`;
-const spendSk = (sessionId: string) => `SPEND#${sessionId}`;
-const returnSk = (sessionId: string) => `RETURN#${sessionId}`;
-
-const cancelledByCondition = (err: unknown): boolean =>
-  err instanceof TransactionCanceledException &&
-  (err.CancellationReasons ?? []).some((r) => r.Code === 'ConditionalCheckFailed');
 
 /** A hold the daily sweep should look at. */
 export interface PendingHold {
@@ -244,102 +222,6 @@ export const creditStore: CreditStore = {
   },
 };
 
-/** Credit packs the lead has bought (#169). */
-export const boughtCreditStore: BoughtCreditStore = {
-  async balance(userId) {
-    const result = await ddb.send(
-      new GetCommand({ TableName: TABLE_NAME, Key: { pk: boughtPk(userId), sk: BALANCE_SK } }),
-    );
-    return Number(result.Item?.balance ?? 0);
-  },
-
-  async addPack(userId, pack) {
-    try {
-      await ddb.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              Put: {
-                TableName: TABLE_NAME,
-                Item: { pk: boughtPk(userId), sk: buySk(pack.checkoutSessionId), ...pack },
-                ConditionExpression: 'attribute_not_exists(pk)',
-              },
-            },
-            {
-              Update: {
-                TableName: TABLE_NAME,
-                Key: { pk: boughtPk(userId), sk: BALANCE_SK },
-                UpdateExpression: 'ADD balance :n',
-                ExpressionAttributeValues: { ':n': pack.credits },
-              },
-            },
-          ],
-        }),
-      );
-      return 'recorded';
-    } catch (err) {
-      if (cancelledByCondition(err)) return 'duplicate';
-      throw err;
-    }
-  },
-
-  async giveBack(userId, sessionId, at) {
-    try {
-      await ddb.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              ConditionCheck: {
-                TableName: TABLE_NAME,
-                Key: { pk: boughtPk(userId), sk: spendSk(sessionId) },
-                ConditionExpression: 'attribute_exists(pk)',
-              },
-            },
-            {
-              Put: {
-                TableName: TABLE_NAME,
-                Item: { pk: boughtPk(userId), sk: returnSk(sessionId), sessionId, at },
-                ConditionExpression: 'attribute_not_exists(pk)',
-              },
-            },
-            {
-              Update: {
-                TableName: TABLE_NAME,
-                Key: { pk: boughtPk(userId), sk: BALANCE_SK },
-                UpdateExpression: 'ADD balance :one',
-                ExpressionAttributeValues: { ':one': 1 },
-              },
-            },
-          ],
-        }),
-      );
-      return 'recorded';
-    } catch (err) {
-      if (cancelledByCondition(err)) return 'duplicate';
-      throw err;
-    }
-  },
-
-  async packs(userId) {
-    const out: CreditPack[] = [];
-    let startKey: Record<string, unknown> | undefined;
-    do {
-      const page = await ddb.send(
-        new QueryCommand({
-          TableName: TABLE_NAME,
-          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :buy)',
-          ExpressionAttributeValues: { ':pk': boughtPk(userId), ':buy': 'BUY#' },
-          ScanIndexForward: false,
-          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-        }),
-      );
-      for (const item of page.Items ?? []) out.push(strip<CreditPack>(item));
-      startKey = page.LastEvaluatedKey;
-    } while (startKey);
-    return out.sort((a, b) => b.boughtAt.localeCompare(a.boughtAt));
-  },
-};
-
 /** Holds spent on shares and not yet seen settled by the sweep (#168). */
 export const holdIndex = {
   async list(): Promise<PendingHold[]> {
@@ -403,34 +285,6 @@ export const entitlementOps = (entitlement: ShareEntitlement): TransactItem[] =>
             sessionId: entitlement.sessionId,
             heldAt,
           },
-        },
-      },
-    ];
-  }
-  if (entitlement.kind === 'bought') {
-    // Spend one bought credit: the balance can't go below 0, and one
-    // session spends at most one.
-    return [
-      {
-        Update: {
-          TableName: TABLE_NAME,
-          Key: { pk: boughtPk(entitlement.userId), sk: BALANCE_SK },
-          UpdateExpression: 'SET balance = balance - :one',
-          ConditionExpression: 'balance >= :one',
-          ExpressionAttributeValues: { ':one': 1 },
-        },
-      },
-      {
-        Put: {
-          TableName: TABLE_NAME,
-          Item: {
-            pk: boughtPk(entitlement.userId),
-            sk: spendSk(entitlement.sessionId),
-            sessionId: entitlement.sessionId,
-            billId: entitlement.billId,
-            at: entitlement.at,
-          },
-          ConditionExpression: 'attribute_not_exists(pk)',
         },
       },
     ];

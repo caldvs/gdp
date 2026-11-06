@@ -1043,51 +1043,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/billing/credit-packs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start buying a credit pack
-         * @description 10 credits for £5 (#169). They never expire and can't be refunded. Each one shares a bill
-         *     free for everyone. Creates a Stripe Checkout Session for the embedded form and returns its
-         *     client secret; the credits are added by the Stripe webhook.
-         */
-        post: operations["startCreditPack"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/credit-packs/{checkoutSessionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                checkoutSessionId: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * Whether a credit pack's payment has been recorded
-         * @description Checks Stripe directly when the webhook is late, and records the pack if that Checkout
-         *     Session is the caller's and paid.
-         */
-        get: operations["getCreditPackStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/billing/me": {
         parameters: {
             query?: never;
@@ -1142,20 +1097,6 @@ export interface components {
             /** @description The hold: £1 */
             amountPence: number;
         };
-        StartCreditPackRequest: {
-            /** @description A page on the site to go back to once the credits are added. */
-            returnTo?: string;
-        };
-        CreditPackCheckout: {
-            client_secret: string;
-            amountPence: number;
-            credits: number;
-        };
-        CreditPackStatus: {
-            recorded: boolean;
-            /** @description Bought credits not yet spent */
-            boughtCredits: number;
-        };
         TableFeeStatus: {
             /** Format: uuid */
             billId: string;
@@ -1166,17 +1107,14 @@ export interface components {
              *     holds.
              *     `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
              *     `free`: the lead has this month's credit, which sharing spends.
-             *     `credit`: no free credit, but a bought one (#169), which sharing spends.
              * @enum {string}
              */
-            status: "held" | "paid" | "unpaid" | "waived" | "free" | "credit";
+            status: "held" | "paid" | "unpaid" | "waived" | "free";
             amountPence: number;
             /** Format: date-time */
             paidAt?: string;
             /** Format: date-time */
             heldAt?: string;
-            /** @description Bought credits not yet spent (#169). */
-            boughtCredits?: number;
             /**
              * @description Credits left this month (on `free` and `unpaid`).
              * @enum {integer}
@@ -1191,17 +1129,9 @@ export interface components {
         BillingSummary: {
             /** @enum {integer} */
             creditsLeft: 0 | 1;
-            /** @description Bought credits not yet spent (#169) */
-            boughtCredits: number;
-            packs: {
-                amountPence: number;
-                credits: number;
-                /** Format: date-time */
-                boughtAt: string;
-            }[];
             /** Format: date */
             nextCreditOn: string;
-            /** @description Every fee and credit pack paid, refunded ones included */
+            /** @description Every fee paid, refunded ones included */
             paidPence: number;
             refundedPence: number;
             fees: {
@@ -3618,63 +3548,6 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    startCreditPack: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["StartCreditPackRequest"];
-            };
-        };
-        responses: {
-            /** @description Client secret for the embedded form */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreditPackCheckout"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Stripe error */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getCreditPackStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                checkoutSessionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Recorded or not, and the credits left */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreditPackStatus"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
         };
     };
     getMyBilling: {

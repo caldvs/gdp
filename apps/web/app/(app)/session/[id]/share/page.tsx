@@ -35,11 +35,11 @@ export default function SharePage() {
   const verdict = usePayoutVerdict(id, fromLink.data, session.data?.payoutCheck);
   const payout = isHost ? ownPayout.data ?? null : verdict === 'mismatch' ? null : fromLink.data;
   const qrUrl = useJoinUrl(session.data?.joinCode, payout);
-  // Just shared (#129): `?new=fee|credit|1`. The QR fills in, and the
+  // Just shared (#129): `?new=fee|free|1`. The QR fills in, and the
   // buttons wait for it.
   const fresh = useSearchParams().get('new');
   const built = useQrBuilt(!!fresh, qrUrl);
-  const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY && (fresh === 'fee' || fresh === 'credit' || fresh === 'free') });
+  const billing = useMyBilling({ enabled: !!STRIPE_PUBLISHABLE_KEY && (fresh === 'fee' || fresh === 'free') });
   const feePaid = fresh === 'fee' ? billing.data?.fees.find((f) => f.sessionId === id) : undefined;
   // #198: say who's just joined.
   const feed = useTableFeed(session.data?.participants, session.data?.creatorUserId ?? '');
@@ -56,9 +56,7 @@ export default function SharePage() {
     ? feePaid.kind === 'hold' ? `${formatGBP(feePaid.amountPence)} hold · nothing taken now` : `${formatGBP(feePaid.amountPence)} platform fee paid`
     : fresh === 'free' && billing.data
       ? `Free credit used · next one ${creditDate(billing.data.nextCreditOn)}`
-      : fresh === 'credit' && billing.data
-        ? `1 credit spent · ${billing.data.boughtCredits + billing.data.creditsLeft} left`
-        : null;
+      : null;
 
   return (
     <>

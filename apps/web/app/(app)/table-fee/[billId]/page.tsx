@@ -1,7 +1,6 @@
 'use client';
 
 import { use, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@gdp/core/api';
 import { shareSession, useCreateSession } from '@gdp/core/api/hooks/useSession';
@@ -33,7 +32,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   const status = useTableFeeStatus(billId, { poll: confirmed && !slow, checkoutSessionId });
   // A hold, an exempt lead or this month's credit are as good as paid.
   const s = status.data?.status;
-  const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free' || s === 'credit';
+  const paid = s === 'held' || s === 'paid' || s === 'waived' || s === 'free';
 
   useEffect(() => {
     if (!confirmed || paid || slow) return;
@@ -47,7 +46,7 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
   useEffect(() => {
     if (!paid || started.current) return;
     started.current = true;
-    const next = s === 'held' || s === 'paid' ? 'fee' : s === 'free' || s === 'credit' ? 'credit' : '1';
+    const next = s === 'held' || s === 'paid' ? 'fee' : s === 'free' ? 'free' : '1';
     const shareAndGo = async (sessionId: string) => {
       await shareSession(sessionId, checkoutSessionId);
       router.replace(`/session/${sessionId}/share?new=${next}`);
@@ -149,9 +148,6 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
           : 'Then your QR code'}
       />
       <Box><Row title="Platform fee hold" end={formatGBP(status.data.amountPence)} /></Box>
-      <p className="small muted">
-        Or <Link href={`/credits?returnTo=${encodeURIComponent(`/confirm-bill/${billId}`)}`}>buy 10 credits for £5</Link>: bills free for everyone.
-      </p>
       <FeeForm
         billId={billId}
         onConfirmed={(id) => {

@@ -144,17 +144,12 @@ function CheckBill() {
   const totalPence = subtotalPence + servicePence + taxPence;
   // No credit: a £1 hold on the lead's card (#165). Nothing is taken now.
   const feeDue = fee.data?.status === 'unpaid' ? fee.data.amountPence : null;
-  // This month's free bill, or a bought credit (#169): sharing spends it.
-  const credit = fee.data?.status === 'free' || fee.data?.status === 'credit';
-  const creditsLeft = fee.data && 'boughtCredits' in fee.data
-    ? (fee.data.status === 'free' ? 1 : 0) + (fee.data.boughtCredits ?? 0)
-    : 1;
-
+  // This month's free bill: sharing spends it.
   const freeCredit = fee.data?.status === 'free';
   // Nothing to spend (no Stripe here, or an exempt lead): straight on.
   const onGenerate = () => {
     if (!payout.isPending && !payout.data) { void onShare(); return; }
-    if (feeDue !== null || credit) setAsking(true);
+    if (feeDue !== null || freeCredit) setAsking(true);
     else void onShare();
   };
 
@@ -252,7 +247,7 @@ function CheckBill() {
     try {
       const created = await createSession.mutateAsync({ billId });
       await shareSession(created.sessionId);
-      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' ? 'free' : status === 'credit' ? 'credit' : '1'}`);
+      router.replace(`/session/${created.sessionId}/share?new=${status === 'free' ? 'free' : '1'}`);
     } catch (err) {
       // The server asks for the fee (the credit went on another bill meanwhile).
       if (isFeeRequired(err)) { router.push(`/table-fee/${billId}`); return; }
@@ -421,20 +416,18 @@ function CheckBill() {
         {existingSessionId ? <Button tone="secondary" href={`/session/${existingSessionId}`} replace>Open the existing bill</Button> : null}
         {asking && !isMidSession ? (
           <div ref={askRef} tabIndex={-1} className="confirm-inline" role="group" aria-labelledby="qr-t">
-            <h2 id="qr-t" className="confirm-inline__h">{feeDue !== null ? `Hold ${formatGBP(feeDue)} to share this bill?` : freeCredit ? 'Use your free credit?' : 'Spend 1 credit?'}</h2>
+            <h2 id="qr-t" className="confirm-inline__h">{feeDue !== null ? `Hold ${formatGBP(feeDue)} to share this bill?` : 'Use your free credit?'}</h2>
             {feeDue !== null ? (
               <p className="muted">Nothing is taken now. Your guests round their share up to the next pound to cover it: at most {formatGBP(feeDue)}, taken when you settle. Nobody joins? It’s released.</p>
-            ) : freeCredit ? (
+            ) : (
               <>
                 <p className="muted">One free bill a month. Next one {nextMonth()}.</p>
                 <p className="muted">Free for everyone at the table. Given back if nobody joins.</p>
               </>
-            ) : (
-              <p className="muted">You have {creditsLeft} {creditsLeft === 1 ? 'credit' : 'credits'}. This bill uses 1.</p>
             )}
             <div className="confirm-inline__acts">
               <Button tone="secondary" onClick={() => setAsking(false)}>Not yet</Button>
-              <Button busy={busy || fee.isFetching} onClick={() => void onShare()}>{feeDue !== null ? `Hold ${formatGBP(feeDue)} & get QR code` : freeCredit ? 'Use free credit' : 'Spend 1 credit'}</Button>
+              <Button busy={busy || fee.isFetching} onClick={() => void onShare()}>{feeDue !== null ? `Hold ${formatGBP(feeDue)} & get QR code` : 'Use free credit'}</Button>
             </div>
           </div>
         ) : null}

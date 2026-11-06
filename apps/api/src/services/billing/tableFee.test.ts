@@ -6,8 +6,6 @@ import {
   createTableFeeService,
   monthOf,
   nextCreditOn,
-  type BoughtCreditStore,
-  type CreditPack,
   type CreditStore,
   type MonthlyCredit,
   HOLD_PENCE,
@@ -884,8 +882,6 @@ describe('monthly credit', () => {
         credits: [],
       });
     expect(await service.summary(LEAD)).toEqual({
-      boughtCredits: 0,
-      packs: [],
       creditsLeft: 1,
       nextCreditOn: '2026-12-01',
       paidPence: 500,
@@ -935,35 +931,7 @@ describe('monthly credit', () => {
   });
 });
 
-describe('credit packs (#169)', () => {
-  const memoryBought = (start = 0): BoughtCreditStore & { bal: Map<string, number> } => {
-    const bal = new Map<string, number>([[LEAD.userId, start]]);
-    const packs = new Map<string, CreditPack>();
-    const spent = new Set<string>();
-    const returned = new Set<string>();
-    return {
-      bal,
-      balance: (u) => Promise.resolve(bal.get(u) ?? 0),
-      addPack: (u, p) => {
-        if (packs.has(p.checkoutSessionId)) return Promise.resolve('duplicate' as const);
-        packs.set(p.checkoutSessionId, p);
-        bal.set(u, (bal.get(u) ?? 0) + p.credits);
-        return Promise.resolve('recorded' as const);
-      },
-      giveBack: (u, sid) => {
-        if (!spent.has(sid) || returned.has(sid)) return Promise.resolve('duplicate' as const);
-        returned.add(sid);
-        bal.set(u, (bal.get(u) ?? 0) + 1);
-        return Promise.resolve('recorded' as const);
-      },
-      packs: () => Promise.resolve([...packs.values()]),
-      // test helper: what the share transaction does
-      spend: (u: string, sid: string) => {
-        spent.add(sid);
-        bal.set(u, (bal.get(u) ?? 0) - 1);
-      },
-    } as BoughtCreditStore & { bal: Map<string, number>; spend: (u: string, sid: string) => void };
-  };
+describe('the free credit, then the hold (#227: no bought credits)', () => {
   const monthly = (claimed: boolean): CreditStore => ({
     get: () =>
       Promise.resolve(
@@ -980,174 +948,43 @@ describe('credit packs (#169)', () => {
     markReturned: () => Promise.resolve('recorded'),
     listForUser: () => Promise.resolve({ fees: [], credits: [] }),
   });
-  const service = (bought: BoughtCreditStore, freeUsed = true, stripe: object = {}) =>
+  const service = (freeUsed: boolean) =>
     createTableFeeService({
-      stripe: stripe as Stripe,
-      store: memoryStore(),
-      getBill: () => Promise.resolve(bill(5_000)),
-      appBaseUrl: 'https://gdp.example',
-      credits: monthly(freeUsed),
-      bought,
-    });
-
-  it('spends the free credit first, then a bought one, then asks for the hold', async () => {
-    const bought = memoryBought(2);
-    expect(await service(bought, false).status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
-      status: 'free',
-      boughtCredits: 2,
-    });
-    const s = service(bought, true);
-    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
-      status: 'credit',
-      amountPence: 0,
-      boughtCredits: 2,
-    });
-    expect(
-      await s.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: 's1' }),
-    ).toMatchObject({ kind: 'bought', userId: LEAD.userId, billId: BILL_ID, sessionId: 's1' });
-    bought.bal.set(LEAD.userId, 0);
-    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
-      status: 'unpaid',
-      amountPence: 100,
-      boughtCredits: 0,
-    });
-  });
-
-  it('adds 10 credits once per paid pack checkout, and lists the pack on the account', async () => {
-    const bought = memoryBought(0);
-    const s = service(bought);
-    const event = (paymentStatus: string) =>
-      ({
-        type: 'checkout.session.completed',
-        created: 1_793_478_000,
-        data: {
-          object: {
-            id: 'cs_pack',
-            payment_status: paymentStatus,
-            amount_total: 500,
-            metadata: { userId: LEAD.userId, kind: 'credits' },
-          },
-        },
-      }) as unknown as Stripe.Event;
-    expect(await s.handleEvent(event('unpaid'))).toBe('ignored');
-    expect(await s.handleEvent(event('paid'))).toBe('applied');
-    expect(await s.handleEvent(event('paid'))).toBe('duplicate');
-    expect(bought.bal.get(LEAD.userId)).toBe(10);
-    expect(await s.summary(LEAD)).toMatchObject({
-      boughtCredits: 10,
-      packs: [{ amountPence: 500, credits: 10 }],
-      paidPence: 500,
-    });
-  });
-
-  it('gives a bought credit back when nobody joined', async () => {
-    const bought = memoryBought(1) as ReturnType<typeof memoryBought> & {
-      spend: (u: string, s: string) => void;
-    };
-    bought.spend(LEAD.userId, 's1');
-    const s = service(bought);
-    const leadOnly = {
-      sessionId: 's1',
-      billId: BILL_ID,
-      creatorUserId: LEAD.userId,
-      participants: [{ userId: LEAD.userId }],
-    };
-    expect(await s.refundIfNobodyJoined(leadOnly)).toBe('credit_returned');
-    expect(bought.bal.get(LEAD.userId)).toBe(1);
-    expect(await s.refundIfNobodyJoined(leadOnly)).toBe('no_fee');
-  });
-
-  it('starts a £5 checkout for 10 credits, coming back to the page it was bought from', async () => {
-    const create = vi.fn((_p: object) =>
-      Promise.resolve({ id: 'cs_pack', client_secret: 'cs_pack_secret' }),
-    );
-    const s = service(memoryBought(), true, { checkout: { sessions: { create } } });
-    expect(await s.startCreditPack({ caller: LEAD, returnTo: '/confirm-bill/x' })).toEqual({
-      clientSecret: 'cs_pack_secret',
-      amountPence: 500,
-      credits: 10,
-    });
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: 'payment',
-        metadata: { userId: LEAD.userId, kind: 'credits' },
-        line_items: [
-          {
-            price_data: { currency: 'gbp', unit_amount: 500, product_data: { name: '10 credits' } },
-            quantity: 1,
-          },
-        ],
-        return_url:
-          'https://gdp.example/credits?session_id={CHECKOUT_SESSION_ID}&returnTo=%2Fconfirm-bill%2Fx',
-      }),
-    );
-    // Somewhere off the site isn't a place to come back to.
-    await s.startCreditPack({ caller: LEAD, returnTo: '//evil.example' });
-    expect((create.mock.calls[1]?.[0] as { return_url: string }).return_url).toBe(
-      'https://gdp.example/credits?session_id={CHECKOUT_SESSION_ID}',
-    );
-  });
-
-  it('records a paid pack when the webhook is late, only for its own buyer', async () => {
-    for (const [owner, expected] of [
-      [LEAD.userId, true],
-      ['someone-else', false],
-    ] as const) {
-      const bought = memoryBought();
-      const retrieve = vi.fn(() =>
-        Promise.resolve({
-          id: 'cs_pack',
-          payment_status: 'paid',
-          amount_total: 500,
-          metadata: { userId: owner, kind: 'credits' },
-        }),
-      );
-      const s = service(bought, true, { checkout: { sessions: { retrieve } } });
-      expect(await s.creditPackStatus({ caller: LEAD, checkoutSessionId: 'cs_pack' })).toEqual({
-        recorded: expected,
-        boughtCredits: expected ? 10 : 0,
-      });
-    }
-  });
-
-  it('a pack the webhook already recorded is reported without asking Stripe', async () => {
-    const bought = memoryBought();
-    await bought.addPack(LEAD.userId, {
-      checkoutSessionId: 'cs_done',
-      credits: 10,
-      amountPence: 500,
-      boughtAt: '2026-11-04T12:00:00.000Z',
-    });
-    const retrieve = vi.fn();
-    const s = service(bought, true, { checkout: { sessions: { retrieve } } });
-    expect(await s.creditPackStatus({ caller: LEAD, checkoutSessionId: 'cs_done' })).toEqual({
-      recorded: true,
-      boughtCredits: 10,
-    });
-    expect(retrieve).not.toHaveBeenCalled();
-  });
-
-  it('a Stripe error starting a pack reaches the client as a plain message', async () => {
-    const create = vi.fn(() =>
-      Promise.reject(Object.assign(new Error('secret detail'), { type: 'StripeAPIError' })),
-    );
-    const s = service(memoryBought(), true, { checkout: { sessions: { create } } });
-    await expect(s.startCreditPack({ caller: LEAD })).rejects.toMatchObject({
-      code: 'PAYMENT_PROVIDER_ERROR',
-      message: 'Couldn’t start the payment. Try again.',
-    });
-  });
-
-  it('without credit packs, buying them is not found', async () => {
-    const s = createTableFeeService({
       stripe: {} as Stripe,
       store: memoryStore(),
       getBill: () => Promise.resolve(bill(5_000)),
       appBaseUrl: 'https://gdp.example',
+      credits: monthly(freeUsed),
     });
-    await expect(s.startCreditPack({ caller: LEAD })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
+  it('spends the free credit first, then asks for the hold', async () => {
+    expect(await service(false).status({ caller: LEAD, billId: BILL_ID })).toEqual(
+      expect.objectContaining({ status: 'free', amountPence: 0, creditsLeft: 1 }),
+    );
+    const s = service(true);
+    expect(await s.status({ caller: LEAD, billId: BILL_ID })).toMatchObject({
+      status: 'unpaid',
+      amountPence: 100,
+      creditsLeft: 0,
+    });
     await expect(
-      s.creditPackStatus({ caller: LEAD, checkoutSessionId: 'cs_x' }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      s.shareEntitlement({ caller: LEAD, billId: BILL_ID, sessionId: 's1' }),
+    ).rejects.toMatchObject({ code: 'TABLE_FEE_REQUIRED' });
+  });
+
+  it('ignores a Checkout Session with no bill', async () => {
+    const event = {
+      type: 'checkout.session.completed',
+      created: 1_793_478_000,
+      data: {
+        object: {
+          id: 'cs_pack',
+          payment_status: 'paid',
+          amount_total: 500,
+          metadata: { userId: LEAD.userId, kind: 'credits' },
+        },
+      },
+    } as unknown as Stripe.Event;
+    expect(await service(true).handleEvent(event)).toBe('ignored');
   });
 });

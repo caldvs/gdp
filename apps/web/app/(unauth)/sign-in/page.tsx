@@ -89,11 +89,10 @@ function Landing() {
       <section id="pricing" className="home__pricing" aria-labelledby="price-h">
         <div className="home__pricing-text">
           <h2 id="price-h" className="home__h2">One free bill a month</h2>
-          <p className="home__sub">After that, £1 a bill. Your friends pay it back, so it costs you nothing.</p>
+          <p className="home__sub">After that, your friends round their share up to the next pound. You pay nothing.</p>
           <ul className="home__key">
             <li><span className="home__key-mark" aria-hidden="true"><Ring width={44} height={30} /></span><span><b>Free</b> · your first bill each month</span></li>
-            <li><span className="home__key-mark"><span className="home__fee">£1</span></span><span>every bill after that</span></li>
-            <li><span className="home__key-mark"><span className="home__fee">£5</span></span><span>10 credits: bills free for everyone</span></li>
+            <li><span className="home__key-mark"><span className="home__fee">£1</span></span><span>hold after that, covered by round-ups</span></li>
             <li><span className="home__key-mark" aria-hidden="true"><span className="home__dot" /></span><span>a new free bill on the 1st</span></li>
           </ul>
         </div>

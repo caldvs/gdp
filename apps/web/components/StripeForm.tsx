@@ -1,9 +1,8 @@
 'use client';
 
 /**
- * Stripe's embedded form (`ui_mode: form`), shared by the £1 hold
- * (/table-fee) and credit packs (/credits). Card details stay inside
- * Stripe's iframe.
+ * Stripe's embedded form (`ui_mode: form`) for the £1 hold (/table-fee).
+ * Card details stay inside Stripe's iframe.
  */
 import { useState } from 'react';
 import { loadStripe, type StripeCheckoutFormConfirmEvent } from '@stripe/stripe-js';

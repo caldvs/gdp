@@ -73,31 +73,3 @@ export function useTableFeeStatus(
       opts.poll && query.state.data?.status === 'unpaid' ? 1500 : false,
   });
 }
-
-type CreditPackCheckout = components['schemas']['CreditPackCheckout'];
-type CreditPackStatus = components['schemas']['CreditPackStatus'];
-
-/** Starts the embedded Stripe form for a credit pack (#169); resolves to its client secret. */
-export function useStartCreditPack() {
-  return useMutation<CreditPackCheckout, ApiError, { returnTo?: string }>({
-    mutationFn: ({ returnTo }) =>
-      api<CreditPackCheckout>('/v1/billing/credit-packs', {
-        method: 'POST',
-        body: returnTo ? { returnTo } : {},
-      }),
-  });
-}
-
-/**
- * Whether a credit pack's payment has been recorded. Polls while it isn't:
- * the webhook records it, or the API asks Stripe directly.
- */
-export function useCreditPackStatus(checkoutSessionId: string | null, opts: { poll?: boolean } = {}) {
-  return useQuery<CreditPackStatus, ApiError>({
-    queryKey: ['billing', 'pack', checkoutSessionId],
-    enabled: !!checkoutSessionId,
-    queryFn: () =>
-      api<CreditPackStatus>(`/v1/billing/credit-packs/${encodeURIComponent(checkoutSessionId!)}`),
-    refetchInterval: (query) => (opts.poll && !query.state.data?.recorded ? 1500 : false),
-  });
-}

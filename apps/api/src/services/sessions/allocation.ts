@@ -45,13 +45,28 @@ export function splitShare(
   return out;
 }
 
+/** Item IDs with a unit or a split spot nobody has. */
+export function unclaimedOn(bill: Bill, session: Session): string[] {
+  const settings = session.shareSettings ?? [];
+  return unclaimedItemIds(
+    bill,
+    session.participants,
+    new Map(settings.map((st) => [st.itemId, st.ways])),
+    new Map(settings.map((st) => [st.itemId, st.units ?? 1])),
+  );
+}
+
 /**
- * #216: guests see what they owe, and can pay, once the lead opens payments.
- * A locked or closed bill is open; a bill still being set up isn't.
+ * #216: guests see what they owe, and can pay, once every line is claimed or
+ * the lead opens payments early. A locked or closed bill is open; a bill
+ * still being set up isn't.
  */
-export function paymentsAreOpen(session: Pick<Session, 'status' | 'paymentsOpenedAt'>): boolean {
+export function paymentsAreOpen(
+  session: Pick<Session, 'status' | 'paymentsOpenedAt'>,
+  allClaimed: boolean,
+): boolean {
   if (session.status === 'setup') return false;
-  return session.status !== 'claiming' || !!session.paymentsOpenedAt;
+  return session.status !== 'claiming' || !!session.paymentsOpenedAt || allClaimed;
 }
 
 /**

@@ -7,7 +7,7 @@ import { isConditionalCheckFailed, retryOnConflict } from '../../storage/conflic
 import { entitlementOps } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
-import { computeOwed, paymentsAreOpen, unclaimedItemIds } from './allocation.js';
+import { computeOwed, paymentsAreOpen, unclaimedOn } from './allocation.js';
 import {
   computeOwedForParticipant,
   feeFor,
@@ -124,8 +124,8 @@ export const sessionService = {
   },
 
   /**
-   * #216: the lead opens payments; until then guests can't see what they owe
-   * or pay, even with every line claimed. Amounts don't change; what's still
+   * #216: payments open by themselves once every line is claimed; this is
+   * the lead opening them early. Amounts don't change; what's still
    * unclaimed is the lead's at settle. Lead only, while the bill is live.
    * Idempotent.
    */
@@ -907,18 +907,10 @@ function pinnedBill(session: Session): Promise<Bill | null> {
 
 /** #216: the view says whether every line is claimed and whether payments are open. */
 async function payState(session: Session): Promise<{ allClaimed: boolean; paymentsOpen: boolean }> {
-  const paymentsOpen = paymentsAreOpen(session);
-  if (session.status === 'setup') return { allClaimed: false, paymentsOpen };
+  if (session.status === 'setup') return { allClaimed: false, paymentsOpen: false };
   const bill = await pinnedBill(session);
-  if (!bill) return { allClaimed: false, paymentsOpen };
-  const settings = session.shareSettings ?? [];
-  const open = unclaimedItemIds(
-    bill,
-    session.participants,
-    new Map(settings.map((st) => [st.itemId, st.ways])),
-    new Map(settings.map((st) => [st.itemId, st.units ?? 1])),
-  );
-  return { allClaimed: open.length === 0, paymentsOpen };
+  const allClaimed = !!bill && unclaimedOn(bill, session).length === 0;
+  return { allClaimed, paymentsOpen: paymentsAreOpen(session, allClaimed) };
 }
 
 async function projectForCaller(session: Session, _callerUserId: string): Promise<Session> {

@@ -235,23 +235,22 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
 }
 
 /**
- * L5.0 (#216): guests don't see what they owe, or pay, until the lead opens
- * payments. *Open payments* works any time; with lines still unclaimed it
- * confirms in place, saying what that puts on the lead.
+ * L5.0 (#216): payments open by themselves once every line is claimed.
+ * Until then the lead sees how many are left and can open them now, after a
+ * confirm in place saying what that puts on them.
  */
 function OpenPayments({ s, b, leftPence }: { s: Session; b: Bill; leftPence: number }) {
   const openPay = useOpenPayments(s.sessionId);
   const [asking, setAsking] = useState(false);
-  if (paymentsOpen(s) || s.status !== 'claiming') return null;
+  if (s.status !== 'claiming' || paymentsOpen(s, b)) return null;
   const n = unclaimedLines(s, b).length;
   const go = () => openPay.mutate(undefined, { onSuccess: () => setAsking(false) });
   if (!asking) {
     return (
       <div className="open-pay">
-        <p className="open-pay__line" data-testid="open-pay-status">{n > 0 ? `${n} ${n === 1 ? 'line' : 'lines'} still to claim` : 'Every line is claimed'}</p>
-        <p className="small muted">Guests see what they owe when you open payments.</p>
-        <Button busy={openPay.isPending} onClick={() => { openPay.reset(); if (n > 0) setAsking(true); else go(); }}>Open payments</Button>
-        {openPay.error ? <Notice tone="error">{openPay.error.message}</Notice> : null}
+        <p className="open-pay__line" data-testid="open-pay-status">{n} {n === 1 ? 'line' : 'lines'} still to claim</p>
+        <p className="small muted">Guests see what they owe once every line’s claimed.</p>
+        <Button tone="secondary" onClick={() => { openPay.reset(); setAsking(true); }}>Open payments now</Button>
       </div>
     );
   }

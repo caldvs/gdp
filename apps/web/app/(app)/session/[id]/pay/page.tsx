@@ -15,7 +15,7 @@ import { useMarkPaymentPaid } from '@gdp/core/api/hooks/usePaymentActions';
 import { useSession } from '@gdp/core/api/hooks/useSession';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
+import { openedEarly, paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
 import { monzoPayUrl, revolutPayUrl } from '@gdp/core/lib/quickPay';
 import { clearSessionPayout } from '@gdp/core/lib/sessionPayout';
 import { useSessionPayout } from '@gdp/core/lib/useSessionPayout';
@@ -51,10 +51,10 @@ export default function PayPage() {
   // (all of it, or the top-up after claiming more).
   const l = s && mine && bill.data ? ledger(mine, owedFor(s, bill.data, mine)) : null;
   const due = l?.duePence ?? 0;
-  // #216: nothing to pay, and no bank details, until the lead opens
-  // payments. The details only ever reach this phone in the link's #p=
-  // (ADR-0002), so this screen is where they're held back.
-  const payable = !!s && paymentsOpen(s);
+  // #216: nothing to pay, and no bank details, until every line is claimed
+  // or the lead opens payments early. The details only ever reach this phone
+  // in the link's #p= (ADR-0002), so this screen is where they're held back.
+  const payable = !!s && !!bill.data && paymentsOpen(s, bill.data);
 
   // Open the payment as soon as the guest lands here, so the reference
   // is ready by the time they've opened their banking app. The API hands
@@ -88,14 +88,14 @@ export default function PayPage() {
       <>
         <Page sub>
           <BackLink href={`/session/${id}`}>What did you have?</BackLink>
-          <Title title="Not yet" sub={`You’ll see what you owe when ${hostFirst} opens payments.`} />
+          <Title title="Not yet" sub={`${toClaim} ${toClaim === 1 ? 'line' : 'lines'} still to claim. You’ll see what you owe once every line’s claimed.`} />
         </Page>
         <ActionBar><Button grow tone="secondary" href={`/session/${id}`} replace>Back to the bill</Button></ActionBar>
       </>
     );
   }
   // G3.1: the lead opened payments before every line was claimed.
-  const early = !!s.paymentsOpenedAt && s.status === 'claiming' && toClaim > 0;
+  const early = openedEarly(s, bill.data);
   // The payment open on this page (not sent yet), else what's due.
   const open = lg.draft && lg.draft.amountPence === due ? lg.draft : undefined;
   const amount = open?.amountPence ?? due;

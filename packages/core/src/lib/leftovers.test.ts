@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { allClaimed, coverLeftovers, itemStatuses, paymentsOpen, unclaimedLines } from './leftovers';
+import { allClaimed, coverLeftovers, itemStatuses, openedEarly, paymentsOpen, unclaimedLines } from './leftovers';
 import { billAndSession } from '../test/arbitraries';
 
 const name = (p: { displayName?: string } | undefined) => p?.displayName ?? 'someone';
@@ -121,16 +121,18 @@ describe('paymentsOpen (#216)', () => {
     expect(allClaimed(all, bill)).toBe(true);
   });
 
-  it('only the lead opens payments: every line claimed doesn’t', () => {
-    expect(paymentsOpen(claiming)).toBe(false);
-    expect(paymentsOpen(all)).toBe(false);
-    expect(paymentsOpen({ ...(all as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never)).toBe(true);
-    expect(paymentsOpen({ ...(claiming as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never)).toBe(true);
+  it('opens once every line is claimed, or when the lead opens early', () => {
+    expect(paymentsOpen(claiming, bill)).toBe(false);
+    expect(paymentsOpen(all, bill)).toBe(true);
+    expect(openedEarly(all, bill)).toBe(false);
+    const early = { ...(claiming as object), paymentsOpenedAt: '2026-11-08T10:00:00Z' } as never;
+    expect(paymentsOpen(early, bill)).toBe(true);
+    expect(openedEarly(early, bill)).toBe(true);
   });
 
   it('a locked or closed bill is open; one being set up isn’t', () => {
-    expect(paymentsOpen({ ...(claiming as object), status: 'paying' } as never)).toBe(true);
-    expect(paymentsOpen({ ...(claiming as object), status: 'settled' } as never)).toBe(true);
-    expect(paymentsOpen({ ...(claiming as object), status: 'setup' } as never)).toBe(false);
+    expect(paymentsOpen({ ...(claiming as object), status: 'paying' } as never, bill)).toBe(true);
+    expect(paymentsOpen({ ...(claiming as object), status: 'settled' } as never, bill)).toBe(true);
+    expect(paymentsOpen({ ...(all as object), status: 'setup' } as never, bill)).toBe(false);
   });
 });

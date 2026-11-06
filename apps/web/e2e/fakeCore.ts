@@ -113,9 +113,9 @@ export class FakeCore {
   /** #64: how many the lead said are eating. */
   expectedDiners: number | undefined;
   /**
-   * #216: when the lead opened payments. Most tests pay straight away, so
-   * the fake starts open; `paymentsOpen: false` gives the real start, where
-   * guests wait for the lead.
+   * #216: when the lead opened payments early. Most tests pay with lines
+   * unclaimed, so the fake starts open; `paymentsOpen: false` gives the real
+   * start, where payments open once every line is claimed.
    */
   paymentsOpenedAt: string | undefined;
   /** #166: the lead's £1 hold, which the guests pay back by what they ordered. */
@@ -168,7 +168,7 @@ export class FakeCore {
   session() {
     const base = this.sessionBase();
     // #216: view only, as the API works them out.
-    return { ...base, allClaimed: unclaimedLines(base as never, this.bill as never).length === 0, paymentsOpen: paymentsOpen(base as never) };
+    return { ...base, allClaimed: unclaimedLines(base as never, this.bill as never).length === 0, paymentsOpen: paymentsOpen(base as never, this.bill as never) };
   }
 
   private sessionBase() {
@@ -492,9 +492,10 @@ export class FakeCore {
     // ---- payments
     if (path === `/v1/sessions/${SID}/payments` && method === 'POST') {
       if (this.takeFault('initiate-500')) return err('INTERNAL_ERROR', 'boom', 500);
-      // #216: not until the lead opens payments.
-      if (!paymentsOpen(this.session() as never)) {
-        return err('PAYMENTS_NOT_OPEN', 'The lead hasn’t opened payments yet', 409);
+      // #216: not until every line is claimed, or the lead opens payments early.
+      if (!paymentsOpen(this.session() as never, this.bill as never)) {
+        const open = unclaimedLines(this.session() as never, this.bill as never);
+        return err('PAYMENTS_NOT_OPEN', `Payments open once every line is claimed: ${open.length} to go`, 409, { unclaimedItemIds: open.map((i) => i.itemId) });
       }
       // #121: pay what's owed now less what's been sent; reuse an unsent
       // payment for the same amount, else replace it.

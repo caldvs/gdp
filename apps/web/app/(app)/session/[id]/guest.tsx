@@ -10,7 +10,7 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { allClaimed, itemStatuses as coreItemStatuses, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
+import { allClaimed, itemStatuses as coreItemStatuses, openedEarly, paymentsOpen, unclaimedLines, type ItemStatus } from '@gdp/core/lib/leftovers';
 import { claimRows, openPence } from '@gdp/core/lib/claimRows';
 import { extrasRate as billExtrasRate, projectFeePence, projectOwedPence, projectSubtotalPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
 import {
@@ -68,9 +68,10 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
   const l = me ? ledger(me, owed) : null;
   const paidSome = !!l && l.sentPence > 0;
   const due = l ? l.duePence : owed;
-  // #216: nobody sees what they owe, or pays, until the lead opens payments.
-  // G2 here; *I've claimed mine* → G2.2 waiting; *See what you owe* → G2.3.
-  const open = paymentsOpen(s);
+  // #216: nobody sees what they owe, or pays, until every line is claimed
+  // (or the lead opens payments early). G2 here; *I've claimed mine* → G2.2
+  // waiting; *See what you owe* → G2.3.
+  const open = paymentsOpen(s, b);
   const toClaim = unclaimedLines(s, b).length;
   const [view, setView] = useState<'pick' | 'waiting' | 'owed'>('pick');
   if (!paidSome && view === 'owed' && open) {
@@ -99,7 +100,7 @@ export function GuestPick({ s, b, meUserId, onBack }: { s: Session; b: Bill; meU
               <span className="muted">Your items so far</span>
               <Pulse value={subtotal}><b data-testid="your-share">{formatGBP(subtotal)}</b></Pulse>
             </div>
-            <p className="small muted" data-testid="still-to-claim">{toClaim > 0 ? `${toClaim} ${toClaim === 1 ? 'line' : 'lines'} still to claim. ` : ''}You’ll see what you owe when {hostFirst} opens payments.</p>
+            <p className="small muted" data-testid="still-to-claim">{toClaim} {toClaim === 1 ? 'line' : 'lines'} still to claim. You’ll see what you owe then.</p>
             <Button disabled={subtotal <= 0} onClick={() => setView('waiting')}>{subtotal > 0 ? 'I’ve claimed mine' : 'Claim what you had'}</Button>
           </>
         ) : null}
@@ -185,12 +186,12 @@ const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.
  * G2.2: claimed mine, waiting for the table. The lines nobody has are listed
  * without Claim buttons (*Claim something else* goes back) and fold away as
  * people claim them. Polls with the session; *See what you owe* once the
- * lead opens payments.
+ * last one goes (or the lead opens payments early).
  */
 function WaitingForTable({ s, b, meUserId, onBack, onSee }: { s: Session; b: Bill; meUserId: string; onBack: () => void; onSee: () => void }) {
   const mine = myLines(s, b, meUserId);
   const hostFirst = firstName(s.participants.find((p) => p.userId === s.creatorUserId)?.displayName);
-  const open = paymentsOpen(s);
+  const open = paymentsOpen(s, b);
   const everything = allClaimed(s, b);
   const left = useMemo(
     () => claimRows(s, b, meUserId).filter((r) => r.group === 'open').map((r) => ({
@@ -205,10 +206,10 @@ function WaitingForTable({ s, b, meUserId, onBack, onSee }: { s: Session; b: Bil
     <>
       <Page sub>
         <BackButton onClick={onBack}>Claim something else</BackButton>
-        <Title title={open ? `${hostFirst} has opened payments` : 'Waiting for the table'} />
+        <Title title={!open ? 'Waiting for the table' : everything ? 'Every item on the bill is claimed' : `${hostFirst} has opened payments`} />
         <p className="wait-line" role="status" data-testid="wait-status">
           {open ? null : <span className="wait-dot" aria-hidden="true" />}
-          {open ? 'You can see what you owe.' : everything ? `Every item on the bill is claimed. Waiting for ${hostFirst} to open payments.` : `Waiting for everyone to claim. ${hostFirst} opens payments after.`}
+          {open ? 'You can see what you owe.' : 'Waiting for everyone to claim. You’ll see what you owe once every line’s claimed.'}
         </p>
         <Section title="You claimed">
           <Box list>{mine.map((l) => <Row key={l.key} title={l.name} end={formatGBP(l.pence)} />)}</Box>
@@ -246,7 +247,7 @@ function WhatYouOwe({ s, b, meUserId, owed, onChange }: { s: Session; b: Bill; m
     <>
       <Page sub>
         {/* G3.1: opened before every line was claimed. */}
-        {allClaimed(s, b) ? null : <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice>}
+        {openedEarly(s, b) ? <Notice>{hostFirst} opened payments before every line was claimed. What you owe won’t change.</Notice> : null}
         <Title title={`You owe ${hostFirst}`} />
         <p className="owed-big" data-testid="your-share">{formatGBP(owed)}</p>
         <Receipt label="Your share" head={b.venue?.name ?? 'Your share'}>

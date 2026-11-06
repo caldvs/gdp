@@ -1323,12 +1323,12 @@ paths:
     post:
       tags: [sessions]
       operationId: openPayments
-      summary: The lead opens payments
+      summary: The lead opens payments before every line is claimed
       description: |
-        Lead only (#216). Until the lead opens payments, guests don't see what they owe and can't
-        pay, even once every line is claimed. Sets `paymentsOpenedAt`. The lead can open them with
-        lines unclaimed; amounts don't change, and whatever nobody has claimed is the lead's at
-        settle. Idempotent: the first time is kept.
+        Lead only (#216). Payments open by themselves once every line is claimed (every unit,
+        every spot in a split); this opens them early. Sets `paymentsOpenedAt`. Amounts don't
+        change, and whatever nobody has claimed is the lead's at settle. Idempotent: the first
+        time is kept.
       responses:
         '200':
           description: Session, with `paymentsOpenedAt`
@@ -1355,8 +1355,10 @@ paths:
       operationId: initiatePayment
       summary: Initiate a payment from the current participant to the collector
       description: |
-        The current user must be a guest at the table, and payments must be open: the lead has opened
-        them (`open-payments`), or the bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN`. Pays what the guest owes now less what they've already sent (#121). Returns the
+        The current user must be a guest at the table, and payments must be open: every line claimed
+        (every unit, every spot in a split), the lead has opened them early (`open-payments`), or the
+        bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN` with the unclaimed item IDs in
+        `details`. Pays what the guest owes now less what they've already sent (#121). Returns the
         payment record and the details the guest pays with from their own banking app.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -2124,7 +2126,8 @@ components:
           type: string
           format: date-time
           description: |
-            When the lead opened payments (#216). Absent until then.
+            When the lead opened payments before every line was claimed (#216).
+            Absent if they didn't.
         allClaimed:
           type: boolean
           description: |
@@ -2133,7 +2136,8 @@ components:
           type: boolean
           description: |
             View only (#216): guests can see what they owe and pay. True once
-            the lead opens payments, or the bill is locked or closed.
+            every line is claimed, the lead opens payments early, or the bill
+            is locked or closed.
         platformFeePence:
           type: integer
           minimum: 0

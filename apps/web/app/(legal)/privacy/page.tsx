@@ -27,7 +27,9 @@ export default function PrivacyPage() {
             bill. Nobody else at the table sees it.
           </li>
           <li>
-            <strong>Your email address</strong>, if you give one, to sign in or to get your bill emails.
+            <strong>Your email address</strong>, if you give one, to sign in or to get your bill emails. If a guest
+            asks for their receipt by email, the address is used to send it, kept with that bill only, and deleted
+            with it.
           </li>
           <li>
             <strong>Your name</strong>, so the table knows who has picked and paid.

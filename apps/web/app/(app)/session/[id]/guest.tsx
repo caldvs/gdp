@@ -19,6 +19,7 @@ import {
   ActionBar, AvatarStack, BackButton, BackLink, Badge, Box, Button, Notice, Page, Pulse, Receipt, ReceiptLine, Row, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
+import { ReceiptEmail } from '@/components/ReceiptEmail';
 import { billTitle } from '@/components/PageTransition';
 import { ClaimList } from './claim';
 
@@ -321,6 +322,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
             <ReceiptLine strong name={`Paid to ${hostFirst}`} price={formatGBP(l.confirmedPence)} />
           </ShareReceipt>
           <p className="small muted" role="status">{hostFirst} marked it received.{closed ? null : ` ${hostFirst} marks the bill as settled once everyone’s paid.`}</p>
+          <ReceiptEmail sessionId={s.sessionId} />
         </Page>
         <ActionBar stack>
           {more}

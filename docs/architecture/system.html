@@ -99,11 +99,11 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <div class="wrap">
   <header>
     <h1>Pay Me Back architecture</h1>
-    <div class="stats"><span><b>58</b> endpoints</span><span><b>8</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
+    <div class="stats"><span><b>61</b> endpoints</span><span><b>9</b> route groups</span><span><b>1</b> Lambda</span><span><b>1</b> DynamoDB table</span><span><b>2</b> third parties</span></div>
   </header>
 
   <div class="board">
-    <svg viewBox="0 0 1640 1453" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 58 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venue lookup), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
+    <svg viewBox="0 0 1640 1453" role="img" aria-label="Pay Me Back system architecture: lead and guest browsers use a Next.js web app whose API client calls API Gateway, which routes every request to one Hono Lambda. The Lambda serves 61 endpoints and uses DynamoDB, S3, SES, Bedrock (the bill reader), Amazon Location (venue lookup), Secrets Manager and CloudWatch, and calls Stripe, which sends webhooks back. Browsers upload bill photos straight to S3 with presigned URLs.">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
         <marker id="ahw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow-warn" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -199,7 +199,7 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <rect class="node key" x="560" y="70" width="520" height="64" rx="10"/>
 <text class="t-title" x="576" y="98">API Gateway · HTTP API</text>
 <text class="t-sub" x="576" y="120">api.paymeback.dev · api.test.paymeback.dev · every route → one Lambda</text>
-<rect class="node key" x="560" y="160" width="520" height="1218" rx="10"/>
+<rect class="node key" x="560" y="160" width="520" height="1236" rx="10"/>
 <text class="t-title" x="576" y="188">Lambda · ApiHandler</text>
 <text class="t-sub" x="1064" y="188" text-anchor="end">Node 22 · Hono · apps/api</text>
 <rect class="inner" x="576" y="206" width="488" height="64" rx="7"/>
@@ -249,17 +249,22 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="588" y="973"><tspan class="m m-get">GET</tspan><tspan x="644">/{paymentId}</tspan></text>
 <text class="t-ep" x="588" y="991"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/confirm</tspan></text>
 <text class="t-ep" x="588" y="1009"><tspan class="m m-post">POST</tspan><tspan x="644">/{paymentId}/mark-paid</tspan></text>
-<rect class="inner" x="576" y="1034" width="246" height="92" rx="7"/>
-<text class="t-inner" x="588" y="1055">Billing</text>
-<text class="t-base" x="810" y="1055" text-anchor="end">/v1/billing</text>
-<text class="t-ep" x="588" y="1075"><tspan class="m m-post">POST</tspan><tspan x="644">/table-fee</tspan></text>
-<text class="t-ep" x="588" y="1093"><tspan class="m m-get">GET</tspan><tspan x="644">/table-fee/{billId}</tspan></text>
-<text class="t-ep" x="588" y="1111"><tspan class="m m-get">GET</tspan><tspan x="644">/me</tspan></text>
-<rect class="inner" x="576" y="1136" width="246" height="56" rx="7"/>
-<text class="t-inner" x="588" y="1157">Webhooks</text>
-<text class="t-base" x="810" y="1157" text-anchor="end">/webhooks</text>
-<text class="t-ep" x="588" y="1177"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
-<rect class="inner" x="834" y="308" width="230" height="524" rx="7"/>
+<rect class="inner" x="576" y="1034" width="246" height="74" rx="7"/>
+<text class="t-inner" x="588" y="1055">Links</text>
+<text class="t-base" x="810" y="1055" text-anchor="end">/v1/links</text>
+<text class="t-ep" x="588" y="1075"><tspan class="m m-get">GET</tspan><tspan x="644">/{token}</tspan></text>
+<text class="t-ep" x="588" y="1093"><tspan class="m m-post">POST</tspan><tspan x="644">/{token}/stop</tspan></text>
+<rect class="inner" x="576" y="1118" width="246" height="92" rx="7"/>
+<text class="t-inner" x="588" y="1139">Billing</text>
+<text class="t-base" x="810" y="1139" text-anchor="end">/v1/billing</text>
+<text class="t-ep" x="588" y="1159"><tspan class="m m-post">POST</tspan><tspan x="644">/table-fee</tspan></text>
+<text class="t-ep" x="588" y="1177"><tspan class="m m-get">GET</tspan><tspan x="644">/table-fee/{billId}</tspan></text>
+<text class="t-ep" x="588" y="1195"><tspan class="m m-get">GET</tspan><tspan x="644">/me</tspan></text>
+<rect class="inner" x="576" y="1220" width="246" height="56" rx="7"/>
+<text class="t-inner" x="588" y="1241">Webhooks</text>
+<text class="t-base" x="810" y="1241" text-anchor="end">/webhooks</text>
+<text class="t-ep" x="588" y="1261"><tspan class="m m-post">POST</tspan><tspan x="644">/stripe</tspan></text>
+<rect class="inner" x="834" y="308" width="230" height="542" rx="7"/>
 <text class="t-inner" x="846" y="329">Sessions</text>
 <text class="t-base" x="1052" y="329" text-anchor="end">/v1/sessions</text>
 <text class="t-ep" x="846" y="349"><tspan class="m m-post">POST</tspan><tspan x="902">/</tspan></text>
@@ -280,39 +285,40 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-ep" x="846" y="619"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/lock-claims</tspan></text>
 <text class="t-ep" x="846" y="637"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/close</tspan></text>
 <text class="t-ep" x="846" y="655"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/report</tspan></text>
-<text class="t-ep" x="846" y="673"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
-<text class="t-ep" x="846" y="691"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/open-payments</tspan></text>
-<text class="t-ep" x="846" y="709"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
-<text class="t-ep" x="846" y="727"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}/comments</tspan></text>
-<text class="t-ep" x="846" y="745"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/comments</tspan></text>
-<text class="t-ep" x="846" y="763"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/proofs</tspan></text>
-<text class="t-ep" x="846" y="781"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}/proofs</tspan></text>
-<text class="t-ep" x="846" y="799"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/proofs/{pid}/sent</tspan></text>
-<text class="t-ep" x="846" y="817"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/proofs/{pid}</tspan></text>
-<rect class="inner" x="834" y="842" width="230" height="350" rx="7"/>
-<text class="t-inner" x="846" y="863">Services</text>
-<text class="t-base" x="1052" y="863" text-anchor="end">src/services</text>
-<text class="t-mono" x="846" y="886">auth</text>
-<text class="t-sub" x="846" y="903">emailOtp, sessionToken (JWT)</text>
-<text class="t-mono" x="846" y="926">bills</text>
-<text class="t-sub" x="846" y="943">upload, parse, amend, fork, image</text>
-<text class="t-mono" x="846" y="966">bills</text>
-<text class="t-sub" x="846" y="983">parser, venueResolver</text>
-<text class="t-mono" x="846" y="1006">sessions</text>
-<text class="t-sub" x="846" y="1023">allocation, joinCode, report</text>
-<text class="t-mono" x="846" y="1046">payments</text>
-<text class="t-sub" x="846" y="1063">paymentService, ledger</text>
-<text class="t-mono" x="846" y="1086">billing</text>
-<text class="t-sub" x="846" y="1103">tableFee</text>
-<text class="t-mono" x="846" y="1126">email</text>
-<text class="t-sub" x="846" y="1143">sender (SES or console)</text>
-<text class="t-mono" x="846" y="1166">storage</text>
-<text class="t-sub" x="846" y="1183">one store per entity</text>
-<rect class="inner" x="576" y="1202" width="488" height="160" rx="7"/>
-<text class="t-inner" x="588" y="1224">Swappable providers (env)</text>
-<text class="t-mono" x="588" y="1246">Parser: Bedrock · fixture</text>
-<text class="t-mono" x="588" y="1264">Email: SES · console     Venue: Location · none</text>
-<text class="t-mono" x="588" y="1282">Phone codes: AWS SMS · console</text>
+<text class="t-ep" x="846" y="673"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/receipt</tspan></text>
+<text class="t-ep" x="846" y="691"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/abandon</tspan></text>
+<text class="t-ep" x="846" y="709"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/open-payments</tspan></text>
+<text class="t-ep" x="846" y="727"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/payments</tspan></text>
+<text class="t-ep" x="846" y="745"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}/comments</tspan></text>
+<text class="t-ep" x="846" y="763"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/comments</tspan></text>
+<text class="t-ep" x="846" y="781"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/proofs</tspan></text>
+<text class="t-ep" x="846" y="799"><tspan class="m m-get">GET</tspan><tspan x="902">/{id}/proofs</tspan></text>
+<text class="t-ep" x="846" y="817"><tspan class="m m-post">POST</tspan><tspan x="902">/{id}/proofs/{pid}/sent</tspan></text>
+<text class="t-ep" x="846" y="835"><tspan class="m m-delete">DELETE</tspan><tspan x="902">/{id}/proofs/{pid}</tspan></text>
+<rect class="inner" x="834" y="860" width="230" height="416" rx="7"/>
+<text class="t-inner" x="846" y="881">Services</text>
+<text class="t-base" x="1052" y="881" text-anchor="end">src/services</text>
+<text class="t-mono" x="846" y="904">auth</text>
+<text class="t-sub" x="846" y="921">emailOtp, sessionToken (JWT)</text>
+<text class="t-mono" x="846" y="944">bills</text>
+<text class="t-sub" x="846" y="961">upload, parse, amend, fork, image</text>
+<text class="t-mono" x="846" y="984">bills</text>
+<text class="t-sub" x="846" y="1001">parser, venueResolver</text>
+<text class="t-mono" x="846" y="1024">sessions</text>
+<text class="t-sub" x="846" y="1041">allocation, joinCode, report, guestTexts</text>
+<text class="t-mono" x="846" y="1064">payments</text>
+<text class="t-sub" x="846" y="1081">paymentService, ledger</text>
+<text class="t-mono" x="846" y="1104">billing</text>
+<text class="t-sub" x="846" y="1121">tableFee</text>
+<text class="t-mono" x="846" y="1144">email</text>
+<text class="t-sub" x="846" y="1161">sender (SES or console)</text>
+<text class="t-mono" x="846" y="1184">storage</text>
+<text class="t-sub" x="846" y="1201">one store per entity</text>
+<rect class="inner" x="576" y="1286" width="488" height="94" rx="7"/>
+<text class="t-inner" x="588" y="1308">Swappable providers (env)</text>
+<text class="t-mono" x="588" y="1330">Parser: Bedrock · fixture</text>
+<text class="t-mono" x="588" y="1348">Email: SES · console     Venue: Location · none</text>
+<text class="t-mono" x="588" y="1366">Phone codes: AWS SMS · console</text>
 <rect class="node" x="1150" y="70" width="220" height="395" rx="10"/>
 <text class="t-title" x="1166" y="98">DynamoDB</text>
 <text class="t-sub" x="1166" y="120">Table gdp-{env} · on-demand</text>
@@ -331,6 +337,8 @@ h1 { font-family: var(--display); font-size: clamp(24px, 3.4vw, 32px); line-heig
 <text class="t-sub" x="1166" y="365">Platform fee holds, free credits</text>
 <text class="t-mono" x="1166" y="384">IDMP# VENUEQ# LEADMAILQ</text>
 <text class="t-sub" x="1166" y="401">Idempotency, venues, lead emails</text>
+<text class="t-mono" x="1166" y="420">BLINK# GUESTTEXT# RECEIPTTO#</text>
+<text class="t-sub" x="1166" y="437">Bill links, guest texts, receipt addresses</text>
 <rect class="node" x="1150" y="479" width="220" height="88" rx="10"/>
 <text class="t-title" x="1166" y="507">Amazon SES</text>
 <text class="t-sub" x="1166" y="529">Sign-in codes, bill reports</text>

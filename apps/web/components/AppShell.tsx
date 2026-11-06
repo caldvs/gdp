@@ -128,7 +128,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const status = me.error instanceof ApiError ? me.error.status : 0;
   const unauthenticated = me.isError && (status === 401 || status === 403);
   // The QR's landing page works without signing in: guests join with a name there.
-  const publicPath = pathname.startsWith('/join/');
+  // #219/#220: so do the links in guests' texts (the bill, stopping reminders).
+  const publicPath = pathname.startsWith('/join/') || /^\/[bs]\//.test(pathname);
 
   // A guest's token works for their own bill only: anywhere else goes back to it.
   useEffect(() => {

@@ -15,6 +15,7 @@ import {
   GuestJoinStartRequestSchema,
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
+  ReceiptRequestSchema,
   SetPayoutCheckRequestSchema,
   SetReadyRequestSchema,
   UpdateSessionRequestSchema,
@@ -33,6 +34,7 @@ import { PostCommentRequestSchema } from '../types/comments.js';
 import { checkPhoneCode, createPhoneSignInService } from '../services/auth/phoneSignIn.js';
 import { maskPhone } from '../services/messaging/phone.js';
 import type { SmsSender } from '../services/messaging/sms.js';
+import type { GuestTexts } from '../services/sessions/guestTexts.js';
 import { guestPhoneStore } from '../storage/guestPhoneStore.js';
 import { proofService } from '../services/sessions/proofService.js';
 import { StartProofRequestSchema } from '../types/proofs.js';
@@ -67,6 +69,8 @@ export interface SessionRoutesDeps {
    * guests join with just a name (#183).
    */
   phoneSms?: SmsSender | null;
+  /** #219/#220: texts to guests (paid, reminders). Absent: none are sent. */
+  texts?: GuestTexts;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
@@ -463,6 +467,22 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     return c.json({ sent: true }, 202);
   });
 
+  // #220: a guest's receipt by email, from *All square*. Not saved to an account.
+  r.post(
+    '/:sessionId/receipt',
+    requireAuth(deps.idTokenVerifier),
+    validJson(ReceiptRequestSchema),
+    async (c) => {
+      if (!deps.reports) return c.json({ sent: false }, 503);
+      await deps.reports.emailReceipt({
+        sessionId: c.req.param('sessionId'),
+        userId: callerOf(c).userId,
+        email: c.req.valid('json').email,
+      });
+      return c.json({ sent: true }, 202);
+    },
+  );
+
   // #218: the bill's comments, for anyone at the table. Text only.
   r.get('/:sessionId/comments', requireAuth(deps.idTokenVerifier), async (c) => {
     const comments = await commentService.list({
@@ -546,12 +566,10 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     async (c) => {
       const caller = callerOf(c);
       const sessionId = c.req.param('sessionId');
-      await paymentService.markReceived({
-        caller,
-        sessionId,
-        userId: c.req.param('userId'),
-        logger: c.var.logger,
-      });
+      const userId = c.req.param('userId');
+      await paymentService.markReceived({ caller, sessionId, userId, logger: c.var.logger });
+      // #220: the guest hears it went in, with the bill's link.
+      await deps.texts?.paid(sessionId, userId);
       return c.json(await sessionService.get({ caller, sessionId }));
     },
   );

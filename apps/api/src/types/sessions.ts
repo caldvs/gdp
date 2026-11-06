@@ -301,3 +301,9 @@ export const SessionSummarySchema = z.object({
   myPaymentStatus: z.enum(['unpaid', 'self_paid', 'pending', 'succeeded', 'failed']),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
+
+/** #220: a guest's receipt by email (G4.3). */
+export const ReceiptRequestSchema = z.object({
+  email: z.string().trim().email().max(254),
+});
+export type ReceiptRequest = z.infer<typeof ReceiptRequestSchema>;

@@ -928,8 +928,8 @@ export interface paths {
          * @description The lead's report lists every diner (themselves included): what each
          *     had, their share of service and tax, and whether they've paid. A
          *     guest's lists only what they had and paid. Works while the bill is
-         *     open (current state) and after it's closed. Every diner is also
-         *     emailed their report automatically when the lead closes the bill.
+         *     open (current state) and after it's closed. Nobody is emailed
+         *     automatically at close (#221: the lead's comes the next morning).
          */
         post: operations["emailSessionReport"];
         delete?: never;
@@ -978,8 +978,38 @@ export interface paths {
          *     now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
          *     with nothing left to collect it changes nothing. A guest who claims more afterwards
          *     owes the difference, as with any top-up.
+         *
+         *     #220: a guest who verified a number when they joined (#214) gets one
+         *     text saying it arrived, with a link to the bill (`/b/{token}`, 30 days).
+         *     Once per guest per bill; never more than 30 texts a bill.
          */
         post: operations["markParticipantReceived"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A guest has their receipt emailed (#220)
+         * @description From *All square*: what they had, their part of service and the
+         *     discount, and what they paid. No bank details. Not a sign-in and not
+         *     saved to an account: the address is kept with the bill only and goes
+         *     with it. Three sends per guest per bill, five a day to any one
+         *     address. Not for the lead (their report is `/report`).
+         */
+        post: operations["emailReceipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1212,6 +1242,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The bill behind a link in a guest's text (#220 G5)
+         * @description No sign-in: the random token is the key. Read-only and live: who had
+         *     what, who's paid, the guest the link was sent to (`isYou`), and what
+         *     nobody claimed. Never any phone number or bank details (ADR-0002).
+         *     Works for 30 days after the last text; then 404. 60 lookups per IP
+         *     per 10 minutes.
+         */
+        get: operations["getBillLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/links/{token}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop reminder texts for this bill (#219)
+         * @description From `/s/{token}` in a reminder (a named sender can't take STOP
+         *     replies). The guest gets no more reminders about this bill.
+         *     Idempotent.
+         */
+        post: operations["stopReminders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/billing/table-fee": {
         parameters: {
             query?: never;
@@ -1428,6 +1510,50 @@ export interface components {
              * @description Signed GET, 5 minutes
              */
             url: string;
+        };
+        ReportLine: {
+            name: string;
+            detail?: string;
+            pence: number;
+        };
+        /** @description #220 G5: a bill seen from a guest's text. No numbers, no bank details. */
+        BillLinkView: {
+            /** Format: uuid */
+            sessionId: string;
+            leadName: string;
+            venueName?: string;
+            /** Format: date-time */
+            dateISO: string;
+            settled: boolean;
+            billTotalPence: number;
+            /**
+             * Format: date-time
+             * @description When the link stops working
+             */
+            expiresAt: string;
+            diners: {
+                displayName: string;
+                isLead: boolean;
+                /** @description The guest the link was sent to */
+                isYou: boolean;
+                lines: components["schemas"]["ReportLine"][];
+                itemsPence: number;
+                /** @description Their part of service and tax */
+                extrasPence: number;
+                /** @description Their part of the bill's discount */
+                discountPence: number;
+                /** @description Their round-up */
+                feePence: number;
+                totalPence: number;
+                paid: {
+                    /** @enum {string} */
+                    kind: "lead" | "paid" | "says_paid" | "not_paid";
+                    amountPence?: number;
+                };
+            }[];
+            unclaimed: components["schemas"]["ReportLine"][];
+            /** @description Nobody claimed, with its service */
+            unclaimedPence: number;
         };
         ErrorResponse: {
             error: {
@@ -2145,6 +2271,8 @@ export interface components {
     parameters: {
         BillId: string;
         SessionId: string;
+        /** @description The random token from a guest's text */
+        LinkToken: string;
         PaymentId: string;
         /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
         IdempotencyKey: string;
@@ -3804,6 +3932,50 @@ export interface operations {
             };
         };
     };
+    emailReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Receipt sent */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
     openPayments: {
         parameters: {
             query?: never;
@@ -4239,6 +4411,58 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    getBillLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bill */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillLinkView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    stopReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: components["parameters"]["LinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stopped: boolean;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
         };
     };
     startTableFeeCheckout: {

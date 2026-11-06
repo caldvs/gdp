@@ -12,6 +12,8 @@ import { docsRoutes } from './routes/docs.js';
 import { buildMeRoutes, meRoutes } from './routes/me.js';
 import { buildBillRoutes } from './routes/bills.js';
 import { buildSessionRoutes } from './routes/sessions.js';
+import { buildLinkRoutes } from './routes/links.js';
+import { createGuestTexts } from './services/sessions/guestTexts.js';
 import { buildPaymentGetRoute } from './routes/payments.js';
 import { buildAuthRoutes } from './routes/auth.js';
 import { AwsSmsSender, type SmsSender } from './services/messaging/sms.js';
@@ -218,9 +220,13 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       })
     : null;
 
+  // #219/#220: texts to guests about their bill, and the links in them.
+  const texts = createGuestTexts({ sms: phoneSms, appBaseUrl: env.APP_BASE_URL });
+  app.route('/v1/links', buildLinkRoutes({ texts }));
   app.route(
     '/v1/sessions',
     buildSessionRoutes({
+      texts,
       idTokenVerifier,
       ...(sessionJwtSecret ? { jwtSecret: sessionJwtSecret } : {}),
       reports: createReportService({ emailSender, appBaseUrl: env.APP_BASE_URL }),
@@ -228,7 +234,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       phoneSms,
     }),
   );
-  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));
+  app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier, texts }));
 
   if (stripe && tableFees) {
     app.route('/v1/billing', buildBillingRoutes({ idTokenVerifier, tableFees }));

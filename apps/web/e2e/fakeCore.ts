@@ -12,6 +12,7 @@
  * frozen once the guest has said they've paid).
  */
 import { paymentsOpen, unclaimedLines } from '@gdp/core/lib/leftovers';
+import { billStatement } from '@gdp/core/lib/statement';
 
 /** What the fake answers a request with. */
 export type Reply = { status: number; contentType: string; body: string };
@@ -40,6 +41,8 @@ type Share = { itemId: string; userIds: string[]; ways: number; /** How many of 
 type Item = { itemId: string; name: string; unitPricePence: number; quantity: number; category: string; /** The reader couldn't read it clearly (#107). */ unsure?: string };
 
 export const SID = '0193ab12-7c4d-7e00-9a1b-2c3d4e5f6a7b';
+/** #220: a link from a guest's text (Sam's). */
+export const LINK_TOKEN = 'AbCdEfGhIjKlMnOp';
 export const BID = '0193ab12-0000-7e00-9a1b-2c3d4e5f6a7b';
 /** The new bill Start again makes (POST /v1/bills/{BID}/fork). */
 export const FORK_BID = '0193ab12-0001-7e00-9a1b-2c3d4e5f6a7b';
@@ -82,6 +85,15 @@ export class FakeCore {
   shares: Share[] = [];
   /** Who asked to be emailed a report, in order. */
   reportsTo: string[] = [];
+  /** #220: receipts guests asked for on *All square*. */
+  receipts: { userId: string; email: string }[] = [];
+  /** #219/#220: whether this fake server texts guests, and what it sent. */
+  textsOn = false;
+  texts: { userId: string; kind: 'paid' | 'reminder' }[] = [];
+  /** #220: the links in texts, token → guest; a token not here is expired. */
+  links = new Map<string, string>([[LINK_TOKEN, 'u-sam']]);
+  /** #219: guests who stopped reminders. */
+  stopped: string[] = [];
   proofs: { proofId: string; userId: string; sentAt?: string }[] = [];
   proofUploads = 0;
   comments: { commentId: string; userId: string; displayName: string; text: string; createdAt: string }[] = [];
@@ -508,6 +520,13 @@ export class FakeCore {
       this.reportsTo.push(user.userId);
       return json({ sent: true }, 202);
     }
+    // #220: a guest's receipt by email.
+    if (path === `/v1/sessions/${SID}/receipt` && method === 'POST') {
+      if (user.userId === 'u-lead') return err('INVALID_INPUT', 'Not for the lead', 400);
+      if (this.receipts.filter((r) => r.userId === user.userId).length >= 3) return err('RATE_LIMITED', 'Receipt already sent. Check your inbox.', 429);
+      this.receipts.push({ userId: user.userId, email: String(body().email ?? '').toLowerCase() });
+      return json({ sent: true }, 202);
+    }
     if (path === `/v1/sessions/${SID}/close` && method === 'POST') {
       if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);
       if (this.status === 'setup' || this.status === 'abandoned') return err('SESSION_INVALID_STATE', `Session is ${this.status}`, 409);
@@ -629,6 +648,7 @@ export class FakeCore {
       if (rest > 0) entries.push({ paymentId: `00000000-0000-4000-9000-${String(++this.seq).padStart(12, '0')}`, amountPence: rest, status: 'succeeded', paidAt: now });
       guest.payments = entries;
       guest.payment = aggregate(entries);
+      if (this.textsOn && !this.texts.some((t) => t.userId === guest.userId && t.kind === 'paid')) this.texts.push({ userId: guest.userId, kind: 'paid' });
       return json(this.session());
     }
     const payMatch = path.match(/^\/v1\/payments\/([^/]+)\/(mark-paid|confirm)$/);
@@ -643,6 +663,36 @@ export class FakeCore {
       // Deliberately no auto-settle: only the lead's close ends the bill.
       return json({ paymentId, sessionId: SID, payerUserId: payer.userId, amountPence: entry.amountPence, status: entry.status });
     }
+    // #220 G5 / #219: the links in guests' texts. No sign-in.
+    const linkMatch = path.match(/^\/v1\/links\/([^/]+)(\/stop)?$/);
+    if (linkMatch) {
+      const guestId = this.links.get(linkMatch[1]!);
+      if (!guestId) return err('NOT_FOUND', 'This link has expired', 404);
+      if (linkMatch[2]) { if (!this.stopped.includes(guestId)) this.stopped.push(guestId); return json({ stopped: true }); }
+      return json(this.linkView(guestId));
+    }
     return err('NOT_FOUND', `unhandled ${method} ${path}`, 404);
+  }
+
+  /** #220 G5: the bill as the API's /v1/links/{token} shows it. */
+  linkView(guestId: string) {
+    const s = this.session();
+    const st = billStatement(s as never, this.bill as never, (p) => p.displayName ?? 'Guest');
+    const lead = this.participants.find((p) => p.userId === 'u-lead');
+    const paid = (status: string, pence: number) =>
+      status === 'lead' ? { kind: 'lead' } : status === 'paid' ? { kind: 'paid', amountPence: pence } : status === 'says-paid' ? { kind: 'says_paid', amountPence: pence } : { kind: 'not_paid' };
+    return {
+      sessionId: SID, leadName: lead?.displayName ?? 'Callum Davies', ...(this.venue?.name ? { venueName: this.venue.name } : {}),
+      dateISO: '2026-10-31T12:00:00.000Z', settled: this.status === 'settled', billTotalPence: this.bill.totalPence,
+      expiresAt: '2099-12-01T12:00:00.000Z',
+      diners: st.people.map((p) => ({
+        displayName: p.name, isLead: p.status === 'lead', isYou: p.userId === guestId,
+        lines: p.items.map((i) => ({ name: i.label, pence: i.pence })),
+        itemsPence: p.items.reduce((a, i) => a + i.pence, 0), extrasPence: p.extrasPence, discountPence: p.discountPence, feePence: p.feePence, totalPence: p.totalPence,
+        paid: paid(p.status, p.totalPence),
+      })),
+      unclaimed: st.unclaimed.items.map((i) => ({ name: i.label, pence: i.pence })),
+      unclaimedPence: st.unclaimed.totalPence,
+    };
   }
 }

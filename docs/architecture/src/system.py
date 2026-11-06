@@ -76,7 +76,7 @@ for k, v in c4:
     prev = 'gap' if k == 'gap' else 'node'
 # adjust: sns follows cw with 20 gap (already)
 # The routes list sets the height: room for it plus the providers strip.
-LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1334) + 44
+LAMBDA_TOP, LAMBDA_BOTTOM = 160, max(pos['s3'][0] + pos['s3'][1], 1352) + 44
 
 edges = []
 def E(*args, **kw):
@@ -130,6 +130,7 @@ y = group(AX, y, AW, 'Auth', '/v1/auth', [('GET', '/methods'), ('POST', '/phone/
 y = group(AX, y, AW, 'Me', '/v1/me', [('GET', '/'), ('PATCH', '/'), ('POST', '/sign-out'), ('PUT', '/payout-account'), ('GET', '/sessions')]) + 10
 y = group(AX, y, AW, 'Bills', '/v1/bills', [('POST', '/uploads'), ('POST', '/parse'), ('POST', '/reads'), ('GET', '/reads/{readId}'), ('GET', '/{billId}'), ('GET', '/{billId}/image-url'), ('POST', '/{billId}/amend'), ('POST', '/{billId}/fork')]) + 10
 y = group(AX, y, AW, 'Payments', '/v1/payments', [('GET', '/{paymentId}'), ('POST', '/{paymentId}/confirm'), ('POST', '/{paymentId}/mark-paid')]) + 10
+y = group(AX, y, AW, 'Links', '/v1/links', [('GET', '/{token}'), ('POST', '/{token}/stop')]) + 10
 y = group(AX, y, AW, 'Billing', '/v1/billing', [('POST', '/table-fee'), ('GET', '/table-fee/{billId}'), ('GET', '/me')]) + 10
 y = group(AX, y, AW, 'Webhooks', '/webhooks', [('POST', '/stripe')]) + 10
 colA_end = y
@@ -138,14 +139,14 @@ y = 308
 y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join/start'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
-    ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
+    ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'), ('POST', '/{id}/receipt'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments'), ('POST', '/{id}/proofs'), ('GET', '/{id}/proofs'), ('POST', '/{id}/proofs/{pid}/sent'), ('DELETE', '/{id}/proofs/{pid}')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
     ('bills', 'upload, parse, amend, fork, image'),
     ('bills', 'parser, venueResolver'),
-    ('sessions', 'allocation, joinCode, report'),
+    ('sessions', 'allocation, joinCode, report, guestTexts'),
     ('payments', 'paymentService, ledger'),
     ('billing', 'tableFee'),
     ('email', 'sender (SES or console)'),
@@ -181,7 +182,8 @@ yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
                    ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF# GUESTPHONE#', 'Comments, proofs, guest numbers'),
                    ('JCODE# PAY#', 'Join codes, guest payments to the lead'),
-                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails')]:
+                   ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails'),
+                   ('BLINK# GUESTTEXT# RECEIPTTO#', 'Bill links, guest texts, receipt addresses')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36
 c4card('ses', 'Amazon SES', ['Sign-in codes, bill reports', 'Daily cost email (GdpCostReport)'])
 c4card('sec', 'Secrets Manager + SSM', ['JWT and Stripe secrets', 'read at cold start'])

@@ -39,6 +39,8 @@ tags:
     description: Group dining sessions, the join flow, and claim management
   - name: payments
     description: Guests paying the lead by bank transfer, confirmed by the lead
+  - name: links
+    description: The links in guests' texts (#219, #220); no sign-in
   - name: billing
     description: The lead's table fee, paid to Pay Me Back through Stripe
   - name: webhooks
@@ -1458,8 +1460,8 @@ paths:
         The lead's report lists every diner (themselves included): what each
         had, their share of service and tax, and whether they've paid. A
         guest's lists only what they had and paid. Works while the bill is
-        open (current state) and after it's closed. Every diner is also
-        emailed their report automatically when the lead closes the bill.
+        open (current state) and after it's closed. Nobody is emailed
+        automatically at close (#221: the lead's comes the next morning).
       responses:
         '202':
           description: Report sent to the caller's email
@@ -1523,6 +1525,10 @@ paths:
         now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
         with nothing left to collect it changes nothing. A guest who claims more afterwards
         owes the difference, as with any top-up.
+
+        #220: a guest who verified a number when they joined (#214) gets one
+        text saying it arrived, with a link to the bill (`/b/{token}`, 30 days).
+        Once per guest per bill; never more than 30 texts a bill.
       responses:
         '200':
           description: Session, with the guest paid up
@@ -1540,6 +1546,49 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /v1/sessions/{sessionId}/receipt:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [sessions]
+      operationId: emailReceipt
+      summary: A guest has their receipt emailed (#220)
+      description: |
+        From *All square*: what they had, their part of service and the
+        discount, and what they paid. No bank details. Not a sign-in and not
+        saved to an account: the address is kept with the bill only and goes
+        with it. Three sends per guest per bill, five a day to any one
+        address. Not for the lead (their report is `/report`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              additionalProperties: false
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Receipt sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Session is `setup` or `abandoned`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/sessions/{sessionId}/open-payments:
     parameters:
@@ -1855,6 +1904,54 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/links/{token}:
+    parameters:
+      - $ref: '#/components/parameters/LinkToken'
+    get:
+      tags: [links]
+      operationId: getBillLink
+      summary: The bill behind a link in a guest's text (#220 G5)
+      description: |
+        No sign-in: the random token is the key. Read-only and live: who had
+        what, who's paid, the guest the link was sent to (`isYou`), and what
+        nobody claimed. Never any phone number or bank details (ADR-0002).
+        Works for 30 days after the last text; then 404. 60 lookups per IP
+        per 10 minutes.
+      security: []
+      responses:
+        '200':
+          description: The bill
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillLinkView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/links/{token}/stop:
+    parameters:
+      - $ref: '#/components/parameters/LinkToken'
+    post:
+      tags: [links]
+      operationId: stopReminders
+      summary: Stop reminder texts for this bill (#219)
+      description: |
+        From `/s/{token}` in a reminder (a named sender can't take STOP
+        replies). The guest gets no more reminders about this bill.
+        Idempotent.
+      security: []
+      responses:
+        '200':
+          description: Stopped
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [stopped]
+                properties:
+                  stopped: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /v1/billing/table-fee:
     post:
       tags: [billing]
@@ -1968,6 +2065,12 @@ components:
       name: sessionId
       required: true
       schema: { type: string, format: uuid }
+    LinkToken:
+      in: path
+      name: token
+      required: true
+      description: The random token from a guest's text
+      schema: { type: string, maxLength: 64 }
     PaymentId:
       in: path
       name: paymentId
@@ -2121,6 +2224,67 @@ components:
         userId: { type: string }
         sentAt: { type: string, format: date-time }
         url: { type: string, format: uri, description: 'Signed GET, 5 minutes' }
+    ReportLine:
+      type: object
+      required: [name, pence]
+      properties:
+        name: { type: string }
+        detail: { type: string }
+        pence: { type: integer }
+    BillLinkView:
+      type: object
+      description: "#220 G5: a bill seen from a guest's text. No numbers, no bank details."
+      required:
+        - sessionId
+        - leadName
+        - dateISO
+        - settled
+        - billTotalPence
+        - expiresAt
+        - diners
+        - unclaimed
+        - unclaimedPence
+      properties:
+        sessionId: { type: string, format: uuid }
+        leadName: { type: string }
+        venueName: { type: string }
+        dateISO: { type: string, format: date-time }
+        settled: { type: boolean }
+        billTotalPence: { type: integer }
+        expiresAt: { type: string, format: date-time, description: When the link stops working }
+        diners:
+          type: array
+          items:
+            type: object
+            required:
+              - displayName
+              - isLead
+              - isYou
+              - lines
+              - itemsPence
+              - extrasPence
+              - discountPence
+              - feePence
+              - totalPence
+              - paid
+            properties:
+              displayName: { type: string }
+              isLead: { type: boolean }
+              isYou: { type: boolean, description: The guest the link was sent to }
+              lines: { type: array, items: { $ref: '#/components/schemas/ReportLine' } }
+              itemsPence: { type: integer }
+              extrasPence: { type: integer, description: Their part of service and tax }
+              discountPence: { type: integer, description: Their part of the bill's discount }
+              feePence: { type: integer, description: Their round-up }
+              totalPence: { type: integer }
+              paid:
+                type: object
+                required: [kind]
+                properties:
+                  kind: { type: string, enum: [lead, paid, says_paid, not_paid] }
+                  amountPence: { type: integer }
+        unclaimed: { type: array, items: { $ref: '#/components/schemas/ReportLine' } }
+        unclaimedPence: { type: integer, description: 'Nobody claimed, with its service' }
     ErrorResponse:
       type: object
       required: [error]

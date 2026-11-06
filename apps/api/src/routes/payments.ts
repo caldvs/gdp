@@ -3,9 +3,12 @@ import { requireAuth } from '../middleware/auth.js';
 import { callerOf } from '../context/caller.js';
 import { paymentService } from '../services/payments/paymentService.js';
 import type { IdTokenVerifier } from '../services/auth.js';
+import type { GuestTexts } from '../services/sessions/guestTexts.js';
 
 export interface PaymentGetRouteDeps {
   idTokenVerifier?: IdTokenVerifier;
+  /** #220: texts the guest once their payment is confirmed. */
+  texts?: Pick<GuestTexts, 'paid'>;
 }
 
 export const buildPaymentGetRoute = (deps: PaymentGetRouteDeps): Hono => {
@@ -27,6 +30,9 @@ export const buildPaymentGetRoute = (deps: PaymentGetRouteDeps): Hono => {
       paymentId,
       logger: c.var.logger,
     });
+    if (payment.status === 'succeeded') {
+      await deps.texts?.paid(payment.sessionId, payment.payerUserId);
+    }
     return c.json(payment);
   });
 

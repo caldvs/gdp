@@ -40,7 +40,7 @@ def chip(xr, y, ttl):
 
 P = {}  # name -> (x, y, w, h)
 # Item types drawn, for the header. The session collection adds its own
-# rows below (META, PART#, SHARE#, CLAIMS, COMMENT#, PROOF#, GUESTPHONE#: seven types, one counted here).
+# rows below (META, PART#, SHARE#, CLAIMS, COMMENT#, PROOF#, GUESTPHONE#, GUESTTEXT#, RECEIPTTO#: nine types, one counted here).
 COUNTS = {'types': 3, 'expiring': 3}
 def place(col, y, name, *args, **kw):
     COUNTS['types'] += 1
@@ -57,8 +57,9 @@ y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email} | A
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
 y = place(0, y, 'Sign-in code', 'id', '20 min', [('pk', 'SIGNIN#{id}'), ('sk', 'same as pk')], ['email or phone (E.164), requestHash', 'codeHash (6 digits email, 4 phone; salted)', 'status pending → used; attempts ≤ 5 (ADD)', '  (right code again for 5 min after use)', 'expiresAt (15 min email, 10 min phone)']) + GAP
-y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', '{SIGNIN|CODE|GUEST|…}RATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'SIGNINRATE#phone:{e164}: 3 / h · ip 10 · all 200', 'CODERATE#user: 30 lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#: 30 comments / h per person per bill', 'PROOFRATE#: 10 screenshot uploads / h, same', '(conditional add; key drops +tags, Gmail dots)']) + GAP
+y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', '{SIGNIN|CODE|GUEST|…}RATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'SIGNINRATE#phone:{e164}: 3 / h · ip 10 · all 200', 'CODERATE#user: 30 lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#: 30 comments / h per person per bill', 'PROOFRATE#: 10 screenshot uploads / h, same', 'RECEIPTRATE#: 3 per guest per bill, 5 / day an address', 'LINKRATE#ip: 60 bill-link reads / 10 min', 'TEXTS#{sessionId}: 30 texts per bill (#220)', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
+y = place(0, y, 'Bill link', 'id', '30 d', [('pk', 'BLINK#{token}'), ('sk', 'BLINK')], ['sessionId, userId: a guest\'s link from a text', 'token: 96 random bits; /b/ and /s/ (#219, #220)', 'ttlAt pushed on by each new text']) + GAP
 y = place(0, y, 'Lead email queue', 'id', '14 d', [('pk', 'LEADMAILQ'), ('sk', '{settledAt}#{sessionId}')], ['sessionId, settledAt: settled, emailed next morning', 'daily job reads sk < London midnight (#221)']) + GAP
 col1_end = y
 
@@ -91,6 +92,8 @@ rows = [
     ('COMMENT', 'COMMENT#{uuidv7}', ['userId, displayName, text (≤ 280), createdAt', 'anyone at the table (#218); oldest first']),
     ('PROOF', 'PROOF#{userId}#{proofId}', ['payment screenshot (#226): createdAt, sentAt', 'S3 proofs/{sessionId}/{userId}/{proofId}.jpg']),
     ('GUESTPHONE', 'GUESTPHONE#{userId}', ['e164: a guest\'s verified number (#214)', 'for the bill\'s texts; never in session reads']),
+    ('GUESTTEXT', 'GUESTTEXT#{userId}', ['token, paidSentAt: the paid text, once (#220)', 'reminders, lastReminderAt, stoppedAt (#219)']),
+    ('RECEIPTTO', 'RECEIPTTO#{userId}', ['email: the guest asked for the receipt (#220)', 'kept with the bill, 30 d TTL']),
 ]
 ih = [26 + len(r[2]) * LH + 8 for r in rows]
 sh = 44 + 22 + 10 + sum(ih) + 10 * len(rows) + 4

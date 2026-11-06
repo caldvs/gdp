@@ -107,7 +107,7 @@ ul.plain strong { color: var(--ink); }
 <div class="wrap">
   <header>
     <h1>Pay Me Back data model</h1>
-    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>21</b> item types</span><span><b>1</b> GSI</span><span><b>12</b> expiring types</span></div>
+    <div class="stats"><span><b>1</b> DynamoDB table</span><span><b>22</b> item types</span><span><b>1</b> GSI</span><span><b>13</b> expiring types</span></div>
   </header>
 
   <div class="board">
@@ -136,8 +136,8 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M804,380 L732,380" marker-end="url(#ah)"/>
 <text x="760.0" y="372" text-anchor="middle">billId</text>
 </g>
-<g class="edge "><path d="M950.0,1058 L950.0,1016" marker-end="url(#ah)"/>
-<text x="960.0" y="1041" text-anchor="start">sessionId</text>
+<g class="edge "><path d="M950.0,1218 L950.0,1176" marker-end="url(#ah)"/>
+<text x="960.0" y="1201" text-anchor="start">sessionId</text>
 </g>
 <g class="edge dashed"><path d="M804,576 L760,576 L760,596 L380,596 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
 <text x="610.0" y="589" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
@@ -187,8 +187,8 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="648">status pending → used; attempts ≤ 5 (ADD)</text>
 <text class="t-attr" x="48" y="666">  (right code again for 5 min after use)</text>
 <text class="t-attr" x="48" y="684">expiresAt (15 min email, 10 min phone)</text>
-<rect class="node" x="30" y="746" width="320" height="250" rx="10"/>
-<rect class="band band-id" x="30" y="746" width="6" height="250" rx="3"/>
+<rect class="node" x="30" y="746" width="320" height="304" rx="10"/>
+<rect class="band band-id" x="30" y="746" width="6" height="304" rx="3"/>
 <text class="t-title" x="48" y="773">Rate limits</text>
 <rect class="chip-ttl" x="293.0" y="759" width="43.0" height="20" rx="10"/>
 <text class="t-chip" x="314.5" y="773" text-anchor="middle">≤ 1 h</text>
@@ -204,30 +204,46 @@ ul.plain strong { color: var(--ink); }
 <text class="t-attr" x="48" y="924">GUESTRATE#ip: 20 guest joins / h · #session: 60 / h</text>
 <text class="t-attr" x="48" y="942">COMMENTRATE#: 30 comments / h per person per bill</text>
 <text class="t-attr" x="48" y="960">PROOFRATE#: 10 screenshot uploads / h, same</text>
-<text class="t-attr" x="48" y="978">(conditional add; key drops +tags, Gmail dots)</text>
-<rect class="node" x="30" y="1040" width="320" height="124" rx="10"/>
-<rect class="band band-id" x="30" y="1040" width="6" height="124" rx="3"/>
-<text class="t-title" x="48" y="1067">Idempotency record</text>
-<rect class="chip-ttl" x="299.6" y="1053" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="1067" text-anchor="middle">24 h</text>
-<text class="t-keylab" x="48" y="1092">pk</text>
-<text class="t-key" x="104" y="1092">IDMP#{userId}#{endpoint}</text>
-<text class="t-keylab" x="48" y="1114">sk</text>
-<text class="t-key" x="104" y="1114">KEY#{Idempotency-Key}</text>
-<line class="rule" x1="48" y1="1128" x2="332" y2="1128"/>
-<text class="t-attr" x="48" y="1146">stored status + response body</text>
-<rect class="node" x="30" y="1208" width="320" height="142" rx="10"/>
-<rect class="band band-id" x="30" y="1208" width="6" height="142" rx="3"/>
-<text class="t-title" x="48" y="1235">Lead email queue</text>
-<rect class="chip-ttl" x="299.6" y="1221" width="36.4" height="20" rx="10"/>
-<text class="t-chip" x="317.8" y="1235" text-anchor="middle">14 d</text>
-<text class="t-keylab" x="48" y="1260">pk</text>
-<text class="t-key" x="104" y="1260">LEADMAILQ</text>
-<text class="t-keylab" x="48" y="1282">sk</text>
-<text class="t-key" x="104" y="1282">{settledAt}#{sessionId}</text>
-<line class="rule" x1="48" y1="1296" x2="332" y2="1296"/>
-<text class="t-attr" x="48" y="1314">sessionId, settledAt: settled, emailed next morning</text>
-<text class="t-attr" x="48" y="1332">daily job reads sk &lt; London midnight (#221)</text>
+<text class="t-attr" x="48" y="978">RECEIPTRATE#: 3 per guest per bill, 5 / day an address</text>
+<text class="t-attr" x="48" y="996">LINKRATE#ip: 60 bill-link reads / 10 min</text>
+<text class="t-attr" x="48" y="1014">TEXTS#{sessionId}: 30 texts per bill (#220)</text>
+<text class="t-attr" x="48" y="1032">(conditional add; key drops +tags, Gmail dots)</text>
+<rect class="node" x="30" y="1094" width="320" height="124" rx="10"/>
+<rect class="band band-id" x="30" y="1094" width="6" height="124" rx="3"/>
+<text class="t-title" x="48" y="1121">Idempotency record</text>
+<rect class="chip-ttl" x="299.6" y="1107" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1121" text-anchor="middle">24 h</text>
+<text class="t-keylab" x="48" y="1146">pk</text>
+<text class="t-key" x="104" y="1146">IDMP#{userId}#{endpoint}</text>
+<text class="t-keylab" x="48" y="1168">sk</text>
+<text class="t-key" x="104" y="1168">KEY#{Idempotency-Key}</text>
+<line class="rule" x1="48" y1="1182" x2="332" y2="1182"/>
+<text class="t-attr" x="48" y="1200">stored status + response body</text>
+<rect class="node" x="30" y="1262" width="320" height="160" rx="10"/>
+<rect class="band band-id" x="30" y="1262" width="6" height="160" rx="3"/>
+<text class="t-title" x="48" y="1289">Bill link</text>
+<rect class="chip-ttl" x="299.6" y="1275" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1289" text-anchor="middle">30 d</text>
+<text class="t-keylab" x="48" y="1314">pk</text>
+<text class="t-key" x="104" y="1314">BLINK#{token}</text>
+<text class="t-keylab" x="48" y="1336">sk</text>
+<text class="t-key" x="104" y="1336">BLINK</text>
+<line class="rule" x1="48" y1="1350" x2="332" y2="1350"/>
+<text class="t-attr" x="48" y="1368">sessionId, userId: a guest&#x27;s link from a text</text>
+<text class="t-attr" x="48" y="1386">token: 96 random bits; /b/ and /s/ (#219, #220)</text>
+<text class="t-attr" x="48" y="1404">ttlAt pushed on by each new text</text>
+<rect class="node" x="30" y="1466" width="320" height="142" rx="10"/>
+<rect class="band band-id" x="30" y="1466" width="6" height="142" rx="3"/>
+<text class="t-title" x="48" y="1493">Lead email queue</text>
+<rect class="chip-ttl" x="299.6" y="1479" width="36.4" height="20" rx="10"/>
+<text class="t-chip" x="317.8" y="1493" text-anchor="middle">14 d</text>
+<text class="t-keylab" x="48" y="1518">pk</text>
+<text class="t-key" x="104" y="1518">LEADMAILQ</text>
+<text class="t-keylab" x="48" y="1540">sk</text>
+<text class="t-key" x="104" y="1540">{settledAt}#{sessionId}</text>
+<line class="rule" x1="48" y1="1554" x2="332" y2="1554"/>
+<text class="t-attr" x="48" y="1572">sessionId, settledAt: settled, emailed next morning</text>
+<text class="t-attr" x="48" y="1590">daily job reads sk &lt; London midnight (#221)</text>
 <rect class="node" x="410" y="80" width="320" height="160" rx="10"/>
 <rect class="band band-bill" x="410" y="80" width="6" height="160" rx="3"/>
 <text class="t-title" x="428" y="107">Image hash index</text>
@@ -371,8 +387,8 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="808" y1="168" x2="1092" y2="168"/>
 <text class="t-attr" x="808" y="186">sessionId, lockedAt</text>
 <text class="t-attr" x="808" y="204">create-if-absent; deleted on close or abandon</text>
-<rect class="node key" x="790" y="266" width="320" height="748" rx="10"/>
-<rect class="band band-sess" x="790" y="266" width="6" height="748" rx="3"/>
+<rect class="node key" x="790" y="266" width="320" height="908" rx="10"/>
+<rect class="band band-sess" x="790" y="266" width="6" height="908" rx="3"/>
 <text class="t-title" x="808" y="293">Session</text>
 <rect class="chip-ttl" x="1039.8" y="279" width="56.199999999999996" height="20" rx="10"/>
 <text class="t-chip" x="1067.9" y="293" text-anchor="middle">30 days</text>
@@ -420,19 +436,29 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="957">GUESTPHONE#{userId}</text>
 <text class="t-attr" x="816" y="976">e164: a guest&#x27;s verified number (#214)</text>
 <text class="t-attr" x="816" y="994">for the bill&#x27;s texts; never in session reads</text>
-<rect class="node" x="790" y="1058" width="320" height="160" rx="10"/>
-<rect class="band band-sess" x="790" y="1058" width="6" height="160" rx="3"/>
-<text class="t-title" x="808" y="1085">Join code</text>
-<rect class="chip-ttl" x="1039.8" y="1071" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="1067.9" y="1085" text-anchor="middle">30 days</text>
-<text class="t-keylab" x="808" y="1110">pk</text>
-<text class="t-key" x="864" y="1110">JCODE#{token}</text>
-<text class="t-keylab" x="808" y="1132">sk</text>
-<text class="t-key" x="864" y="1132">same as pk</text>
-<line class="rule" x1="808" y1="1146" x2="1092" y2="1146"/>
-<text class="t-attr" x="808" y="1164">sessionId</text>
-<text class="t-attr" x="808" y="1182">22-char QR token (old: 6 letters)</text>
-<text class="t-attr" x="808" y="1200">create-if-absent (collision check)</text>
+<rect class="inner" x="804" y="1018" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="1037">sk</text>
+<text class="t-key" x="842" y="1037">GUESTTEXT#{userId}</text>
+<text class="t-attr" x="816" y="1056">token, paidSentAt: the paid text, once (#220)</text>
+<text class="t-attr" x="816" y="1074">reminders, lastReminderAt, stoppedAt (#219)</text>
+<rect class="inner" x="804" y="1098" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="1117">sk</text>
+<text class="t-key" x="842" y="1117">RECEIPTTO#{userId}</text>
+<text class="t-attr" x="816" y="1136">email: the guest asked for the receipt (#220)</text>
+<text class="t-attr" x="816" y="1154">kept with the bill, 30 d TTL</text>
+<rect class="node" x="790" y="1218" width="320" height="160" rx="10"/>
+<rect class="band band-sess" x="790" y="1218" width="6" height="160" rx="3"/>
+<text class="t-title" x="808" y="1245">Join code</text>
+<rect class="chip-ttl" x="1039.8" y="1231" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="1245" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="1270">pk</text>
+<text class="t-key" x="864" y="1270">JCODE#{token}</text>
+<text class="t-keylab" x="808" y="1292">sk</text>
+<text class="t-key" x="864" y="1292">same as pk</text>
+<line class="rule" x1="808" y1="1306" x2="1092" y2="1306"/>
+<text class="t-attr" x="808" y="1324">sessionId</text>
+<text class="t-attr" x="808" y="1342">22-char QR token (old: 6 letters)</text>
+<text class="t-attr" x="808" y="1360">create-if-absent (collision check)</text>
 <rect class="node gsi" x="1170" y="80" width="320" height="165" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>

@@ -1,4 +1,7 @@
+import { createHash } from 'node:crypto';
 import { AppError } from '../../errors/AppError.js';
+import { countInWindow } from '../../storage/rateCounter.js';
+import { receiptAddressStore } from '../../storage/receiptAddressStore.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
 import { paymentStore } from '../../storage/paymentStore.js';
@@ -10,23 +13,33 @@ import { leadMailQueue } from '../../storage/leadMailQueue.js';
 import type { EmailSender } from '../email/sender.js';
 import type { Session } from '../../types/sessions.js';
 
+/** A session's bill report: its pinned bill and what each guest's payment was for. */
+export async function loadReport(
+  session: Session,
+  opts: { keepUnclaimed?: boolean } = {},
+): Promise<BillReport> {
+  const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+  if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+  const paymentIds = session.participants.flatMap((p) =>
+    'paymentId' in p.payment ? [p.payment.paymentId] : [],
+  );
+  const payments = await Promise.all(paymentIds.map((id) => paymentStore.get(id)));
+  const amounts = new Map(
+    payments.flatMap((p) => (p ? [[p.paymentId, p.amountPence] as const] : [])),
+  );
+  return buildReport(session, bill, amounts, opts);
+}
+
+// #220: a guest's receipt by email, from *All square*: three sends per guest
+// per bill (a typo can be fixed), and five a day to any one address, so the
+// field can't be used to send mail at someone.
+const RECEIPTS_PER_GUEST = 3;
+const RECEIPTS_PER_ADDRESS_DAY = 5;
+const DAY_SECONDS = 24 * 60 * 60;
+
 /** Loads what a report needs and emails it. */
 export const createReportService = (deps: { emailSender: EmailSender; appBaseUrl?: string }) => {
-  async function load(
-    session: Session,
-    opts: { keepUnclaimed?: boolean } = {},
-  ): Promise<BillReport> {
-    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
-    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
-    const paymentIds = session.participants.flatMap((p) =>
-      'paymentId' in p.payment ? [p.payment.paymentId] : [],
-    );
-    const payments = await Promise.all(paymentIds.map((id) => paymentStore.get(id)));
-    const amounts = new Map(
-      payments.flatMap((p) => (p ? [[p.paymentId, p.amountPence] as const] : [])),
-    );
-    return buildReport(session, bill, amounts, opts);
-  }
+  const load = loadReport;
 
   async function sendTo(report: BillReport, userId: string, sessionId: string): Promise<boolean> {
     const user = await userStore.get(userId);
@@ -53,6 +66,52 @@ export const createReportService = (deps: { emailSender: EmailSender; appBaseUrl
       }
       const sent = await sendTo(await load(session), input.userId, session.sessionId);
       if (!sent) throw new AppError('INVALID_INPUT', 'No email address on your account');
+    },
+
+    /**
+     * #220: a guest asks for their receipt by email (G4.3 *All square*). Not
+     * a sign-in, and not saved to an account: the address is kept with the
+     * bill only (`RECEIPTTO#`, gone with it).
+     */
+    async emailReceipt(input: { sessionId: string; userId: string; email: string }): Promise<void> {
+      const session = await sessionStore.get(input.sessionId);
+      const onBill = session?.participants.some((p) => p.userId === input.userId);
+      if (!session || !onBill) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      if (input.userId === session.creatorUserId) {
+        throw new AppError('INVALID_INPUT', 'The lead’s report is under Email me a report');
+      }
+      if (session.status === 'setup' || session.status === 'abandoned') {
+        throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}; no receipt`);
+      }
+      const email = input.email.trim().toLowerCase();
+      const addressKey = createHash('sha256').update(email).digest('hex');
+      const perGuest = await countInWindow(
+        `RECEIPTRATE#${input.sessionId}#${input.userId}`,
+        40 * DAY_SECONDS,
+        RECEIPTS_PER_GUEST,
+      );
+      if (!perGuest.ok)
+        throw new AppError('RATE_LIMITED', 'Receipt already sent. Check your inbox.');
+      const perAddress = await countInWindow(
+        `RECEIPTRATE#addr:${addressKey}`,
+        DAY_SECONDS,
+        RECEIPTS_PER_ADDRESS_DAY,
+      );
+      if (!perAddress.ok)
+        throw new AppError('RATE_LIMITED', 'Too many receipts to that address today.');
+      const report = await load(session);
+      const out = renderReportEmail(report, input.userId);
+      await receiptAddressStore.put(input.sessionId, input.userId, email);
+      await deps.emailSender.send({
+        to: email,
+        subject: out.subject,
+        category: 'receipt',
+        body: { text: out.text, html: out.html },
+      });
+      baseLogger.info(
+        { event: 'receipt.sent', sessionId: input.sessionId, userId: input.userId },
+        'Guest receipt emailed',
+      );
     },
 
     /**

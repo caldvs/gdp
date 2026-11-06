@@ -50,7 +50,7 @@ test('snap → check (fix a price, a quantity) → bank details → share; the s
   await lead.getByRole('button', { name: 'Continue' }).click();
   await expect(lead.getByRole('heading', { name: 'Share with the table' })).toBeVisible();
   await expect(lead.getByText('Point a phone camera here')).toBeVisible();
-  await expect(lead.getByText('Works until the bill’s closed.')).toBeVisible();
+  await expect(lead.getByText('Works until the bill’s settled.')).toBeVisible();
   await expect(lead.getByText('K7Q2MX')).toHaveCount(0);
   // The amend went through with the edited line.
   const amend = api.requests.find((r) => r.path.endsWith('/amend'));
@@ -280,6 +280,7 @@ test('fixing the bill mid-session: a picking guest and a sent guest both see the
   await expect(sam.getByText('Callum will confirm')).toBeVisible();
   await expect(tom.getByText('Lasagne')).toBeVisible();
 
+  await lead.getByRole('button', { name: 'More', exact: true }).click();
   await lead.getByRole('link', { name: 'Edit bill' }).click();
   await expect(lead.getByRole('heading', { name: 'Fix the bill' })).toBeVisible();
   await lead.getByRole('button', { name: 'Edit Lasagne' }).click();
@@ -288,7 +289,7 @@ test('fixing the bill mid-session: a picking guest and a sent guest both see the
   // Edits save themselves when the editor closes.
   await expect(lead.getByRole('button', { name: 'No changes' })).toBeVisible();
   await lead.getByRole('link', { name: 'Bill', exact: true }).click();
-  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Mark as settled' })).toBeVisible();
 
   await expect(sam.getByText('£19.00').first()).toBeVisible(POLL);
   // Tom's still claiming: the receipt prints prices without the £.
@@ -310,7 +311,7 @@ test('deleting the bill ends it for everyone at the table', async ({ browser }) 
   await expect(sam.getByText('Callum deleted it.')).toBeVisible();
 });
 
-test('closing with everything claimed and paid: the dialog says so and "your part" adds up', async ({ browser }) => {
+test('settling with everything claimed and paid: the confirm says so and "your part" adds up', async ({ browser }) => {
   // Lead has Olives (4.25). Sam takes everything else and pays.
   const api = new FakeApi();
   api.join(users.sam);
@@ -320,11 +321,17 @@ test('closing with everything claimed and paid: the dialog says so and "your par
   const lead = await diner(browser, api, users.lead);
 
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible();
-  await expect(lead.getByRole('button', { name: /^Not claimed/ })).toHaveCount(0);
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  await expect(lead.getByRole('dialog')).toContainText('Everyone has paid.');
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
-    await expect(lead.getByText('Bill closed')).toBeVisible();
+  await expect(lead.getByRole('list', { name: 'What needs you' })).toHaveText('Everyone’s paid and every line is claimed. You can mark it as settled.');
+  // Everyone's paid: claims are fixed and the QR is put away.
+  await expect(lead.getByRole('button', { name: /^Claimed\. Remove Olives/ })).toHaveCount(0);
+  await expect(lead.getByRole('link', { name: 'QR code' })).toHaveCount(0);
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  const ask = lead.getByRole('group', { name: 'Mark the bill as settled?' });
+  await expect(ask).toContainText('Still to come£0.00');
+  await expect(ask).toContainText('Your share£4.25');
+  await expect(ask).not.toContainText('Nobody claimed');
+  await ask.getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(lead.getByText('Settled', { exact: true })).toBeVisible();
   // Sam owed 22.50 + 17.25 + 21.00 + 39.00 = 99.75; bill is 104.00; your part = 4.25.
   await expect(lead.getByText('£99.75').first()).toBeVisible();
   await expect(lead.locator('.totals__line', { hasText: 'Your part' })).toContainText('£4.25');
@@ -362,7 +369,7 @@ test('#64: the lead says how many are eating and sees "n of m joined"; once ever
   const lead = await diner(browser, api, users.lead);
 
   // Unset by default: no count, no flag.
-  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Who’s paid', exact: true })).toBeVisible();
   await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
 
   await lead.getByRole('button', { name: 'How many eating?' }).click();
@@ -370,25 +377,25 @@ test('#64: the lead says how many are eating and sees "n of m joined"; once ever
   await sheet.getByRole('button', { name: 'More people' }).click(); // 2 → 3
   await sheet.getByRole('button', { name: 'Save' }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(lead.getByRole('heading', { name: 'People · 1 of 3 joined' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Who’s paid · 1 of 3 joined' })).toBeVisible();
   expect(api.requests.find((r) => r.method === 'PATCH')?.body).toBe('{"expectedDiners":3}');
 
   // Guests join; the count follows on the poll.
   await diner(browser, api, users.sam);
-  await expect(lead.getByRole('heading', { name: 'People · 2 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByRole('heading', { name: 'Who’s paid · 2 of 3 joined' })).toBeVisible(POLL);
   await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
   await diner(browser, api, users.tom);
-  await expect(lead.getByRole('heading', { name: 'People · 3 of 3 joined' })).toBeVisible(POLL);
+  await expect(lead.getByRole('heading', { name: 'Who’s paid · 3 of 3 joined' })).toBeVisible(POLL);
   await expect(lead.getByText('Everyone’s here')).toBeVisible();
 
   // Change it, then clear it.
   await lead.getByRole('button', { name: 'Change number' }).click();
   await lead.getByRole('button', { name: 'More people' }).click();
   await lead.getByRole('button', { name: 'Save' }).click();
-  await expect(lead.getByRole('heading', { name: 'People · 3 of 4 joined' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Who’s paid · 3 of 4 joined' })).toBeVisible();
   await expect(lead.getByText('Everyone’s here')).toHaveCount(0);
   await lead.getByRole('button', { name: 'Change number' }).click();
   await lead.getByRole('button', { name: 'Not sure' }).click();
-  await expect(lead.getByRole('heading', { name: 'People', exact: true })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'Who’s paid', exact: true })).toBeVisible();
   expect(api.expectedDiners).toBeUndefined();
 });

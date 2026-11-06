@@ -23,14 +23,14 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
   api.join(users.sam);
   api.participants[1]!.claimedItemIds = [items[2]!.itemId];
   const lead = await open(browser, api, users.lead, `/session/${SID}`);
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
-  await expect(lead.getByText('Bill closed')).toBeVisible(POLL);
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  await lead.getByRole('group', { name: 'Mark the bill as settled?' }).getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(lead.getByText('Settled', { exact: true })).toBeVisible(POLL);
 
   // Sam reopens the link from the group chat: straight back to the table, not an error.
   const sam = await open(browser, api, users.sam, `/join/${CODE}#p=${fragmentFor()}`);
   await expect(sam).toHaveURL(new RegExp(`/session/${SID}`), POLL);
-  await expect(sam.getByText('Bill closed')).toBeVisible(POLL);
+  await expect(sam.getByText('Settled', { exact: true })).toBeVisible(POLL);
   await expect(sam.getByText('You owe Callum £17.25')).toBeVisible();
   await sam.getByRole('link', { name: 'Pay Callum £17.25' }).click();
   await expect(sam.getByText('gdp-0193ab12')).toBeVisible(POLL);
@@ -51,6 +51,6 @@ test('a newcomer opening the link after the bill is closed is told so, and not s
   api.status = 'settled';
   const tom = await open(browser, api, users.tom, `/join/${CODE}#p=${fragmentFor()}`, false);
   await expect(tom.getByRole('heading', { name: 'Couldn’t join' })).toBeVisible(POLL);
-  await expect(tom.getByText('This bill’s already closed.')).toBeVisible();
+  await expect(tom.getByText('This bill’s already settled.')).toBeVisible();
   expect(api.participants.some((p) => p.userId === users.tom.userId)).toBe(false);
 });

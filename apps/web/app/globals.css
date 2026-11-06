@@ -672,6 +672,19 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .split-panel__acts { display: flex; gap: 8px; }
 .split-panel__acts > * { flex: 1; }
 .split-panel__acts > :last-child { flex: 1.4; }
+/* #217: the lead's one-page bill. What needs them, as a short list with a mark per line. */
+.needs { list-style: none; margin: 0; padding: 6px 16px; display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--card-line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); }
+.needs__item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 15px; }
+.needs__item + .needs__item { border-top: 1px solid var(--line); }
+.needs__item::before { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; font-weight: 800; font-size: 13px; }
+.needs__item--info::before { content: '£'; background: var(--accent-tint); color: var(--accent); }
+.needs__item--warn::before { content: '!'; background: var(--warn-bg); color: var(--warn-ink); }
+.needs__item--ok::before { content: '✓'; background: var(--ok-bg); color: var(--ok-ink); }
+/* Lines nobody has, tinted on the lead's bill. */
+.lead-bill .claim-line[data-group='open'] { background: rgba(224, 42, 10, .06); margin-inline: -8px; padding-inline: 8px; }
+.settle-btn { width: 100%; }
+.lead-links { display: flex; justify-content: center; }
+.lead-links .link-btn { min-height: 44px; display: inline-flex; align-items: center; font-weight: 600; }
 /* #216: the guest's waiting line (a gentle breathing dot), what they owe, and the lead's confirm in place. */
 .wait-line { display: flex; align-items: flex-start; gap: 10px; margin: 0; color: var(--mute); }
 .wait-dot { flex: none; width: 10px; height: 10px; margin-top: .45em; border-radius: 999px; background: var(--accent); animation: wait-breathe 1.6s ease-in-out infinite; }

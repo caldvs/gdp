@@ -23,7 +23,7 @@ function normalise(code: string): string {
 const joinError = (e: unknown): string =>
   e instanceof ApiError
     ? e.code === 'NOT_FOUND' ? 'We couldn’t find that bill. Ask whoever paid to show their QR again.'
-      : e.code === 'SESSION_INVALID_STATE' && (e.details as { status?: string } | undefined)?.status === 'settled' ? 'This bill’s already closed. Ask the host if you still owe.'
+      : e.code === 'SESSION_INVALID_STATE' && (e.details as { status?: string } | undefined)?.status === 'settled' ? 'This bill’s already settled. Ask the host if you still owe.'
       : e.message
     : (e as Error)?.message ?? 'Could not join';
 
@@ -147,7 +147,7 @@ function GuestLanding({ code }: { code: string }) {
       <>
         <Page>
           <Title title="Couldn’t join" />
-          <Notice tone="error">{closed ? 'This bill’s already closed. Ask whoever paid if you still owe.' : 'We couldn’t find that bill. Ask whoever paid to show their QR again.'}</Notice>
+          <Notice tone="error">{closed ? 'This bill’s already settled. Ask whoever paid if you still owe.' : 'We couldn’t find that bill. Ask whoever paid to show their QR again.'}</Notice>
         </Page>
       </>
     );

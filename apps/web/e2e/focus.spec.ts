@@ -33,11 +33,11 @@ function tableWithOneUnclaimed() {
 
 test('a sheet takes focus, keeps Tab inside, closes on Escape and hands focus back', async ({ page }) => {
   await open(page, tableWithOneUnclaimed(), users.lead, `/session/${SID}`);
-  const trigger = page.getByRole('button', { name: 'Close bill' });
+  const trigger = page.getByRole('button', { name: 'How many eating?' });
   await trigger.focus();
   await page.keyboard.press('Enter');
 
-  const sheet = page.getByRole('dialog', { name: 'Close the bill?' });
+  const sheet = page.getByRole('dialog', { name: 'How many eating?' });
   await expect(sheet).toBeVisible();
   await expect(sheet).toBeFocused();
 
@@ -69,14 +69,14 @@ test('a tap outside the sheet closes it and focus goes back', async ({ page }) =
 
 test('Tab can’t reach the page behind a sheet', async ({ page }) => {
   await open(page, tableWithOneUnclaimed(), users.lead, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Close bill' }).click();
+  await page.getByRole('button', { name: 'How many eating?' }).click();
   await expect(page.getByRole('dialog')).toBeFocused();
   const reached = new Set<string>();
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press('Tab');
-    reached.add(await page.evaluate(() => document.activeElement?.textContent?.trim() ?? ''));
+    reached.add(await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.textContent?.trim() ?? ''));
   }
-  expect([...reached].sort()).toEqual(['Close bill', 'Not yet']);
+  expect([...reached].sort()).toEqual(['Cancel', 'More people', 'Save']);
 });
 
 test('going to another page focuses its heading', async ({ page }) => {

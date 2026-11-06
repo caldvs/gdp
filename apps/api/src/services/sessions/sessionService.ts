@@ -157,7 +157,7 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
     if (session.status === 'settled' || session.status === 'abandoned') {
-      throw new AppError('SESSION_INVALID_STATE', 'This bill is closed');
+      throw new AppError('SESSION_INVALID_STATE', 'This bill is settled');
     }
     await sessionStore.setExpectedDiners(session.sessionId, input.expectedDiners);
     const { expectedDiners: _old, ...rest } = session;
@@ -183,7 +183,7 @@ export const sessionService = {
       throw new AppError('SESSION_NOT_FOUND', 'Session not found');
     }
     if (session.status === 'settled' || session.status === 'abandoned') {
-      throw new AppError('SESSION_INVALID_STATE', 'This bill is closed');
+      throw new AppError('SESSION_INVALID_STATE', 'This bill is settled');
     }
     await sessionStore.setPayoutCheck(session.sessionId, input.payoutCheck);
     return projectForCaller({ ...session, payoutCheck: input.payoutCheck }, input.caller.userId);

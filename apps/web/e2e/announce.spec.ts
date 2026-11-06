@@ -51,7 +51,7 @@ test('#198: the lead hears who joins and who says they’ve paid', async ({ brow
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, `/session/${SID}`);
   const feed = lead.getByTestId('table-feed');
-  await expect(lead.getByRole('tab', { name: 'The table' })).toBeVisible();
+  await expect(lead.getByRole('heading', { name: 'The bill' })).toBeVisible();
   await expect(feed).toHaveAttribute('aria-live', 'polite');
   await expect(feed).toHaveText('');
 
@@ -96,13 +96,15 @@ test('#198: the summary’s Copied and Emailed are announced', async ({ browser,
   }
 });
 
-test('#204: the Close and Delete dialogs are described by what they say', async ({ browser }) => {
+test('#204: Mark as settled takes focus in place; the Delete dialog is described by what it says', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead, `/session/${SID}`);
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  const dialog = lead.getByRole('dialog', { name: 'Close the bill?' });
-  await expect(dialog).toHaveAccessibleDescription(/It goes on you\./);
-  await dialog.getByRole('button', { name: 'Not yet' }).click();
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  const ask = lead.getByRole('group', { name: 'Mark the bill as settled?' });
+  await expect(ask).toBeFocused();
+  await expect(ask).toContainText('Nobody claimed · goes on you');
+  await ask.getByRole('button', { name: 'Not yet' }).click();
+  await expect(lead.getByRole('button', { name: 'Mark as settled' })).toBeFocused();
 
   await lead.getByRole('button', { name: 'More', exact: true }).click();
   await lead.getByRole('button', { name: 'Delete this bill' }).click();

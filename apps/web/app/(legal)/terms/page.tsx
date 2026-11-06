@@ -47,7 +47,7 @@ export default function TermsPage() {
           </li>
           <li>
             Each guest pays back part of the £1 with their share of the bill, in proportion to what they had. When the
-            lead closes the bill, we take what the guests owe from the hold, never more than £1, and release the rest.
+            lead marks the bill as settled, we take what the guests owe from the hold, never more than £1, and release the rest.
           </li>
           <li>
             If nobody joins, if the lead deletes the bill, or if the guests’ part is under 30p, we release the hold and

@@ -5,20 +5,21 @@
  * lead can take it, or cover the lot), and one way out: Close bill.
  * Everything updates on the session's poll.
  */
-import { startTransition, useMemo, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { components } from '@gdp/core/api';
-import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useOpenPayments, useSetClaims, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
+import { isFeeRequired, useAbandonSession, useCloseSession, useOpenPayments, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
 import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
-import { claimRows, openPence, type ClaimRow } from '@gdp/core/lib/claimRows';
-import { extrasRate, projectFeePence, projectOwedPence, sharePence, splitPricePence } from '@gdp/core/lib/owed';
+import { claimRows, openPence } from '@gdp/core/lib/claimRows';
+import { extrasRate, projectFeePence, projectOwedPence } from '@gdp/core/lib/owed';
 import { usePayoutAccount } from '@gdp/core/lib/usePayoutAccount';
 import {
-  ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowButton, RowLink, Section, TabPanel, Tabs, Title, TotalLine, Totals, firstName,
+  ActionBar, Avatar, BackLink, Badge, Box, Button, Dialog, Notice, Page, Pulse, Row, RowLink, Section, Title, TotalLine, Totals, firstName,
 } from '@/components/ui';
 import { BillTools } from '@/components/BillTools';
 import { useTableFeed } from '@/components/useTableFeed';
@@ -71,23 +72,17 @@ export function LeadSetup({ s, b }: { s: Session; b: Bill }) {
 
 /* ============================ the bill ============================ */
 
-type LeadTab = 'mine' | 'table';
-
 /**
- * The lead's live bill (#131, board L4.1/L4.2): two tabs. Your items is
- * the same claiming list guests use; The table is who's paid, what nobody
- * has claimed yet, and the way to the full summary.
+ * The lead's live bill, one page (#217, board L5): what needs them, the bill
+ * (their Claim on it, lines nobody has tinted), who's paid with *Received*,
+ * then *Mark as settled*, which confirms in place at the end. Everything
+ * updates on the session's poll.
  */
 export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
   const router = useRouter();
-  const close = useCloseSession(s.sessionId);
   const abandon = useAbandonSession(s.sessionId);
   const received = useReceived(s, b);
   const me = s.participants.find((p) => p.userId === meUserId);
-  // Straight after sharing the lead has nothing yet: start on their items.
-  const [tab, setTab] = useState<LeadTab>(() => (me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? 'table' : 'mine'));
-  const [leftOpen, setLeftOpen] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [binning, setBinning] = useState(false);
   // #64: how many the lead said are eating, lead included. Display only.
   const setExpected = useSetExpectedDiners(s.sessionId);
@@ -96,101 +91,76 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const everyoneHere = s.expectedDiners !== undefined && joined >= s.expectedDiners;
 
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
-  const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
-  // Nobody joined: closing or deleting gives back what sharing cost (#132).
+  // Nobody joined: settling or deleting gives back what sharing cost (#132).
   const spent = useSpent(s.sessionId, guests.length === 0);
-  const giveBack = spent.fee?.kind === 'hold' && !spent.fee.releasedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} hold is released.`
-    : spent.fee && spent.fee.kind !== 'hold' && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
-    : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
-  // At close the round-ups of the payments you confirmed come off the hold, at most the hold.
-  // Guests say they've paid but you confirmed none: the whole hold.
-  const confirmed = guests.filter((p) => (p.payments ?? []).some((e) => e.status === 'succeeded') || p.payment.status === 'succeeded');
-  const anySent = guests.some((p) => (p.payments ?? []).some((e) => e.status === 'succeeded' || !!e.payerClaimedPaidAt) || p.payment.status === 'succeeded' || ('payerClaimedPaidAt' in p.payment && !!p.payment.payerClaimedPaidAt));
-  const hold = s.platformFeePence ?? 0;
-  const guestFees = Math.min(hold, confirmed.length === 0 && anySent ? hold : confirmed.reduce((acc, p) => acc + projectFeePence(s, b, p.userId), 0));
-  const holdNote = hold && guests.length > 0
-    ? guestFees >= 30 ? `${formatGBP(guestFees)} of your ${formatGBP(hold)} hold is taken: your guests’ round-ups.` : `Your ${formatGBP(hold)} hold is released.`
-    : null;
+  const giveBack = giveBackNote(spent);
   const rate = extrasRate(b);
   const myOwed = projectOwedPence(s, b, meUserId);
   const rows = useMemo(() => claimRows(s, b, meUserId), [s, b, meUserId]);
   const left = rows.filter((r) => r.group === 'open');
-  const leftPence = left.reduce((acc, r) => acc + openPence(r), 0);
-  const leftWithService = Math.round(leftPence * (1 + rate));
-  const myItems = rows.filter((r) => r.group === 'yours').map((r) => r.item.name);
+  const leftWithService = Math.round(left.reduce((acc, r) => acc + openPence(r), 0) * (1 + rate));
+  const says = guests.filter((p) => ledger(p, owedFor(s, b, p)).waiting.length > 0);
+  // Once everyone's paid for a fully claimed bill, claims are fixed and
+  // nobody else needs the QR. With lines still open someone may yet join.
+  const everyonePaid = guests.length > 0 && guests.every((p) => isPaid(s, b, p)) && left.length === 0;
   const feed = useTableFeed(s.participants, s.creatorUserId, (p) => owedFor(s, b, p));
+
+  const needs: { key: string; tone: 'info' | 'ok' | 'warn'; text: string }[] = [];
+  if (says.length > 0) needs.push({ key: 'says', tone: 'info', text: `${listNames(says.map((p) => firstName(p.displayName, 'Guest')))} ${says.length > 1 ? 'say' : 'says'} they’ve paid. Mark it received when it’s in your account.` });
+  if (left.length > 0) needs.push({ key: 'left', tone: 'warn', text: `${everyoneHere ? 'Everyone’s here. ' : ''}${left.length} ${left.length === 1 ? 'line' : 'lines'} nobody’s claimed · ${formatGBP(leftWithService)}. Claim yours below; the rest goes on you once it’s settled.` });
+  if (guests.length === 0) needs.push({ key: 'nobody', tone: 'info', text: 'Nobody’s joined yet. Show them the QR code.' });
+  else if (says.length === 0 && left.length === 0 && everyonePaid) needs.push({ key: 'done', tone: 'ok', text: 'Everyone’s paid and every line is claimed. You can mark it as settled.' });
 
   return (
     <>
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub={`${s.participants.length} ${s.participants.length === 1 ? 'person' : 'people'}`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode} onDelete={() => setBinning(true)} />} />
-        <Tabs label="The bill" value={tab} onChange={(t) => startTransition(() => setTab(t))} tabs={[{ id: 'mine', label: 'Your items' }, { id: 'table', label: 'The table' }]} />
+        <Title
+          vt={billTitle(s.sessionId)}
+          title={b.venue?.name ?? 'Your bill'}
+          sub={`${formatDay(s.createdAt)} · ${joined} at the table · ${formatGBP(b.totalPence)}`}
+          aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!!s.joinCode && !everyonePaid} onDelete={() => setBinning(true)} editHref={`/confirm-bill/${s.billId}?sessionId=${s.sessionId}`} />}
+        />
 
-        {tab === 'mine' ? (
-          <TabPanel id="mine">
-            <ClaimList s={s} b={b} meUserId={meUserId} />
-          </TabPanel>
-        ) : (
-          <TabPanel id="table">
-            <Section
-              title={s.expectedDiners !== undefined ? `People · ${joined} of ${s.expectedDiners} joined` : 'People'}
-              aside={
-                <button type="button" className="link-btn small" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
-                  {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
-                </button>
-              }
-            >
-              <Box list>
-                <RowButton
-                  onClick={() => startTransition(() => setTab('mine'))}
-                  action="Your items:"
-                  lead={<Avatar name={me?.displayName || 'You'} you />}
-                  title="You"
-                  sub={myItems.length > 0 ? myItems.join(', ') : 'Claim your items'}
-                  end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>}
-                />
-                {guests.length === 0 ? (
-                  <Row title="Nobody’s joined yet" sub="Show them the QR code." muted />
-                ) : guests.map((p) => (
-                  <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
-                ))}
-              </Box>
-            </Section>
+        {needs.length > 0 ? (
+          <ul className="needs" aria-label="What needs you" data-testid="needs">
+            {needs.map((n) => <li key={n.key} className={`needs__item needs__item--${n.tone}`}>{n.text}</li>)}
+          </ul>
+        ) : null}
+        <OpenPayments s={s} b={b} leftPence={leftWithService} />
 
-            <OpenPayments s={s} b={b} leftPence={leftWithService} />
-
-            {everyoneHere && left.length > 0 ? (
-              <Notice tone="warn" title="Everyone’s here">{formatGBP(leftWithService)} still not claimed.</Notice>
-            ) : null}
-            <Box>
-              {left.length > 0 ? (
-                <RowButton onClick={() => setLeftOpen(true)} title={`Not claimed · ${left.length} ${left.length === 1 ? 'item' : 'items'}`} end={formatGBP(leftWithService)} chevron />
-              ) : null}
-              <RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" />
-            </Box>
-
-          </TabPanel>
-        )}
-      </Page>
-      {tab === 'mine' ? (
-        <ActionBar stack>
-          <div className="actionbar__total">
-            <span className="muted">{`Your share${rate > 0 ? ' incl. service' : ''}`}</span>
-            <Pulse value={myOwed}><b data-testid="your-share">{formatGBP(myOwed)}</b></Pulse>
+        <Section title="The bill">
+          <div className="lead-bill">
+            <ClaimList s={s} b={b} meUserId={meUserId} locked={everyonePaid} />
           </div>
-          <Button onClick={() => startTransition(() => setTab('table'))}>Done</Button>
-        </ActionBar>
-      ) : (
-        <ActionBar>
-          <Button tone="secondary" href={`/confirm-bill/${s.billId}?sessionId=${s.sessionId}`}>Edit bill</Button>
-          <Button grow onClick={() => setClosing(true)}>Close bill</Button>
-        </ActionBar>
-      )}
+        </Section>
+
+        <Section
+          title={s.expectedDiners !== undefined ? `Who’s paid · ${joined} of ${s.expectedDiners} joined` : 'Who’s paid'}
+          aside={
+            everyonePaid ? null : (
+              <button type="button" className="link-btn small" onClick={() => { setExpected.reset(); setSizing(s.expectedDiners ?? Math.max(2, joined)); }}>
+                {s.expectedDiners !== undefined ? 'Change number' : 'How many eating?'}
+              </button>
+            )
+          }
+        >
+          <Box list>
+            {guests.map((p) => (
+              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
+            ))}
+            <Row title="You" sub="Your share" end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>} />
+          </Box>
+        </Section>
+
+        <Settle s={s} b={b} meUserId={meUserId} leftPence={leftWithService} giveBack={giveBack} />
+        <div className="lead-links">
+          <Link href={`/session/${s.sessionId}/summary`} className="link-btn">The whole bill</Link>
+        </div>
+              </Page>
 
       {received.sheet}
-      {leftOpen ? <NotClaimedSheet s={s} rows={left} meUserId={meUserId} onClose={() => startTransition(() => setLeftOpen(false))} /> : null}
       {sizing !== null ? (
         <PartySizeSheet
           n={sizing}
@@ -201,21 +171,6 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
           onChange={setSizing}
           onCancel={() => startTransition(() => setSizing(null))}
           onOk={(expectedDiners) => setExpected.mutate({ expectedDiners }, { onSuccess: () => startTransition(() => setSizing(null)) })}
-        />
-      ) : null}
-      {closing ? (
-        <Confirm
-          title="Close the bill?"
-          body={giveBack ?? ([
-            leftPence > 0 ? `Nobody claimed ${formatGBP(leftWithService)}. It goes on you.` : null,
-            toCome > 0 ? `${formatGBP(toCome)} still to collect. People can still pay.` : null,
-            holdNote,
-          ].filter(Boolean).join(' ') || 'Everyone has paid.')}
-          ok="Close bill"
-          busy={close.isPending}
-          error={close.error?.message}
-          onOk={() => close.mutate(undefined, { onSuccess: () => startTransition(() => setClosing(false)) })}
-          onCancel={() => startTransition(() => setClosing(false))}
         />
       ) : null}
       {binning ? (
@@ -232,6 +187,80 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
       ) : null}
     </>
   );
+}
+
+/** "Sat 31 Oct" */
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** "Sam", "Sam and Tom", "Priya, Sam and Tom" */
+function listNames(names: string[]): string {
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** What settling (or deleting) gives back when nobody joined (#132). */
+function giveBackNote(spent: ReturnType<typeof useSpent>): string | null {
+  return spent.fee?.kind === 'hold' && !spent.fee.releasedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} hold is released.`
+    : spent.fee && spent.fee.kind !== 'hold' && !spent.fee.refundedAt ? `Nobody joined, so your ${formatGBP(spent.fee.amountPence)} fee is refunded.`
+    : spent.credit && !spent.credit.returnedAt ? 'Nobody joined, so you get your credit back.' : null;
+}
+
+/**
+ * L5.1: *Mark as settled* at the end of the page, confirmed in place: still
+ * to come, your share, the platform fee from the hold, and what nobody
+ * claimed (it goes on you). Anyone who still owes can pay after.
+ */
+function Settle({ s, b, meUserId, leftPence, giveBack }: { s: Session; b: Bill; meUserId: string; leftPence: number; giveBack: string | null }) {
+  const close = useCloseSession(s.sessionId);
+  const [asking, setAsking] = useState(false);
+  const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
+  const toCome = guests.reduce((acc, p) => acc + stillToCollect(s, b, p), 0);
+  const hold = s.platformFeePence ?? 0;
+  const fee = Math.min(hold, holdTaken(s, b));
+  // Focus moves into the confirm when it opens, and back when it's put away.
+  const askRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const back = useRef(false);
+  useEffect(() => {
+    if (asking) askRef.current?.focus();
+    else if (back.current) btnRef.current?.focus();
+  }, [asking]);
+  if (!asking) {
+    return <Button ref={btnRef} className="settle-btn" onClick={() => { close.reset(); setAsking(true); }}>Mark as settled</Button>;
+  }
+  return (
+    <div ref={askRef} tabIndex={-1} className="confirm-inline" role="group" aria-labelledby="settle-t">
+      <h2 id="settle-t" className="confirm-inline__h">Mark the bill as settled?</h2>
+      {giveBack ? <p className="muted">{giveBack}</p> : (
+        <Totals>
+          <TotalLine k="Still to come" v={formatGBP(toCome)} />
+          <TotalLine k="Your share" v={formatGBP(projectOwedPence(s, b, meUserId))} />
+          {hold > 0 ? <TotalLine k="Platform fee · from your hold" v={formatGBP(fee)} /> : null}
+          {leftPence > 0 ? <TotalLine k="Nobody claimed · goes on you" v={formatGBP(leftPence)} /> : null}
+        </Totals>
+      )}
+      {toCome > 0 ? <p className="small muted">Anyone who still owes can pay after.</p> : null}
+      <div className="confirm-inline__acts">
+        <Button tone="secondary" small onClick={() => { back.current = true; setAsking(false); }}>Not yet</Button>
+        <Button small busy={close.isPending} onClick={() => close.mutate(undefined)}>Mark as settled</Button>
+      </div>
+      {close.error ? <Notice tone="error">{close.error.message}</Notice> : null}
+    </div>
+  );
+}
+
+/**
+ * What comes off the hold at settle: the round-ups of the payments the lead
+ * has confirmed. Guests say they've paid but none is confirmed: the whole
+ * hold (#167, as the API does it).
+ */
+function holdTaken(s: Session, b: Bill): number {
+  const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
+  const hold = s.platformFeePence ?? 0;
+  const confirmed = guests.filter((p) => (p.payments ?? []).some((e) => e.status === 'succeeded') || p.payment.status === 'succeeded');
+  const anySent = guests.some((p) => (p.payments ?? []).some((e) => e.status === 'succeeded' || !!e.payerClaimedPaidAt) || p.payment.status === 'succeeded' || ('payerClaimedPaidAt' in p.payment && !!p.payment.payerClaimedPaidAt));
+  return confirmed.length === 0 && anySent ? hold : confirmed.reduce((acc, p) => acc + projectFeePence(s, b, p.userId), 0);
 }
 
 /**
@@ -268,48 +297,6 @@ function OpenPayments({ s, b, leftPence }: { s: Session; b: Bill; leftPence: num
   );
 }
 
-
-const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-
-/**
- * L4.2's Not claimed sheet: Claim takes a line (every portion left of it)
- * onto the lead's share; a split's open spot is joined. The row slides out
- * and the list closes up. Anything left goes on the lead at close anyway.
- */
-function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: ClaimRow[]; meUserId: string; onClose: () => void }) {
-  const setClaims = useSetClaims(s.sessionId);
-  const addShare = useAddShare(s.sessionId);
-  const [leaving, setLeaving] = useState<string | null>(null);
-  const me = s.participants.find((p) => p.userId === meUserId);
-  const take = (r: ClaimRow) => {
-    if (!me || leaving) return;
-    setLeaving(r.key);
-    const last = rows.length === 1;
-    const done = { onSuccess: () => { if (last) onClose(); }, onSettled: () => setLeaving(null) };
-    setTimeout(() => {
-      if (r.share) addShare.mutate({ itemId: r.item.itemId }, done);
-      else setClaims.mutate({ claimedItemIds: [...me.claimedItemIds, ...Array<string>(r.left).fill(r.item.itemId)] }, done);
-    }, reducedMotion() ? 0 : 280);
-  };
-  const err = setClaims.error?.message ?? addShare.error?.message;
-  return (
-    <Dialog id="left-t" title="Not claimed" onClose={onClose} actions={<Button tone="secondary" onClick={onClose}>Close</Button>}>
-      <Box list>
-        {rows.map((r) => (
-          <div key={r.key} className={`claim${leaving === r.key ? ' leaving' : ''}`}>
-            <span className="row__main">
-              <span className="row__title">{r.kind === 'multi' && r.left > 1 ? `${r.left} × ${r.item.name}` : r.kind === 'share' && r.count > 1 ? `${r.count} × ${r.item.name}` : r.item.name}</span>
-              <span className="row__sub">{formatGBP(openPence(r))}</span>
-            </span>
-            <Button tone="secondary" small className="claim__btn" disabled={!!leaving} onClick={() => take(r)} aria-label={`Claim ${r.item.name}, ${formatGBP(openPence(r))}`}>Claim</Button>
-          </div>
-        ))}
-      </Box>
-      <p className="small muted">Anything left goes on yours when you close.</p>
-      {err ? <Notice tone="error">{err}</Notice> : null}
-    </Dialog>
-  );
-}
 
 /** What a guest has claimed, by name: "Lasagne, 2 × Negroni, Calamari (split)". */
 export function claimedNames(b: Bill, p: Participant): string {
@@ -398,7 +385,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
       <Page sub>
         <BackLink href="/">Bills</BackLink>
         <div className="vh" aria-live="polite" data-testid="table-feed">{feed}</div>
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Bill closed" aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? 'Your bill'} sub="Settled" aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={false} />} />
         {outstanding.length === 0
           ? <Notice tone="ok" title={`${formatGBP(collected)} collected`}>Everyone has paid.</Notice>
           : <Notice title={`${outstanding.length} still to pay`}>{formatGBP(collected)} collected so far.</Notice>}

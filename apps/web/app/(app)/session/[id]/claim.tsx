@@ -38,7 +38,7 @@ function shareError(err: ApiError): string {
 /** The row whose split is open, how many ways, and whether it's mine to change (fixed when it opens). */
 type Splitting = { key: string; ways: number; mine: boolean };
 
-export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: string }) {
+export function ClaimList({ s, b, meUserId, locked = false }: { s: Session; b: Bill; meUserId: string; /** #217: everyone's paid, so claims are fixed: no buttons. */ locked?: boolean }) {
   const setClaims = useSetClaims(s.sessionId);
   const addShare = useAddShare(s.sessionId);
   const removeShare = useRemoveShare(s.sessionId);
@@ -181,7 +181,7 @@ export function ClaimList({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
     if (r.kind === 'share' && r.units && r.units > 1) price = plain(splitPricePence(item, r.share!));
     return (
       <div key={key} className={['claim-line', r.state === 'mine' && 'claim-line--mine', flash && 'pick--changed'].filter(Boolean).join(' ')} data-group={r.state === 'mine' ? 'yours' : r.state === 'open' ? 'open' : 'others'} data-row={key}>
-        <ReceiptLine name={item.name} note={flash ?? note} price={price} tools={tools} quiet={r.state === 'theirs'} />
+        <ReceiptLine name={item.name} note={flash ?? note} price={price} tools={locked ? undefined : tools} quiet={r.state === 'theirs'} />
       </div>
     );
   };

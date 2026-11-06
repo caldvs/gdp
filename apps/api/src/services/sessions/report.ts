@@ -217,7 +217,7 @@ export function renderReportEmail(report: BillReport, recipientUserId: string): 
   const forLead = me.isLead;
   const where = report.venueName ?? 'your meal';
   const date = when(report.dateISO);
-  const state = report.settled ? 'Closed' : 'Still open';
+  const state = report.settled ? 'Settled' : 'Still open';
 
   const subject = forLead ? `Who paid what · ${where}, ${date}` : `Your bill · ${where}, ${date}`;
   const shown = forLead ? report.diners : [me];

@@ -101,26 +101,19 @@ test('bank details', async ({ page }) => {
   await audit(page);
 });
 
-test('the lead’s table and the close dialog', async ({ page }) => {
+test('the lead’s bill and Mark as settled', async ({ page }) => {
   await open(page, busyTable(), users.lead, `/session/${SID}`);
   await expect(page.getByText(/^Says they’ve paid/)).toBeVisible();
+  await expect(page.locator('[data-row][data-group="others"]').first()).toBeVisible();
   await audit(page);
-  await page.getByRole('button', { name: 'Close bill' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(page.getByRole('group', { name: 'Mark the bill as settled?' })).toBeVisible();
   await audit(page);
 });
 
-test('the lead’s items, the Not claimed sheet and the bill summary', async ({ page }) => {
+test('the whole bill', async ({ page }) => {
   await open(page, busyTable(), users.lead, `/session/${SID}`);
-  await page.getByRole('tab', { name: 'Your items' }).click();
-  await expect(page.locator('[data-row][data-group="others"]').first()).toBeVisible();
-  await audit(page);
-  await page.getByRole('tab', { name: 'The table' }).click();
-  await page.getByRole('button', { name: /^Not claimed/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Not claimed' })).toBeVisible();
-  await audit(page);
-  await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click();
-  await page.getByRole('link', { name: 'Full summary' }).click();
+  await page.getByRole('link', { name: 'The whole bill' }).click();
   await expect(page.getByRole('heading', { name: /Bill summary/ })).toBeVisible();
   await audit(page);
 });
@@ -154,6 +147,6 @@ test('closed bill', async ({ page }) => {
   const api = busyTable();
   api.status = 'settled';
   await open(page, api, users.lead, `/session/${SID}`);
-  await expect(page.getByText('Bill closed')).toBeVisible();
+  await expect(page.getByText('Settled', { exact: true })).toBeVisible();
   await audit(page);
 });

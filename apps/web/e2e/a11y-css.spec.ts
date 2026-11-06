@@ -61,7 +61,8 @@ test('a focused row in a card has its whole ring showing (#201)', async ({ page 
   const api = new FakeApi({ serviceRate: 0.125 });
   api.join(users.sam);
   await open(page, api, users.lead, `/session/${SID}`);
-  const row = page.getByRole('button', { name: /^Not claimed/ });
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  const row = page.getByRole('button', { name: 'Bill photo' });
   await expect(row).toBeVisible();
   await page.keyboard.press('Tab');
   await row.focus();

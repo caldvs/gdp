@@ -81,7 +81,6 @@ test('the lead can open payments early; it confirms in place and guests are told
   await claimedMine(sam, 'Calamari');
 
   const lead = await diner(browser, api, users.lead);
-  await lead.getByRole('tab', { name: 'The table' }).click();
   await expect(lead.getByTestId('open-pay-status')).toHaveText('1 line still to claim');
   await lead.getByRole('button', { name: 'Open payments now' }).click();
   const ask = lead.getByRole('group', { name: 'Open payments with lines unclaimed?' });

@@ -76,12 +76,12 @@ test('the lead’s table', async ({ page }) => {
   await expect(page).toHaveScreenshot('lead-table.png', shot);
 });
 
-test('close dialog', async ({ page }) => {
+test('mark as settled', async ({ page }) => {
   const api = busyTable();
   await open(page, api, users.lead, `/session/${SID}`);
-  await page.getByRole('button', { name: 'Close bill' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page).toHaveScreenshot('close-dialog.png', shot);
+  await page.getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(page.getByRole('group', { name: 'Mark the bill as settled?' })).toBeVisible();
+  await expect(page).toHaveScreenshot('mark-as-settled.png', { ...shot, fullPage: true });
 });
 
 test('guest pick', async ({ page }) => {
@@ -120,6 +120,6 @@ test('settled', async ({ page }) => {
   const api = busyTable();
   api.status = 'settled';
   await open(page, api, users.lead, `/session/${SID}`);
-  await expect(page.getByText('Bill closed')).toBeVisible();
+  await expect(page.getByText('Settled', { exact: true })).toBeVisible();
   await expect(page).toHaveScreenshot('settled.png', shot);
 });

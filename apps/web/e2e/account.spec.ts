@@ -97,12 +97,12 @@ test('a failed poll doesn’t blank the table; the next one recovers', async ({ 
   const api = new FakeApi();
   const lead = await diner(browser, api, users.lead);
   await lead.goto(`/session/${SID}`);
-  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Mark as settled' })).toBeVisible();
   api.faults.push({ kind: 'session-get-500', times: 1 });
   api.join(users.sam);
   // Across the failed poll the table stays up, then Sam appears.
   await expect(lead.getByText('Sam', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
+  await expect(lead.getByRole('button', { name: 'Mark as settled' })).toBeVisible();
 });
 
 test('starting a payment fails once: Try again works and only one payment is open', async ({ browser }) => {

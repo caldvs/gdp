@@ -149,14 +149,14 @@ test('guest table after the lead closes: what they paid, the tick, Done goes hom
   const { page: lead } = await ctxFor(browser, api, users.lead);
   await sam.goto(`/session/${SID}`);
   await expect(sam.getByText('Callum got your')).toBeVisible();
-  await expect(sam.getByText('Callum closes the bill once everyone’s paid')).toBeVisible();
+  await expect(sam.getByText('Callum marks the bill as settled once everyone’s paid')).toBeVisible();
 
   await lead.goto(`/session/${SID}`);
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  await lead.getByRole('group', { name: 'Mark the bill as settled?' }).getByRole('button', { name: 'Mark as settled' }).click();
 
-  await expect(sam.getByText('Bill closed')).toBeVisible(POLL);
-  await expect(sam.getByText('Callum closes the bill once everyone’s paid')).toHaveCount(0);
+  await expect(sam.getByText('Settled', { exact: true })).toBeVisible(POLL);
+  await expect(sam.getByText('Callum marks the bill as settled once everyone’s paid')).toHaveCount(0);
   await expect(sam.locator('.totals__line--total')).toContainText('£17.25');
   await sam.getByRole('link', { name: 'Done' }).click();
   await expect(sam).toHaveURL(/\/$/);

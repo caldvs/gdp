@@ -68,14 +68,14 @@ export default function SharePage() {
           <Notice><b>1 credit spent</b> · {billing.data.boughtCredits > 0 ? `${billing.data.boughtCredits + billing.data.creditsLeft} left` : `next credit ${creditDate(billing.data.nextCreditOn)}`}</Notice>
         ) : null}
         {!code ? (
-          <Notice>{s.status === 'settled' ? 'This bill is closed.' : 'No code yet. Give it a moment.'}</Notice>
+          <Notice>{s.status === 'settled' ? 'This bill is settled.' : 'No code yet. Give it a moment.'}</Notice>
         ) : (
           <div className="qr-box">
             <JoinQr url={qrUrl} size={208} building={!!fresh && !built} />
             {built ? (
               <div className="code-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <div className="qr-hint">Point a phone camera here</div>
-                <div className="small muted">Works until the bill’s closed.</div>
+                <div className="small muted">Works until the bill’s settled.</div>
               </div>
             ) : (
               <div className="code-wait" role="status">Making your QR code…</div>

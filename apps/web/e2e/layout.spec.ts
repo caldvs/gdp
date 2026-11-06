@@ -63,7 +63,7 @@ test.describe('tap targets', { tag: '@webkit' }, () => {
   const screens: { name: string; user: User; to: (api: FakeApi) => string; api: () => FakeApi; ready: (p: Page) => Promise<void> }[] = [
     { name: 'bills home', user: users.lead, api: () => new FakeApi(), to: () => '/', ready: (p) => expect(p.getByRole('heading', { name: 'Bills' })).toBeVisible() },
     { name: 'review bill', user: users.lead, api: () => new FakeApi(), to: (a) => `/confirm-bill/${a.bill.billId}`, ready: (p) => expect(p.getByRole('heading', { name: 'Review bill' })).toBeVisible() },
-    { name: 'lead table', user: users.lead, api: busyTable, to: () => `/session/${SID}`, ready: (p) => expect(p.getByRole('button', { name: 'Close bill' })).toBeVisible() },
+    { name: 'lead table', user: users.lead, api: busyTable, to: () => `/session/${SID}`, ready: (p) => expect(p.getByRole('button', { name: 'Mark as settled' })).toBeVisible() },
     { name: 'guest pick', user: users.tom, api: busyTable, to: () => `/session/${SID}`, ready: (p) => expect(p.getByRole('heading', { name: 'What did you have?' })).toBeVisible() },
   ];
 
@@ -146,9 +146,9 @@ test('a table of ten: everyone claims, the shares add up, the lead closes', asyn
   // The lead's table names people by first name.
   for (const n of names) await expect(lead.getByText(new RegExp(`\\b${n}\\b`)).first()).toBeVisible();
   expect(await smallTargets(lead)).toEqual([]);
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
-  await expect(lead.getByText('Bill closed')).toBeVisible({ timeout: 10_000 });
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  await lead.getByRole('group', { name: 'Mark the bill as settled?' }).getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(lead.getByText('Settled', { exact: true })).toBeVisible({ timeout: 10_000 });
   await ctx.close();
 });
 

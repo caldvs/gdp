@@ -288,7 +288,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
     <>
       <Page sub>
         {isGuest ? null : <BackLink href="/">Bills</BackLink>}
-        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Bill closed' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
+        <Title vt={billTitle(s.sessionId)} title={b.venue?.name ?? `${hostFirst}’s bill`} sub={closed ? 'Settled' : `${hostFirst}’s bill`} aside={<BillTools sessionId={s.sessionId} billId={s.billId} showQr={!closed && !!s.joinCode} />} />
         {l?.settled ? (
           <PaidHero done host={hostFirst} pence={l.confirmedPence} />
         ) : mustPay ? (
@@ -337,7 +337,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
           </Section>
         ) : null}
 
-        {!closed ? <p className="small muted">{hostFirst} closes the bill once everyone’s paid.</p> : null}
+        {!closed ? <p className="small muted">{hostFirst} marks the bill as settled once everyone’s paid.</p> : null}
       </Page>
       <ActionBar stack>
         {mustPay ? (

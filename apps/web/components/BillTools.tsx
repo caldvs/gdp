@@ -12,10 +12,14 @@ import { startTransition, useState } from 'react';
 import { useBillImageUrl } from '@gdp/core/api/hooks/useBillImageUrl';
 import { useEmailReport } from '@gdp/core/api/hooks/useSession';
 import { useMe } from '@gdp/core/api/hooks/useMe';
-import { Box, Button, Dialog, MoreIcon, QrIcon, RowButton, Spinner } from './ui';
+import { Box, Button, Dialog, MoreIcon, QrIcon, RowButton, RowLink, Spinner } from './ui';
 
-/** `onDelete`: the lead's *Delete this bill*, kept in the sheet, away from the main buttons. */
-export function BillTools({ sessionId, billId, showQr, onDelete }: { sessionId: string; billId: string; showQr: boolean; onDelete?: () => void }) {
+/**
+ * `onDelete`: the lead's *Delete this bill*, kept in the sheet, away from the
+ * main buttons. `editHref`: the lead's *Edit bill* (#217: the bill is one
+ * page, so it lives here).
+ */
+export function BillTools({ sessionId, billId, showQr, onDelete, editHref }: { sessionId: string; billId: string; showQr: boolean; onDelete?: () => void; editHref?: string }) {
   const [open, setOpen] = useState<null | 'more' | 'photo'>(null);
   // Guests (#183) have no email address to send a report to.
   const canEmail = !useMe().data?.guestSessionId;
@@ -30,6 +34,7 @@ export function BillTools({ sessionId, billId, showQr, onDelete }: { sessionId: 
         <Dialog id="more-t" title="This bill" onClose={close} actions={<Button tone="secondary" onClick={close}>Close</Button>}>
           <Box list>
             <RowButton title="Bill photo" chevron onClick={() => setOpen('photo')} />
+            {editHref ? <RowLink href={editHref} title="Edit bill" /> : null}
             {canEmail ? <EmailReport sessionId={sessionId} /> : null}
           </Box>
           {onDelete ? (

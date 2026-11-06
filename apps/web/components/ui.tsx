@@ -5,7 +5,7 @@
  * Pages compose these; nothing here knows about bills or sessions.
  */
 import Link from 'next/link';
-import { Children, ViewTransition, isValidElement, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type RefObject } from 'react';
+import { Children, ViewTransition, isValidElement, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode, type Ref, type RefObject } from 'react';
 import { Morph } from './PageTransition';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -191,7 +191,7 @@ export function TotalEdit({ label, children }: { label: string; children: ReactN
 /* ---------- Buttons ---------- */
 
 type Tone = 'primary' | 'secondary' | 'danger' | 'text';
-type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { href?: string; replace?: boolean; tone?: Tone; small?: boolean; busy?: boolean; grow?: boolean };
+type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { href?: string; replace?: boolean; tone?: Tone; small?: boolean; busy?: boolean; grow?: boolean; ref?: Ref<HTMLButtonElement> };
 
 export function Button({ href, replace, tone = 'primary', small, busy, grow, className, children, disabled, type, onClick, ...rest }: BtnProps) {
   const cls = cx('btn', `btn--${tone}`, small && 'btn--sm', grow && 'grow', className);

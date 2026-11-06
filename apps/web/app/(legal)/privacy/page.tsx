@@ -32,7 +32,7 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>What happens at the table:</strong> who picked which items, who has said they’ve paid, and when the
-            bill was closed.
+            bill was settled.
           </li>
           <li>
             <strong>Fee payments:</strong> the amount, date and Stripe’s reference. Stripe handles your card; we never

@@ -13,7 +13,7 @@ export default function RefundsPage() {
 
       <section>
         <p>
-          Sharing a bill without a free credit puts a £1 hold on your card. When you close the bill, we take only what
+          Sharing a bill without a free credit puts a £1 hold on your card. When you mark the bill as settled, we take only what
           your guests owe of it (they pay it back to you with their share), and release the rest. The service is
           supplied as soon as you share, so the usual 14-day cancellation period doesn’t apply.
         </p>

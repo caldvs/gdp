@@ -43,13 +43,11 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(lead.getByText(/^Says they’ve paid/)).toHaveCount(0);
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible();
-  await expect(lead.getByRole('button', { name: /^Not claimed · / })).toBeVisible();
-  await expect(lead.getByRole('button', { name: 'Close bill' })).toBeVisible();
+  await expect(lead.getByRole('list', { name: 'What needs you' })).toContainText('nobody’s claimed');
+  await expect(lead.getByRole('button', { name: 'Mark as settled' })).toBeVisible();
   expect(api.status).toBe('claiming');
   // The calamari split still has an empty seat.
-  await lead.getByRole('tab', { name: 'Your items' }).click();
   await expect(lead.getByRole('button', { name: 'Join the split for Calamari' })).toBeVisible();
-  await lead.getByRole('button', { name: 'Done' }).click();
 
   // --- Tom turns up late and takes the seat.
   const tom = await diner(browser, api, users.tom);
@@ -60,11 +58,11 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   // Sam, still watching the table, sees Tom in the split (polling).
   await expect(sam.getByText('Tom').first()).toBeVisible({ timeout: 15_000 });
 
-  // --- Lead closes. Tom hasn't paid yet; the close sheet says so.
-  await lead.getByRole('button', { name: 'Close bill' }).click();
-  await expect(lead.getByRole('dialog')).toContainText('£11.25 still to collect');
-  await lead.getByRole('dialog').getByRole('button', { name: 'Close bill' }).click();
-  await expect(lead.getByText('Bill closed')).toBeVisible();
+  // --- Lead settles. Tom hasn't paid yet; the confirm says so.
+  await lead.getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(lead.getByRole('group', { name: 'Mark the bill as settled?' })).toContainText('Still to come£11.25');
+  await lead.getByRole('group', { name: 'Mark the bill as settled?' }).getByRole('button', { name: 'Mark as settled' }).click();
+  await expect(lead.getByText('Settled', { exact: true })).toBeVisible();
   expect(api.status).toBe('settled');
 
   // Tom can still pay after the close.

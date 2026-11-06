@@ -151,7 +151,7 @@ test('the same photo again, once the bill is at a table, opens the lead’s tabl
   await page.goto('/');
   await scanFile(page);
   await expect(page).toHaveURL(new RegExp(`/session/${SID}$`), { timeout: 15_000 });
-  await expect(page.getByRole('tab', { name: 'The table' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'The bill' })).toBeVisible();
   expect(s3Puts(api)).toBe(1);
 });
 

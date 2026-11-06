@@ -1347,6 +1347,66 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [sessions]
+      operationId: listComments
+      summary: The bill's comments, oldest first
+      description: |
+        Anyone at the table (#218). Text only; at most the latest 200. Kept with the session and
+        gone when it expires (30 days).
+      responses:
+        '200':
+          description: Comments, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [comments]
+                properties:
+                  comments:
+                    type: array
+                    items: { $ref: '#/components/schemas/Comment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+    post:
+      tags: [sessions]
+      operationId: postComment
+      summary: Write a comment on the bill
+      description: |
+        Anyone at the table (#218), e.g. "Sent mine by Monzo". Plain text, trimmed, 1–280
+        characters; never turned into links. 30 per person per bill per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PostCommentRequest' }
+      responses:
+        '201':
+          description: The comment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session not found, or caller isn't at the table
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: The bill was deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /v1/sessions/{sessionId}/payments:
     parameters:
       - $ref: '#/components/parameters/SessionId'
@@ -1696,6 +1756,20 @@ components:
               claimedAt: { type: string, format: date-time }
               returnedAt:
                 { type: string, format: date-time, description: Given back because nobody joined }
+    PostCommentRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 280, description: Plain text, trimmed }
+    Comment:
+      type: object
+      required: [commentId, userId, displayName, text, createdAt]
+      properties:
+        commentId: { type: string, format: uuid }
+        userId: { type: string }
+        displayName: { type: string }
+        text: { type: string }
+        createdAt: { type: string, format: date-time }
     ErrorResponse:
       type: object
       required: [error]

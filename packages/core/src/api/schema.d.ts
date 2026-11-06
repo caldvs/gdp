@@ -900,6 +900,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The bill's comments, oldest first
+         * @description Anyone at the table (#218). Text only; at most the latest 200. Kept with the session and
+         *     gone when it expires (30 days).
+         */
+        get: operations["listComments"];
+        put?: never;
+        /**
+         * Write a comment on the bill
+         * @description Anyone at the table (#218), e.g. "Sent mine by Monzo". Plain text, trimmed, 1–280
+         *     characters; never turned into links. 30 per person per bill per hour.
+         */
+        post: operations["postComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/payments": {
         parameters: {
             query?: never;
@@ -1174,6 +1202,19 @@ export interface components {
                  */
                 returnedAt?: string;
             }[];
+        };
+        PostCommentRequest: {
+            /** @description Plain text */
+            text: string;
+        };
+        Comment: {
+            /** Format: uuid */
+            commentId: string;
+            userId: string;
+            displayName: string;
+            text: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         ErrorResponse: {
             error: {
@@ -3316,6 +3357,87 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+        };
+    };
+    listComments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comments, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        comments: components["schemas"]["Comment"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description The comment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The bill was deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
         };
     };
     initiatePayment: {

@@ -672,6 +672,15 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .filter { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--card-line); background: var(--bg); color: var(--ink); font: 600 15px var(--font); cursor: pointer; }
 .filter[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+/* #218 comments: name and time over plain text. */
+.comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.comment { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border-radius: 12px; background: var(--paper); max-width: 88%; overflow-wrap: anywhere; }
+.comment--me { align-self: flex-end; background: var(--accent-tint); }
+.comment__who { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.comment__who time { color: var(--mute); }
+.comment__text { white-space: pre-wrap; }
+.comment-form { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.comment-form .input { flex: 1; min-width: 0; }
 .adds-up { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; font-weight: 600; color: var(--ok-ink); }
 /* Claim on a receipt line: 44px, outlined; claimed is blue. */
 .receipt .claim-btn { flex: none; min-width: 104px; height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--ink); background: var(--bg); color: var(--ink); font: 700 14px var(--font); letter-spacing: 0; cursor: pointer; }

@@ -5,6 +5,7 @@
  * then see where things stand until the lead closes the bill
  * (GuestTable). Pay lives in ./pay.
  */
+import { Comments } from '@/components/Comments';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import type { components } from '@gdp/core/api';
@@ -335,6 +336,7 @@ export function GuestTable({ s, b, meUserId, onMore }: { s: Session; b: Bill; me
             <span className="wait-box__ring" aria-hidden="true"><b>£</b></span>
             <span><b>Waiting for {hostFirst} to mark it received</b><span>This page updates by itself.</span></span>
           </div>
+          <Comments sessionId={s.sessionId} meUserId={meUserId} />
         </Page>
         <ActionBar stack>
           <Button tone="secondary" href={`/session/${s.sessionId}/pay`}>See {hostFirst}’s bank details</Button>

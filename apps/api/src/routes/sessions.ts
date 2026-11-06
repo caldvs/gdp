@@ -26,6 +26,8 @@ import { AppError } from '../errors/AppError.js';
 import { countInWindow } from '../storage/rateCounter.js';
 import { mintSessionToken } from '../services/auth/sessionToken.js';
 import { sourceIpOf } from './auth.js';
+import { commentService } from '../services/sessions/commentService.js';
+import { PostCommentRequestSchema } from '../types/comments.js';
 
 // Looking up join codes (#151): 30 tries per user per 10 minutes, so
 // guessing six-character codes is slow. Plenty for mistyping a few.
@@ -387,6 +389,29 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     });
     return c.json({ sent: true }, 202);
   });
+
+  // #218: the bill's comments, for anyone at the table. Text only.
+  r.get('/:sessionId/comments', requireAuth(deps.idTokenVerifier), async (c) => {
+    const comments = await commentService.list({
+      caller: callerOf(c),
+      sessionId: c.req.param('sessionId'),
+    });
+    return c.json({ comments });
+  });
+
+  r.post(
+    '/:sessionId/comments',
+    requireAuth(deps.idTokenVerifier),
+    validJson(PostCommentRequestSchema),
+    async (c) => {
+      const comment = await commentService.post({
+        caller: callerOf(c),
+        sessionId: c.req.param('sessionId'),
+        text: c.req.valid('json').text,
+      });
+      return c.json(comment, 201);
+    },
+  );
 
   r.post('/:sessionId/abandon', requireAuth(deps.idTokenVerifier), async (c) => {
     const caller = callerOf(c);

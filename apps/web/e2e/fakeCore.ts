@@ -76,6 +76,7 @@ export class FakeCore {
   shares: Share[] = [];
   /** Who asked to be emailed a report, in order. */
   reportsTo: string[] = [];
+  comments: { commentId: string; userId: string; displayName: string; text: string; createdAt: string }[] = [];
   faults: Fault[] = [];
   /** How many polls a background read stays `reading` before it finishes. */
   readPolls = 0;
@@ -399,6 +400,17 @@ export class FakeCore {
       if (n !== null && (!Number.isInteger(n) || n < 2 || n > 10)) return err('INVALID_INPUT', 'Validation failed', 400);
       this.expectedDiners = n ?? undefined;
       return json(this.session());
+    }
+    // #218: comments, for anyone at the table.
+    if (path === `/v1/sessions/${SID}/comments`) {
+      const me = this.participants.find((p) => p.userId === user.userId);
+      if (!me) return err('SESSION_NOT_FOUND', 'Session not found', 404);
+      if (method === 'GET') return json({ comments: this.comments });
+      const text = String(body().text ?? '').trim();
+      if (!text || text.length > 280) return err('INVALID_INPUT', 'Validation failed', 400);
+      const c = { commentId: `00000000-0000-7000-8000-${String(this.comments.length + 1).padStart(12, '0')}`, userId: me.userId, displayName: me.displayName ?? '', text, createdAt: new Date().toISOString() };
+      this.comments.push(c);
+      return json(c, 201);
     }
     if (path === `/v1/sessions/${SID}/open-payments` && method === 'POST') {
       if (user.userId !== 'u-lead') return err('SESSION_NOT_FOUND', 'Session not found', 404);

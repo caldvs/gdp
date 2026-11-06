@@ -139,7 +139,7 @@ y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
     ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
-    ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments')]) + 10
+    ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments')]) + 10
 svc_top = y
 svc = [
     ('auth', 'emailOtp, sessionToken (JWT)'),
@@ -178,7 +178,7 @@ text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
-                   ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE#', 'Sessions, diners, splits'),
+                   ('BILLLOCK#', 'Bill held by a session'), ('SESS# PART# SHARE# COMMENT#', 'Sessions, diners, splits, comments'),
                    ('JCODE#', 'Join codes'), ('PAY#', 'Guest payments to the lead'),
                    ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, credits'), ('IDMP# KEY#  VENUEQ#', 'Idempotency, venue lookups')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36

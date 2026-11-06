@@ -5,6 +5,7 @@
  * lead can take it, or cover the lot), and one way out: Close bill.
  * Everything updates on the session's poll.
  */
+import { Comments } from '@/components/Comments';
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -153,6 +154,8 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
             <Row title="You" sub="Your share" end={<Pulse value={myOwed}><span data-testid="lead-share">{formatGBP(myOwed)}</span></Pulse>} />
           </Box>
         </Section>
+
+        <Comments sessionId={s.sessionId} meUserId={meUserId} />
 
         <Settle s={s} b={b} meUserId={meUserId} leftPence={leftWithService} giveBack={giveBack} />
         <div className="lead-links">

@@ -40,7 +40,7 @@ def chip(xr, y, ttl):
 
 P = {}  # name -> (x, y, w, h)
 # Item types drawn, for the header. The session collection adds its own
-# rows below (META, PART#, SHARE#, CLAIMS: four types, one counted here).
+# rows below (META, PART#, SHARE#, CLAIMS, COMMENT#: five types, one counted here).
 COUNTS = {'types': 3, 'expiring': 3}
 def place(col, y, name, *args, **kw):
     COUNTS['types'] += 1
@@ -57,7 +57,7 @@ y = place(0, y, 'Auth identity', 'id', 'No TTL', [('pk', 'AUTH#email:{email}'), 
 y = place(0, y, 'User', 'id', 'No TTL', [('pk', 'USER#{userId}'), ('sk', 'same as pk')],
           ['displayName, email, avatarUrl', 'createdAt, updatedAt', 'tokenVersion: sign out everywhere (#155)', 'payoutAccount: legacy, no longer written', '  (bank details stay on device, ADR-0002)']) + GAP
 y = place(0, y, 'Sign-in code', 'id', '20 min', [('pk', 'SIGNIN#{id}'), ('sk', 'same as pk')], ['email, requestHash, codeHash (6 digits, salted)', 'status pending → used; attempts ≤ 5 (ADD)', '  (right code again for 5 min after use)', 'expiresAt (15 min)']) + GAP
-y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#… | GUESTRATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', '(conditional add; key drops +tags, Gmail dots)']) + GAP
+y = place(0, y, 'Rate limits', 'id', '≤ 1 h', [('pk', 'SIGNINRATE#… | CODERATE#… | GUESTRATE#… | COMMENTRATE#…'), ('sk', 'W#{window} | LAST')], ['SIGNINRATE#email:{key}: 5 / 15 min, LAST 30 s', 'SIGNINRATE#ip:{ip}: 20 / h · #all: 1000 / h', 'CODERATE#user: 30 code lookups / 10 min · #ip: 60 previews', 'GUESTRATE#ip: 20 guest joins / h · #session: 60 / h', 'COMMENTRATE#{session}#{user}: 30 comments / h', '(conditional add; key drops +tags, Gmail dots)']) + GAP
 y = place(0, y, 'Idempotency record', 'id', '24 h', [('pk', 'IDMP#{userId}#{endpoint}'), ('sk', 'KEY#{Idempotency-Key}')], ['stored status + response body']) + GAP
 col1_end = y
 
@@ -87,6 +87,7 @@ rows = [
     ('PART', 'PART#{userId}', ['displayName, claimedItemIds[]', 'sharedItemIds[], owedPence, readyToLock', 'payment { status, paymentId } + payments[] (#121)', 'GSI1PK USER#{userId} · GSI1SK sessionId']),
     ('SHARE', 'SHARE#{itemId}', ['ways, units, version (optimistic lock)', 'userIds[]: copy of who is in it', 'activity[] { kind, byUserId, at }']),
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),
+    ('COMMENT', 'COMMENT#{uuidv7}', ['userId, displayName, text (≤ 280), createdAt', 'anyone at the table (#218); oldest first']),
 ]
 ih = [26 + len(r[2]) * LH + 8 for r in rows]
 sh = 44 + 22 + 10 + sum(ih) + 10 * len(rows) + 4

@@ -137,6 +137,8 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .row__title--strong { font-weight: 600; font-size: 17px; }
 .row__sub { font-size: 14px; color: var(--mute); }
 .row__end { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+/* A guest on the lead's list: what they owe, then Paid or Received. */
+.person__end { display: inline-flex; align-items: center; gap: 10px; }
 .row__price { width: 72px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .chev { flex: none; color: var(--faint); }
 .row--add { color: var(--ink); font-weight: 600; gap: 8px; }
@@ -149,12 +151,6 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .totals__line--mute { color: var(--mute); }
 .totals__line--total { font-weight: 600; font-size: 17px; padding-top: 8px; border-top: 1px solid var(--line); }
 
-.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); }
-.stat { padding: 12px 14px; min-width: 0; }
-.stat + .stat { border-left: 1px solid var(--line); }
-.stat__k { font-size: 13px; color: var(--mute); }
-.stat__v { font-size: 18px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
-.stat__v--warn { color: var(--warn-ink); }
 
 .badge { font-size: 14px; font-weight: 600; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
 .badge--ok { color: var(--ok-ink); background: var(--ok-bg); }

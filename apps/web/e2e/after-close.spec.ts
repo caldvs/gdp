@@ -38,10 +38,11 @@ test('a guest who still owes pays after the lead closes; the lead sees it come i
   await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('Callum will confirm')).toBeVisible(POLL);
 
-  // The closed bill isn't polled; the lead comes back to it and confirms.
+  // The closed bill isn't polled; the lead comes back to it and marks it received.
   await lead.reload();
   await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
-  await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
+  await lead.getByRole('button', { name: 'Sam’s £17.25 received' }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
 });
 

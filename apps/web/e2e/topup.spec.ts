@@ -1,7 +1,7 @@
 /**
  * #121: a guest who has paid can claim something they forgot and pay just
- * the difference. The lead confirms each payment; the guest is settled
- * once nothing is due and every payment is confirmed.
+ * the difference. The lead marks money received when it lands; the guest
+ * is settled once nothing is due and every payment is confirmed.
  */
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { FakeApi, SID, users, type User } from './fakeApi';
@@ -18,7 +18,7 @@ async function at(browser: Browser, api: FakeApi, user: User): Promise<Page> {
   return page;
 }
 
-test('paid, then claims more: pays the difference, the lead confirms each payment', async ({ browser }) => {
+test('paid, then claims more: pays the difference, the lead marks each received', async ({ browser }) => {
   const api = new FakeApi();
   const lead = await at(browser, api, users.lead);
   const sam = await at(browser, api, users.sam);
@@ -32,7 +32,8 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await expect(sam.getByText('You’ve sent £17.25.')).toBeVisible(POLL);
 
   await expect(lead.getByText(/^Says they’ve paid £17\.25/)).toBeVisible(POLL);
-  await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
+  await lead.getByRole('button', { name: 'Sam’s £17.25 received' }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(sam.getByText('Callum got your £17.25.')).toBeVisible(POLL);
 
   // Forgot the calamari: back to picking.
@@ -55,9 +56,10 @@ test('paid, then claims more: pays the difference, the lead confirms each paymen
   await expect(sam.getByText('You’ve sent £22.50.')).toBeVisible(POLL);
   await expect(sam.getByRole('heading', { name: 'Your payments' })).toBeVisible();
 
-  // The lead sees the second payment and confirms it like the first.
+  // The lead sees the second payment and marks it received like the first.
   await expect(lead.getByText(/^Says they’ve paid £22\.50 more/)).toBeVisible(POLL);
-  await lead.getByRole('button', { name: 'Confirm Sam paid £22.50' }).click();
+  await lead.getByRole('button', { name: 'Sam’s £22.50 received' }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(sam.getByText('Callum got your £39.75.')).toBeVisible(POLL);
   await expect(sam.getByRole('heading', { name: 'All square' })).toBeVisible();
   const created = api.requests.filter((r) => r.method === 'POST' && r.path === `/v1/sessions/${SID}/payments`);
@@ -80,10 +82,31 @@ test('a top-up can go before the lead has confirmed the first', async ({ browser
   await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('You’ve sent £39.75.')).toBeVisible(POLL);
 
-  // Two to confirm, oldest first.
-  await expect(lead.getByText(/^Says they’ve paid £17\.25 \(2 to confirm\)/)).toBeVisible(POLL);
-  await lead.getByRole('button', { name: 'Confirm Sam paid £17.25' }).click();
-  await expect(lead.getByText(/^Says they’ve paid £22\.50 more/)).toBeVisible(POLL);
-  await lead.getByRole('button', { name: 'Confirm Sam paid £22.50' }).click();
+  // Both sent: one Received covers them.
+  await expect(lead.getByText(/^Says they’ve paid £39\.75/)).toBeVisible(POLL);
+  await lead.getByRole('button', { name: 'Sam’s £39.75 received' }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible(POLL);
+  await expect(sam.getByRole('heading', { name: 'All square' })).toBeVisible(POLL);
+});
+
+test('the lead sees what each guest has claimed, and marks money received before they say they’ve paid', async ({ browser }) => {
+  const api = new FakeApi();
+  const lead = await at(browser, api, users.lead);
+  const tom = await at(browser, api, users.tom);
+
+  await tom.getByRole('button', { name: 'Claim Calamari' }).click();
+  await tom.getByRole('button', { name: 'Claim Lasagne' }).click();
+  // Running totals: what Tom has, and what it comes to, as he picks.
+  const row = lead.locator('.row').filter({ hasText: 'Tom' });
+  await expect(row).toContainText('Calamari, Lasagne', POLL);
+  await expect(row).toContainText('£39.75');
+
+  // The money lands in the lead's bank before Tom taps I've paid.
+  await lead.getByRole('button', { name: 'Tom’s £39.75 received' }).click();
+  const sheet = lead.getByRole('dialog', { name: '£39.75 from Tom?' });
+  await sheet.getByRole('button', { name: 'Received' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(row.getByText('Paid', { exact: true })).toBeVisible();
+  await expect(tom.getByRole('heading', { name: 'All square' })).toBeVisible(POLL);
 });

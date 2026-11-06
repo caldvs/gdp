@@ -82,6 +82,36 @@ export const paymentStore = {
   },
 
   /**
+   * Like applyUpdate, for several of one guest's payments at once (the
+   * lead marking everything they owe as received). One transaction, so the
+   * payment rows and the guest's row can't disagree.
+   */
+  async applyUpdates(input: {
+    sessionId: string;
+    payments: Payment[];
+    participant: Participant;
+  }): Promise<void> {
+    const ttlAt = ttlEpochSeconds();
+    await ddb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          ...input.payments.map((payment) => ({
+            Put: {
+              TableName: TABLE_NAME,
+              Item: {
+                pk: paymentPk(payment.paymentId),
+                sk: paymentPk(payment.paymentId),
+                ...payment,
+              },
+            },
+          })),
+          sessionStore.participantPutOp(input.sessionId, ttlAt, input.participant),
+        ],
+      }),
+    );
+  },
+
+  /**
    * Atomically set Payment.payerClaimedPaidAt with `if_not_exists`, so two
    * concurrent claims both end up with the same canonical timestamp (the
    * one that won the race). Returns the updated payment with the canonical

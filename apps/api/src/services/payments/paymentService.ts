@@ -1,7 +1,9 @@
 import { v7 as uuidv7 } from 'uuid';
 import {
+  aggregatePayment,
   computeOwedForParticipant,
   draftOf,
+  isSent,
   paymentsOf,
   sentPence,
   withPayment,
@@ -197,6 +199,116 @@ export const paymentService = {
       }, busy);
     }
     return updated;
+  },
+
+  /**
+   * The lead saw the money land (a banking app notification), so everything
+   * this guest owes now is received, whether or not they said they'd paid:
+   * what they say they've sent is confirmed, a payment opened but not sent
+   * is closed (its amount may be stale), and the rest becomes one more
+   * payment, already confirmed. Nothing left to collect: no change.
+   */
+  async markReceived(input: {
+    caller: VerifiedCaller;
+    sessionId: string;
+    userId: string;
+    logger?: Logger;
+  }): Promise<void> {
+    return retryOnConflict(async () => {
+      const session = await sessionStore.get(input.sessionId);
+      if (!session || session.collectorUserId !== input.caller.userId) {
+        throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      }
+      if (
+        session.status !== 'claiming' &&
+        session.status !== 'paying' &&
+        session.status !== 'settled'
+      ) {
+        throw new AppError('SESSION_INVALID_STATE', `Session is ${session.status}`);
+      }
+      const guest = session.participants.find((p) => p.userId === input.userId);
+      if (!guest || guest.userId === session.collectorUserId) {
+        throw new AppError('SESSION_NOT_FOUND', 'Guest not found');
+      }
+
+      const owed = await owedNow(session, guest);
+      const now = new Date().toISOString();
+      const changed: Payment[] = [];
+      let entries = paymentsOf(guest, owed);
+      for (const entry of entries.filter((e) => e.status === 'pending')) {
+        const payment = await paymentStore.get(entry.paymentId);
+        if (!payment || payment.status !== 'pending') continue;
+        const sent = isSent(entry);
+        changed.push({
+          ...payment,
+          status: sent ? 'succeeded' : 'failed',
+          events: [
+            ...payment.events,
+            {
+              at: now,
+              from: 'pending',
+              to: sent ? 'succeeded' : 'failed',
+              source: 'api',
+              note: sent ? 'collector marked received' : 'superseded: collector marked received',
+            },
+          ],
+        });
+        entries = entries.map((e) =>
+          e.paymentId !== entry.paymentId
+            ? e
+            : sent
+              ? { ...e, status: 'succeeded', paidAt: now }
+              : { ...e, status: 'failed', reason: 'superseded' },
+        );
+      }
+
+      const rest = owed - sentPence(entries);
+      let updated: Participant = guest;
+      if (changed.length > 0) {
+        updated = { ...guest, payments: entries, payment: aggregatePayment(entries) };
+      }
+      if (rest > 0) {
+        const paymentId = uuidv7();
+        changed.push({
+          paymentId,
+          sessionId: session.sessionId,
+          payerUserId: guest.userId,
+          collectorUserId: session.collectorUserId,
+          amountPence: rest,
+          currency: 'GBP',
+          status: 'succeeded',
+          // Not from a client request; unique per payment like a real key.
+          idempotencyKey: `received:${paymentId}`,
+          events: [
+            {
+              at: now,
+              from: 'pending',
+              to: 'succeeded',
+              source: 'api',
+              note: 'collector marked received',
+            },
+          ],
+          createdAt: now,
+        });
+        updated = withPayment(updated, entries, {
+          paymentId,
+          amountPence: rest,
+          status: 'succeeded',
+          paidAt: now,
+        });
+      }
+      if (changed.length === 0) return;
+
+      await paymentStore.applyUpdates({
+        sessionId: session.sessionId,
+        payments: changed,
+        participant: updated,
+      });
+      maybeSettleSession(
+        { ...session, participants: replaceParticipant(session.participants, updated) },
+        input.logger,
+      );
+    }, busy);
   },
 
   /** The collector marks a guest payment as received. */

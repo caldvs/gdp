@@ -388,6 +388,23 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     return c.json(session);
   });
 
+  // The lead saw the money land: everything this guest owes is received.
+  r.post(
+    '/:sessionId/participants/:userId/received',
+    requireAuth(deps.idTokenVerifier),
+    async (c) => {
+      const caller = callerOf(c);
+      const sessionId = c.req.param('sessionId');
+      await paymentService.markReceived({
+        caller,
+        sessionId,
+        userId: c.req.param('userId'),
+        logger: c.var.logger,
+      });
+      return c.json(await sessionService.get({ caller, sessionId }));
+    },
+  );
+
   r.post(
     '/:sessionId/payments',
     requireAuth(deps.idTokenVerifier),

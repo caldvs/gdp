@@ -11,7 +11,7 @@ import type { components } from '@gdp/core/api';
 import { isFeeRequired, useAbandonSession, useAddShare, useCloseSession, useSetClaims, useSetExpectedDiners, useShareSession } from '@gdp/core/api/hooks/useSession';
 import { useMyBilling } from '@gdp/core/api/hooks/useTableFee';
 import { STRIPE_PUBLISHABLE_KEY } from '@/lib/config';
-import { useConfirmPayment } from '@gdp/core/api/hooks/usePaymentActions';
+import { useMarkReceived } from '@gdp/core/api/hooks/usePaymentActions';
 import { formatGBP } from '@gdp/core/lib/money';
 import { ledger } from '@gdp/core/lib/ledger';
 import { claimRows, type ClaimRow } from '@gdp/core/lib/claimRows';
@@ -81,7 +81,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
   const router = useRouter();
   const close = useCloseSession(s.sessionId);
   const abandon = useAbandonSession(s.sessionId);
-  const confirm = useConfirmPayment(s.sessionId);
+  const received = useReceived(s, b);
   const me = s.participants.find((p) => p.userId === meUserId);
   // Straight after sharing the lead has nothing yet: start on their items.
   const [tab, setTab] = useState<LeadTab>(() => (me && (me.claimedItemIds.length > 0 || me.sharedItemIds.length > 0) ? 'table' : 'mine'));
@@ -153,10 +153,9 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
                 {guests.length === 0 ? (
                   <Row title="Nobody’s joined yet" sub="Show them the QR code." muted />
                 ) : guests.map((p) => (
-                  <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
+                  <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
                 ))}
               </Box>
-              {confirm.isError ? <Notice tone="error">{confirm.error.message}</Notice> : null}
             </Section>
 
             {everyoneHere && left.length > 0 ? (
@@ -187,6 +186,7 @@ export function LeadTable({ s, b, meUserId }: { s: Session; b: Bill; meUserId: s
         </ActionBar>
       )}
 
+      {received.sheet}
       {leftOpen ? <NotClaimedSheet s={s} rows={left} meUserId={meUserId} onClose={() => startTransition(() => setLeftOpen(false))} /> : null}
       {sizing !== null ? (
         <PartySizeSheet
@@ -284,39 +284,80 @@ function NotClaimedSheet({ s, rows, meUserId, onClose }: { s: Session; rows: Cla
   );
 }
 
-function PersonRow({ p, owed, onConfirm, busy }: { p: Participant; owed: number; onConfirm: (paymentId: string) => void; busy: boolean }) {
+/** What a guest has claimed, by name: "Lasagne, 2 × Negroni, Calamari (split)". */
+export function claimedNames(b: Bill, p: Participant): string {
+  const counts = new Map<string, number>();
+  for (const id of p.claimedItemIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const names: string[] = [];
+  for (const item of b.items) {
+    const n = counts.get(item.itemId);
+    if (n) names.push(n > 1 ? `${n} × ${item.name}` : item.name);
+    if (p.sharedItemIds.includes(item.itemId)) names.push(`${item.name} (split)`);
+  }
+  return names.join(', ');
+}
+
+/**
+ * One guest on the lead's list: what they've claimed and what that comes
+ * to, live, and Received for when their money lands (the lead usually sees
+ * it as a banking app notification), whether or not they've said they paid.
+ */
+function PersonRow({ s, b, p, onReceived, busy }: { s: Session; b: Bill; p: Participant; onReceived: (p: Participant) => void; busy: boolean }) {
   const name = firstName(p.displayName, 'Guest');
   const av = <Avatar name={p.displayName || name} />;
+  const owed = owedFor(s, b, p);
   const l = ledger(p, owed);
-  // Payments they say they've sent, oldest first: the lead confirms each.
-  const next = l.waiting[0];
-  if (l.settled) return <Row lead={av} title={name} sub={formatGBP(owed)} end={<Badge tone="ok">Paid</Badge>} />;
-  if (next) {
-    const sub = l.confirmedPence > 0
-      ? `Says they’ve paid ${formatGBP(next.amountPence)} more`
-      : `Says they’ve paid ${formatGBP(next.amountPence)}`;
-    return (
-      <Row
-        lead={av}
-        title={name}
-        sub={l.waiting.length > 1 ? `${sub} (${l.waiting.length} to confirm)` : sub}
-        end={<Button small onClick={() => onConfirm(next.paymentId)} disabled={busy} aria-label={`Confirm ${name} paid ${formatGBP(next.amountPence)}`}>Confirm</Button>}
-      />
-    );
+  const items = claimedNames(b, p);
+  if (owed === 0 && l.confirmedPence === 0) return <Row lead={av} title={name} sub="Nothing claimed yet" />;
+  const amount = <Pulse value={owed}><span>{formatGBP(owed)}</span></Pulse>;
+  if (l.settled) {
+    return <Row lead={av} title={name} sub={items} end={<span className="person__end">{amount}<Badge tone="ok">Paid</Badge></span>} />;
   }
-  if (l.confirmedPence > 0) {
-    // Paid once, then took more: the rest is still to come.
-    return <Row lead={av} title={name} sub={`Paid ${formatGBP(l.confirmedPence)} · owes ${formatGBP(l.duePence)} more`} end={formatGBP(owed)} />;
-  }
-  if (owed === 0 && !l.draft) return <Row lead={av} title={name} sub="Nothing claimed yet" />;
-  return <Row lead={av} title={name} sub={l.draft ? 'Paying' : 'Not paid'} end={formatGBP(owed)} />;
+  // What they say they've sent, so the lead can match it to their bank.
+  const says = l.waiting.reduce((acc, e) => acc + e.amountPence, 0);
+  const status = says > 0
+    ? `Says they’ve paid ${formatGBP(says)}${l.confirmedPence > 0 ? ' more' : ''}`
+    : l.confirmedPence > 0 ? `Owes ${formatGBP(owed - l.confirmedPence)} more` : null;
+  return (
+    <Row
+      lead={av}
+      title={name}
+      sub={status ? `${status} · ${items}` : items}
+      end={
+        <span className="person__end">
+          {amount}
+          <Button small tone="secondary" disabled={busy} onClick={() => onReceived(p)} aria-label={`${name}’s ${formatGBP(owed - l.confirmedPence)} received`}>Received</Button>
+        </span>
+      }
+    />
+  );
+}
+
+/** Received, asked once first: it tells the guest they're paid up, and can't be undone. */
+function useReceived(s: Session, b: Bill) {
+  const mark = useMarkReceived(s.sessionId);
+  const [who, setWho] = useState<Participant | null>(null);
+  const close = () => startTransition(() => { mark.reset(); setWho(null); });
+  const due = who ? Math.max(0, owedFor(s, b, who) - ledger(who, owedFor(s, b, who)).confirmedPence) : 0;
+  const sheet = who ? (
+    <Confirm
+      title={`${formatGBP(due)} from ${firstName(who.displayName, 'them')}?`}
+      body="Only once it’s in your account. They’ll see they’re paid up."
+      ok="Received"
+      busy={mark.isPending}
+      error={mark.error?.message}
+      onOk={() => mark.mutate(who.userId, { onSuccess: close })}
+      onCancel={close}
+    />
+  ) : null;
+  return { ask: (p: Participant) => { mark.reset(); setWho(p); }, busy: mark.isPending, sheet };
 }
 
 /* ============================ closed ============================ */
 
 export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
-  // Guests can still pay after the bill is closed, so the lead can still confirm.
-  const confirm = useConfirmPayment(s.sessionId);
+  // Guests can still pay after the bill is closed, so the lead can still mark it received.
+  const received = useReceived(s, b);
   const guests = s.participants.filter((p) => p.userId !== s.creatorUserId);
   const outstanding = guests.filter((p) => !isPaid(s, b, p));
   const collected = guests.reduce((acc, p) => acc + confirmedFor(s, b, p), 0);
@@ -337,7 +378,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         {guests.length > 0 ? (
           <Section title="People">
             <Box list>{guests.map((p) => (
-              <PersonRow key={p.userId} p={p} owed={owedFor(s, b, p)} busy={confirm.isPending} onConfirm={(paymentId) => confirm.mutate(paymentId)} />
+              <PersonRow key={p.userId} s={s} b={b} p={p} onReceived={received.ask} busy={received.busy} />
             ))}</Box>
           </Section>
         ) : null}
@@ -372,6 +413,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         <Box><RowLink href={`/session/${s.sessionId}/summary`} title="Full summary" /></Box>
       </Page>
       <ActionBar><Button grow href="/" replace>Done</Button></ActionBar>
+      {received.sheet}
     </>
   );
 }

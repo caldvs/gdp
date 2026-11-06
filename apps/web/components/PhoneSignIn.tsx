@@ -6,18 +6,15 @@ import { ApiError } from '@gdp/core/api';
 import { useStartPhoneSignIn, useUpdateMe, useVerifyPhoneCode } from '@gdp/core/api/hooks/usePhoneSignIn';
 import { safeInternalPath } from '@gdp/core/lib/redirect';
 import { BackButton, Button, Title } from './ui';
+import { CodeBoxes, NOT_A_MOBILE, PHONE_CODE_LENGTH, PhoneField, RESEND_SECONDS, ResendCode, looksLikeUkMobile, shownPhone, useCountdown } from './PhoneCode';
 
 /**
  * #213 M4 / M4.1: your mobile number, then the 4-digit code by text (#231)
- * or WhatsApp,
- * in the same tab. A new account then gives its name and the email its
- * bill emails go to. Texts come with #231, so there's no *Send it by text
- * instead* yet.
+ * or WhatsApp, in the same tab. A new account then gives its name and the
+ * email its bill emails go to.
  */
 
-const CODE_LENGTH = 4;
 const STACK = { display: 'flex', flexDirection: 'column', gap: 12 } as const;
-const RESEND_SECONDS = 60;
 const PENDING_KEY = 'gdp.phoneSignIn.pending';
 const PENDING_MS = 10 * 60 * 1000;
 
@@ -43,12 +40,6 @@ function writePending(p: Pending | null) {
   } catch {}
 }
 
-/** `+447700900123` → `+44 7700 900123`. */
-const shown = (e164: string) => (e164.startsWith('+44') && e164.length === 13 ? `+44 ${e164.slice(3, 7)} ${e164.slice(7)}` : e164);
-
-/** Loose check before asking the server: a UK mobile, 07… or 7… */
-const looksLikeUkMobile = (typed: string) => /^(?:\+?44|0)?7\d{9}$/.test(typed.replace(/[\s().-]/g, '').replace(/^0044/, '44'));
-
 type Stage = 'PHONE' | 'CODE';
 
 export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmail }: { title?: string; /** #231: texts where WhatsApp isn't set up. */ channel?: 'whatsapp' | 'sms'; onUseEmail?: () => void }) {
@@ -61,7 +52,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   const [requestId, setRequestId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(0);
+  const [countdown, startCountdown] = useCountdown();
   const start = useStartPhoneSignIn();
   const verify = useVerifyPhoneCode();
   const codeInput = useRef<HTMLInputElement>(null);
@@ -78,12 +69,6 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
     if (stage === 'CODE') codeInput.current?.focus();
   }, [stage]);
 
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setInterval(() => setCountdown((s) => Math.max(0, s - 1)), 1000);
-    return () => clearInterval(t);
-  }, [countdown]);
-
   const send = async (number: string) => {
     setError(null);
     try {
@@ -93,7 +78,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
       setRequestId(out.requestId);
       setCode('');
       setStage('CODE');
-      setCountdown(RESEND_SECONDS);
+      startCountdown(RESEND_SECONDS);
     } catch (err) {
       setError(
         err instanceof ApiError && (err.code === 'RATE_LIMITED' || err.code === 'INVALID_INPUT' || err.code === 'CHANNEL_UNAVAILABLE')
@@ -104,7 +89,7 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   };
 
   const submitCode = async (entered: string) => {
-    if (!requestId || verify.isPending || entered.length !== CODE_LENGTH) return;
+    if (!requestId || verify.isPending || entered.length !== PHONE_CODE_LENGTH) return;
     setError(null);
     try {
       const res = await verify.mutateAsync({ requestId, code: entered });
@@ -137,30 +122,11 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
           style={STACK}
           onSubmit={(e) => {
             e.preventDefault();
-            if (!looksLikeUkMobile(typed)) return setError('Enter a UK mobile number, like 07700 900123.');
+            if (!looksLikeUkMobile(typed)) return setError(NOT_A_MOBILE);
             void send(typed);
           }}
         >
-          <div className="field">
-            <label htmlFor="phone">Your mobile number</label>
-            <div className={error ? 'input affix affix--gap input--invalid' : 'input affix affix--gap'}>
-              <span>+44</span>
-              <input
-                id="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel-national"
-                enterKeyHint="go"
-                placeholder="7700 900123"
-                value={typed}
-                onChange={(e) => { setTyped(e.target.value); if (error) setError(null); }}
-                disabled={start.isPending}
-                aria-invalid={!!error}
-                aria-describedby={error ? 'phone-err' : undefined}
-              />
-            </div>
-            {error ? <div id="phone-err" className="field__err" role="alert">{error}</div> : null}
-          </div>
+          <PhoneField value={typed} onChange={(v) => { setTyped(v); if (error) setError(null); }} error={error} disabled={start.isPending} />
           <Button type="submit" busy={start.isPending}>Send me a code</Button>
           {onUseEmail ? <Button tone="text" onClick={onUseEmail}>Use email instead</Button> : null}
         </form>
@@ -172,44 +138,18 @@ export function PhoneSignIn({ title = 'Sign in', channel = 'whatsapp', onUseEmai
   return (
     <>
       <BackButton onClick={() => { writePending(null); setRequestId(null); setCode(''); setError(null); setStage('PHONE'); }}>Change number</BackButton>
-      <Title title="Enter the code" sub={`Sent to ${shown(phone)} ${how}. Works for 10 minutes.`} />
+      <Title title="Enter the code" sub={`Sent to ${shownPhone(phone)} ${how}. Works for 10 minutes.`} />
       <form noValidate style={STACK} onSubmit={(e) => { e.preventDefault(); void submitCode(code); }}>
-        <div className="field">
-          <label htmlFor="code" className="vh">4-digit code</label>
-          <div className="code4">
-            <input
-              ref={codeInput}
-              id="code"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              autoComplete="one-time-code"
-              maxLength={CODE_LENGTH}
-              value={code}
-              disabled={expired || verify.isPending}
-              aria-invalid={!!error}
-              aria-describedby={error ? 'code-err' : undefined}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, '').slice(0, CODE_LENGTH);
-                setCode(digits);
-                if (error) setError(null);
-                if (digits.length === CODE_LENGTH) void submitCode(digits);
-              }}
-            />
-            {Array.from({ length: CODE_LENGTH }, (_, i) => (
-              <span key={i} aria-hidden="true" className={i === Math.min(code.length, CODE_LENGTH - 1) && !expired ? 'code4__box code4__box--on' : 'code4__box'}>
-                {code[i] ?? ''}
-              </span>
-            ))}
-          </div>
-          {error ? <div id="code-err" className="field__err" role="alert">{error}</div> : null}
-        </div>
+        <CodeBoxes
+          inputRef={codeInput}
+          value={code}
+          onChange={(digits) => { setCode(digits); if (error) setError(null); }}
+          onComplete={(digits) => void submitCode(digits)}
+          disabled={expired || verify.isPending}
+          error={error}
+        />
       </form>
-      {expired || countdown <= 0 ? (
-        <Button tone={expired ? 'primary' : 'text'} busy={start.isPending} onClick={() => void send(phone)}>Send a new code</Button>
-      ) : (
-        <p className="field__hint">New code in {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, '0')}</p>
-      )}
+      <ResendCode countdown={countdown} expired={expired} busy={start.isPending} onResend={() => void send(phone)} />
     </>
   );
 }

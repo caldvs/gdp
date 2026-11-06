@@ -8,6 +8,8 @@ import { createApp } from '../../src/app.js';
 import { FixtureBillParser } from '../../src/services/bills/fixtureParser.js';
 import { createSessionTokenVerifier, type IdTokenVerifier } from '../../src/services/auth.js';
 import { guestMayCall } from '../../src/middleware/auth.js';
+import { ConsoleSmsSender } from '../../src/services/messaging/sms.js';
+import { guestPhoneStore } from '../../src/storage/guestPhoneStore.js';
 import {
   createBillFor,
   ensureBillsBucket,
@@ -133,6 +135,154 @@ describe('Guests join with just a name (#183)', () => {
     expect(
       (await post(app, '/v1/sessions/guest-join', { code: joinCode, name: 'Tom' })).status,
     ).toBe(404);
+  });
+});
+
+describe('#214: where texts are on, guests prove their number', () => {
+  beforeAll(ensureBillsBucket);
+
+  const mobile = () => `07700 ${String(Math.floor(Math.random() * 1e6)).padStart(6, '0')}`;
+  const e164 = (typed: string) => `+44${typed.replace(/\D/g, '').slice(1)}`;
+  const buildWithTexts = () => {
+    const sms = new ConsoleSmsSender();
+    const app = createApp({
+      idTokenVerifier: verifier,
+      sessionJwtSecret: secret,
+      billParser: new FixtureBillParser(sampleParsedBill),
+      phoneSms: sms,
+    });
+    return { app, sms };
+  };
+  const codeIn = (sms: ConsoleSmsSender) => /^(\d{4}) /.exec(sms.outbox.at(-1)!.body)![1]!;
+
+  it('texts a code, refuses a wrong one, seats them with the right one, and never shows the number', async () => {
+    const { app, sms } = buildWithTexts();
+    const creator = `c-${uuidv7()}`;
+    const { sessionId, joinCode } = await sharedSession(app, creator);
+    const typed = mobile();
+
+    // A name alone isn't enough here.
+    expect(
+      (await post(app, '/v1/sessions/guest-join', { code: joinCode, name: 'Tom' })).status,
+    ).toBe(400);
+
+    const started = await post(app, '/v1/sessions/guest-join/start', {
+      code: joinCode,
+      phone: typed,
+    });
+    expect(started.status).toBe(200);
+    const { requestId, phone } = (await started.json()) as { requestId: string; phone: string };
+    expect(phone).toBe(e164(typed));
+    expect(sms.outbox).toHaveLength(1);
+    expect(sms.outbox[0]!.to).toBe(e164(typed));
+    const code = codeIn(sms);
+
+    const wrongCode = code === '0000' ? '1111' : '0000';
+    const wrong = await post(app, '/v1/sessions/guest-join', {
+      code: joinCode,
+      name: 'Tom',
+      requestId,
+      phoneCode: wrongCode,
+    });
+    expect(wrong.status).toBe(200);
+    expect(await wrong.json()).toEqual({ status: 'wrong', attemptsLeft: 4 });
+
+    const joined = await post(app, '/v1/sessions/guest-join', {
+      code: joinCode,
+      name: 'Tom',
+      requestId,
+      phoneCode: code,
+    });
+    expect(joined.status).toBe(201);
+    const body = (await joined.json()) as {
+      status: string;
+      token: string;
+      session: { participants: { userId: string; displayName: string }[] };
+    };
+    expect(body.status).toBe('joined');
+    const tom = body.session.participants.find((p) => p.displayName === 'Tom')!;
+    expect(tom.userId).toMatch(/^guest-/);
+    expect(await guestPhoneStore.get(sessionId, tom.userId)).toBe(e164(typed));
+
+    // Entering it again (a double tap) finds the same seat, not a second one.
+    const again = await post(app, '/v1/sessions/guest-join', {
+      code: joinCode,
+      name: 'Tom',
+      requestId,
+      phoneCode: code,
+    });
+    expect(again.status).toBe(201);
+    const twice = (await again.json()) as typeof body;
+    expect(twice.session.participants.filter((p) => p.displayName === 'Tom')).toHaveLength(1);
+    expect(twice.session.participants.find((p) => p.displayName === 'Tom')!.userId).toBe(
+      tom.userId,
+    );
+    // Without the tab's secret the code is no good to anyone else.
+    const stolen = await post(app, '/v1/sessions/guest-join', {
+      code: joinCode,
+      name: 'Eve',
+      requestId: `${requestId.split('.')[0]}.${'A'.repeat(43)}`,
+      phoneCode: code,
+    });
+    expect(await stolen.json()).toEqual({ status: 'expired' });
+
+    // Nobody at the table sees the number: not the lead, not Tom, not another guest.
+    const digits = e164(typed).slice(3);
+    const leadView = await (
+      await app.request(`/v1/sessions/${sessionId}`, { headers: makeAuth(creator) })
+    ).text();
+    const tomView = await (
+      await app.request(`/v1/sessions/${sessionId}`, {
+        headers: { authorization: `Bearer ${body.token}` },
+      })
+    ).text();
+    const leadList = await (
+      await app.request('/v1/me/sessions', { headers: makeAuth(creator) })
+    ).text();
+    const preview = await (await post(app, '/v1/sessions/preview', { code: joinCode })).text();
+    for (const seen of [leadView, tomView, leadList, preview, JSON.stringify(body)]) {
+      expect(seen).not.toContain(digits);
+      expect(seen).not.toMatch(/e164|GUESTPHONE/);
+    }
+  });
+
+  it('holds back a second code to the same number, and sends none for a bill that is not taking people', async () => {
+    const { app, sms } = buildWithTexts();
+    const creator = `c-${uuidv7()}`;
+    const { sessionId, joinCode } = await sharedSession(app, creator);
+    const typed = mobile();
+    expect(
+      (await post(app, '/v1/sessions/guest-join/start', { code: joinCode, phone: typed })).status,
+    ).toBe(200);
+    expect(
+      (await post(app, '/v1/sessions/guest-join/start', { code: joinCode, phone: typed })).status,
+    ).toBe(429);
+    expect(
+      (await post(app, '/v1/sessions/guest-join/start', { code: joinCode, phone: '020 7946 0000' }))
+        .status,
+    ).toBe(400);
+
+    await app.request(`/v1/sessions/${sessionId}/abandon`, {
+      method: 'POST',
+      headers: makeAuth(creator),
+    });
+    expect(
+      (await post(app, '/v1/sessions/guest-join/start', { code: joinCode, phone: mobile() }))
+        .status,
+    ).toBe(404);
+    expect(sms.outbox).toHaveLength(1);
+  });
+
+  it('says texts are off where they are, and the name-only join still works', async () => {
+    const app = buildApp();
+    const { joinCode } = await sharedSession(app, `c-${uuidv7()}`);
+    expect(
+      (await post(app, '/v1/sessions/guest-join/start', { code: joinCode, phone: mobile() }))
+        .status,
+    ).toBe(503);
+    expect(
+      (await post(app, '/v1/sessions/guest-join', { code: joinCode, name: 'Tom' })).status,
+    ).toBe(201);
   });
 });
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { validJson } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -11,6 +12,7 @@ import {
   ClaimsRequestSchema,
   CreateSessionRequestSchema,
   GuestJoinRequestSchema,
+  GuestJoinStartRequestSchema,
   JoinByCodeRequestSchema,
   LockClaimsRequestSchema,
   SetPayoutCheckRequestSchema,
@@ -28,6 +30,10 @@ import { mintSessionToken } from '../services/auth/sessionToken.js';
 import { sourceIpOf } from './auth.js';
 import { commentService } from '../services/sessions/commentService.js';
 import { PostCommentRequestSchema } from '../types/comments.js';
+import { checkPhoneCode, createPhoneSignInService } from '../services/auth/phoneSignIn.js';
+import { maskPhone } from '../services/messaging/phone.js';
+import type { SmsSender } from '../services/messaging/sms.js';
+import { guestPhoneStore } from '../storage/guestPhoneStore.js';
 import { proofService } from '../services/sessions/proofService.js';
 import { StartProofRequestSchema } from '../types/proofs.js';
 
@@ -42,6 +48,12 @@ const GUEST_JOINS_PER_IP_HOUR = 20;
 const GUEST_JOINS_PER_SESSION_HOUR = 60;
 const PREVIEWS_PER_IP_WINDOW = 60;
 
+/** #214: a guest id, UUID-shaped, that only this code request maps to. */
+function guestIdFor(requestId: string): string {
+  const h = createHash('sha256').update(`guest-join:${requestId}`).digest('hex');
+  return `guest-${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
 export interface SessionRoutesDeps {
   idTokenVerifier?: IdTokenVerifier;
   /** Signs guests' session tokens (#183). Absent: guests can't join without signing in. */
@@ -50,6 +62,11 @@ export interface SessionRoutesDeps {
   reports?: ReportService;
   /** Gates sharing on the fee, and refunds it when nobody joined. Absent when Stripe is off. */
   tableFees?: Pick<TableFeeService, 'refundIfNobodyJoined' | 'shareEntitlement' | 'takeFromHold'>;
+  /**
+   * #214: texts guests the code that proves their number. Null or absent:
+   * guests join with just a name (#183).
+   */
+  phoneSms?: SmsSender | null;
 }
 
 export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
@@ -144,11 +161,49 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
     return c.json(await sessionService.preview({ code }));
   });
 
-  // Guests join with just a name, no account (#183). The token they get
-  // works for this one session (see guestMayCall).
+  // #214: where texts are on, a guest proves their mobile number before
+  // joining. Same codes, limits and text as phone sign-in; no account.
+  const sms = deps.phoneSms ?? null;
+  const guestCodes =
+    sms && deps.jwtSecret
+      ? createPhoneSignInService({
+          messenger: null,
+          sms,
+          jwtSecret: deps.jwtSecret,
+          logger: baseLogger,
+        })
+      : null;
+
+  r.post('/guest-join/start', validJson(GuestJoinStartRequestSchema), async (c) => {
+    if (!guestCodes) throw new AppError('CHANNEL_UNAVAILABLE', 'Texts aren’t available here');
+    const { code, phone } = c.req.valid('json');
+    // Only for a bill that's taking people, so codes can't be sent for nothing.
+    await sessionService.resolveByCode({ code });
+    const sourceIp = sourceIpOf(c.env);
+    const out = await guestCodes.start({
+      phone,
+      channel: 'sms',
+      ...(sourceIp ? { sourceIp } : {}),
+    });
+    return c.json({ requestId: out.requestId, phone: out.phone });
+  });
+
+  // Guests join with a name, and where texts are on a verified number (#214),
+  // but no account (#183). The token they get works for this one session
+  // (see guestMayCall).
   r.post('/guest-join', validJson(GuestJoinRequestSchema), async (c) => {
     if (!deps.jwtSecret) throw new AppError('INTERNAL_ERROR', 'Guest join not configured');
-    const { code, name } = c.req.valid('json');
+    const { code, name, requestId, phoneCode } = c.req.valid('json');
+    let phone: string | null = null;
+    if (guestCodes) {
+      if (!requestId || !phoneCode) {
+        throw new AppError('INVALID_INPUT', 'Verify your mobile number first');
+      }
+      c.header('cache-control', 'no-store');
+      const checked = await checkPhoneCode({ requestId, code: phoneCode });
+      if (checked.status !== 'ok') return c.json(checked);
+      phone = checked.phone;
+    }
     const ip = sourceIpOf(c.env) ?? 'unknown';
     const perIp = await countInWindow(`GUESTRATE#ip:${ip}`, 60 * 60, GUEST_JOINS_PER_IP_HOUR);
     if (!perIp.ok) {
@@ -167,13 +222,30 @@ export const buildSessionRoutes = (deps: SessionRoutesDeps): Hono => {
         retryAfterSeconds: perTable.retryAfterSeconds,
       });
     }
-    const { userId, session } = await sessionService.joinAsGuest({ code, name });
+    // A verified guest's id comes from their code request: the same tab can
+    // enter a used code again for a few minutes (a double tap, a reload),
+    // and that finds the seat it already has rather than making a second.
+    const { userId, session } = await sessionService.joinAsGuest({
+      code,
+      name,
+      ...(phone && requestId ? { userId: guestIdFor(requestId) } : {}),
+    });
+    // Kept apart from the session's rows, so no one at the table sees it.
+    if (phone) await guestPhoneStore.put(sessionId, userId, phone);
     const token = await mintSessionToken(
       { userId, email: '', name, guestSessionId: sessionId },
       deps.jwtSecret,
     );
-    baseLogger.info({ event: 'session.guest_joined', sessionId, userId }, 'Guest joined');
-    return c.json({ token, session }, 201);
+    baseLogger.info(
+      {
+        event: 'session.guest_joined',
+        sessionId,
+        userId,
+        ...(phone ? { phone: maskPhone(phone) } : {}),
+      },
+      'Guest joined',
+    );
+    return c.json({ status: 'joined' as const, token, session }, 201);
   });
 
   r.post(

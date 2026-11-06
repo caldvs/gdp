@@ -226,9 +226,11 @@ export const sessionService = {
   async joinAsGuest(input: {
     code: string;
     name: string;
+    /** A guest id to seat (#214: one per verified code, so re-entering it doesn't seat them twice). */
+    userId?: string;
   }): Promise<{ userId: string; session: Session }> {
     const { sessionId } = await this.resolveByCode({ code: input.code });
-    const userId = `guest-${uuidv7()}`;
+    const userId = input.userId ?? `guest-${uuidv7()}`;
     const session = await this.join({ caller: { userId, displayName: input.name }, sessionId });
     return { userId, session };
   },

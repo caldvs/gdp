@@ -136,7 +136,7 @@ colA_end = y
 
 y = 308
 y = group(BX, y, BW, 'Sessions', '/v1/sessions', [
-    ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
+    ('POST', '/'), ('POST', '/preview'), ('POST', '/guest-join/start'), ('POST', '/guest-join'), ('POST', '/by-code'), ('GET', '/{id}'), ('PATCH', '/{id}'), ('PUT', '/{id}/payout-check'), ('POST', '/{id}/share'), ('POST', '/{id}/join'),
     ('POST', '/{id}/claims'), ('POST', '/{id}/shares'), ('PUT', '/{id}/shares/{itemId}'), ('DELETE', '/{id}/shares/{itemId}'),
     ('POST', '/{id}/ready'), ('POST', '/{id}/lock-claims'), ('POST', '/{id}/close'), ('POST', '/{id}/report'),
     ('POST', '/{id}/abandon'), ('POST', '/{id}/open-payments'), ('POST', '/{id}/payments'), ('GET', '/{id}/comments'), ('POST', '/{id}/comments'), ('POST', '/{id}/proofs'), ('GET', '/{id}/proofs'), ('POST', '/{id}/proofs/{pid}/sent'), ('DELETE', '/{id}/proofs/{pid}')]) + 10
@@ -179,7 +179,7 @@ text(C4X + 16, ddb_y + 50, 'Table gdp-{env} · on-demand')
 text(C4X + 16, ddb_y + 69, 'pk/sk · GSI1 · TTL')
 yy = ddb_y + 98
 for keys, desc in [('USER# AUTH# SIGNIN#', 'Accounts, sign-in codes'), ('BILL# IMGHASH# READ# ANALYSIS#', 'Bills, photo dedupe, reads, read cache'),
-                   ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF#', 'Comments, payment screenshots'),
+                   ('SESS# PART# SHARE# BILLLOCK#', 'Sessions, diners, splits, bill locks'), ('COMMENT# PROOF# GUESTPHONE#', 'Comments, proofs, guest numbers'),
                    ('JCODE# PAY#', 'Join codes, guest payments to the lead'), ('WAWIN# WAMSG# WATPL#', 'WhatsApp windows, seen, sends'),
                    ('FEE# CREDIT# HOLDQ#', 'Platform fee holds, free credits'), ('IDMP# VENUEQ# LEADMAILQ', 'Idempotency, venues, lead emails')]:
     text(C4X + 16, yy, keys, 't-mono'); text(C4X + 16, yy + 17, desc); yy += 36

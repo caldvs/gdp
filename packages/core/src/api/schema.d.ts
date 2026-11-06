@@ -544,13 +544,44 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Join a bill with just a name, no account
-         * @description Guests never sign in (#183). Seats a new guest at the table and returns a
+         * Join a bill with a name (and a verified number), no account
+         * @description Guests have no account (#183). Seats a new guest at the table and returns a
          *     session token that works for this one session only (its own session, the
          *     bill it's pinned to, its payments, and `GET /v1/me`; anything else is 401 `AUTH_MISSING`).
          *     At most 20 per IP address an hour, and 60 per table an hour.
+         *
+         *     #214: where texts are on (`GET /v1/auth/methods` says `sms: true`), the
+         *     guest first gets a 4-digit code from `POST /v1/sessions/guest-join/start`
+         *     and sends `requestId` and `phoneCode` here; without them it's 400. A
+         *     wrong or expired code answers 200 with `status: wrong` (and
+         *     `attemptsLeft`) or `status: expired`. The number is kept for the bill's
+         *     texts, apart from the session, and never shown to anyone at the table.
          */
         post: operations["guestJoin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/guest-join/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Text a guest the code that proves their number
+         * @description #214. Only for a bill taking people (`claiming`). Texts a 4-digit code
+         *     (10 minutes, 5 tries) to a UK mobile, through AWS End User Messaging
+         *     SMS (#231). The same limits as phone sign-in: 3 an hour per number,
+         *     30 seconds apart, 10 an hour per IP address, 200 an hour in all
+         *     (429 `RATE_LIMITED`). 503 `CHANNEL_UNAVAILABLE` where texts are off.
+         */
+        post: operations["guestJoinStart"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2016,11 +2047,27 @@ export interface components {
         GuestJoinRequest: {
             code: string;
             name: string;
+            /** @description From guest-join/start (#214) */
+            requestId?: string;
+            /** @description The texted code (#214) */
+            phoneCode?: string;
+        };
+        GuestJoinStartRequest: {
+            code: string;
+            /** @description A UK mobile */
+            phone: string;
         };
         GuestJoinResponse: {
+            /** @enum {string} */
+            status: "joined";
             /** @description Session token for this one session */
             token: string;
             session: components["schemas"]["Session"];
+        };
+        GuestJoinCodeRefused: {
+            /** @enum {string} */
+            status: "wrong" | "expired";
+            attemptsLeft?: number;
         };
         SessionPreview: {
             /** Format: uuid */
@@ -3033,6 +3080,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description The code was wrong or has expired (#214) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestJoinCodeRefused"];
+                };
+            };
             /** @description Seated; keep the token */
             201: {
                 headers: {
@@ -3054,6 +3110,62 @@ export interface operations {
             };
             /** @description Too many joins (`RATE_LIMITED`). */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    guestJoinStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestJoinStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Sent; `requestId` is this tab's secret for the code */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        requestId: string;
+                        /** @description The number in E.164 */
+                        phone: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't taking new people */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many codes (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Texts aren't on here (`CHANNEL_UNAVAILABLE`). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

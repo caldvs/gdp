@@ -237,8 +237,21 @@ export const GuestJoinRequestSchema = z.object({
     .max(40)
     // No markup or control characters: it's shown to everyone at the table.
     .refine((n) => !/[<>]/.test(n) && [...n].every((ch) => ch.charCodeAt(0) >= 32), 'Not a name'),
+  // #214: where texts are on, the guest proves their mobile number with the
+  // 4-digit code from /guest-join/start.
+  requestId: z.string().max(100).optional(),
+  phoneCode: z
+    .string()
+    .regex(/^[0-9]{4}$/)
+    .optional(),
 });
 export type GuestJoinRequest = z.infer<typeof GuestJoinRequestSchema>;
+
+/** #214: text a guest the code that proves their number. */
+export const GuestJoinStartRequestSchema = z.object({
+  code: z.string().regex(JOIN_CODE),
+  phone: z.string().min(6).max(24),
+});
 
 /** What the QR's landing page shows before anyone joins (#183). No bank details (ADR-0002). */
 export interface SessionPreview {

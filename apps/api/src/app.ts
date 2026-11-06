@@ -173,6 +173,9 @@ export const createApp = (deps: AppDeps = {}): Hono => {
 
   app.onError(errorHandler);
 
+  // #231: texts sign-in codes; #214: and guests' join codes.
+  const phoneSms = deps.phoneSms !== undefined ? deps.phoneSms : smsFromEnv();
+
   app.route('/', opsRoutes);
   app.route('/', docsRoutes);
   if (sessionJwtSecret) {
@@ -183,7 +186,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
         jwtSecret: sessionJwtSecret,
         phoneMessenger:
           deps.phoneMessenger !== undefined ? deps.phoneMessenger : phoneMessengerFromEnv(),
-        phoneSms: deps.phoneSms !== undefined ? deps.phoneSms : smsFromEnv(),
+        phoneSms,
         ...(env.WHATSAPP_SIGNIN_TEMPLATE ? { phoneTemplate: env.WHATSAPP_SIGNIN_TEMPLATE } : {}),
         devEmailSignIn: deps.devEmailSignIn === true,
         exemptEmails: parseEmailList(deps.exemptEmails ?? env.TABLE_FEE_EXEMPT_EMAILS),
@@ -231,6 +234,7 @@ export const createApp = (deps: AppDeps = {}): Hono => {
       ...(sessionJwtSecret ? { jwtSecret: sessionJwtSecret } : {}),
       reports: createReportService({ emailSender, appBaseUrl: env.APP_BASE_URL }),
       ...(tableFees ? { tableFees } : {}),
+      phoneSms,
     }),
   );
   app.route('/v1/payments', buildPaymentGetRoute({ idTokenVerifier }));

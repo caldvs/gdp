@@ -40,7 +40,7 @@ def chip(xr, y, ttl):
 
 P = {}  # name -> (x, y, w, h)
 # Item types drawn, for the header. The session collection adds its own
-# rows below (META, PART#, SHARE#, CLAIMS, COMMENT#, PROOF#: six types, one counted here).
+# rows below (META, PART#, SHARE#, CLAIMS, COMMENT#, PROOF#, GUESTPHONE#: seven types, one counted here).
 COUNTS = {'types': 3, 'expiring': 3}
 def place(col, y, name, *args, **kw):
     COUNTS['types'] += 1
@@ -91,6 +91,7 @@ rows = [
     ('CLAIMS', 'CLAIMS', ['version: bumped by claims, splits, amends', 'claim and split writes conditional on it']),
     ('COMMENT', 'COMMENT#{uuidv7}', ['userId, displayName, text (≤ 280), createdAt', 'anyone at the table (#218); oldest first']),
     ('PROOF', 'PROOF#{userId}#{proofId}', ['payment screenshot (#226): createdAt, sentAt', 'S3 proofs/{sessionId}/{userId}/{proofId}.jpg']),
+    ('GUESTPHONE', 'GUESTPHONE#{userId}', ['e164: a guest\'s verified number (#214)', 'for the bill\'s texts; never in session reads']),
 ]
 ih = [26 + len(r[2]) * LH + 8 for r in rows]
 sh = 44 + 22 + 10 + sum(ih) + 10 * len(rows) + 4

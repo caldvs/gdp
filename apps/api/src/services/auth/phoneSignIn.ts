@@ -33,7 +33,7 @@ export const codeText = (code: string): string =>
   `${code} is your Pay Me Back code. Don’t share this code.\n\n@paymeback.dev #${code}`;
 
 const RATE_LIMIT_MESSAGES: Record<SignInRateLimited['reason'], string> = {
-  'too-soon': 'We’ve just sent a code. Check WhatsApp, or try again in a moment.',
+  'too-soon': 'We’ve just sent a code. Check your phone, or try again in a moment.',
   'too-many': 'Too many codes for this number. Try again in an hour.',
   ip: 'Too many codes from here. Try again later.',
   global: 'Sign-in is busy. Try again in a few minutes.',
@@ -55,6 +55,12 @@ export type PhoneSignInResult = {
   /** A new account: the web app asks for a name and an email for bill emails. */
   isNew: boolean;
 };
+
+/** A code checked, without signing anyone in (#214: guests). */
+export type PhoneCodeCheck =
+  | { status: 'ok'; phone: string }
+  | { status: 'wrong'; attemptsLeft: number }
+  | { status: 'expired' };
 
 export type PhoneCodeResult =
   | ({ status: 'signedIn' } & PhoneSignInResult)
@@ -136,12 +142,8 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
   },
 
   async enterCode(input: { requestId: string; code: string }): Promise<PhoneCodeResult> {
-    const m = REQUEST_RE.exec(input.requestId);
-    if (!m || !/^[0-9]{4}$/.test(input.code)) return { status: 'expired' };
-    const id = m[1]!;
-    const checked = await signInCodeStore.check(id, sha256(m[2]!), codeHash(id, input.code));
-    if (checked.result === 'wrong') return { status: 'wrong', attemptsLeft: checked.attemptsLeft };
-    if (checked.result === 'expired' || !checked.phone) return { status: 'expired' };
+    const checked = await checkPhoneCode(input);
+    if (checked.status !== 'ok') return checked;
     const result = await signInByPhone(checked.phone, deps.jwtSecret);
     deps.logger?.info(
       { event: 'signin.phone.ok', userId: result.user.userId, isNew: result.isNew },
@@ -150,6 +152,20 @@ export const createPhoneSignInService = (deps: PhoneSignInDeps) => ({
     return { status: 'signedIn', ...result };
   },
 });
+
+/** The number a code went to, once the right code is entered (once only). */
+export async function checkPhoneCode(input: {
+  requestId: string;
+  code: string;
+}): Promise<PhoneCodeCheck> {
+  const m = REQUEST_RE.exec(input.requestId);
+  if (!m || !/^[0-9]{4}$/.test(input.code)) return { status: 'expired' };
+  const id = m[1]!;
+  const checked = await signInCodeStore.check(id, sha256(m[2]!), codeHash(id, input.code));
+  if (checked.result === 'wrong') return { status: 'wrong', attemptsLeft: checked.attemptsLeft };
+  if (checked.result === 'expired' || !checked.phone) return { status: 'expired' };
+  return { status: 'ok', phone: checked.phone };
+}
 
 async function signInByPhone(e164: string, jwtSecret: Uint8Array): Promise<PhoneSignInResult> {
   let isNew = false;

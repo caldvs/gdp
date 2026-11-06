@@ -136,8 +136,8 @@ ul.plain strong { color: var(--ink); }
 <g class="edge "><path d="M804,380 L732,380" marker-end="url(#ah)"/>
 <text x="760.0" y="372" text-anchor="middle">billId</text>
 </g>
-<g class="edge "><path d="M950.0,978 L950.0,936" marker-end="url(#ah)"/>
-<text x="960.0" y="961" text-anchor="start">sessionId</text>
+<g class="edge "><path d="M950.0,1058 L950.0,1016" marker-end="url(#ah)"/>
+<text x="960.0" y="1041" text-anchor="start">sessionId</text>
 </g>
 <g class="edge dashed"><path d="M804,576 L760,576 L760,596 L380,596 L380,364.0 L352,364.0" marker-end="url(#ah)"/>
 <text x="610.0" y="589" text-anchor="middle">GSI1: USER#{userId} → my sessions</text>
@@ -384,8 +384,8 @@ ul.plain strong { color: var(--ink); }
 <line class="rule" x1="808" y1="168" x2="1092" y2="168"/>
 <text class="t-attr" x="808" y="186">sessionId, lockedAt</text>
 <text class="t-attr" x="808" y="204">create-if-absent; deleted on close or abandon</text>
-<rect class="node key" x="790" y="266" width="320" height="668" rx="10"/>
-<rect class="band band-sess" x="790" y="266" width="6" height="668" rx="3"/>
+<rect class="node key" x="790" y="266" width="320" height="748" rx="10"/>
+<rect class="band band-sess" x="790" y="266" width="6" height="748" rx="3"/>
 <text class="t-title" x="808" y="293">Session</text>
 <rect class="chip-ttl" x="1039.8" y="279" width="56.199999999999996" height="20" rx="10"/>
 <text class="t-chip" x="1067.9" y="293" text-anchor="middle">30 days</text>
@@ -428,19 +428,24 @@ ul.plain strong { color: var(--ink); }
 <text class="t-key" x="842" y="877">PROOF#{userId}#{proofId}</text>
 <text class="t-attr" x="816" y="896">payment screenshot (#226): createdAt, sentAt</text>
 <text class="t-attr" x="816" y="914">S3 proofs/{sessionId}/{userId}/{proofId}.jpg</text>
-<rect class="node" x="790" y="978" width="320" height="160" rx="10"/>
-<rect class="band band-sess" x="790" y="978" width="6" height="160" rx="3"/>
-<text class="t-title" x="808" y="1005">Join code</text>
-<rect class="chip-ttl" x="1039.8" y="991" width="56.199999999999996" height="20" rx="10"/>
-<text class="t-chip" x="1067.9" y="1005" text-anchor="middle">30 days</text>
-<text class="t-keylab" x="808" y="1030">pk</text>
-<text class="t-key" x="864" y="1030">JCODE#{token}</text>
-<text class="t-keylab" x="808" y="1052">sk</text>
-<text class="t-key" x="864" y="1052">same as pk</text>
-<line class="rule" x1="808" y1="1066" x2="1092" y2="1066"/>
-<text class="t-attr" x="808" y="1084">sessionId</text>
-<text class="t-attr" x="808" y="1102">22-char QR token (old: 6 letters)</text>
-<text class="t-attr" x="808" y="1120">create-if-absent (collision check)</text>
+<rect class="inner" x="804" y="938" width="292" height="70" rx="7"/>
+<text class="t-keylab" x="816" y="957">sk</text>
+<text class="t-key" x="842" y="957">GUESTPHONE#{userId}</text>
+<text class="t-attr" x="816" y="976">e164: a guest&#x27;s verified number (#214)</text>
+<text class="t-attr" x="816" y="994">for the bill&#x27;s texts; never in session reads</text>
+<rect class="node" x="790" y="1058" width="320" height="160" rx="10"/>
+<rect class="band band-sess" x="790" y="1058" width="6" height="160" rx="3"/>
+<text class="t-title" x="808" y="1085">Join code</text>
+<rect class="chip-ttl" x="1039.8" y="1071" width="56.199999999999996" height="20" rx="10"/>
+<text class="t-chip" x="1067.9" y="1085" text-anchor="middle">30 days</text>
+<text class="t-keylab" x="808" y="1110">pk</text>
+<text class="t-key" x="864" y="1110">JCODE#{token}</text>
+<text class="t-keylab" x="808" y="1132">sk</text>
+<text class="t-key" x="864" y="1132">same as pk</text>
+<line class="rule" x1="808" y1="1146" x2="1092" y2="1146"/>
+<text class="t-attr" x="808" y="1164">sessionId</text>
+<text class="t-attr" x="808" y="1182">22-char QR token (old: 6 letters)</text>
+<text class="t-attr" x="808" y="1200">create-if-absent (collision check)</text>
 <rect class="node gsi" x="1170" y="80" width="320" height="165" rx="10"/>
 <text class="t-title" x="1188" y="107">Table gdp-{env}</text>
 <text class="t-attr" x="1188" y="130">On-demand · pk (S) / sk (S) · TTL ttlAt</text>

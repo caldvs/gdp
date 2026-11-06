@@ -4,7 +4,7 @@
  * after the lead closes.
  */
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { CODE, FakeApi, SID, SIGN_IN_CODE, items, users, type User } from './fakeApi';
+import { CODE, FakeApi, PHONE_CODE, SID, SIGN_IN_CODE, items, users, type User } from './fakeApi';
 import { fragmentFor, payoutCheckFor, LEAD_BANK } from './fakeApi';
 
 // Another page's change arrives on its next poll (every 5s while claiming):
@@ -54,6 +54,44 @@ test('#183: a guest scans the QR, sees the bill and joins with just a name; the 
     expect(r.path).not.toContain(fragment);
     expect(r.body ?? '').not.toContain(fragment);
     expect(r.body ?? '').not.toContain('00079660');
+  }
+});
+
+test('#214: where texts are on, a guest gives their name and number, types the texted code, and is in', { tag: '@webkit' }, async ({ browser }) => {
+  const api = new FakeApi();
+  api.phoneSignIn = true;
+  api.phoneChannel = 'sms';
+  const { page: sam } = await ctxFor(browser, api, users.sam, { signedIn: false });
+  const fragment = fragmentFor();
+
+  // G1: the bill, then name and number.
+  await sam.goto(`/join/${CODE}#p=${fragment}`);
+  await expect(sam.getByRole('heading', { name: 'Join Callum’s bill' })).toBeVisible();
+  await expect(sam.getByText('Callum sees your name, not your number.')).toBeVisible();
+  await sam.getByLabel('Your name').fill('Sam');
+  await sam.getByRole('button', { name: 'Text me a code' }).click();
+  await expect(sam.locator('main [role=alert], form [role=alert]').first()).toHaveText('Enter a UK mobile number, like 07700 900123.');
+  await sam.getByLabel('Your mobile number').fill('07700 900123');
+  await sam.getByRole('button', { name: 'Text me a code' }).click();
+
+  // G1.1: the code, which survives a reload while they check their texts.
+  await expect(sam.getByRole('heading', { name: 'Enter the code' })).toBeVisible();
+  await expect(sam.getByText('Sent to +44 7700 900123 by text. Works for 10 minutes.')).toBeVisible();
+  await sam.reload();
+  await expect(sam.getByRole('heading', { name: 'Enter the code' })).toBeVisible();
+  await sam.getByLabel('4-digit code').fill('0000');
+  await expect(sam.locator('main [role=alert], form [role=alert]').first()).toHaveText('Wrong code. 4 tries left.');
+  await sam.getByLabel('4-digit code').fill(PHONE_CODE);
+  await expect(sam.getByRole('heading', { name: 'What did you have?' })).toBeVisible(POLL);
+  expect(api.verifiedGuestPhones).toEqual(['+447700900123']);
+
+  // The lead's bank details came through the reload, and never left the browser.
+  await sam.getByRole('button', { name: 'Claim Lasagne' }).click();
+  await sam.getByRole('link', { name: 'Continue to payment' }).click();
+  await expect(sam.getByText('04-06-68')).toBeVisible();
+  for (const r of api.requests) {
+    expect(r.path).not.toContain(fragment);
+    expect(r.body ?? '').not.toContain(fragment);
   }
 });
 

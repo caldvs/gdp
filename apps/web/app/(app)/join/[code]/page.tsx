@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, type components } from '@gdp/core/api';
@@ -8,8 +8,10 @@ import { storeToken } from '@gdp/core/api/auth';
 import { useMe } from '@gdp/core/api/hooks/useMe';
 import { formatGBP } from '@gdp/core/lib/money';
 import { scrubFragmentFromUrl, storeSessionPayoutFromFragment } from '@gdp/core/lib/sessionPayout';
-import { takeJoinFragment } from '@/lib/joinFragment';
-import { ActionBar, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
+import { useSignInMethods } from '@gdp/core/api/hooks/usePhoneSignIn';
+import { stashJoinFragment, takeJoinFragment } from '@/lib/joinFragment';
+import { ActionBar, BackButton, Button, Centre, Notice, Page, Spinner, Title, firstName } from '@/components/ui';
+import { CodeBoxes, NOT_A_MOBILE, PHONE_CODE_LENGTH, PhoneField, RESEND_SECONDS, ResendCode, looksLikeUkMobile, shownPhone, useCountdown } from '@/components/PhoneCode';
 
 type Session = components['schemas']['Session'];
 type Preview = components['schemas']['SessionPreview'];
@@ -101,46 +103,152 @@ function SignedInJoin() {
   );
 }
 
+type Joined = { status: 'joined'; token: string; session: Session };
+type Refused = { status: 'wrong'; attemptsLeft: number } | { status: 'expired' };
+
+// G1.1 (#214): the code this tab is waiting on, so it survives a reload
+// while the guest checks their texts. Kept for the code's life.
+const PENDING_KEY = 'gdp.guestJoin.pending';
+const PENDING_MS = 10 * 60 * 1000;
+type Pending = { code: string; name: string; phone: string; requestId: string };
+
+function readPending(code: string): Pending | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<Pending> & { sentAt?: number };
+    if (p.code === code && typeof p.name === 'string' && typeof p.phone === 'string' && typeof p.requestId === 'string' && typeof p.sentAt === 'number' && Date.now() - p.sentAt < PENDING_MS) {
+      return { code, name: p.name, phone: p.phone, requestId: p.requestId };
+    }
+    window.sessionStorage.removeItem(PENDING_KEY);
+  } catch {}
+  return null;
+}
+
+function writePending(p: Pending | null) {
+  try {
+    if (p) window.sessionStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, sentAt: Date.now() }));
+    else window.sessionStorage.removeItem(PENDING_KEY);
+  } catch {}
+}
+
 /**
  * The QR's landing page for a guest (#183): who invited them, the bill,
- * how it works, and their name. Guests never sign in: joining gives them a
- * token for this one bill.
+ * how it works, and their name. No account: joining gives them a token for
+ * this one bill. Where texts are on (#214, G1 / G1.1), they give their
+ * mobile number too and type the 4-digit code we text them.
  */
 function GuestLanding({ code }: { code: string }) {
   const router = useRouter();
   const qc = useQueryClient();
+  const methods = useSignInMethods();
   const [name, setName] = useState('');
+  const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Park the bank details before the address bar is scrubbed.
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [expired, setExpired] = useState(false);
+  const [entered, setEntered] = useState('');
+  const [countdown, startCountdown] = useCountdown();
+  const codeInput = useRef<HTMLInputElement>(null);
+  // Park the bank details before the address bar is scrubbed, and keep them
+  // in this tab until the guest is in: a reload on the code step mustn't
+  // lose them. They never leave the device (ADR-0002).
   const [fragment] = useState(() => (typeof window === 'undefined' ? null : captureFragment(code)));
-  useEffect(() => { scrubFragmentFromUrl(); }, []);
+  useEffect(() => {
+    scrubFragmentFromUrl();
+    if (fragment) stashJoinFragment(fragment);
+  }, [fragment]);
+  useEffect(() => {
+    const p = readPending(code);
+    if (p) { setPending(p); setName(p.name); }
+  }, [code]);
+  useEffect(() => {
+    if (pending) codeInput.current?.focus();
+  }, [pending]);
   const preview = useQuery<Preview, ApiError>({
     queryKey: ['preview', code],
     queryFn: () => api<Preview>('/v1/sessions/preview', { method: 'POST', body: { code } }),
     retry: false,
   });
+  const withPhone = methods.data?.sms === true;
+
+  const seated = async (res: Joined) => {
+    writePending(null);
+    takeJoinFragment();
+    await storeToken(res.token);
+    if (fragment) storeSessionPayoutFromFragment(res.session.sessionId, fragment);
+    await qc.invalidateQueries({ queryKey: ['me'] });
+    qc.setQueryData(['session', res.session.sessionId], res.session);
+    router.replace(`/session/${res.session.sessionId}`);
+  };
+
+  const sendCode = async (n: string, number: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await api<{ requestId: string; phone: string }>('/v1/sessions/guest-join/start', { method: 'POST', body: { code, phone: number } });
+      const p = { code, name: n, phone: out.phone, requestId: out.requestId };
+      writePending(p);
+      setPending(p);
+      setExpired(false);
+      setEntered('');
+      startCountdown(RESEND_SECONDS);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'INVALID_INPUT') setPhoneError(NOT_A_MOBILE);
+      else setError(err instanceof ApiError && err.code === 'RATE_LIMITED' ? err.message : joinError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
     const n = name.trim();
     if (!n) { setError('Add your name'); return; }
+    if (withPhone) {
+      if (!looksLikeUkMobile(typed)) { setPhoneError(NOT_A_MOBILE); return; }
+      void sendCode(n, typed);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const res = await api<{ token: string; session: Session }>('/v1/sessions/guest-join', { method: 'POST', body: { code, name: n } });
-      await storeToken(res.token);
-      if (fragment) storeSessionPayoutFromFragment(res.session.sessionId, fragment);
-      await qc.invalidateQueries({ queryKey: ['me'] });
-      qc.setQueryData(['session', res.session.sessionId], res.session);
-      router.replace(`/session/${res.session.sessionId}`);
+      await seated(await api<Joined>('/v1/sessions/guest-join', { method: 'POST', body: { code, name: n } }));
     } catch (err) {
       setError(joinError(err));
       setBusy(false);
     }
   };
 
-  if (preview.isPending) return <Centre><Spinner /></Centre>;
+  const submitCode = async (digits: string) => {
+    if (!pending || busy || digits.length !== PHONE_CODE_LENGTH) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<Joined | Refused>('/v1/sessions/guest-join', {
+        method: 'POST',
+        body: { code, name: pending.name, requestId: pending.requestId, phoneCode: digits },
+      });
+      if (res.status === 'joined') return await seated(res);
+      setEntered('');
+      setBusy(false);
+      if (res.status === 'wrong') {
+        setError(`Wrong code. ${res.attemptsLeft} ${res.attemptsLeft === 1 ? 'try' : 'tries'} left.`);
+        codeInput.current?.focus();
+        return;
+      }
+      writePending(null);
+      setExpired(true);
+      setError('That code has expired. Send a new one.');
+    } catch (err) {
+      setError(joinError(err));
+      setBusy(false);
+    }
+  };
+
+  if (preview.isPending || methods.isPending) return <Centre><Spinner /></Centre>;
   if (preview.isError || preview.data.status !== 'claiming') {
     const closed = preview.data?.status === 'settled' || preview.data?.status === 'paying';
     return (
@@ -153,6 +261,27 @@ function GuestLanding({ code }: { code: string }) {
     );
   }
   const p = preview.data;
+  const host = firstName(p.hostName);
+  if (pending) {
+    // G1.1: the code we texted them.
+    return (
+      <Page>
+        <BackButton onClick={() => { writePending(null); setPending(null); setEntered(''); setError(null); setExpired(false); }}>Change number</BackButton>
+        <Title title="Enter the code" sub={`Sent to ${shownPhone(pending.phone)} by text. Works for 10 minutes.`} />
+        <form noValidate style={{ display: 'flex', flexDirection: 'column', gap: 12 }} onSubmit={(e) => { e.preventDefault(); void submitCode(entered); }}>
+          <CodeBoxes
+            inputRef={codeInput}
+            value={entered}
+            onChange={(digits) => { setEntered(digits); if (error) setError(null); }}
+            onComplete={(digits) => void submitCode(digits)}
+            disabled={expired || busy}
+            error={error}
+          />
+        </form>
+        <ResendCode countdown={countdown} expired={expired} busy={busy} onResend={() => void sendCode(pending.name, pending.phone)} />
+      </Page>
+    );
+  }
   const others = p.people.slice(1);
   const inNow = others.length === 0 ? `${p.hostName} is waiting` : others.length === 1 ? `${others[0]} is in` : `${others.slice(0, -1).join(', ')} and ${others.at(-1)} are in`;
   const date = new Date(p.createdAt).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -182,15 +311,27 @@ function GuestLanding({ code }: { code: string }) {
             <li><span aria-hidden="true">3</span>Pay {p.hostName} back</li>
           </ol>
         </section>
-        <form id="guest-join" className="field" onSubmit={join}>
-          <label htmlFor="guest-name">Your name</label>
-          <input id="guest-name" className="input input--name" value={name} onChange={(e) => { setName(e.target.value); if (error) setError(null); }} autoComplete="given-name" enterKeyHint="go" maxLength={40} />
-          <span className="small muted">No app, no account. {p.hostName} just sees your name.</span>
+        <form id="guest-join" noValidate onSubmit={join} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="field">
+            <label htmlFor="guest-name">Your name</label>
+            <input id="guest-name" className="input input--name" value={name} onChange={(e) => { setName(e.target.value); if (error) setError(null); }} autoComplete="given-name" enterKeyHint={withPhone ? 'next' : 'go'} maxLength={40} />
+            {withPhone ? null : <span className="small muted">No app, no account. {p.hostName} just sees your name.</span>}
+          </div>
+          {withPhone ? (
+            <PhoneField
+              id="guest-phone"
+              value={typed}
+              onChange={(v) => { setTyped(v); if (phoneError) setPhoneError(null); }}
+              error={phoneError}
+              disabled={busy}
+              hint={`${host} sees your name, not your number.`}
+            />
+          ) : null}
         </form>
         {error ? <Notice tone="error">{error}</Notice> : null}
       </Page>
       <ActionBar>
-        <Button grow type="submit" form="guest-join" busy={busy}>Join the bill</Button>
+        <Button grow type="submit" form="guest-join" busy={busy}>{withPhone ? 'Text me a code' : 'Join the bill'}</Button>
       </ActionBar>
     </>
   );

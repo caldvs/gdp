@@ -119,6 +119,11 @@ export class FakeCore {
   phoneChannel: 'whatsapp' | 'sms' = 'whatsapp';
   /** The channel the last phone code was asked for. */
   lastPhoneChannel?: string;
+  /** #214: the number a guest asked a join code for, and the tries left on it. */
+  guestPhone?: string;
+  guestCodeTries = 0;
+  /** #214: the numbers guests proved before joining. */
+  verifiedGuestPhones: string[] = [];
   readonly profilePatches: { displayName?: string; email?: string }[] = [];
   /** Sign-outs everywhere (#155), by user. */
   signedOutEverywhere: string[] = [];
@@ -340,14 +345,31 @@ export class FakeCore {
         people: this.participants.map((p) => p.displayName.split(' ')[0]),
       });
     }
+    // #214: where texts are on, a guest proves their number first.
+    if (path === '/v1/sessions/guest-join/start') {
+      const { code, phone } = body() as { code?: string; phone?: string };
+      if (code !== CODE || this.status !== 'claiming') return err('NOT_FOUND', 'Code not active', 404);
+      const digits = String(phone ?? '').replace(/\D/g, '').replace(/^0/, '');
+      this.guestCodeTries = 5;
+      this.guestPhone = `+44${digits.replace(/^44/, '')}`;
+      return json({ requestId: SIGN_IN_REQUEST, phone: this.guestPhone });
+    }
     if (path === '/v1/sessions/guest-join') {
-      const { code, name } = body() as { code?: string; name?: string };
+      const { code, name, phoneCode } = body() as { code?: string; name?: string; phoneCode?: string };
       if (code !== CODE || this.status !== 'claiming') return err('NOT_FOUND', 'Code not active', 404);
       const n = (name ?? '').trim();
       if (!n) return err('INVALID_INPUT', 'name', 400);
+      if (this.phoneSignIn && this.phoneChannel === 'sms') {
+        if (!phoneCode) return err('INVALID_INPUT', 'Verify your mobile number first', 400);
+        if (this.guestCodeTries <= 0) return json({ status: 'expired' });
+        this.guestCodeTries -= 1;
+        if (phoneCode !== PHONE_CODE) return json({ status: 'wrong', attemptsLeft: this.guestCodeTries });
+        this.guestCodeTries = 0;
+        this.verifiedGuestPhones.push(this.guestPhone ?? '');
+      }
       this.guestNames.set(user.userId, n);
       this.join({ ...user, displayName: n });
-      return json({ token: 'guest-token', session: this.session() }, 201);
+      return json({ status: 'joined', token: 'guest-token', session: this.session() }, 201);
     }
     if (path === '/v1/me/sign-out' && method === 'POST') { this.signedOutEverywhere.push(user.userId); return json({ ok: true }); }
     if (path.startsWith('/v1/me/sessions')) return json({ sessions: this.mySessions.map((s) => this.withTotals(s, user.userId)) });

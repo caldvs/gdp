@@ -22,8 +22,9 @@ export default function PrivacyPage() {
         <h2>What we collect</h2>
         <ul>
           <li>
-            <strong>Your mobile number</strong>, if you sign in with it, so we can text you a sign-in code.
-            Nobody else at the table sees it.
+            <strong>Your mobile number</strong>, if you sign in with it, so we can text you a sign-in code. If you join
+            someone’s bill as a guest, so we can text you the code and texts about that bill; it’s deleted with the
+            bill. Nobody else at the table sees it.
           </li>
           <li>
             <strong>Your email address</strong>, if you give one, to sign in or to get your bill emails.
@@ -68,7 +69,7 @@ export default function PrivacyPage() {
           <li>Amazon Web Services reads bill photos (Claude, on Amazon Bedrock) in the EU, and looks up the restaurant (Amazon Location Service).</li>
           <li>Stripe takes fee payments.</li>
           <li>Amazon SES sends sign-in and bill emails.</li>
-          <li>Amazon Web Services (End User Messaging) texts sign-in codes to your phone.</li>
+          <li>Amazon Web Services (End User Messaging) texts sign-in and join codes to your phone.</li>
         </ul>
         <p>Some of these may process data outside the UK, under the safeguards UK law requires.</p>
       </section>

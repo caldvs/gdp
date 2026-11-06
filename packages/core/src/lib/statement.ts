@@ -194,6 +194,38 @@ export function billStatement(
   };
 }
 
+/** Stripe's minimum charge: under it, the platform fee is nothing (#228). */
+export const MIN_FEE_PENCE = 30;
+
+export type FeeBreakdown = {
+  /** Guests whose round-up makes the platform fee: the lead marked them received. */
+  counted: PersonStatement[];
+  /** Guests with a round-up who haven't paid it yet (or aren't counted): money that's all the lead's if it comes. */
+  later: PersonStatement[];
+  roundUpsPence: number;
+  /** What settle charges: the round-ups, or nothing under 30p. */
+  feePence: number;
+};
+
+/**
+ * #217 L8: how the platform fee at settle is worked out, as the API's
+ * `guestsFeePence` does it (#228). The round-ups of the guests the lead
+ * marked received; if none is, of those who say they've paid. No cap; under
+ * Stripe's 30p minimum, nothing.
+ */
+export function feeBreakdown(st: Statement): FeeBreakdown {
+  const guests = st.people.filter((p) => p.status !== 'lead' && p.feePence > 0);
+  const confirmed = guests.filter((p) => p.status === 'paid' || p.status === 'part-paid');
+  const counted = confirmed.length > 0 ? confirmed : guests.filter((p) => p.status === 'says-paid');
+  const roundUpsPence = counted.reduce((a, p) => a + p.feePence, 0);
+  return {
+    counted,
+    later: guests.filter((p) => !counted.includes(p)),
+    roundUpsPence,
+    feePence: roundUpsPence < MIN_FEE_PENCE ? 0 : roundUpsPence,
+  };
+}
+
 const STATUS_TEXT: Record<PersonStatus, string> = {
   lead: 'Lead',
   paid: 'Paid',

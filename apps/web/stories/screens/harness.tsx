@@ -115,7 +115,8 @@ function useScreen(p: ScreenParams): QueryClient {
     } else if (p.user) {
       api.join(user);
     }
-    installFake(api, user, { token: p.guestName ? 'guest-token' : p.user ? 'test-token' : null, extra: billing(p.billing ?? {}) });
+    // A table that sets its own billing (the fake's `billing`, #228) answers it itself.
+    installFake(api, user, { token: p.guestName ? 'guest-token' : p.user ? 'test-token' : null, extra: api.billing ? undefined : billing(p.billing ?? {}) });
     if (p.payout) storeSessionPayoutFromFragment(SID, payoutFragment(p.payout));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000, refetchOnWindowFocus: false } } });
     registerQueryClient(client);

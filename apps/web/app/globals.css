@@ -721,7 +721,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .lead-bill .claim-line[data-group='open'] { background: rgba(224, 42, 10, .06); margin-inline: -8px; padding-inline: 8px; }
 .settle-btn { width: 100%; }
 .totals__sub { display: block; font-size: 13px; font-weight: 400; color: var(--quiet); }
-.lead-links { display: flex; justify-content: center; }
+.lead-links { display: flex; justify-content: center; flex-wrap: wrap; gap: 0 20px; }
 .lead-links .link-btn { min-height: 44px; display: inline-flex; align-items: center; font-weight: 600; }
 /* #216: the guest's waiting line (a gentle breathing dot), what they owe, and the lead's confirm in place. */
 .wait-line { display: flex; align-items: flex-start; gap: 10px; margin: 0; color: var(--mute); }

@@ -1,5 +1,5 @@
 /** The tables the page stories sit at, built on the e2e suite's in-memory API. */
-import { FakeCore, SID, items, users } from '../../e2e/fakeCore';
+import { BID, FakeCore, SID, items, users } from '../../e2e/fakeCore';
 import { as } from '../fakeFetch';
 
 export { BID, CODE, SID, items, users } from '../../e2e/fakeCore';
@@ -19,6 +19,27 @@ export function busyTable() {
 }
 
 /** Just shared: the lead and two friends who've only just sat down. */
+/**
+ * #217 L8: settled on a hold that saved the card. Sam had the Lasagne
+ * (75p round-up) and paid; Tom the Calamari (50p) and hasn't: £0.75 charged.
+ */
+export function feeTable() {
+  const api = new FakeCore({ platformFeePence: 100, status: 'settled' });
+  api.join(users.sam);
+  api.join(users.tom);
+  const [, sam, tom] = api.participants;
+  sam!.claimedItemIds = [items[2]!.itemId];
+  sam!.payment = { status: 'succeeded', paymentId: 'pay-u-sam', paidAt: '2026-10-31T21:30:00Z' };
+  tom!.claimedItemIds = [items[1]!.itemId];
+  api.billing = {
+    creditsLeft: 0, nextCreditOn: '2026-12-01', paidPence: 75, refundedPence: 0,
+    card: { brand: 'visa', last4: '4417' },
+    fees: [{ billId: BID, sessionId: SID, amountPence: 100, paidAt: '2026-10-31T19:00:00Z', kind: 'hold', savedCard: true, releasedAt: '2026-10-31T23:00:00Z', chargeStatus: 'charged', chargePence: 75, chargedAt: '2026-10-31T23:00:00Z' }],
+    credits: [],
+  };
+  return api;
+}
+
 export function newTable() {
   const api = new FakeCore({ serviceRate: 0.125 });
   api.join({ userId: 'u-sam', displayName: 'Sam Patel', email: 'sam@example.com' });

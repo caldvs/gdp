@@ -5,8 +5,9 @@ import ReviewBill from '@/app/(app)/confirm-bill/[billId]/page';
 import Session from '@/app/(app)/session/[id]/page';
 import Share from '@/app/(app)/session/[id]/share/page';
 import Summary from '@/app/(app)/session/[id]/summary/page';
+import Fee from '@/app/(app)/session/[id]/fee/page';
 import { screen } from '../screens/harness';
-import { BID, SID, busyTable, closedTable, midMeal, newTable, users, withBills } from '../screens/tables';
+import { BID, SID, busyTable, closedTable, feeTable, midMeal, newTable, users, withBills } from '../screens/tables';
 import { FakeCore } from '../../e2e/fakeCore';
 
 /** The lead diner's pages, as on the redesign board (Sky · L1–L6). */
@@ -89,4 +90,10 @@ export const BillSummary: Story = {
   name: 'L6 Bill summary (statement)',
   parameters: screen({ user: users.lead, api: busyTable, path: `/session/${SID}/summary` }),
   render: () => <Summary />,
+};
+
+export const PlatformFee: Story = {
+  name: 'L8 Platform fee',
+  parameters: screen({ user: users.lead, api: feeTable, path: `/session/${SID}/fee` }),
+  render: () => <Fee />,
 };

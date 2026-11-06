@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { billStatement, statementText, statusText, whenText } from './statement';
+import { billStatement, feeBreakdown, statementText, statusText, whenText, type PersonStatement, type Statement } from './statement';
 
 // Items £60.00, service 10%: £66.00.
 const bill = {
@@ -165,5 +165,42 @@ describe('helpers', () => {
     expect(statusText('part-paid')).toBe('Part paid');
     expect(whenText('2026-10-31T21:14:00.000Z')).toBe('Sat 21:14');
     expect(whenText('nope')).toBe('');
+  });
+});
+
+describe('feeBreakdown (#217 L8, #228)', () => {
+  const person = (name: string, status: PersonStatement['status'], feePence: number): PersonStatement => ({
+    userId: name, name, status, items: [], extrasPence: 0, discountPence: 0, feePence, totalPence: 1000 + feePence,
+  });
+  const st = (...people: PersonStatement[]) => ({ people }) as unknown as Statement;
+  const lead = person('Callum', 'lead', 0);
+
+  it('counts the round-ups of the guests the lead marked received, no cap', () => {
+    const f = feeBreakdown(st(lead, person('Sam', 'paid', 69), person('Priya', 'part-paid', 75), person('Tom', 'paid', 40), person('Ana', 'says-paid', 50)));
+    expect(f.counted.map((p) => p.name)).toEqual(['Sam', 'Priya', 'Tom']);
+    expect(f.later.map((p) => p.name)).toEqual(['Ana']);
+    expect(f.roundUpsPence).toBe(184);
+    expect(f.feePence).toBe(184);
+  });
+
+  it('none marked received: those who say they’ve paid', () => {
+    const f = feeBreakdown(st(lead, person('Sam', 'says-paid', 69), person('Tom', 'not-paid', 40)));
+    expect(f.counted.map((p) => p.name)).toEqual(['Sam']);
+    expect(f.later.map((p) => p.name)).toEqual(['Tom']);
+    expect(f.feePence).toBe(69);
+  });
+
+  it('under 30p, or nobody paid: nothing', () => {
+    expect(feeBreakdown(st(lead, person('Sam', 'paid', 25))).feePence).toBe(0);
+    expect(feeBreakdown(st(lead, person('Sam', 'not-paid', 69)))).toMatchObject({ counted: [], roundUpsPence: 0, feePence: 0 });
+  });
+
+  it('agrees with billStatement: Sam paid, Priya says she has', () => {
+    const real = billStatement({ ...(session as object), platformFeePence: 100 } as never, bill, (p) => p.displayName);
+    const f = feeBreakdown(real);
+    // With the round-up Sam owes £17.00, so his £16.50 is part-paid: still counted.
+    expect(f.counted.map((p) => [p.name, p.status, p.feePence])).toEqual([['Sam', 'part-paid', 50]]);
+    expect(f.later.map((p) => p.name)).toEqual(['Priya', 'Tom']);
+    expect(f.roundUpsPence).toBe(50);
   });
 });

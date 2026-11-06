@@ -442,6 +442,7 @@ export function LeadSettled({ s, b }: { s: Session; b: Bill }) {
         ) : guests.length > 0 ? <Notice tone="ok" title="Everyone’s paid" /> : null}
         <div className="lead-links">
           <Link href={`/session/${s.sessionId}/summary`} className="link-btn">The whole bill</Link>
+          {spent.fee || spent.credit ? <Link href={`/session/${s.sessionId}/fee`} className="link-btn">Platform fee</Link> : null}
         </div>
       </Page>
       <ActionBar><Button grow href="/" replace>Done</Button></ActionBar>
@@ -469,13 +470,15 @@ function feeLine(spent: ReturnType<typeof useSpent>): { v: string; sub?: ReactNo
 }
 
 /** The platform fee or credit that paid for sharing this session, if any. */
-export function useSpent(sessionId: string, enabled = true) {
+export function useSpent(sessionId: string, enabled = true, opts: { poll?: boolean } = {}) {
   // No billing routes (Stripe not set up) comes back null: no fee to show.
-  const billing = useMyBilling({ enabled });
+  const billing = useMyBilling({ enabled, poll: opts.poll });
   const data = enabled ? billing.data : null;
   return {
     fee: data?.fees.find((f) => f.sessionId === sessionId),
     credit: data?.credits.find((c) => c.sessionId === sessionId),
+    card: data?.card,
+    loading: enabled && billing.isPending,
   };
 }
 

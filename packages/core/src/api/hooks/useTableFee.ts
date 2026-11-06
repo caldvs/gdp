@@ -25,10 +25,12 @@ export function cardLabel(card: CardSummary): string {
  * The lead's credits this month and the fees they've paid. `null` when the
  * API has no billing routes (Stripe not set up): no fees, no credits to show.
  */
-export function useMyBilling(opts: { enabled?: boolean } = {}) {
+export function useMyBilling(opts: { enabled?: boolean; poll?: boolean } = {}) {
   return useQuery<BillingSummary | null, ApiError>({
     queryKey: ['billing', 'me'],
     enabled: opts.enabled !== false,
+    // #217 L8: while settle is still adjusting the hold.
+    refetchInterval: opts.poll ? 1500 : false,
     queryFn: async () => {
       try {
         return await api<BillingSummary>('/v1/billing/me');

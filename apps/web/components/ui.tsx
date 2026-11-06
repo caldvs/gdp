@@ -231,31 +231,54 @@ export function ActionBar({ children, stack, note }: { children: ReactNode; stac
 
 /* ---------- People ---------- */
 
-const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
-
-export function Avatar({ name, you, sm }: { name: string; you?: boolean; sm?: boolean }) {
-  return <span className={cx('avatar', you && 'avatar--you', sm && 'avatar--sm')} aria-hidden>{initials(name)}</span>;
+/**
+ * No initials or avatars in the Tickets look (#212): names are written out.
+ * Kept as a no-op so callers that pass one as a row's `lead` still compile;
+ * drop those calls as their screens are redone.
+ */
+export function Avatar(_: { name: string; you?: boolean; sm?: boolean }) {
+  return null;
 }
 
-/**
- * Who has an item, as initials instead of names — reads faster, and scales
- * to several claimants without crowding the row. The names themselves stay
- * for screen readers (visually hidden): avatars alone aren't accessible.
- */
-export function AvatarStack({ names, max = 4 }: { names: string[]; max?: number }) {
+/** Who has an item, as names ("Sam, Priya +2"). */
+export function AvatarStack({ names, max = 3 }: { names: string[]; max?: number }) {
   if (names.length === 0) return null;
   const shown = names.slice(0, max);
   const extra = names.length - shown.length;
   return (
-    <span className="avatar-stack">
-      <span className="vh">{names.join(', ')}</span>
-      {shown.map((n, i) => <Avatar key={i} name={n} sm you={n === 'you' || n === 'You'} />)}
-      {extra > 0 ? <span className="avatar avatar--sm avatar--more" aria-hidden>+{extra}</span> : null}
+    <span className="names">
+      {shown.join(', ')}
+      {extra > 0 ? <><span aria-hidden> +{extra}</span><span className="vh">, {names.slice(max).join(', ')}</span></> : null}
     </span>
   );
 }
 
-/** Who's at the table: an initial and first name each, in the order they joined. */
+/**
+ * The bill as a receipt (#212): warm paper, torn edges, a typewriter face and
+ * dashed rules. Only for the bill itself (being checked or claimed, a guest's
+ * share, the whole-bill summary); everything else is ordinary cards.
+ */
+export function Receipt({ head, end, children, label }: { head?: ReactNode; end?: ReactNode; children: ReactNode; label?: string }) {
+  return (
+    <section className="receipt" aria-label={label}>
+      {head || end ? <div className="receipt__head"><span className="receipt__name">{head}</span>{end ? <span className="receipt__end">{end}</span> : null}</div> : null}
+      {children}
+    </section>
+  );
+}
+
+/** One receipt line: name (and a note under it), then the price; `tools` sits at the end (Claim). */
+export function ReceiptLine({ name, note, price, tools, quiet, strong }: { name: ReactNode; note?: ReactNode; price?: ReactNode; tools?: ReactNode; quiet?: boolean; strong?: boolean }) {
+  return (
+    <div className={cx('receipt__line', quiet && 'receipt__line--quiet', strong && 'receipt__line--strong')}>
+      <span className="receipt__item">{name}{note ? <span className="receipt__note">{note}</span> : null}</span>
+      {price !== undefined ? <span className="receipt__price">{price}</span> : null}
+      {tools}
+    </div>
+  );
+}
+
+/** Who's at the table: first names, in the order they joined. */
 export function Diners({ people, hostId, meId }: { people: { userId: string; displayName?: string }[]; hostId: string; meId?: string }) {
   return (
     <ul className="diners" aria-label="At the table">
@@ -263,8 +286,7 @@ export function Diners({ people, hostId, meId }: { people: { userId: string; dis
         const name = p.userId === meId ? 'You' : firstName(p.displayName, 'Guest');
         return (
           <li key={p.userId} className="diner">
-            <Avatar name={p.displayName || name} you={p.userId === meId} />
-            <span>{name}{p.userId === hostId ? <span className="muted"> · host</span> : null}</span>
+            <span>{name}{p.userId === hostId ? <span className="muted"> · lead</span> : null}</span>
           </li>
         );
       })}

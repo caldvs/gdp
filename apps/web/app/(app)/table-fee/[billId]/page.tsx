@@ -119,10 +119,6 @@ export default function TableFeePage({ params }: { params: Promise<{ billId: str
                 ? 'Stripe hasn’t confirmed yet.'
                 : 'Confirming with your bank'}
           </p>
-          <div className="pay-wait__bar" aria-hidden="true">
-            <span className={stage === 'qr' ? 'on' : 'busy'} />
-            <span className={stage === 'qr' ? 'busy' : ''} />
-          </div>
         </div>
         {stage === 'slow' ? (
           <ActionBar stack>

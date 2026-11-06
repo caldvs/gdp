@@ -1,9 +1,10 @@
-/* Pay Me Back: the Sky look (#180, chosen 4 Nov 2026).
-   Two quiet colours and one loud one: a sky-blue header on a cloud-white
-   page, and red-orange (--loud) only on each screen's main button. Blue ink
-   (--accent) for links, icons and selected states. Anton for headings and
-   big amounts, Plus Jakarta Sans for everything else. Small green and amber
-   badges for status. Classes are used by components/ui.tsx. */
+/* Pay Me Back: the Tickets look (#212, chosen 7 Nov 2026; follows Sky, #180).
+   A white page with ordinary cards, and the bill alone drawn as a receipt
+   (.receipt: warm paper, torn edges, IBM Plex Mono, dashed rules). Sky blue
+   for ink, links and the logo coin; red-orange (--loud) only on each screen's
+   main button. Bricolage Grotesque, bold and in sentence case, for headings
+   and big amounts; Plus Jakarta Sans for everything else; nothing under 13px.
+   No avatars or progress bars. Classes are used by components/ui.tsx. */
 
 :root {
   --bg: #ffffff;
@@ -12,8 +13,8 @@
   --card-shadow: 0 6px 20px rgba(0,60,120,.10);
   --ink: #111111;
   --mute: #555555;
-  /* Muted text: 5.08:1 on white. */
-  --quiet: #5f7083;
+  /* Muted text: 5.9:1 on white, 5.2:1 on the receipt's paper. */
+  --quiet: #5a6673;
   /* Disabled controls and icons only, never text: 3.36:1 on white. */
   --faint: #7d8ea1;
   --line: #e3edf7;
@@ -44,7 +45,12 @@
   --radius-card: 16px;
   --gutter: 20px;
   --col: 560px;
-  --display: var(--font-anton), 'Arial Narrow', Impact, sans-serif;
+  --display: var(--font-bricolage), var(--font-jakarta), -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  /* The receipt's paper and its dashed rules. */
+  --paper: #f4f2ec;
+  --paper-hover: #ece9e1;
+  --paper-rule: #c4beb1;
   --font: var(--font-jakarta), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   color-scheme: light;
 }
@@ -63,12 +69,12 @@ h1, h2, p { margin: 0; }
 
 /* ---------- Shell ---------- */
 .app { min-height: 100dvh; display: flex; flex-direction: column; }
-.hdr { background: var(--sky); color: #fff; }
+.hdr { background: var(--page); color: var(--ink); }
 .hdr__in { max-width: var(--col); margin: 0 auto; height: 88px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px 0 var(--gutter); }
-.brand { display: flex; align-items: center; gap: 10px; min-height: 48px; font-family: var(--display); font-size: 24px; font-weight: 400; letter-spacing: .01em; text-transform: uppercase; color: #fff; }
+.brand { display: flex; align-items: center; gap: 8px; min-height: 48px; font-family: var(--display); font-size: 20px; font-weight: 800; letter-spacing: -.01em; color: var(--ink); }
 .brand:hover { text-decoration: none; }
 /* The logo: a coin whose £ rolls to €, $ and ¥ and back. Still under reduced motion. */
-.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: var(--sky); font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; clip-path: circle(50%); isolation: isolate; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
+.brand__mark { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--sky); color: #fff; font-family: var(--font); text-transform: none; letter-spacing: 0; overflow: hidden; clip-path: circle(50%); isolation: isolate; font-size: 20px; font-weight: 800; line-height: 32px; text-align: center; }
 /* iOS Safari can drop a transform animated under a rounded overflow clip (#178): clip with clip-path and give the roll its own layer. */
 .brand__roll { display: block; will-change: transform; animation: brand-roll 8s cubic-bezier(.6,0,.2,1) infinite; }
 .brand__roll span { display: block; height: 32px; }
@@ -76,9 +82,9 @@ h1, h2, p { margin: 0; }
 @media (prefers-reduced-motion: reduce) { .brand__roll { animation: none; } }
 .icon-btn { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border: 0; background: none; border-radius: var(--radius); cursor: pointer; color: var(--ink); }
 .icon-btn:hover { background: var(--hover); }
-.hdr .icon-btn { color: #fff; }
-.hdr .icon-btn:hover { background: rgba(255,255,255,.16); }
-.hdr :focus-visible { outline-color: #fff; }
+.hdr .icon-btn { color: var(--accent); }
+.hdr .icon-btn:hover { background: var(--hover); }
+
 
 .menu { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; overflow-y: auto; }
 .menu__nav { max-width: var(--col); width: 100%; margin: 0 auto; padding: 12px 0; display: flex; flex-direction: column; }
@@ -99,7 +105,7 @@ h1, h2, p { margin: 0; }
 .title { display: flex; flex-direction: column; gap: 6px; }
 /* A screen's heading takes focus when the screen changes (PageTransition); it isn't a control, so no ring. */
 h1[tabindex="-1"]:focus { outline: none; }
-.title h1 { font-family: var(--display); font-size: 35px; font-weight: 400; letter-spacing: .005em; line-height: 1; text-transform: uppercase; }
+.title h1 { font-family: var(--display); font-size: 30px; font-weight: 700; letter-spacing: -.015em; line-height: 1; }
 .title p { font-size: 15px; color: var(--mute); }
 .title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .title-row > .title { flex: 1; min-width: 0; }
@@ -109,7 +115,7 @@ h1[tabindex="-1"]:focus { outline: none; }
 /* Quieter than the page title, which leads (Anton at 35px in ink). */
 .section__top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .section__top .link-btn { font-size: 14px; }
-.section__h { font-family: var(--display); font-size: 18px; font-weight: 400; letter-spacing: .03em; line-height: 1.1; text-transform: uppercase; color: var(--quiet); }
+.section__h { font-family: var(--font); font-size: 15px; font-weight: 700; line-height: 1.2; color: var(--quiet); }
 .muted { color: var(--mute); }
 .small { font-size: 14px; }
 
@@ -250,15 +256,13 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* The failed read: the photo as a small thumbnail beside the reason. */
 .reading-hero { display: flex; align-items: center; gap: 20px; padding: 8px 0 4px; }
 .reading-hero__text { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.reading-hero__h { font-family: var(--display); font-size: 35px; font-weight: 400; line-height: 1; text-transform: uppercase; }
+.reading-hero__h { font-family: var(--display); font-size: 30px; font-weight: 700; line-height: 1; }
 .reading-hero__status { font-size: 17px; font-weight: 700; color: var(--accent); }
 .reading-hero__msg { display: inline-block; animation: reading-msg .3s ease-out both; }
-.reading-bar { height: 8px; border-radius: 999px; background: var(--accent-tint); overflow: hidden; }
-.reading-bar span { display: block; height: 100%; border-radius: 999px; background: var(--sky); transition: width .5s ease; }
 .reading-hint { text-align: center; }
 @keyframes scan-bob { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(-1deg) translateY(-3px); } }
 @keyframes reading-msg { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .scan, .reading-hero__msg { animation: none; } .reading-bar span { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .scan, .reading-hero__msg { animation: none; } }
 .reading-head { display: flex; align-items: center; gap: 14px; }
 .reading-thumb { flex: none; width: 56px; height: 72px; object-fit: cover; object-position: top; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--hover); }
 /* Stages of a wait (paying the fee, then making the QR code). */
@@ -277,19 +281,14 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .pay-wait { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 36px 20px 28px; text-align: center; }
 .pay-wait__mark { position: relative; width: 72px; height: 72px; margin-bottom: 12px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent-tint); color: var(--accent); font-size: 30px; font-weight: 700; transition: background .3s, color .3s; }
 .pay-wait__mark svg { width: 30px; height: 30px; }
+@media (prefers-reduced-motion: reduce) { .pay-wait__ring, .pay-wait__done { animation: none; } }
 .pay-wait__ring { position: absolute; inset: -5px; border-radius: 50%; border: 3px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent); animation: spin 1s linear infinite; }
 .pay-wait--qr .pay-wait__mark { background: var(--ok-bg); color: var(--ok-ink); }
 .pay-wait--slow .pay-wait__mark { background: var(--warn-bg); color: var(--warn-ink); }
 .pay-wait__done { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; background: var(--ok-ink); color: #fff; border: 2px solid var(--bg); display: flex; align-items: center; justify-content: center; animation: arrive .25s ease-out both; }
 .pay-wait__done svg { width: 14px; height: 14px; }
 .pay-wait__title { font-size: 22px; font-weight: 600; }
-.pay-wait__bar { display: flex; gap: 6px; width: 100%; max-width: 220px; margin-top: 20px; }
-.pay-wait__bar span { position: relative; flex: 1; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
-.pay-wait__bar span.on { background: var(--ok-ink); }
-.pay-wait__bar span.busy::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: 2px; background: var(--accent); animation: slide 1.2s ease-in-out infinite; }
-.pay-wait--slow .pay-wait__bar span.busy::after { animation: none; width: 100%; background: var(--warn-ink); opacity: .5; }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-@media (prefers-reduced-motion: reduce) { .pay-wait__ring, .pay-wait__done, .pay-wait__bar span.busy::after { animation: none; } }
 @media (prefers-reduced-motion: reduce) {
   .skel, .step__tick path { animation: none; }
 }
@@ -409,14 +408,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .each { display: block; font-size: 13px; color: var(--mute); }
 
 /* ---------- People ---------- */
-.avatar { flex: none; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--accent-tint); border: 1px solid #cfe6fb; color: #0a4f8c; animation: arrive .35s ease-out; }
-.avatar--you { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes arrive { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .avatar { animation: none; } }
-.avatar--sm { width: 28px; height: 28px; font-size: 12px; border-width: 1px; }
-.avatar-stack { flex: none; display: inline-flex; }
-.avatar-stack .avatar + .avatar { margin-left: -6px; }
-.avatar-stack .avatar--more { background: var(--hover); color: var(--mute); }
 .diners { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .diner { display: flex; align-items: center; gap: 8px; font-size: 15px; min-height: 44px; }
 .tools { flex: none; display: flex; gap: 8px; }
@@ -445,7 +437,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 
 /* ---------- Demo banner ---------- */
 .demo-banner { display: flex; align-items: flex-start; gap: 10px; background: var(--ink); color: var(--bg); padding: 10px 16px; font-size: 13px; line-height: 1.4; }
-.demo-banner__tag { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 1px; }
+.demo-banner__tag { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: #fff; padding: 2px 6px; border-radius: 4px; margin-top: 1px; }
 .demo-banner__close { flex: none; width: 44px; height: 44px; margin: -10px -12px -10px auto; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--radius); background: none; color: inherit; font-size: 22px; line-height: 1; opacity: .8; cursor: pointer; }
 .demo-banner__close:hover { opacity: 1; }
 .demo-banner :focus-visible { outline-color: #fff; outline-offset: -4px; opacity: 1; }
@@ -456,14 +448,14 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
    bar, an example bill mid-split, how it works, pricing. */
 .app:has(.home) { background: var(--page); }
 .hdr__nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.hdr__nav-link { display: none; align-items: center; min-height: 44px; padding: 0 12px; font-size: 19px; font-weight: 700; color: #fff; }
-.hdr__link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; font-size: 19px; font-weight: 700; color: #fff; text-decoration: none; }
+.hdr__nav-link { display: none; align-items: center; min-height: 44px; padding: 0 12px; font-size: 17px; font-weight: 700; color: var(--ink); }
+.hdr__link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; font-size: 17px; font-weight: 700; color: var(--ink); text-decoration: none; }
 .home { flex: 1; width: 100%; max-width: calc(1120px + 2 * var(--gutter)); margin: 0 auto; padding: 28px var(--gutter) calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 40px; }
 .home__hero { display: grid; gap: 28px; }
 .home__intro { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.home__h { font-family: var(--display); font-size: 44px; line-height: 1; font-weight: 400; letter-spacing: .005em; text-transform: uppercase; }
+.home__h { font-family: var(--display); font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -.015em; }
 .home__sub { font-size: 17px; line-height: 1.45; color: var(--mute); max-width: 30em; }
-.home__h2 { font-family: var(--display); font-size: 26px; font-weight: 400; letter-spacing: .01em; text-transform: uppercase; }
+.home__h2 { font-family: var(--display); font-size: 26px; font-weight: 700; letter-spacing: -.015em; }
 
 /* "Got a code from a friend?": an Airbnb-style search pill. */
 
@@ -502,7 +494,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__key { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-size: 16px; }
 .home__key li { display: flex; align-items: center; gap: 12px; }
 .home__key-mark { width: 48px; flex: none; display: flex; justify-content: center; color: var(--accent); }
-.home__fee { font-size: 12px; font-weight: 700; line-height: 1; color: var(--ink); background: #f0f0f0; padding: 4px 8px; border-radius: 999px; }
+.home__fee { font-size: 13px; font-weight: 700; line-height: 1; color: var(--ink); background: #f0f0f0; padding: 4px 8px; border-radius: 999px; }
 .home__key .home__fee { font-size: 14px; padding: 4px 10px; }
 .home__dot { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .home__key .home__dot { width: 10px; height: 10px; }
@@ -512,7 +504,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__cal-top b { font-size: 17px; }
 .home__cal-top span { font-size: 14px; color: var(--mute); }
 .home__cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); row-gap: 2px; }
-.home__cal-wd { font-size: 12px; font-weight: 700; color: var(--mute); text-align: center; }
+.home__cal-wd { font-size: 13px; font-weight: 700; color: var(--mute); text-align: center; }
 .home__cal-cell { position: relative; height: 50px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 15px; }
 .home__cal-day { border: 0; border-radius: 10px; background: none; padding: 0; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; }
 .home__cal-day:hover { background: var(--page); }
@@ -521,7 +513,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .home__cal-ring { position: absolute; inset: 0; margin: auto; overflow: visible; color: var(--accent); }
 .home__cal-ring path { stroke-dasharray: 160; animation: home-ring .6s ease-out both; }
 @keyframes home-ring { from { stroke-dashoffset: 160; } to { stroke-dashoffset: 0; } }
-.home__cal-free { font-size: 10px; font-weight: 800; line-height: 1.2; color: var(--accent); }
+.home__cal-free { font-size: 13px; font-weight: 800; line-height: 1.2; color: var(--accent); }
 .home__cal-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 10px 6px 2px; border-top: 1px solid var(--line); font-size: 15px; }
 .home__cal-foot span { font-size: 13px; color: var(--mute); }
 @media (prefers-reduced-motion: reduce) { .home__cal-ring path { animation: none; } }
@@ -559,7 +551,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
   .home__example { padding-bottom: 60px; }
   .home__pricing .home__sub { max-width: none; }
   .hdr__nav-link { display: inline-flex; }
-  .hdr__link { height: 44px; padding: 0 18px; margin-left: 8px; border: 2px solid #fff; border-radius: 999px; font-size: 19px; text-decoration: none; }
+  .hdr__link { height: 44px; padding: 0 18px; margin-left: 8px; border: 2px solid var(--ink); border-radius: 999px; font-size: 17px; text-decoration: none; }
   /* H3's example bill is a size up. */
   .home__bill { border-radius: 20px; padding: 8px 20px 12px; }
   .home__bill-top { padding: 14px 0 10px; }
@@ -587,7 +579,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .testbar { background: var(--warn-bg); color: var(--warn-ink); border-bottom: 1px solid var(--line); font-size: 14px; }
 .testbar__in { max-width: var(--col); margin: 0 auto; padding: 0 10px 0 var(--gutter); }
 .testbar__top { display: flex; align-items: center; gap: 10px; min-height: 44px; }
-.testbar__tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--warn-ink); color: #fff; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.testbar__tag { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--warn-ink); color: #fff; padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
 .testbar__who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .testbar__toggle { background: none; border: 0; color: inherit; font: inherit; font-weight: 600; min-height: 44px; padding: 0 10px; cursor: pointer; }
 .testbar__body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 4px 0 12px; }
@@ -598,7 +590,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* ---------- Paid: waiting for the lead, then all square (#184) ---------- */
 .pay-total { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 76px; padding: 0 16px; border-radius: var(--radius-card); background: var(--accent); color: #fff; font-size: inherit; font-weight: inherit; }
 .pay-total span { font-size: 19px; font-weight: 700; }
-.pay-total b { font-family: var(--display); font-size: 36px; font-weight: 400; line-height: 1; font-variant-numeric: tabular-nums; }
+.pay-total b { font-family: var(--display); font-size: 36px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
 .paid-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding-top: 8px; }
 .paid-hero .steps { align-self: stretch; text-align: left; border: 1px solid var(--card-line); border-radius: var(--radius-card); background: var(--bg); box-shadow: var(--card-shadow); }
 .paid-hero__mark { position: relative; width: 128px; height: 128px; display: flex; align-items: center; justify-content: center; }
@@ -607,7 +599,7 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .paid-hero__coin { position: relative; width: 64px; height: 64px; border-radius: 50%; background: var(--sky); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 34px; box-shadow: 0 0 0 18px var(--accent-tint); animation: paid-coin 2.4s ease-in-out infinite; }
 .paid-hero__mark--ok { width: 96px; height: 96px; margin: 16px; border-radius: 50%; background: var(--ok-ink); color: #fff; box-shadow: 0 0 0 16px var(--ok-bg); animation: paid-pop .45s cubic-bezier(.2,.8,.2,1) both; }
 .paid-hero__tick { stroke-dasharray: 40; animation: paid-draw .4s .25s ease-out both; }
-.paid-hero__h { font-family: var(--display); font-size: 44px; font-weight: 400; line-height: .95; text-transform: uppercase; }
+.paid-hero__h { font-family: var(--display); font-size: 44px; font-weight: 700; line-height: .95; }
 .paid-hero__p { max-width: 300px; font-size: 16px; line-height: 1.45; color: var(--mute); }
 .paid-hero__p b { color: var(--ink); }
 @keyframes paid-ripple { 0% { transform: scale(.6); opacity: .5; } 100% { transform: scale(1.5); opacity: 0; } }
@@ -619,13 +611,13 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 /* ---------- Joining: the QR's landing page for a guest (#183) ---------- */
 .join-hero { background: var(--sky); color: #fff; padding: 0 var(--gutter) 56px; margin-bottom: -40px; }
 .join-hero__in { max-width: calc(var(--col) - 2 * var(--gutter)); margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-top: 8px; }
-.join-hero__h { font-family: var(--display); font-size: 44px; font-weight: 400; line-height: .95; text-transform: uppercase; }
+.join-hero__h { font-family: var(--display); font-size: 44px; font-weight: 700; line-height: .95; }
 .join-hero__who { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; }
 .join-card { border-radius: var(--radius-card); background: var(--bg); box-shadow: 0 10px 30px rgba(0,60,120,.16); overflow: hidden; position: relative; }
 .join-card__top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 18px; }
 .join-card__venue { font-size: 20px; font-weight: 700; }
 .join-card__total { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.join-card__total b { font-family: var(--display); font-size: 32px; font-weight: 400; line-height: 1; }
+.join-card__total b { font-family: var(--display); font-size: 32px; font-weight: 700; line-height: 1; }
 .join-steps { list-style: none; margin: 0; padding: 12px 18px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; font-size: 14px; font-weight: 600; }
 .join-steps li { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .join-steps span { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-tint); color: #0a4f8c; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 16px; }
@@ -641,3 +633,28 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .btn--revolut .pay-apps__mark { background: transparent; box-shadow: inset 0 0 0 3px #191c1f; }
 .pay-apps__mark { width: 14px; height: 14px; border-radius: 50%; flex: none; }
 
+
+/* ---------- Names (no avatars, #212) ---------- */
+.names { flex: none; max-width: 45%; font-size: 14px; color: var(--quiet); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Receipt: the bill, and only the bill (#212) ---------- */
+/* Torn top and bottom: a zig-zag mask, 14px teeth, 7px deep. */
+.receipt {
+  position: relative; background: var(--paper); padding: 24px 18px 22px; font-family: var(--mono); font-size: 14px; letter-spacing: -.02em; color: var(--ink);
+  -webkit-mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top/14px 7px repeat-x, linear-gradient(#000 0 0) 0 6px/100% calc(100% - 12px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom/14px 7px repeat-x;
+  mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top/14px 7px repeat-x, linear-gradient(#000 0 0) 0 6px/100% calc(100% - 12px) no-repeat, conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom/14px 7px repeat-x;
+}
+.receipt__head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0 8px; }
+.receipt__name { font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: -.015em; }
+.receipt__end { font-size: 13px; color: var(--mute); text-transform: uppercase; }
+.receipt__line { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 6px 0; border-top: 1px dashed var(--paper-rule); font-variant-numeric: tabular-nums; }
+.receipt__line--quiet { color: var(--quiet); }
+.receipt__line--strong { font-weight: 600; border-top: 1px dashed var(--ink); box-shadow: 0 -3px 0 -2px var(--ink); }
+.receipt__item { flex: 1; min-width: 0; }
+.receipt__note { display: block; font-size: 13px; color: var(--quiet); }
+.receipt__price { white-space: nowrap; }
+/* Claim on a receipt line: 44px, outlined; claimed is blue. */
+.receipt .claim-btn { flex: none; min-width: 104px; height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--ink); background: var(--bg); color: var(--ink); font: 700 14px var(--font); letter-spacing: 0; cursor: pointer; }
+.receipt .claim-btn[aria-pressed='true'] { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* The PAID stamp. */
+.stamp-paid { display: inline-block; padding: 2px 12px; border: 3px solid var(--loud); border-radius: 4px; color: var(--loud); font-family: var(--display); font-weight: 800; letter-spacing: .08em; transform: rotate(-7deg); }

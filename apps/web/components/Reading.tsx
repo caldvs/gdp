@@ -52,15 +52,6 @@ export function readingStatus(ms: number): string {
   return STATUS.filter(([at]) => ms >= at).at(-1)![1];
 }
 
-/**
- * How full the bar is `ms` into a read: eases towards 94% over about 15s
- * and never claims 100% before the bill is back (#185).
- */
-export function readingProgress(ms: number): number {
-  const f = Math.min(1, Math.max(0, ms / 15_000));
-  return Math.round(94 * (1 - Math.pow(1 - f, 1.8)));
-}
-
 /** Re-renders every half second, from `since` (or mount). */
 function useElapsed(since?: number): number {
   const [start] = useState(() => since ?? Date.now());
@@ -90,7 +81,6 @@ export function ReadingWait({ photo, title, slow, actions, phase = 'reading', si
   const elapsed = useElapsed(since);
   const preparing = phase === 'preparing';
   const status = preparing ? 'Sending your photo' : readingStatus(elapsed);
-  const pct = preparing ? 4 : readingProgress(elapsed);
   return (
     <>
       <Page>
@@ -104,11 +94,8 @@ export function ReadingWait({ photo, title, slow, actions, phase = 'reading', si
             <p className="reading-hero__status" role="status" aria-live="polite"><span key={status} className="reading-hero__msg">{status}</span></p>
           </div>
         </div>
-        <div className="reading-bar" role="progressbar" aria-label="Reading the bill" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-          <span style={{ width: `${pct}%` }} />
-        </div>
         <BillSkeleton rows={5} />
-        <p className="small muted reading-hint">{slow || elapsed > 7_000 ? 'Long bills can take up to 15 seconds.' : 'Usually a few seconds.'}</p>
+        <p className="small muted reading-hint">Up to 15 seconds.</p>
       </Page>
       <ActionBar>{actions}</ActionBar>
     </>

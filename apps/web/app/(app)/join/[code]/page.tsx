@@ -9,7 +9,7 @@ import { useMe } from '@gdp/core/api/hooks/useMe';
 import { formatGBP } from '@gdp/core/lib/money';
 import { scrubFragmentFromUrl, storeSessionPayoutFromFragment } from '@gdp/core/lib/sessionPayout';
 import { takeJoinFragment } from '@/lib/joinFragment';
-import { ActionBar, AvatarStack, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
+import { ActionBar, Button, Centre, Notice, Page, Spinner, Title } from '@/components/ui';
 
 type Session = components['schemas']['Session'];
 type Preview = components['schemas']['SessionPreview'];
@@ -161,7 +161,7 @@ function GuestLanding({ code }: { code: string }) {
       <div className="join-hero">
         <div className="join-hero__in">
           <h1 className="join-hero__h">Join {p.hostName}’s bill</h1>
-          <div className="join-hero__who"><AvatarStack names={p.people} />{inNow}</div>
+          <div className="join-hero__who">{inNow}</div>
         </div>
       </div>
       <Page>

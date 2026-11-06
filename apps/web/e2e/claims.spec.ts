@@ -235,7 +235,7 @@ test('changing ways: 2 → 3 updates the other member, and can’t go below the 
   await expect(tom.getByText('3 ways').first()).toBeVisible();
 });
 
-test('#123: a row someone else just took flashes who took it, then settles to an avatar', async ({ browser }) => {
+test('#123: a row someone else just took flashes who took it, then settles to their name', async ({ browser }) => {
   const api = new FakeApi({ leadClaims: [] });
   const sam = await diner(browser, api, users.sam);
   const tom = await diner(browser, api, users.tom);

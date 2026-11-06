@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
-import { Avatar, AvatarStack, Diners } from '@/components/ui';
+import { AvatarStack, Diners } from '@/components/ui';
 
 const meta = {
   title: 'People/Diners',
@@ -19,19 +19,10 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const AtTheTable: Story = {};
-export const JustTheHost: Story = { args: { people: [{ userId: 'u1', displayName: 'Callum Davies' }], meId: 'u1' } };
+export const JustTheLead: Story = { args: { people: [{ userId: 'u1', displayName: 'Callum Davies' }], meId: 'u1' } };
 
-export const Avatars: StoryObj<typeof Avatar> = {
-  render: () => (
-    <div style={{ display: 'flex', gap: 12 }}>
-      <Avatar name="Callum Davies" />
-      <Avatar name="Priya" />
-      <Avatar name="Tom Reed" you />
-    </div>
-  ),
-};
-
-export const Stack: StoryObj<typeof AvatarStack> = {
+/** Who has an item, written out (no avatars, #212). */
+export const Names: StoryObj<typeof AvatarStack> = {
   args: { names: ['Callum Davies', 'Priya Shah', 'Tom Reed', 'Sam', 'Ana', 'Jo'] },
   render: (a) => <AvatarStack {...a} />,
 };

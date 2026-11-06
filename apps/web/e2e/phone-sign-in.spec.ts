@@ -86,3 +86,12 @@ test('#231 texts where WhatsApp isn’t set up', async ({ browser }) => {
   await page.getByLabel('4-digit code').fill(PHONE_CODE);
   await expect(page).not.toHaveURL(/sign-in/);
 });
+
+test('#231 texts when both are on: Callum chose SMS', async ({ browser }) => {
+  const api = new FakeApi();
+  api.phoneSignIn = true;
+  const page = await signedOut(browser, api);
+  await page.route('**/v1/auth/methods', (r) => r.fulfill({ json: { email: true, phone: true, whatsapp: true, sms: true } }));
+  await page.reload();
+  await expect(page.getByText('We’ll text you a 4-digit code.')).toBeVisible();
+});

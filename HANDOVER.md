@@ -2,7 +2,7 @@
 
 _Where the work is right now. Rewrite this when you finish something; don't append history._
 
-_Last updated 4 Nov 2026 (night)._
+_Last updated 6 Nov 2026._
 
 ## State of main
 
@@ -57,7 +57,7 @@ _Last updated 4 Nov 2026 (night)._
 
 **Bill totals** (5 Nov): `GET /v1/me/sessions` carries `billTotalPence` and `mySharePence` (`mySessions.ts`, one extra BatchGet of the pinned bill versions and the caller's `SHARE#` rows). Bills and History show the host the total, and a guest their share plus the bill's total. `SHARE#` rows now keep a copy of the split's members (`userIds`); splits made before 5 Nov count the caller alone, so their odd penny can be 1p out.
 
-**Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); #141 (Identity Center, security contact); #144 (separate prod account?); #115 (decision); #79 (Stripe live). Seven Dependabot PRs are open: merge or close them on GitHub.
+**Waiting on Callum** (steps in each issue): **run Release** (prod still has Callum's real address as a no-link exempt sign-in until it does, #137), then rotate `gdp-prod/session-jwt-secret` and delete the old prod deploy logs (#137); #141 (Identity Center, security contact); #144 (separate prod account?); #79 (Stripe live; checklist updated 6 Nov for the £1 hold and credit packs). Seven Dependabot PRs are open: merge or close them on GitHub.
 
 **Done 4 Nov in the consoles:** old branches deleted (#73); prod and dev alert emails confirmed (#81); `claude-mcp` can't read secret values (#85); `gdp-backend-dev` has `gdp-local-dev` instead of admin (#140, add actions there if the Mac hits AccessDenied); SPF, DMARC and SES MAIL FROM DNS (#153); GitHub `prod` environment requires Callum's approval and both environments deploy from `main` only.
 

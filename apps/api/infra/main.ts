@@ -337,9 +337,23 @@ class GdpBackendStack extends cdk.Stack {
     // Lets this environment's GitHub deploy role (infra/githubDeploy.ts)
     // invoke the function directly for that check. Granted here rather than
     // in that stack so the normal CI deploy keeps it in step with the function.
-    fn.grantInvoke(
-      iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), { mutable: true }),
-    );
+    const deployRole = iam.Role.fromRoleName(this, 'GithubDeployRole', deployRoleName(envName), {
+      mutable: true,
+    });
+    fn.grantInvoke(deployRole);
+    // The money journey (scripts/money-journey.ts) runs after each dev
+    // deploy with dev's Stripe key, which is test mode. Dev only: prod's
+    // deploy role never reads a Stripe key.
+    if (envName === 'dev' && stripeEnabled) {
+      deployRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          actions: ['secretsmanager:GetSecretValue'],
+          resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:gdp-dev/stripe-secret-key-*`,
+          ],
+        }),
+      );
+    }
 
     // The daily hold sweep (#168, src/ops/holdSweep.ts): takes the platform
     // fee from holds on bills still open after 6 days, before the card's

@@ -159,6 +159,16 @@ jobs:
             '.[$s].ApiFunctionNameOutput' "cdk-outputs.${ENV_NAME}.json")
           npx tsx scripts/deps-check.ts "$fn"
 
+      # #228 end to end on dev: a real bill, a £1 hold in Stripe test mode,
+      # two guests paying, settle. Fails the deploy unless the lead's saved
+      # card is charged exactly the guests' round-ups and the hold released
+      # (scripts/money-journey.ts). Reads dev's Stripe key (test mode) from
+      # Secrets Manager; never prod.
+      - name: Money journey
+        if: env.ENV_NAME == 'dev' && vars.STRIPE_ENABLED == 'true'
+        timeout-minutes: 4
+        run: npx tsx scripts/money-journey.ts "${{ steps.api.outputs.url }}"
+
       # The deploy roles' own stacks (infra/githubDeploy.ts), dev and prod,
       # from the prod job only (#144): it needs the prod environment's
       # reviewer, so a push to main can't rewrite either role's trust

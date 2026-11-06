@@ -160,7 +160,7 @@ asks for a mobile number. Without it, sign-in stays email only.
 
 ### Checks after every deploy
 
-The workflow runs two checks once `cdk deploy` finishes:
+The workflow runs these once `cdk deploy` finishes:
 
 - **Smoke test** (`scripts/smoke.ts`): health, readiness, the auth gate and
   the docs, over HTTPS, through the stack's custom domain
@@ -178,8 +178,26 @@ The workflow runs two checks once `cdk deploy` finishes:
   failing fail the run; Amazon Location only warns, because a failed lookup
   leaves the venue as read off the bill. The results table is in the run's
   summary.
+- **Money journey** (`scripts/money-journey.ts`, dev only, when
+  `STRIPE_ENABLED`): the #228 fee model end to end through the deployed API
+  and Stripe test mode. A lead and two `@test.invalid` guests; the lead scans
+  `fixtures/receipts/thebank.jpg` (read once, then from the analysis cache);
+  a £1 hold is placed as the app's Checkout would (the lead's customer,
+  `pm_card_visa`, card saved for off-session) and the API records it through
+  the page's poll; share, the guests claim a line each, pay, the lead marks
+  them received and settles. It fails the deploy unless the API and Stripe
+  both say the saved card was charged exactly the guests' round-ups (worked
+  out with core's `owed.ts` from the session and bill the API returned), once,
+  and the hold was released. Then it deletes the Stripe test customer. About
+  20 seconds; the amounts are in the run's summary. The dev deploy role may
+  read `gdp-dev/stripe-secret-key` for it (`infra/main.ts`); the script
+  refuses any key that isn't test mode. Not covered: the under-30p path and a
+  bank asking the lead to confirm (unit and integration tested).
 
-Run it yourself with `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>`
+Run it yourself with `npm run journey:dev -w apps/api` and the dev Stripe
+test key in `STRIPE_TEST_KEY` (your `gdp-dev` user can't read the secret).
+
+Run the dependency check yourself with `AWS_PROFILE=gdp-dev npm run check:deps -w apps/api <function-name>`
 (the name is the stack's `ApiFunctionNameOutput`).
 
 Every call out to Bedrock, Amazon Location, Stripe and SES is logged as

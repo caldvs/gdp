@@ -53,5 +53,5 @@ npm run build -w apps/web && npm run e2e -w apps/web
 
 - The Playwright suite in `e2e/` runs against `FakeApi` (`e2e/fakeApi.ts`), an in-memory API, with one browser context per diner.
 - Guest totals are checked through `data-testid="your-share"`.
-- Visual snapshots belong to CI (Linux Chromium). To refresh them, run the **Update visual baselines** workflow on your branch, download its artifact and commit the PNGs.
+- Visual snapshots belong to CI (Linux Chromium). To refresh them, run the **Update screenshot baselines** workflow on your branch, download its artifact and commit the PNGs.
 - The mobile WebKit project only runs in CI.

@@ -1,9 +1,9 @@
-name: Test Deploy
+name: Deploy to test
 
 # Every hour, put the newest green commit on main onto test: the dev API
-# (API Deploy, environment `dev`) and test.paymeback.dev (a Vercel Preview
+# (Deploy API, environment `dev`) and test.paymeback.dev (a Vercel Preview
 # build aliased to it). Pushes to main deploy nothing themselves; prod only
-# deploys through Release (release.yml).
+# deploys through Deploy to prod (deploy-prod.yml).
 #
 # - Picks the newest commit on main whose CI `gate` passed (a commit still in
 #   CI waits for the next hour).
@@ -13,7 +13,7 @@ name: Test Deploy
 #   packages. Nothing new → nothing deploys, so a quiet hour costs nothing.
 # - Records a `test` deployment once everything it deployed succeeded. A
 #   failure records nothing, so the next hour tries again; fix main.
-# - Run it by hand (Actions → Test Deploy → Run workflow) to deploy now;
+# - Run it by hand (Actions → Deploy to test → Run workflow) to deploy now;
 #   `force` redeploys both parts even if nothing changed.
 
 on:
@@ -80,7 +80,7 @@ jobs:
               exit 0
             fi
             changed=$(git diff --name-only "$live" "$sha")
-            grep -qE '^(apps/api/|package-lock\.json$|\.github/workflows/api-deploy\.yml$)' <<<"$changed" && api=true
+            grep -qE '^(apps/api/|package-lock\.json$|\.github/workflows/deploy-api\.yml$)' <<<"$changed" && api=true
             grep -qE '^(apps/web/|packages/|package\.json$|package-lock\.json$|\.nvmrc$)' <<<"$changed" && web=true
           fi
           echo "sha=$sha" >>"$GITHUB_OUTPUT"
@@ -95,7 +95,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-    uses: ./.github/workflows/api-deploy.yml
+    uses: ./.github/workflows/deploy-api.yml
     with:
       environment: dev
       ref: ${{ needs.pick.outputs.sha }}
@@ -151,7 +151,7 @@ jobs:
           SHA: ${{ needs.pick.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          id=$(jq -n --arg sha "$SHA" '{ref: $sha, environment: "test", auto_merge: false, required_contexts: [], description: "Test Deploy"}' \
+          id=$(jq -n --arg sha "$SHA" '{ref: $sha, environment: "test", auto_merge: false, required_contexts: [], description: "Deploy to test"}' \
             | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)
           gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success \
             -f environment_url=https://test.paymeback.dev >/dev/null

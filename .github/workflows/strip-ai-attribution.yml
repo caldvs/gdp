@@ -4,7 +4,7 @@
 # it writes; this strips it server-side so nothing has to be fixed by hand.
 # Its own edits use GITHUB_TOKEN, which doesn't trigger workflows, so it
 # can't loop.
-name: PR attribution
+name: Strip AI attribution
 
 on:
   pull_request:

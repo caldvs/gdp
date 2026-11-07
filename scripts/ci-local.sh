@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs what .github/workflows/ci.yml runs, locally, so a commit can go to main
+# Runs what .github/workflows/checks.yml runs, locally, so a commit can go to main
 # without waiting on GitHub. Works from any git worktree of this repo.
 #
 #   scripts/ci-local.sh            jobs for what changed since main (like CI's path filter)
@@ -38,11 +38,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Path filter, as in ci.yml's `changes` job.
+# Path filter, as in checks.yml's `changes` job.
 api=$all core=$all web=$all
 if [ "$all" = false ]; then
   changed=$( { git diff --name-only "$(git merge-base HEAD "$base")"; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u)
-  shared='^(package\.json|package-lock\.json|\.nvmrc|\.github/workflows/ci\.yml)$'
+  shared='^(package\.json|package-lock\.json|\.nvmrc|\.github/workflows/checks\.yml)$'
   grep -Eq "$shared|^apps/api/" <<<"$changed" && api=true
   grep -Eq "$shared|^packages/" <<<"$changed" && core=true
   grep -Eq "$shared|^apps/web/|^packages/" <<<"$changed" && web=true

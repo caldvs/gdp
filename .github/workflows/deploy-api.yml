@@ -1,9 +1,9 @@
-name: API Deploy
+name: Deploy API
 
-# Test Deploy (test-deploy.yml) calls this hourly with `environment: dev` when
+# Deploy to test (deploy-test.yml) calls this hourly with `environment: dev` when
 # the newest green commit on main changed the API. Manual dispatch → redeploy
 # dev now.
-# Prod only deploys through the Release workflow (release.yml), which calls
+# Prod only deploys through Deploy to prod (deploy-prod.yml), which calls
 # this one with `environment: prod` (#124).
 #
 # Required setup (one-off, per AWS account/environment):
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Target environment (prod deploys through Release)
+        description: Target environment (prod deploys through Deploy to prod)
         required: true
         type: choice
         default: dev
@@ -78,12 +78,12 @@ jobs:
       - run: npm test
       - run: npm run validate:bundle
 
-      # Prod only ever deploys main, through Release. The `prod` GitHub
+      # Prod only ever deploys main, through Deploy to prod. The `prod` GitHub
       # environment should also be limited to main; this holds even if it isn't.
       - name: Refuse prod outside main
-        if: env.ENV_NAME == 'prod' && (github.ref != 'refs/heads/main' || github.workflow != 'Release')
+        if: env.ENV_NAME == 'prod' && (github.ref != 'refs/heads/main' || github.workflow != 'Deploy to prod')
         run: |
-          echo "::error::prod deploys only from main through Release (this run: ${GITHUB_WORKFLOW} on ${GITHUB_REF})"
+          echo "::error::prod deploys only from main through Deploy to prod (this run: ${GITHUB_WORKFLOW} on ${GITHUB_REF})"
           exit 1
 
       - name: Resolve stack name

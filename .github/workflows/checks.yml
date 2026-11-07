@@ -1,4 +1,4 @@
-name: CI
+name: Checks
 
 # One workflow for every PR and every push to main. Jobs are skipped by path,
 # but the workflow always runs, so the final `gate` job always reports. `gate`
@@ -52,7 +52,7 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - '.nvmrc'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/checks.yml'
             api:
               - *shared
               - 'apps/api/**'
@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-24.04
     # Playwright's own image: the browsers and their system libraries are
     # already in it. Visual baselines are made in the same image
-    # (visual-baselines.yml).
+    # (update-screenshots.yml).
     container:
       image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
     # A normal shard takes about 5 minutes; a hung browser shouldn't hold a

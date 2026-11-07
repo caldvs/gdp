@@ -71,7 +71,7 @@ The deploy roles' stacks (`GdpGithubDeploy`, `GdpGithubDeployProd`) deploy
 from the prod job only (#144), so a push to main can't change either role's
 trust policy. Setting up from scratch, create them once from your Mac
 (`npx cdk deploy GdpGithubDeploy GdpGithubDeployProd -c githubOidcProviderArn=…`,
-see the comment in `api-deploy.yml`). Then:
+see the comment in `deploy-api.yml`). Then:
 
 1. GitHub → Settings → Environments → **New environment** `prod`: required
    reviewer (Callum), deployment branches `main` only, and variables
@@ -84,7 +84,7 @@ see the comment in `api-deploy.yml`). Then:
    verified sender as dev works; it's one account) and the secret
    `gdp-prod/session-jwt-secret` (new, random, 32+ characters). A missing SSM
    parameter fails the deploy; a missing secret fails the smoke test.
-3. Actions → **Release** → Run workflow, and approve the prod deploy.
+3. Actions → **Deploy to prod** → Run workflow, and approve the prod deploy.
 
 What enforces it:
 
@@ -110,7 +110,7 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
 
 ### Let Actions deploy dev (one-off)
 
-`.github/workflows/api-deploy.yml` deploys with GitHub OIDC. To give it a role:
+`.github/workflows/deploy-api.yml` deploys with GitHub OIDC. To give it a role:
 
 1. `cd apps/api && npx cdk deploy GdpGithubDeploy --profile gdp-dev`
    - If the account already has a GitHub OIDC provider (the deploy fails
@@ -121,7 +121,7 @@ secrets listed in `apps/api/infra/main.ts` must exist in eu-west-2.
    - `AWS_DEPLOY_ROLE_ARN` = the stack's `DeployRoleArnOutput`
      (`arn:aws:iam::<acct>:role/gdp-github-deploy`)
    - `AWS_REGION` = `eu-west-2`
-3. Actions → **API Deploy** → Run workflow (`dev`) to check it.
+3. Actions → **Deploy API** → Run workflow (`dev`) to check it.
 
 The role can only assume the CDK bootstrap roles (`cdk-*`), and only from jobs
 in this repo's `dev` GitHub environment (`repo:caldvs/gdp:environment:dev`, or
@@ -183,16 +183,16 @@ Git pushes never deploy (`apps/web/vercel.json` switches Git deploys off):
 Hobby allows 100 deployments a day and every push counts. GitHub Actions
 deploys instead (#124):
 
-- **Test:** pushes to main deploy nothing. Every hour (at :17) **Test Deploy**
-  (`test-deploy.yml`) takes the newest commit on main whose `gate` passed,
+- **Test:** pushes to main deploy nothing. Every hour (at :17) **Deploy to test**
+  (`deploy-test.yml`) takes the newest commit on main whose `gate` passed,
   compares it with the last `test` deployment (Settings → Environments; what test runs now) and deploys only
-  what changed: the dev API (API Deploy, `dev`) for `apps/api`, and for
+  what changed: the dev API (Deploy API, `dev`) for `apps/api`, and for
   `apps/web` or `packages` a Vercel Preview build (Preview env vars: the dev
   API) aliased to `test.paymeback.dev`. Then it records a `test` deployment. A quiet
   hour deploys nothing, so test costs at most 24 Vercel deploys a day. Run it
   by hand to deploy now (`force` redeploys both). If a deploy fails the tag
   stays put and the next hour retries, so fix main.
-- **Live:** Actions → **Release** → Run workflow (optionally a commit on main;
+- **Live:** Actions → **Deploy to prod** → Run workflow (optionally a commit on main;
   blank means latest). It refuses a commit whose `gate` didn't pass, deploys
   the prod API (`GdpBackendProd`; the `prod` environment's reviewer approves),
   stops if the smoke test or dependency check fails, then builds and deploys
@@ -201,7 +201,7 @@ deploys instead (#124):
   deploys any other way, so the live site can't get ahead of the API it
   needs.
 - **Rollback:** the web app with Vercel's Instant Rollback (no build); the
-  API by running Release on the previous `live` deployment's commit.
+  API by running Deploy to prod on the previous `live` deployment's commit.
 - Vercel cost: one deploy per web push plus one per release.
 
 `NEXT_PUBLIC_PUBLIC_BASE_URL` is optional: share links and QR codes fall back

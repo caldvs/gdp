@@ -1,6 +1,6 @@
 # Regenerates the visual snapshot baselines on the same runner CI uses and
 # uploads them. Download the artifact and commit apps/web/e2e/visual.spec.ts-snapshots/.
-name: Update visual baselines
+name: Update screenshot baselines
 
 on:
   workflow_dispatch:

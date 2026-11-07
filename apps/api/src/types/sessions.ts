@@ -62,6 +62,11 @@ export const ParticipantSchema = z.object({
   // requires all non-creator participants to be ready (unless force=true).
   // Default false; flipped via POST /v1/sessions/:id/ready.
   readyToLock: z.boolean().default(false),
+  // Storage only, never sent to clients: bumped on every write of the
+  // row, and each write is conditional on the one it read, so two writes
+  // from the same read can't both land (one would undo the other).
+  // Absent on rows from before it existed and on rows not yet written.
+  rev: z.number().int().nonnegative().optional(),
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 

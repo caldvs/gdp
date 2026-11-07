@@ -38,6 +38,28 @@ function participantItem(sessionId: string, ttlAt: number, p: Participant) {
   };
 }
 
+type TransactItem = NonNullable<TransactWriteCommandInput['TransactItems']>[number];
+
+/**
+ * Write a participant's whole row, but only over the version it was read
+ * at (`p.rev`). Claims, payments and the lead's confirm all rewrite the
+ * same row, so without this a write from a stale read silently undoes
+ * whichever landed in between. A lost race fails the transaction with
+ * ConditionalCheckFailed, and the caller re-reads and tries again.
+ */
+function participantPutOp(sessionId: string, ttlAt: number, p: Participant): TransactItem {
+  const fresh = p.rev === undefined;
+  return {
+    Put: {
+      TableName: TABLE_NAME,
+      Item: participantItem(sessionId, ttlAt, { ...p, rev: (p.rev ?? 0) + 1 }),
+      ConditionExpression: fresh ? 'attribute_not_exists(#rev)' : '#rev = :rev',
+      ExpressionAttributeNames: { '#rev': 'rev' },
+      ...(fresh ? {} : { ExpressionAttributeValues: { ':rev': p.rev } }),
+    },
+  };
+}
+
 function stripParticipantKeys(row: object): Participant {
   const {
     pk: _pk,
@@ -110,12 +132,7 @@ export const sessionStore = {
 
     const transactItems: NonNullable<TransactWriteCommandInput['TransactItems']> = [
       { Put: { TableName: TABLE_NAME, Item: metaRow } },
-      ...session.participants.map((p) => ({
-        Put: {
-          TableName: TABLE_NAME,
-          Item: participantItem(session.sessionId, ttlAt, p),
-        },
-      })),
+      ...session.participants.map((p) => participantPutOp(session.sessionId, ttlAt, p)),
     ];
 
     if (session.joinCode) {
@@ -216,7 +233,7 @@ export const sessionStore = {
       new TransactWriteCommand({
         TransactItems: [
           claimsVersionGuardOp(sessionId, expectedVersion, ttlAt),
-          { Put: { TableName: TABLE_NAME, Item: participantItem(sessionId, ttlAt, participant) } },
+          participantPutOp(sessionId, ttlAt, participant),
         ],
       }),
     );
@@ -311,17 +328,29 @@ export const sessionStore = {
   },
 
   /**
-   * Replace a participant's full record (claims, payment, etc.).
-   * Used for joins and claim updates.
+   * Add someone to the table. Fails with ConditionalCheckFailed if they're
+   * already there, so a second join can't wipe the first one's claims.
    */
-  async putParticipant(sessionId: string, participant: Participant): Promise<void> {
+  async addParticipant(sessionId: string, participant: Participant): Promise<void> {
     await ddb.send(
       new PutCommand({
         TableName: TABLE_NAME,
-        Item: participantItem(sessionId, ttlEpochSeconds(), participant),
+        Item: participantItem(sessionId, ttlEpochSeconds(), { ...participant, rev: 1 }),
+        ConditionExpression: 'attribute_not_exists(pk)',
       }),
     );
   },
+
+  /**
+   * Replace a participant's full record, only over the version it was read
+   * at (see participantPutOp). Fails with ConditionalCheckFailed otherwise.
+   */
+  async putParticipant(sessionId: string, participant: Participant): Promise<void> {
+    const { Put } = participantPutOp(sessionId, ttlEpochSeconds(), participant);
+    await ddb.send(new PutCommand(Put!));
+  },
+
+  participantPutOp,
 
   /**
    * Write a participant row together with the split settings for one
@@ -371,19 +400,8 @@ export const sessionStore = {
         ? sessionStore.bumpClaimsVersionOp(input.sessionId)
         : claimsVersionGuardOp(input.sessionId, input.expectedClaimsVersion, ttlAt),
     ];
-    if (input.participant) {
-      items.push({
-        Put: {
-          TableName: TABLE_NAME,
-          Item: participantItem(input.sessionId, ttlAt, input.participant),
-        },
-      });
-    }
-    for (const p of input.others ?? []) {
-      items.push({
-        Put: { TableName: TABLE_NAME, Item: participantItem(input.sessionId, ttlAt, p) },
-      });
-    }
+    if (input.participant) items.push(participantPutOp(input.sessionId, ttlAt, input.participant));
+    for (const p of input.others ?? []) items.push(participantPutOp(input.sessionId, ttlAt, p));
     await ddb.send(new TransactWriteCommand({ TransactItems: items }));
   },
 
@@ -465,12 +483,7 @@ export const sessionStore = {
               },
             },
           },
-          {
-            Put: {
-              TableName: TABLE_NAME,
-              Item: participantItem(input.sessionMeta.sessionId, ttlAt, input.creator),
-            },
-          },
+          participantPutOp(input.sessionMeta.sessionId, ttlAt, input.creator),
         ],
       }),
     );
@@ -498,12 +511,7 @@ export const sessionStore = {
           },
         },
       },
-      ...input.participants.map((p) => ({
-        Put: {
-          TableName: TABLE_NAME,
-          Item: participantItem(input.sessionMeta.sessionId, ttlAt, p),
-        },
-      })),
+      ...input.participants.map((p) => participantPutOp(input.sessionMeta.sessionId, ttlAt, p)),
     ];
     // Bill lock is already in place from session create; no need to write again.
 

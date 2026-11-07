@@ -13,7 +13,7 @@ info:
     - **Timestamps are RFC 3339** strings.
     - **Auth** uses session JWTs issued by `POST /v1/auth/email/verify` (the emailed 6-digit code). Tokens are passed as `Authorization: Bearer <jwt>` and verified (signature + expiry) on every `/v1/*` request. The verified `sub` claim is the only userId the server trusts — any `userId` in a request body is ignored.
     - **Errors** use a single envelope (`ErrorResponse`). `error.code` is the stable identifier; `error.message` is human-safe.
-    - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body returns `409 IDEMPOTENCY_CONFLICT`.
+    - **Idempotency** is required on every state-changing payment endpoint via the `Idempotency-Key` header. Same key + same body returns the cached response; same key + different body, or the same key while the first request is still running, returns `409 IDEMPOTENCY_CONFLICT`.
     - **Versioning** is path-based (`/v1/...`). Multiple versions may run in parallel.
 
   contact:

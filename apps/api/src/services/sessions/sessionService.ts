@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppError } from '../../errors/AppError.js';
 import { sessionStore } from '../../storage/sessionStore.js';
 import { billStore } from '../../storage/billStore.js';
+import { isConditionalCheckFailed, retryOnConflict } from '../../storage/conflict.js';
 import { entitlementOps } from '../../storage/tableFeeStore.js';
 import type { ShareEntitlement } from '../billing/tableFee.js';
 import { generateJoinCode } from './joinCode.js';
@@ -332,7 +333,16 @@ export const sessionService = {
       payment: { status: 'unpaid' },
       readyToLock: false,
     };
-    await sessionStore.putParticipant(session.sessionId, newParticipant);
+    try {
+      await sessionStore.addParticipant(session.sessionId, newParticipant);
+    } catch (err) {
+      // Joined twice at once: the other request got them in, so this one
+      // returns the table as it is rather than wiping their row.
+      if (!isConditionalCheckFailed(err)) throw err;
+      const now = await sessionStore.get(session.sessionId);
+      if (!now) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      return projectForCaller(now, input.caller.userId);
+    }
 
     return projectForCaller(
       { ...session, participants: [...session.participants, newParticipant] },
@@ -654,28 +664,35 @@ export const sessionService = {
     sessionId: string;
     ready: boolean;
   }): Promise<Session> {
-    const session = await sessionStore.get(input.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    if (session.status !== 'claiming') {
-      throw new AppError('SESSION_INVALID_STATE', 'Session is not in claiming');
-    }
-    const target = session.participants.find((p) => p.userId === input.caller.userId);
-    if (!target) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    // Creator's ready flag is always true; reject explicit toggles to avoid
-    // surprise behaviour (use lock-claims directly).
-    if (target.userId === session.creatorUserId) {
-      throw new AppError('SESSION_INVALID_STATE', 'Creator does not signal ready; use lock-claims');
-    }
+    return retryOnConflict(async () => {
+      const session = await sessionStore.get(input.sessionId);
+      if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      if (session.status !== 'claiming') {
+        throw new AppError('SESSION_INVALID_STATE', 'Session is not in claiming');
+      }
+      const target = session.participants.find((p) => p.userId === input.caller.userId);
+      if (!target) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      // Creator's ready flag is always true; reject explicit toggles to avoid
+      // surprise behaviour (use lock-claims directly).
+      if (target.userId === session.creatorUserId) {
+        throw new AppError(
+          'SESSION_INVALID_STATE',
+          'Creator does not signal ready; use lock-claims',
+        );
+      }
 
-    const updated: Participant = { ...target, readyToLock: input.ready };
-    await sessionStore.putParticipant(session.sessionId, updated);
-    return projectForCaller(
-      {
-        ...session,
-        participants: session.participants.map((p) => (p.userId === updated.userId ? updated : p)),
-      },
-      input.caller.userId,
-    );
+      const updated: Participant = { ...target, readyToLock: input.ready };
+      await sessionStore.putParticipant(session.sessionId, updated);
+      return projectForCaller(
+        {
+          ...session,
+          participants: session.participants.map((p) =>
+            p.userId === updated.userId ? updated : p,
+          ),
+        },
+        input.caller.userId,
+      );
+    }, busy);
   },
 
   async lockClaims(input: {
@@ -683,77 +700,81 @@ export const sessionService = {
     sessionId: string;
     force?: boolean;
   }): Promise<Session> {
-    const session = await sessionStore.get(input.sessionId);
-    if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    if (session.creatorUserId !== input.caller.userId) {
-      throw new AppError('SESSION_NOT_FOUND', 'Session not found');
-    }
-    if (session.status !== 'claiming') {
-      throw new AppError('SESSION_INVALID_STATE', 'Session is not in claiming');
-    }
+    // A guest claiming, readying or paying while the lead locks changes
+    // their row; the lock then re-reads and works out owed amounts again.
+    return retryOnConflict(async () => {
+      const session = await sessionStore.get(input.sessionId);
+      if (!session) throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      if (session.creatorUserId !== input.caller.userId) {
+        throw new AppError('SESSION_NOT_FOUND', 'Session not found');
+      }
+      if (session.status !== 'claiming') {
+        throw new AppError('SESSION_INVALID_STATE', 'Session is not in claiming');
+      }
 
-    const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
-    if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
+      const bill = await billStore.getVersion(session.billId, session.pinnedBillVersion);
+      if (!bill) throw new AppError('BILL_NOT_FOUND', 'Bill not found');
 
-    // Check claims completeness before readiness — a missing claim is more
-    // actionable than a missing ready signal ("get N to claim X" vs "ask N
-    // to mark themselves done").
-    let owed: Map<string, number>;
-    try {
-      owed = computeOwed(
-        bill,
-        session.participants,
-        new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.ways])),
-        new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.units ?? 1])),
+      // Check claims completeness before readiness — a missing claim is more
+      // actionable than a missing ready signal ("get N to claim X" vs "ask N
+      // to mark themselves done").
+      let owed: Map<string, number>;
+      try {
+        owed = computeOwed(
+          bill,
+          session.participants,
+          new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.ways])),
+          new Map((session.shareSettings ?? []).map((st) => [st.itemId, st.units ?? 1])),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message === 'CLAIMS_INCOMPLETE') {
+          throw new AppError(
+            'CLAIMS_INCOMPLETE',
+            'All bill items (and every spot in a split) must be claimed',
+            { unclaimedItemIds: (err as Error & { unclaimedItemIds: string[] }).unclaimedItemIds },
+          );
+        }
+        throw err;
+      }
+
+      // Hybrid claim model: all non-creator participants must signal ready
+      // before the lead can lock, unless they pass force=true. This stops the
+      // lead from racing ahead of a slower diner who's still toggling items.
+      if (!input.force) {
+        const notReady = session.participants
+          .filter((p) => p.userId !== session.creatorUserId && !p.readyToLock)
+          .map((p) => p.userId);
+        if (notReady.length > 0) {
+          throw new AppError(
+            'PARTICIPANTS_NOT_READY',
+            'One or more participants have not yet marked themselves ready',
+            { notReadyUserIds: notReady },
+          );
+        }
+      }
+
+      const updatedParticipants: Participant[] = session.participants.map((p) => ({
+        ...p,
+        // Plus their round-up to the next whole pound.
+        owedPence:
+          (owed.get(p.userId) ?? 0) +
+          (p.userId === session.creatorUserId
+            ? 0
+            : roundUpPence(session.platformFeePence ?? 0, owed.get(p.userId) ?? 0)),
+      }));
+      const { participants: _, ...meta } = session;
+      const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'paying' };
+
+      await sessionStore.applyLockClaims({
+        sessionMeta: updatedMeta,
+        participants: updatedParticipants,
+      });
+
+      return projectForCaller(
+        { ...updatedMeta, participants: updatedParticipants },
+        input.caller.userId,
       );
-    } catch (err) {
-      if (err instanceof Error && err.message === 'CLAIMS_INCOMPLETE') {
-        throw new AppError(
-          'CLAIMS_INCOMPLETE',
-          'All bill items (and every spot in a split) must be claimed',
-          { unclaimedItemIds: (err as Error & { unclaimedItemIds: string[] }).unclaimedItemIds },
-        );
-      }
-      throw err;
-    }
-
-    // Hybrid claim model: all non-creator participants must signal ready
-    // before the lead can lock, unless they pass force=true. This stops the
-    // lead from racing ahead of a slower diner who's still toggling items.
-    if (!input.force) {
-      const notReady = session.participants
-        .filter((p) => p.userId !== session.creatorUserId && !p.readyToLock)
-        .map((p) => p.userId);
-      if (notReady.length > 0) {
-        throw new AppError(
-          'PARTICIPANTS_NOT_READY',
-          'One or more participants have not yet marked themselves ready',
-          { notReadyUserIds: notReady },
-        );
-      }
-    }
-
-    const updatedParticipants: Participant[] = session.participants.map((p) => ({
-      ...p,
-      // Plus their round-up to the next whole pound.
-      owedPence:
-        (owed.get(p.userId) ?? 0) +
-        (p.userId === session.creatorUserId
-          ? 0
-          : roundUpPence(session.platformFeePence ?? 0, owed.get(p.userId) ?? 0)),
-    }));
-    const { participants: _, ...meta } = session;
-    const updatedMeta: Omit<Session, 'participants'> = { ...meta, status: 'paying' };
-
-    await sessionStore.applyLockClaims({
-      sessionMeta: updatedMeta,
-      participants: updatedParticipants,
-    });
-
-    return projectForCaller(
-      { ...updatedMeta, participants: updatedParticipants },
-      input.caller.userId,
-    );
+    }, busy);
   },
 
   /**
@@ -853,6 +874,8 @@ function projectForCaller(session: Session, _callerUserId: string): Session {
   const { shareSettings, ...rest } = session;
   const withShares: Session = {
     ...rest,
+    // rev is storage's (see participantPutOp), not the client's.
+    participants: session.participants.map(({ rev: _rev, ...p }) => p),
     shares: computeShares(session.participants, shareSettings ?? []),
   };
   if (withShares.status === 'setup') {
@@ -1135,59 +1158,34 @@ async function setClaimsOnce(input: {
   );
 }
 
-const CLAIM_RETRIES = 8;
-
 /**
  * Claim writes are conditional on the session's claims version. A clash
  * means someone else's claim, split or bill edit landed first: back off a
  * moment, re-read and try again. Simultaneous claims for different things
  * all succeed after a retry or two.
  */
-async function withClaimsRetry<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (!isConditionalCheckFailed(err)) throw err;
-      if (attempt >= CLAIM_RETRIES) {
-        throw new AppError(
-          'SESSION_INVALID_STATE',
-          'The bill changed while you were choosing — try again',
-        );
-      }
-      await new Promise((r) => setTimeout(r, 5 + Math.random() * 20 * (attempt + 1)));
-    }
-  }
-}
+const withClaimsRetry = <T>(fn: () => Promise<T>): Promise<T> =>
+  retryOnConflict(
+    fn,
+    () =>
+      new AppError('SESSION_INVALID_STATE', 'The bill changed while you were choosing — try again'),
+  );
 
 /**
  * Split edits are read-modify-write on the split's settings row, guarded
  * by its version. If someone else changed the same split in between,
  * re-read and try again; give up after a few goes.
  */
-async function withShareRetry<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (!isConditionalCheckFailed(err)) throw err;
-      if (attempt >= CLAIM_RETRIES) {
-        throw new AppError(
-          'SHARE_CONFLICT',
-          'Someone else changed this split at the same moment — try again',
-        );
-      }
-      await new Promise((r) => setTimeout(r, 5 + Math.random() * 20 * (attempt + 1)));
-    }
-  }
-}
+const withShareRetry = <T>(fn: () => Promise<T>): Promise<T> =>
+  retryOnConflict(
+    fn,
+    () =>
+      new AppError(
+        'SHARE_CONFLICT',
+        'Someone else changed this split at the same moment — try again',
+      ),
+  );
 
-function isConditionalCheckFailed(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const e = err as { name?: string; CancellationReasons?: { Code?: string }[] };
-  if (e.name === 'ConditionalCheckFailedException') return true;
-  if (e.name === 'TransactionCanceledException') {
-    return Boolean(e.CancellationReasons?.some((r) => r.Code === 'ConditionalCheckFailed'));
-  }
-  return false;
-}
+/** A participant's row changed under us more times than retrying could absorb. */
+const busy = () =>
+  new AppError('SESSION_INVALID_STATE', 'Something changed at the same moment — try again');

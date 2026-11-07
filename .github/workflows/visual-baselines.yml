@@ -9,18 +9,31 @@ permissions:
   contents: write
 
 jobs:
-  baselines:
+  version:
     runs-on: ubuntu-24.04
+    outputs:
+      playwright: ${{ steps.v.outputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - id: v
+        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
+
+  baselines:
+    needs: version
+    runs-on: ubuntu-24.04
+    # The same image CI's e2e shards run in, so the screenshots match.
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.version.outputs.playwright }}-noble
+    env:
+      HOME: /root
+    steps:
+      # Checkout needs git for a real clone, and the last step commits.
+      - run: command -v git || { apt-get update -qq && apt-get install -y -qq git; }
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: ./.github/actions/npm-ci
         with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          key: playwright-${{ needs.version.outputs.playwright }}
       - run: npm run build -w apps/web
-      - run: npx playwright install --with-deps chromium
-        working-directory: apps/web
       - run: npx playwright test visual --project=desktop --update-snapshots
         working-directory: apps/web
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -32,6 +45,7 @@ jobs:
       - name: Commit baselines to the branch
         if: github.ref_name != 'main'
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name "caldvs"
           git config user.email "42970938+caldvs@users.noreply.github.com"
           git add apps/web/e2e/visual.spec.ts-snapshots/

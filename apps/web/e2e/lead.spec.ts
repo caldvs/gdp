@@ -19,7 +19,7 @@ async function diner(browser: Browser, api: FakeApi, user: User, goto = `/sessio
   return page;
 }
 
-test('snap → check (fix a price, a quantity) → bank details → share; the second bill skips bank details', async ({ browser }) => {
+test('snap → check (fix a price, a quantity) → bank details → share; the second bill skips bank details', { tag: '@webkit' }, async ({ browser }) => {
   const api = new FakeApi({ status: 'setup' });
   const lead = await diner(browser, api, users.lead, '/');
 

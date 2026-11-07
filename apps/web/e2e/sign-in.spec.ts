@@ -22,7 +22,7 @@ async function newPage(browser: import('@playwright/test').Browser) {
   return { api, ctx, page: await ctx.newPage() };
 }
 
-test('the code typed digit by digit signs in as soon as it is whole', async ({ browser }) => {
+test('the code typed digit by digit signs in as soon as it is whole', { tag: '@webkit' }, async ({ browser }) => {
   const { api, ctx, page } = await newPage(browser);
   await askForCode(page);
   await page.getByLabel(/Code sent to/).pressSequentially(SIGN_IN_CODE);
@@ -31,7 +31,7 @@ test('the code typed digit by digit signs in as soon as it is whole', async ({ b
   await ctx.close();
 });
 
-test('a code filled in at once (pasted, or from the phone) signs in', async ({ browser }) => {
+test('a code filled in at once (pasted, or from the phone) signs in', { tag: '@webkit' }, async ({ browser }) => {
   const { ctx, page } = await newPage(browser);
   await askForCode(page);
   // Spaces and dashes from a paste are ignored.

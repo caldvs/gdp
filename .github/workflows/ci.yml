@@ -11,8 +11,11 @@ on:
   push:
     branches: [main]
 
+# A PR's new push cancels its last run. On main every push gets its own run
+# (grouped by commit), so a push never waits behind the one before it and
+# every commit gets a gate.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -34,8 +37,13 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       core: ${{ steps.filter.outputs.core }}
       web: ${{ steps.filter.outputs.web }}
+      playwright: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      # The e2e container's tag is the lockfile's Playwright, so a Playwright
+      # bump moves the browsers with it.
+      - id: playwright
+        run: echo "version=$(jq -r '.packages["node_modules/@playwright/test"].version' package-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
         id: filter
         with:
@@ -78,12 +86,7 @@ jobs:
         working-directory: apps/api
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-        working-directory: .
+      - uses: ./.github/actions/npm-ci
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
@@ -111,12 +114,7 @@ jobs:
         working-directory: apps/api
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-        working-directory: .
+      - uses: ./.github/actions/npm-ci
       - name: Start DynamoDB Local + MinIO
         run: docker compose up -d
       - name: Wait for services
@@ -159,11 +157,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/npm-ci
       - run: npm run typecheck -w packages/core
       - run: npm run test:cov -w packages/core
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -175,28 +169,39 @@ jobs:
           retention-days: 7
 
   web:
-    name: web • typecheck • build • e2e
+    name: web • build • e2e ${{ matrix.shard }}/4
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
+    # Playwright's own image: the browsers and their system libraries are
+    # already in it. Visual baselines are made in the same image
+    # (visual-baselines.yml).
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
+    # A normal shard takes about 5 minutes; a hung browser shouldn't hold a
+    # runner (and the release) for GitHub's default 6 hours.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      HOME: /root
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: ./.github/actions/npm-ci
         with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck -w apps/web
+          key: playwright-${{ needs.changes.outputs.playwright }}
+      - if: matrix.shard == 1
+        run: npm run typecheck -w apps/web
       - run: npm run build -w apps/web
-      - run: npx playwright install --with-deps chromium webkit
-        working-directory: apps/web
-      - run: npm run e2e -w apps/web
+      - run: npm run e2e -w apps/web -- --shard=${{ matrix.shard }}/4
       # On failure, keep the report and any screenshots it wrote (including
       # new visual baselines) so they can be inspected or committed.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
-          name: playwright
+          name: playwright-${{ matrix.shard }}
           path: |
             apps/web/test-results/
             apps/web/e2e/*-snapshots/

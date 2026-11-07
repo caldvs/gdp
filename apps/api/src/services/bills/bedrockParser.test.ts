@@ -172,6 +172,37 @@ describe('validateParsedBill', () => {
     ).toEqual([['LGR Cannoli', 2, 150]]);
   });
 
+  it('turns a "discount" back into a charge when only that makes the printed total (bytart)', () => {
+    const items = [
+      { name: 'Focaccia', quantity: 1, lineTotalPence: 450, category: 'food' },
+      { name: 'Marquise cake', quantity: 1, lineTotalPence: 900, category: 'food' },
+    ];
+    const read = (extra: object) =>
+      validateParsedBill(
+        JSON.stringify({ ...bill, serviceChargePence: 0, items, ...extra }),
+        'Bedrock',
+      ).items.map((i) => [i.name, i.unitPricePence, i.category]);
+    const charity = { discounts: [{ name: '#CookForUkraine', amountPence: 100 }] };
+
+    expect(read({ ...charity, totalPence: 1450 })).toEqual([
+      ['Focaccia', 450, 'food'],
+      ['Marquise cake', 900, 'food'],
+      ['#CookForUkraine', 100, 'other'],
+    ]);
+    // Also listed as an item: still one charge.
+    expect(
+      read({
+        ...charity,
+        totalPence: 1450,
+        items: [...items, { name: '#CookForUkraine', quantity: 1, lineTotalPence: 100 }],
+      }),
+    ).toHaveLength(3);
+    // A real discount (the total says so) is still taken off.
+    expect(read({ ...charity, totalPence: 1250 }).map((i) => i[1])).toEqual([417, 833]);
+    // No printed total to check against: the discount stands.
+    expect(read(charity)).toHaveLength(2);
+  });
+
   it('asks for line totals, not unit prices', () => {
     expect(PROMPT).toContain('"lineTotalPence": int');
     expect(PROMPT).not.toContain('"unitPricePence"');

@@ -16,6 +16,7 @@ RULES:
 - Indented lines with their own amount ("Add Bacon = 2.00") are extras: list them as their own item. But when a line is printed at 0.00 and the line or lines under it carry the price, the dish was chosen underneath: that's ONE item, named from both, with the parent's quantity and the priced line's amount ("1 Thai Curry 0.00 / Chicken 14.00 / Red" → "Thai Curry Chicken Red", 1400; "Madras 0.00 / - Lamb Madras 13.95" → "Lamb Madras", 1395).
 - "category": "food" for edible plates, "drink" for beverages (alcoholic or not), "other" for cover charges and fees.
 - Every item's "lineTotalPence" is zero or more. A line with a minus amount (a discount, deal, promotion or comp, e.g. "Pizza & Pint Deal = -3.00") is NOT an item: put it in "discounts" with "amountPence" as a positive number, and "appliesTo" set to the exact "name" of the item in "items" it reduces (e.g. the pizza for a pizza-and-pint deal). Omit "appliesTo" for a discount on the whole bill (e.g. "10% off food") or when you can't tell which item it belongs to.
+- A line that adds money on top (a charity donation like "#CookForUkraine 1.00" or "StreetSmart 1.00") is NOT a discount: it's an item with category "other".
 - Deposits, prepayments and gift cards taken off at the end ("Deposit -£50.00", "Prepaid") are NOT items or discounts: leave them out. "totalPence" is the total before any deposit is taken off, not the balance left to pay.
 - "course" (food items only; omit for drinks and other): "starter" for starters, small plates, antipasti and nibbles like olives or bread; "main" for main dishes, pizzas, pastas, burgers and grills; "side" for sides like chips, fries, salads served alongside, vegetables or extra sauces; "dessert" for desserts, ice cream and cheese boards. Use section headings printed on the bill when present; otherwise judge from the dish name and price. If genuinely unsure, omit it.
 - DO NOT include service charge or tax in items. They are separate top-level fields. "serviceChargePence" is every charge added on top of the items for the table: service charge, gratuity, admin fee, staff fee or card surcharge (add them up if there are several).
@@ -23,7 +24,7 @@ RULES:
 - DO NOT invent items.
 - "unsure": only on a line you can't read clearly (faded, cut off, creased, or amounts that don't line up with the names), a few words saying what's unclear ("price faded", "quantity unclear", "name cut off"). Leave it out on every clear line; most bills have none.
 - Kitchen notes ("rare", "no onions", "table 4") are NOT items.
-- "venue.name" is the restaurant, café or bar's trading name. Look for it in the header or logo text at the top, the "Thank you for visiting …" line, or the business name next to the VAT number at the bottom. Copy it as printed (fix only obvious OCR case, e.g. "MAIORA" → "Maiora"). Never put anything else in venue.name; omit it if no name is printed.
+- "venue.name" is the restaurant, café or bar's trading name. Look for it in the header or logo text at the top, the "Thank you for visiting …" line, or the business name next to the VAT number at the bottom. Copy it as printed (fix only obvious OCR case, e.g. "MAIORA" → "Maiora"); never expand initials or add words from what you know of the place ("GBK - Soho" stays "GBK - Soho"). Never put anything else in venue.name; omit it if no name is printed.
 - "venue.address": the full address exactly as printed on the bill (street, town, postcode), joined with ", ". Take the name and address from the header or footer, not from card-machine or payment-processor lines. Omit any part that isn't printed; never guess or complete an address from memory.
 
 Return ONLY valid JSON matching this schema, no preamble:
@@ -127,17 +128,40 @@ function foldDiscounts(parsed: unknown): unknown {
   // The model sometimes lists a discount again as an item with a plus amount:
   // drop that copy, or the bill charges for the discount.
   const discountNames = new Set(discounts.map((d) => sameName(d.name)));
-  const items = rest.items.flatMap((raw) => {
-    if (discountNames.has(sameName(raw.name))) return [];
-    const total = lineTotal(raw);
-    if (total < 0) {
-      discounts.push({ name: raw.name, amountPence: total });
-      return [];
-    }
+  const kept = rest.items.filter((raw) => !discountNames.has(sameName(raw.name)));
+  const minus = kept.filter((raw) => lineTotal(raw) < 0);
+  const plus = kept.filter((raw) => lineTotal(raw) >= 0);
+  // A charge added on top ("#CookForUkraine 1.00", a charity or donation line)
+  // is sometimes given as a discount. When taking the discounts off misses the
+  // printed total and adding them on makes it exactly, they were charges.
+  const charges = asCharges(rest as Totals, plus, discounts) ? discounts.splice(0) : [];
+  const items = [
+    ...plus,
+    ...charges.map((d) => ({
+      name: d.name,
+      quantity: 1,
+      lineTotalPence: Math.abs(d.amountPence),
+      category: 'other',
+    })),
+  ].flatMap((raw) => {
     const { lineTotalPence: _total, ...it } = raw;
-    return splitTotal({ ...it, unitPricePence: 0 }, total);
+    return splitTotal({ ...it, unitPricePence: 0 }, lineTotal(raw));
   });
+  for (const raw of minus) discounts.push({ name: raw.name, amountPence: lineTotal(raw) });
   return { ...rest, items: applyDiscounts(items, discounts) };
+}
+
+type Totals = { totalPence?: unknown; serviceChargePence?: unknown; taxPence?: unknown };
+
+/** True when the bill's printed total only adds up with the discounts added on, not taken off. */
+function asCharges(bill: Totals, items: RawItem[], discounts: Discount[]): boolean {
+  if (discounts.length === 0 || !isInt(bill.totalPence)) return false;
+  const base =
+    items.reduce((sum, it) => sum + lineTotal(it), 0) +
+    (isInt(bill.serviceChargePence) ? bill.serviceChargePence : 0) +
+    (isInt(bill.taxPence) ? bill.taxPence : 0);
+  const off = discounts.reduce((sum, d) => sum + Math.abs(d.amountPence), 0);
+  return base - off !== bill.totalPence && base + off === bill.totalPence;
 }
 
 const valueAt = (root: unknown, path: PropertyKey[]): unknown =>

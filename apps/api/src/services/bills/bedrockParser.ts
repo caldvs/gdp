@@ -30,7 +30,9 @@ import {
 // v8: a UK VAT line printed for information is not tax to add (#176).
 // v9: a dish priced on the line under a 0.00 line is one item; admin fees and
 // surcharges are service; an `unsure` note on lines it can't read clearly.
-const VERSION = 'v9';
+// v10: a charity or donation line is an item, not a discount; the venue's
+// name is never expanded from initials.
+const VERSION = 'v10';
 
 /**
  * Reads the bill with a vision model on Amazon Bedrock (Claude Sonnet by

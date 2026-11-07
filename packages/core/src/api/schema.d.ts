@@ -846,6 +846,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sessions/{sessionId}/participants/{userId}/received": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                /** @description The guest whose money arrived */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collector marks everything a guest owes as received
+         * @description For when the lead sees the transfer land (a banking app notification) before, or
+         *     instead of, the guest saying they've paid. Confirms every payment the guest says
+         *     they've sent, closes one opened but not sent, and records the rest of what they owe
+         *     now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
+         *     with nothing left to collect it changes nothing. A guest who claims more afterwards
+         *     owes the difference, as with any top-up.
+         */
+        post: operations["markParticipantReceived"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sessions/{sessionId}/payments": {
         parameters: {
             query?: never;
@@ -3220,6 +3249,49 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             /** @description Session is already `settled` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markParticipantReceived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: components["parameters"]["SessionId"];
+                /** @description The guest whose money arrived */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, with the guest paid up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or guest not found, or caller is not the collector */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is in setup or deleted */
             409: {
                 headers: {
                     [name: string]: unknown;

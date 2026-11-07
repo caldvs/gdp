@@ -190,6 +190,88 @@ describe('payments', () => {
   });
 });
 
+describe('the lead marks money received', () => {
+  const received = (app: App, t: { sessionId: string; lead: string }, guest: string, by = t.lead) =>
+    post(app, `/v1/sessions/${t.sessionId}/participants/${guest}/received`, by);
+  const ledgerOf = (s: Session, g: string) =>
+    (guestOf(s, g).payments ?? []).map((e) => [e.amountPence, e.status]);
+
+  it('settles a guest who never said they’d paid', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const res = await received(app, t, g);
+    expect(res.status).toBe(200);
+    expect(ledgerOf((await res.json()) as Session, g)).toEqual([[1450, 'succeeded']]);
+    // Nothing more to pay.
+    expect((await post(app, `/v1/sessions/${t.sessionId}/payments`, g)).status).toBe(409);
+  });
+
+  it('confirms what they say they sent and records the rest', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    const first = await initiate(app, t.sessionId, g);
+    expect((await post(app, `/v1/payments/${first.paymentId}/mark-paid`, g)).status).toBe(200);
+    await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]);
+    await received(app, t, g);
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(ledgerOf(s, g)).toEqual([
+      [1450, 'succeeded'],
+      [750, 'succeeded'],
+    ]);
+  });
+
+  it('closes a payment opened but not sent, instead of confirming its amount', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]);
+    const draft = await initiate(app, t.sessionId, g);
+    await received(app, t, g);
+    const s = await getSession(app, t.sessionId, t.lead);
+    expect(ledgerOf(s, g)).toEqual([
+      [2200, 'failed'],
+      [2200, 'succeeded'],
+    ]);
+    const old = await app.request(`/v1/payments/${draft.paymentId}`, { headers: makeAuth(g) });
+    expect(((await old.json()) as { status: string }).status).toBe('failed');
+  });
+
+  it('a second tap changes nothing', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    await received(app, t, g);
+    const again = await received(app, t, g);
+    expect(again.status).toBe(200);
+    expect(ledgerOf((await again.json()) as Session, g)).toEqual([[1450, 'succeeded']]);
+  });
+
+  it('only the lead can, and not for themselves', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 2);
+    const [g0, g1] = t.guests as [string, string];
+    await claim(app, t.sessionId, g0, [t.pizza.itemId]);
+    expect((await received(app, t, g0, g1)).status).toBe(404);
+    expect((await received(app, t, t.lead)).status).toBe(404);
+  });
+
+  it('still works after the bill is closed', async () => {
+    const app = buildApp();
+    const t = await claimingTable(app, 1);
+    const g = t.guests[0]!;
+    await claim(app, t.sessionId, g, [t.pizza.itemId]);
+    expect((await post(app, `/v1/sessions/${t.sessionId}/close`, t.lead)).status).toBe(200);
+    const res = await received(app, t, g);
+    expect(res.status).toBe(200);
+    expect(ledgerOf((await res.json()) as Session, g)).toEqual([[1450, 'succeeded']]);
+  });
+});
+
 describe('after paying (#121: top-ups)', () => {
   it('a guest who has paid can add something they forgot and pay just the difference', async () => {
     const app = buildApp();
@@ -662,6 +744,26 @@ describe('races', () => {
         const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
         expect(me.claimedItemIds).toContain(t.tiramisu.itemId);
         expect(me.payments?.find((e) => e.paymentId === p.paymentId)?.status).toBe('succeeded');
+      }),
+    );
+  });
+
+  it('the lead marking received while the guest claims more: both stick', async () => {
+    const app = buildApp();
+    await Promise.all(
+      Array.from({ length: TABLES }, async () => {
+        const t = await claimingTable(app, 1);
+        const g = t.guests[0]!;
+        expect((await claim(app, t.sessionId, g, [t.pizza.itemId])).status).toBe(200);
+        const [got, more] = await Promise.all([
+          post(app, `/v1/sessions/${t.sessionId}/participants/${g}/received`, t.lead),
+          claim(app, t.sessionId, g, [t.pizza.itemId, t.tiramisu.itemId]),
+        ]);
+        expect(got.status).toBe(200);
+        expect(more.status).toBe(200);
+        const me = guestOf(await getSession(app, t.sessionId, t.lead), g);
+        expect(me.claimedItemIds).toContain(t.tiramisu.itemId);
+        expect(me.payments?.some((e) => e.status === 'succeeded')).toBe(true);
       }),
     );
   });

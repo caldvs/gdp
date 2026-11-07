@@ -188,19 +188,6 @@ export function TotalEdit({ label, children }: { label: string; children: ReactN
   return <div className="totals__edit"><dt className="vh">{label}</dt><dd>{children}</dd></div>;
 }
 
-export function Stats({ items }: { items: { k: string; v: string; warn?: boolean }[] }) {
-  return (
-    <div className="stats">
-      {items.map((s) => (
-        <div key={s.k} className="stat">
-          <div className="stat__k">{s.k}</div>
-          <div className={cx('stat__v', s.warn && 'stat__v--warn')}>{s.v}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /* ---------- Buttons ---------- */
 
 type Tone = 'primary' | 'secondary' | 'danger' | 'text';

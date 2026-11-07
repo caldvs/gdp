@@ -34,10 +34,11 @@ test('everyone paying does not close the bill; a late guest can still take a spl
   await sam.getByRole('dialog', { name: 'Are you sure you’ve paid?' }).getByRole('button', { name: 'Yes, I’ve paid' }).click();
   await expect(sam.getByText('Callum will confirm')).toBeVisible();
 
-  // --- Lead: Sam says they've sent it. Confirm. The bill must stay open.
+  // --- Lead: Sam says they've sent it. Received. The bill must stay open.
   await lead.goto(`/session/${SID}`);
   await expect(lead.getByText(/^Says they’ve paid/)).toBeVisible();
-  await lead.getByRole('button', { name: /Confirm Sam paid/ }).click();
+  await lead.getByRole('button', { name: /^Sam’s £[\d.]+ received$/ }).click();
+  await lead.getByRole('dialog').getByRole('button', { name: 'Received' }).click();
   await expect(lead.getByText(/^Says they’ve paid/)).toHaveCount(0);
   await expect(lead.getByText('Paid', { exact: true })).toBeVisible();
   await expect(lead.getByRole('button', { name: /^Not claimed · / })).toBeVisible();

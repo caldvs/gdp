@@ -1280,6 +1280,43 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
 
+  /v1/sessions/{sessionId}/participants/{userId}/received:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+      - in: path
+        name: userId
+        required: true
+        schema: { type: string }
+        description: The guest whose money arrived
+    post:
+      tags: [payments]
+      operationId: markParticipantReceived
+      summary: Collector marks everything a guest owes as received
+      description: |
+        For when the lead sees the transfer land (a banking app notification) before, or
+        instead of, the guest saying they've paid. Confirms every payment the guest says
+        they've sent, closes one opened but not sent, and records the rest of what they owe
+        now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
+        with nothing left to collect it changes nothing. A guest who claims more afterwards
+        owes the difference, as with any top-up.
+      responses:
+        '200':
+          description: Session, with the guest paid up
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: Session or guest not found, or caller is not the collector
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Session is in setup or deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
   /v1/sessions/{sessionId}/payments:
     parameters:
       - $ref: '#/components/parameters/SessionId'

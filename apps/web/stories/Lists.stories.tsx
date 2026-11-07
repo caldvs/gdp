@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/nextjs-vite';
 import { fn } from 'storybook/test';
 import { useState } from 'react';
-import { Badge, Box, Button as Btn, PlusIcon, Pulse, Row, RowButton, RowLink, Stats, TotalEdit, TotalLine, Totals } from '@/components/ui';
+import { Badge, Box, Button as Btn, PlusIcon, Pulse, Row, RowButton, RowLink, TotalEdit, TotalLine, Totals } from '@/components/ui';
 
 const meta = { title: 'Lists/Row', component: Row } satisfies Meta<typeof Row>;
 export default meta;
@@ -60,11 +60,6 @@ export const Total: StoryObj<typeof Totals> = {
       <TotalLine k="Total" v="£110.76" tone="total" />
     </Totals>
   ),
-};
-
-export const StatsRow: StoryObj<typeof Stats> = {
-  args: { items: [{ k: 'Bill', v: '£110.76' }, { k: 'Collected', v: '£38.19' }, { k: 'To collect', v: '£23.57', warn: true }] },
-  render: (a) => <Stats {...a} />,
 };
 
 export const TotalBeingEdited: StoryObj<typeof TotalEdit> = {

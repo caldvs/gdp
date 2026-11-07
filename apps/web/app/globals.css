@@ -106,7 +106,10 @@ h1[tabindex="-1"]:focus { outline: none; }
 /* Fold-sized screens: the tools go under the title rather than squeezing it. */
 @media (max-width: 340px) { .title-row { flex-wrap: wrap; } .title-row > .title { flex-basis: 100%; } }
 .section { display: flex; flex-direction: column; gap: 8px; }
-.section__h { font-family: var(--display); font-size: 22px; font-weight: 400; letter-spacing: .01em; line-height: 1.1; text-transform: uppercase; color: var(--ink); }
+/* Quieter than the page title, which leads (Anton at 35px in ink). */
+.section__top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.section__top .link-btn { font-size: 14px; }
+.section__h { font-family: var(--display); font-size: 18px; font-weight: 400; letter-spacing: .03em; line-height: 1.1; text-transform: uppercase; color: var(--quiet); }
 .muted { color: var(--mute); }
 .small { font-size: 14px; }
 
@@ -222,7 +225,13 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .notice b { display: block; font-size: 16px; }
 .notice--ok { background: var(--ok-bg); border-color: var(--ok-line); color: #0f4d21; }
 .notice--error { background: var(--err-bg); border-color: var(--err-line); color: var(--err-ink); }
-.notice--info { background: var(--bg); }
+.empty-demo { display: flex; align-items: center; gap: 16px; transform: rotate(-1.5deg); margin: 8px 6px 4px; }
+.empty-demo__lines { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.empty-demo__lines .skel:first-child { height: 16px; }
+/* Still, not shimmering: nothing is loading. */
+.empty-demo .skel { animation: none; }
+.empty-demo .empty-demo__badge { width: 96px; height: 26px; border-radius: 999px; background: var(--warn-bg); }
+.notice--info { background: var(--accent-tint); border-color: #cfe6fb; }
 .notice--warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
 .spin { width: 22px; height: 22px; border: 2.5px solid var(--line-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
 .spin--light { border-color: rgba(255,255,255,.4); border-top-color: #fff; }
@@ -362,7 +371,8 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .claim__sub { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
 .claim > .row__main { min-width: 80px; }
 .claim__act { flex: none; margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.claim__btn { border-radius: 999px; min-width: 112px; }
+/* Narrow enough to leave the item's price and count on one line at phone width. */
+.claim__btn { border-radius: 999px; min-width: 88px; }
 .claim__btn--on { gap: 6px; color: #fff; border-color: var(--accent); background: var(--accent); }
 .claim__btn--on:hover { background: var(--accent-hover); }
 .stepper--sm { min-width: 112px; justify-content: space-between; background: var(--accent); border-color: var(--accent); border-radius: 999px; color: #fff; }
@@ -403,11 +413,11 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .each { display: block; font-size: 13px; color: var(--mute); }
 
 /* ---------- People ---------- */
-.avatar { flex: none; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--hover); border: 1px solid var(--line-strong); color: var(--ink); animation: arrive .35s ease-out; }
+.avatar { flex: none; width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; background: var(--accent-tint); border: 1px solid #cfe6fb; color: #0a4f8c; animation: arrive .35s ease-out; }
 .avatar--you { background: var(--accent); border-color: var(--accent); color: #fff; }
 @keyframes arrive { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .avatar { animation: none; } }
-.avatar--sm { width: 24px; height: 24px; font-size: 11px; border-width: 1px; }
+.avatar--sm { width: 28px; height: 28px; font-size: 12px; border-width: 1px; }
 .avatar-stack { flex: none; display: inline-flex; }
 .avatar-stack .avatar + .avatar { margin-left: -6px; }
 .avatar-stack .avatar--more { background: var(--hover); color: var(--mute); }
@@ -626,13 +636,12 @@ a.row:hover, button.row:hover, label.row:hover { background: var(--hover); text-
 .input--name { height: 56px; border: 2px solid var(--ink); font-size: 18px; }
 
 /* ---------- Pay in the guest's banking app (4 Nov) ---------- */
-/* Styled after each bank so it's recognisable at a glance; white on both is over 12:1. */
+/* Outline buttons, each with its bank's mark, so the amount band and
+   "I've paid" stay the only solid blocks on the screen (7 Nov). */
 .pay-apps { display: flex; flex-direction: column; gap: 10px; }
-.btn--monzo { background: #14233c; color: #fff; font-weight: 700; }
-.btn--monzo:hover { background: #0d1a2e; }
+.btn--monzo, .btn--revolut { background: var(--bg); color: var(--ink); border: 2px solid var(--ink); font-weight: 700; }
+.btn--monzo:hover, .btn--revolut:hover { background: var(--hover); }
 .btn--monzo .pay-apps__mark { background: #ff4f40; }
-.btn--revolut { background: #191c1f; color: #fff; font-weight: 700; }
-.btn--revolut:hover { background: #000; }
-.btn--revolut .pay-apps__mark { background: #fff; box-shadow: inset 0 0 0 4px #191c1f, 0 0 0 2px #fff; }
+.btn--revolut .pay-apps__mark { background: transparent; box-shadow: inset 0 0 0 3px #191c1f; }
 .pay-apps__mark { width: 14px; height: 14px; border-radius: 50%; flex: none; }
 

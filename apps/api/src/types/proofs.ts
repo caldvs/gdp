@@ -4,9 +4,11 @@ import { z } from 'zod';
 export const PROOF_MAX_BYTES = 2 * 1024 * 1024;
 export const PROOFS_PER_GUEST = 3;
 
-export const StartProofRequestSchema = z.object({
-  sizeBytes: z.number().int().positive().max(PROOF_MAX_BYTES),
-});
+export const StartProofRequestSchema = z
+  .object({
+    sizeBytes: z.number().int().positive().max(PROOF_MAX_BYTES),
+  })
+  .meta({ id: 'StartProofRequest' });
 
 export interface ProofRow {
   proofId: string;

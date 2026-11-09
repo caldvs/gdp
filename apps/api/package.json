@@ -21,6 +21,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "openapi:lint": "redocly lint openapi.yaml",
+    "gen:openapi": "tsx scripts/gen-openapi.ts",
     "ddb:up": "docker compose up -d",
     "ddb:down": "docker compose down",
     "cdk": "cdk",
@@ -35,7 +36,6 @@
     "golden": "tsx scripts/golden-receipts.ts"
   },
   "dependencies": {
-    "@gdp/core": "*",
     "@aws-sdk/client-bedrock-runtime": "^3.1161.0",
     "@aws-sdk/client-cost-explorer": "^3.1161.0",
     "@aws-sdk/client-dynamodb": "^3.700.0",
@@ -47,7 +47,9 @@
     "@aws-sdk/client-sesv2": "^3.1045.0",
     "@aws-sdk/lib-dynamodb": "^3.700.0",
     "@aws-sdk/s3-request-presigner": "^3.700.0",
+    "@gdp/core": "*",
     "@hono/node-server": "^1.13.0",
+    "@hono/zod-openapi": "^1.6.3",
     "@hono/zod-validator": "^0.7.6",
     "aws-xray-sdk-core": "^3.10.0",
     "hono": "^4.6.0",

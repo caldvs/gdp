@@ -75,6 +75,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/email/test-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign in to a test account without a code (local and dev only)
+         * @description For trying the app as several people at once. Only `@test.invalid`
+         *     addresses (reserved, so never a real person's), and only where the
+         *     server enables it: local and dev, never prod (404 there). A known
+         *     address gets its existing account; a new one gets a new account.
+         */
+        post: operations["testAccountSignIn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/email/verify": {
         parameters: {
             query?: never;
@@ -178,7 +201,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/auth/email/test-sign-in": {
+    "/v1/billing/card": {
         parameters: {
             query?: never;
             header?: never;
@@ -187,45 +210,57 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        post?: never;
         /**
-         * Sign in to a test account without a code (local and dev only)
-         * @description For trying the app as several people at once. Only `@test.invalid`
-         *     addresses (reserved, so never a real person's), and only where the
-         *     server enables it: local and dev, never prod (404 there). A known
-         *     address gets its existing account; a new one gets a new account.
+         * Remove the saved card
+         * @description #228: detaches the card saved with the last hold. The Stripe customer stays.
          */
-        post: operations["testAccountSignIn"];
-        delete?: never;
+        delete: operations["removeSavedCard"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/me": {
+    "/v1/billing/fee-charge/{billId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get the verified caller */
-        get: operations["getCurrentUser"];
+        /**
+         * The round-ups charge at settle, to confirm it
+         * @description #228: when the bank wanted the lead to confirm the charge made at settle, this gives the
+         *     page the PaymentIntent's client secret and the saved card. Checks with Stripe, so a
+         *     charge just confirmed comes back `charged`. The lead's own bill only.
+         */
+        get: operations["getFeeCharge"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Set your name and the email bill emails go to
-         * @description #213. A phone account has no name or email until it sets them. The
-         *     email is only where bill emails go, not a way to sign in; '' removes
-         *     it. Answers with a fresh session JWT, since the name travels in it.
-         *     Guests (#183) can't.
-         */
-        patch: operations["updateCurrentUser"];
+        patch?: never;
         trace?: never;
     };
-    "/v1/me/sign-out": {
+    "/v1/billing/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The lead's credits this month and the platform fees they've paid */
+        get: operations["getMyBilling"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/table-fee": {
         parameters: {
             query?: never;
             header?: never;
@@ -235,19 +270,43 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Sign out everywhere
-         * @description Ends every session token this user holds, on every device: tokens
-         *     minted before this call get `401 AUTH_INVALID` from then on. The
-         *     web app's Sign out calls it.
+         * Start the £1 hold for a bill
+         * @description Without a credit, sharing a bill puts a £1 hold on the lead's card (#165): authorised
+         *     now and always released at settle. Creates a Stripe Checkout Session (manual capture)
+         *     for the embedded form (`ui_mode: form`) and returns its client secret. The session is
+         *     for the lead's Stripe customer with `setup_future_usage: off_session` (#228), so the
+         *     card is saved for one charge at settle: the round-ups of the guests the lead marked
+         *     received. The hold is recorded by the Stripe webhook.
          */
-        post: operations["signOutEverywhere"];
+        post: operations["startTableFeeCheckout"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/me/payout-account": {
+    "/v1/billing/table-fee/{billId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the table fee for a bill is paid
+         * @description With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
+         *     Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
+         */
+        get: operations["getTableFeeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/billing/table-fee/saved-card": {
         parameters: {
             query?: never;
             header?: never;
@@ -255,48 +314,66 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
-         * [DEPRECATED] Accepted but no longer persisted
-         * @deprecated
-         * @description **Deprecated.** Per ADR-0002, the lead's bank details are now device-local
-         *     and exchanged peer-to-peer via QR — never stored server-side. This endpoint
-         *     still validates the body and returns 200 echoing the supplied account for
-         *     compatibility with older clients, but it no longer persists anything.
+         * Place the £1 hold on the saved card
+         * @description #228: the hold on the card saved with the lead's last hold, in one tap. `held` when the
+         *     bank authorised it; `requires_action` when it wants the lead to confirm (3D Secure):
+         *     the page finishes it with Stripe.js and polls the status with `payment_intent`.
+         */
+        post: operations["holdOnSavedCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/{billId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a bill (latest version unless ?version is specified) */
+        get: operations["getBill"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/{billId}/amend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a new version of the bill with user edits
+         * @description Allowed when the bill is either (a) not yet attached to a session, or (b) attached to a session
+         *     in `setup` or `claiming`. Once a session enters `paying`, the bill is frozen.
          *
-         *     New clients should not call this. The endpoint will be removed in a future
-         *     release.
+         *     When an active session is attached, the amend reconciles in lockstep: the session's
+         *     `pinnedBillVersion` bumps to the new version, claims pointing to removed items are dropped, and
+         *     non-creator participants are un-readied so they re-confirm against the new bill. If the new
+         *     quantity for an item is below the count of claims already attached to it, the call fails with
+         *     `409 CLAIMS_EXCEED_QUANTITY` — the lead must clear those claims (or raise the quantity) first.
+         *     Item IDs are preserved where item identity is preserved.
          */
-        put: operations["setMyPayoutAccount"];
-        post?: never;
+        post: operations["amendBill"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/me/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List sessions the caller has been part of, most recent first
-         * @description Returns lightweight summaries (no participants list) for sessions where the caller is the
-         *     creator or a joined diner. Sessions are sorted by sessionId descending — UUIDv7 is time-ordered
-         *     so the newest comes first. The full session can be fetched via GET /v1/sessions/{id}.
-         */
-        get: operations["listMySessions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/bills/uploads": {
+    "/v1/bills/{billId}/fork": {
         parameters: {
             query?: never;
             header?: never;
@@ -306,13 +383,38 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Request a pre-signed S3 PUT URL for a bill image
-         * @description Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
-         *     If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
-         *     with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
-         *     scoped permissions (specific key, content-length cap, PUT only).
+         * Start again with a new bill for the same photo
+         * @description A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
+         *     `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
+         *     copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
+         *     from what the current parser read off the photo: the cached read when there is one, else a
+         *     new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
+         *     index moves to the new bill, so sending the photo again opens it. The old bill and its
+         *     sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
          */
-        post: operations["requestBillUpload"];
+        post: operations["forkBill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bills/{billId}/image-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a short-lived presigned GET URL for the original bill image
+         * @description Returns a presigned S3 GET URL (TTL ~5 min) for the original uploaded image. Available to the
+         *     bill creator and to any participant of a session this bill is pinned to. Returns 404 NOT_FOUND
+         *     for legacy bills that were parsed before the upload reference was retained.
+         */
+        get: operations["getBillImageUrl"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -386,101 +488,229 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/bills/{billId}": {
+    "/v1/bills/uploads": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        /** Get a bill (latest version unless ?version is specified) */
-        get: operations["getBill"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/bills/{billId}/image-url": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Get a short-lived presigned GET URL for the original bill image
-         * @description Returns a presigned S3 GET URL (TTL ~5 min) for the original uploaded image. Available to the
-         *     bill creator and to any participant of a session this bill is pinned to. Returns 404 NOT_FOUND
-         *     for legacy bills that were parsed before the upload reference was retained.
-         */
-        get: operations["getBillImageUrl"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/bills/{billId}/amend": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
-         * Create a new version of the bill with user edits
-         * @description Allowed when the bill is either (a) not yet attached to a session, or (b) attached to a session
-         *     in `setup` or `claiming`. Once a session enters `paying`, the bill is frozen.
+         * Request a pre-signed S3 PUT URL for a bill image
+         * @description Two-step upload: client computes SHA-256 of the resized image bytes and calls this endpoint.
+         *     If the hash is already mapped to one of this user's bills, returns `{ status: "duplicate", billId }`
+         *     with where that bill stands (`versionNumber`, `amended`, `session`), and no S3 upload is needed. Otherwise returns a short-lived (5-minute) pre-signed PUT URL with
+         *     scoped permissions (specific key, content-length cap, PUT only).
+         */
+        post: operations["requestBillUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/links/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The bill behind a link in a guest's text (#220 G5)
+         * @description No sign-in: the random token is the key. Read-only and live: who had
+         *     what, who's paid, the guest the link was sent to (`isYou`), and what
+         *     nobody claimed. Never any phone number or bank details (ADR-0002).
+         *     Works for 30 days after the last text; then 404. 60 lookups per IP
+         *     per 10 minutes.
+         */
+        get: operations["getBillLink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/links/{token}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop reminder texts for this bill (#219)
+         * @description From `/s/{token}` in a reminder (a named sender can't take STOP
+         *     replies). The guest gets no more reminders about this bill.
+         *     Idempotent.
+         */
+        post: operations["stopReminders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the verified caller */
+        get: operations["getCurrentUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set your name and the email bill emails go to
+         * @description #213. A phone account has no name or email until it sets them. The
+         *     email is only where bill emails go, not a way to sign in; '' removes
+         *     it. Answers with a fresh session JWT, since the name travels in it.
+         *     Guests (#183) can't.
+         */
+        patch: operations["updateCurrentUser"];
+        trace?: never;
+    };
+    "/v1/me/payout-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * [DEPRECATED] Accepted but no longer persisted
+         * @deprecated
+         * @description **Deprecated.** Per ADR-0002, the lead's bank details are now device-local
+         *     and exchanged peer-to-peer via QR — never stored server-side. This endpoint
+         *     still validates the body and returns 200 echoing the supplied account for
+         *     compatibility with older clients, but it no longer persists anything.
          *
-         *     When an active session is attached, the amend reconciles in lockstep: the session's
-         *     `pinnedBillVersion` bumps to the new version, claims pointing to removed items are dropped, and
-         *     non-creator participants are un-readied so they re-confirm against the new bill. If the new
-         *     quantity for an item is below the count of claims already attached to it, the call fails with
-         *     `409 CLAIMS_EXCEED_QUANTITY` — the lead must clear those claims (or raise the quantity) first.
-         *     Item IDs are preserved where item identity is preserved.
+         *     New clients should not call this. The endpoint will be removed in a future
+         *     release.
          */
-        post: operations["amendBill"];
+        put: operations["setMyPayoutAccount"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/v1/bills/{billId}/fork": {
+    "/v1/me/sessions": {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List sessions the caller has been part of, most recent first
+         * @description Returns lightweight summaries (no participants list) for sessions where the caller is the
+         *     creator or a joined diner. Sessions are sorted by sessionId descending — UUIDv7 is time-ordered
+         *     so the newest comes first. The full session can be fetched via GET /v1/sessions/{id}.
+         */
+        get: operations["listMySessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         get?: never;
         put?: never;
         /**
-         * Start again with a new bill for the same photo
-         * @description A new bill (new `billId`, version 1, new item ids) for this bill's photo, with
-         *     `parsedFrom.forkedFrom` naming the bill and version it came from. `from: latest` (the default)
-         *     copies the latest version, so the lead's corrections carry over. `from: analysis` makes it
-         *     from what the current parser read off the photo: the cached read when there is one, else a
-         *     new read, which counts against the daily read limit (429 `RATE_LIMITED`). The photo's hash
-         *     index moves to the new bill, so sending the photo again opens it. The old bill and its
-         *     sessions are untouched. Owner only: anyone else gets 404. Idempotent via `Idempotency-Key`.
+         * Sign out everywhere
+         * @description Ends every session token this user holds, on every device: tokens
+         *     minted before this call get `401 AUTH_INVALID` from then on. The
+         *     web app's Sign out calls it.
          */
-        post: operations["forkBill"];
+        post: operations["signOutEverywhere"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payments/{paymentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a payment record
+         * @description Caller must be the payer or the collector for this payment.
+         */
+        get: operations["getPayment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payments/{paymentId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collector confirms a manual payment was received
+         * @description The collector marks a guest payment as `succeeded` after seeing the funds arrive in
+         *     their bank account. Idempotent — confirming a payment already in `succeeded` returns
+         *     the same payment unchanged.
+         */
+        post: operations["confirmManualPayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/payments/{paymentId}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Payer claims they've sent the money via their banking app
+         * @description Payer-only. Idempotent — re-claiming returns the same `payerClaimedPaidAt` timestamp.
+         *     **Does not advance payment status** — only the lead's `/confirm` does that. This claim
+         *     exists purely as a UX signal: the lead's session view can flag pending payments where
+         *     the payer says they've already paid, so the lead knows which ones to confirm next.
+         */
+        post: operations["markPaymentPaidByPayer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -508,7 +738,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sessions/preview": {
+    "/v1/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get session state including participants
+         * @description For non-creator callers in `setup`, the `joinCode` field is omitted from the response.
+         */
+        get: operations["getSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change how many people the lead expects at the table
+         * @description Lead only. Sets `expectedDiners` (lead included), or clears it with
+         *     `null`. Allowed until the bill is closed or deleted. Display only:
+         *     it never changes what anyone owes.
+         */
+        patch: operations["updateSession"];
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Creator marks the session abandoned (terminal) */
+        post: operations["abandonSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/claims": {
         parameters: {
             query?: never;
             header?: never;
@@ -518,13 +791,537 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * What the QR's landing page shows before anyone joins
-         * @description For whoever holds the QR (#183): host first name, venue, date, item count,
-         *     total incl. service and the first names of everyone at the table. Nothing
-         *     about bank details (ADR-0002). No sign-in; at most 60 per IP address every
-         *     10 minutes.
+         * Replace the current user's claim list
+         * @description Full replacement (not delta). Caller must be the creator (in `setup`) or a participant (in
+         *     `claiming`). Items can be claimed by multiple participants; the cost is split equally with
+         *     rounding pennies allocated deterministically at `lock-claims` time.
          */
-        post: operations["previewSession"];
+        post: operations["setClaims"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Creator closes the bill (session becomes `settled`)
+         * @description "I've stopped waiting at the table." Anything still unclaimed is the
+         *     creator's by implication. Guests who still owe can pay afterwards.
+         *     Every diner is emailed their bill report (see `emailSessionReport`).
+         *     Idempotent: closing a settled session returns it unchanged and sends
+         *     nothing.
+         */
+        post: operations["closeSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The bill's comments, oldest first
+         * @description Anyone at the table (#218). Text only; at most the latest 200. Kept with the session and
+         *     gone when it expires (30 days).
+         */
+        get: operations["listComments"];
+        put?: never;
+        /**
+         * Write a comment on the bill
+         * @description Anyone at the table (#218), e.g. "Sent mine by Monzo". Plain text, trimmed, 1–280
+         *     characters; never turned into links. 30 per person per bill per hour.
+         */
+        post: operations["postComment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Current user joins the session */
+        post: operations["joinSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/lock-claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Creator locks claims and transitions claiming -> paying
+         * @description Creator-only. All bill items must be claimed by ≥1 participant; otherwise returns
+         *     `409 CLAIMS_INCOMPLETE` with the list of unclaimed item IDs in `details`.
+         *
+         *     All non-creator participants must have `readyToLock: true` (set via
+         *     `POST /ready`); otherwise returns `409 PARTICIPANTS_NOT_READY` with
+         *     the list of un-ready user IDs in `details`. The order of these
+         *     checks: items completeness first, then readiness.
+         *
+         *     Pass `force: true` in the body to skip the readiness precondition
+         *     (e.g. a guest dropped off). Items completeness is always required.
+         *
+         *     On success, computes `owedPence` for every participant and freezes
+         *     claims.
+         */
+        post: operations["lockClaims"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/open-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The lead opens payments before every line is claimed
+         * @description Lead only (#216). Payments open by themselves once every line is claimed (every unit,
+         *     every spot in a split); this opens them early. Sets `paymentsOpenedAt`. Amounts don't
+         *     change, and whatever nobody has claimed is the lead's at settle. Idempotent: the first
+         *     time is kept.
+         */
+        post: operations["openPayments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/participants/{userId}/received": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Collector marks everything a guest owes as received
+         * @description For when the lead sees the transfer land (a banking app notification) before, or
+         *     instead of, the guest saying they've paid. Confirms every payment the guest says
+         *     they've sent, closes one opened but not sent, and records the rest of what they owe
+         *     now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
+         *     with nothing left to collect it changes nothing. A guest who claims more afterwards
+         *     owes the difference, as with any top-up.
+         *
+         *     #220: a guest who verified a number when they joined (#214) gets one
+         *     text saying it arrived, with a link to the bill (`/b/{token}`, 30 days).
+         *     Once per guest per bill; never more than 30 texts a bill.
+         */
+        post: operations["markParticipantReceived"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/participants/{userId}/remind": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The lead texts a guest who still owes a reminder (#219)
+         * @description One text by AWS SMS: what they owe, the bill's link
+         *     (`/b/{token}`) and a link to stop reminders (`/s/{token}`). At most
+         *     one a day per guest and three in all (the automatic one counts),
+         *     and never more than 30 texts a bill. 429 when it's too soon or used
+         *     up; 409 when the guest can't be reminded (paid, no number, opted
+         *     out, payments not open); 503 where texts are off.
+         */
+        post: operations["remindGuest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Initiate a payment from the current participant to the collector
+         * @description The current user must be a guest at the table, and payments must be open: every line claimed
+         *     (every unit, every spot in a split), the lead has opened them early (`open-payments`), or the
+         *     bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN` with the unclaimed item IDs in
+         *     `details`. Pays what the guest owes now less what they've already sent (#121). Returns the
+         *     payment record and the details the guest pays with from their own banking app.
+         */
+        post: operations["initiatePayment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/payout-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * The lead publishes a fingerprint of the bank details in their join link
+         * @description The lead's device sends `payoutCheck`, a PBKDF2 fingerprint of the bank
+         *     details it puts in the join link's `#p=` fragment, salted with the session
+         *     id. The details themselves never reach the server (ADR-0002). Guests' apps
+         *     recompute it from the link and warn when it doesn't match, so a re-posted
+         *     link with someone else's details is caught (#151). Lead only, until the
+         *     bill is closed.
+         */
+        put: operations["setSessionPayoutCheck"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/proofs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proof-of-payment screenshots
+         * @description The lead gets every guest's; a guest gets their own (#226). Sent ones only, oldest first,
+         *     each with a signed URL that lasts 5 minutes.
+         */
+        get: operations["listProofs"];
+        put?: never;
+        /**
+         * Start uploading a proof-of-payment screenshot
+         * @description A guest (not the lead) at a live bill (#226). The browser crops the screenshot and
+         *     re-encodes it as JPEG (no EXIF) first; only that is uploaded, with a presigned PUT
+         *     (`content-type: image/jpeg`, exactly `sizeBytes`, at most 2 MB, 5 minutes). Then call
+         *     `…/proofs/{proofId}/sent`. At most 3 per guest per bill; deleted after 30 days.
+         */
+        post: operations["startProof"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/proofs/{proofId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove your screenshot
+         * @description The guest who sent it (#226). Deletes the image too.
+         */
+        delete: operations["deleteProof"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/proofs/{proofId}/sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The screenshot has uploaded
+         * @description Checks the object is there, then shows it to the lead (#226). Idempotent.
+         */
+        post: operations["proofSent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Non-creator participant signals 'I'm done claiming'
+         * @description Per-diner readiness flag used by the hybrid claim model. Each guest
+         *     toggles this when they're done claiming items; the lead's lock-claims
+         *     precondition checks all non-creator participants are ready (unless
+         *     `force: true`). The creator cannot use this endpoint — they signal
+         *     readiness implicitly via `lock-claims`.
+         *
+         *     Editing claims (`POST /claims`) un-readies the participant.
+         */
+        post: operations["setReady"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A guest has their receipt emailed (#220)
+         * @description From *All square*: what they had, their part of service and the
+         *     discount, and what they paid. No bank details. Not a sign-in and not
+         *     saved to an account: the address is kept with the bill only and goes
+         *     with it. Three sends per guest per bill, five a day to any one
+         *     address. Not for the lead (their report is `/report`).
+         */
+        post: operations["emailReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Email the caller their bill report
+         * @description The lead's report lists every diner (themselves included): what each
+         *     had, their share of service and tax, and whether they've paid. A
+         *     guest's lists only what they had and paid. Works while the bill is
+         *     open (current state) and after it's closed. Nobody is emailed
+         *     automatically at close (#221: the lead's comes the next morning).
+         */
+        post: operations["emailSessionReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Creator transitions setup -> claiming, freezing their own claims
+         * @description Creator-only. Transitions the session from `setup` to `claiming`. Freezes the creator's
+         *     `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
+         *     (subsequent calls to `/by-code` will resolve it).
+         *
+         *     Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
+         *     reach guests via the join QR.
+         *
+         *     When the platform fee is on (Stripe configured), sharing needs one of: the bill's paid fee
+         *     (not refunded, not spent on another session), an exempt lead, or the lead's credit for the
+         *     month (one free bill a month, UK time). The fee or credit is spent in the same transaction
+         *     as the share. Otherwise `402 TABLE_FEE_REQUIRED`.
+         */
+        post: operations["shareSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Caller joins the splitter set for a shared item (ADR-0006)
+         * @description Adds the caller to the share set for `itemId`. Idempotent — calling
+         *     twice has no effect on the second call.
+         *
+         *     The item is divided into `ways` equal spots and each sharer owes one
+         *     spot (largest-remainder rounding, remainder pennies to the lowest
+         *     userId). Whoever *starts* the split sets `ways` (default 2) — it's
+         *     how many people shared the item, not how many have joined yet.
+         *     Joining an existing split takes an open spot; if every spot is
+         *     already taken, `ways` goes up by one (refused with `SHARE_PAID` if
+         *     someone in the split has already paid). Spots nobody has taken are
+         *     unclaimed.
+         *
+         *     On a line with more than one of something the split covers
+         *     `units` of it (default: every unit nobody has claimed), and each
+         *     sharer owes unitPrice × units / ways. The rest of the line can
+         *     still be claimed one at a time. A quantity-1 item is in exactly one
+         *     mode session-wide — claim-mode (unit claims via `/claims`) or
+         *     share-mode.
+         *
+         *     Splitting an item someone else has claimed (#130) turns their claim
+         *     into their spot in a new split with the caller, `ways` (default 2),
+         *     at once: they're told, not asked. The split's `activity` records it
+         *     as `split`, `fromUserId` the former claimer.
+         *
+         *     - `409 SESSION_INVALID_STATE` if `units` is more than is left
+         *       unclaimed on the line,
+         *     - `409 CLAIM_SHARE_CONFLICT` if the caller has claimed it
+         *       themselves (remove the claim first), or
+         *     - `409 SHARE_PAID` if the person who claimed it has paid.
+         *
+         *     Editing the caller's share set un-readies them (same rule as
+         *     `/claims`).
+         */
+        post: operations["addShare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/shares/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Someone in a split changes how many ways it is divided
+         * @description Only people in the split may call this. `ways` can't go below the
+         *     number of people already in it (`SHARE_WAYS_TOO_LOW`) and can't
+         *     change once anyone in it has a pending or succeeded payment
+         *     (`SHARE_PAID`). Recorded in the split's `activity` so the others
+         *     in it can be told.
+         */
+        put: operations["setShareWays"];
+        post?: never;
+        /**
+         * Caller leaves the splitter set for a shared item (ADR-0006)
+         * @description Removes the caller from the share set for `itemId`. Idempotent —
+         *     no-op if not in the set. The number of ways stays the same (the
+         *     caller's spot reopens). If the caller is the last sharer, the
+         *     item reverts to no-share-at-all.
+         */
+        delete: operations["removeShare"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/{sessionId}/texts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What Remind can do for each guest (#219)
+         * @description The lead only. Per guest: `ready` (*Remind* sends a text), `today`
+         *     (reminded in the last day), `used_up` (three reminders sent),
+         *     `stopped` (they opted out), `no_number`, `not_owed` or `not_open`
+         *     (payments aren't open yet). `enabled: false` where texts are off.
+         *     Never a phone number.
+         */
+        get: operations["getGuestTexts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sessions/by-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a 6-character join code to a session ID
+         * @description Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
+         *     At most 30 lookups per user every 10 minutes (429 `RATE_LIMITED` with
+         *     `details.retryAfterSeconds`), so codes can't cheaply be guessed.
+         */
+        post: operations["resolveJoinCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -585,7 +1382,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sessions/by-code": {
+    "/v1/sessions/preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -595,885 +1392,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Resolve a 6-character join code to a session ID
-         * @description Only resolves sessions in `claiming` state. Codes for `setup` sessions are not active.
-         *     At most 30 lookups per user every 10 minutes (429 `RATE_LIMITED` with
-         *     `details.retryAfterSeconds`), so codes can't cheaply be guessed.
+         * What the QR's landing page shows before anyone joins
+         * @description For whoever holds the QR (#183): host first name, venue, date, item count,
+         *     total incl. service and the first names of everyone at the table. Nothing
+         *     about bank details (ADR-0002). No sign-in; at most 60 per IP address every
+         *     10 minutes.
          */
-        post: operations["resolveJoinCode"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Get session state including participants
-         * @description For non-creator callers in `setup`, the `joinCode` field is omitted from the response.
-         */
-        get: operations["getSession"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Change how many people the lead expects at the table
-         * @description Lead only. Sets `expectedDiners` (lead included), or clears it with
-         *     `null`. Allowed until the bill is closed or deleted. Display only:
-         *     it never changes what anyone owes.
-         */
-        patch: operations["updateSession"];
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/share": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Creator transitions setup -> claiming, freezing their own claims
-         * @description Creator-only. Transitions the session from `setup` to `claiming`. Freezes the creator's
-         *     `claimedItemIds` and sets the creator's `payment.status` to `self_paid`. Activates the join code
-         *     (subsequent calls to `/by-code` will resolve it).
-         *
-         *     Per ADR-0002 the creator's bank details aren't needed here: they live on the device and
-         *     reach guests via the join QR.
-         *
-         *     When the platform fee is on (Stripe configured), sharing needs one of: the bill's paid fee
-         *     (not refunded, not spent on another session), an exempt lead, or the lead's credit for the
-         *     month (one free bill a month, UK time). The fee or credit is spent in the same transaction
-         *     as the share. Otherwise `402 TABLE_FEE_REQUIRED`.
-         */
-        post: operations["shareSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/payout-check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * The lead publishes a fingerprint of the bank details in their join link
-         * @description The lead's device sends `payoutCheck`, a PBKDF2 fingerprint of the bank
-         *     details it puts in the join link's `#p=` fragment, salted with the session
-         *     id. The details themselves never reach the server (ADR-0002). Guests' apps
-         *     recompute it from the link and warn when it doesn't match, so a re-posted
-         *     link with someone else's details is caught (#151). Lead only, until the
-         *     bill is closed.
-         */
-        put: operations["setSessionPayoutCheck"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/join": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Current user joins the session */
-        post: operations["joinSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/claims": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Replace the current user's claim list
-         * @description Full replacement (not delta). Caller must be the creator (in `setup`) or a participant (in
-         *     `claiming`). Items can be claimed by multiple participants; the cost is split equally with
-         *     rounding pennies allocated deterministically at `lock-claims` time.
-         */
-        post: operations["setClaims"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/shares": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Caller joins the splitter set for a shared item (ADR-0006)
-         * @description Adds the caller to the share set for `itemId`. Idempotent — calling
-         *     twice has no effect on the second call.
-         *
-         *     The item is divided into `ways` equal spots and each sharer owes one
-         *     spot (largest-remainder rounding, remainder pennies to the lowest
-         *     userId). Whoever *starts* the split sets `ways` (default 2) — it's
-         *     how many people shared the item, not how many have joined yet.
-         *     Joining an existing split takes an open spot; if every spot is
-         *     already taken, `ways` goes up by one (refused with `SHARE_PAID` if
-         *     someone in the split has already paid). Spots nobody has taken are
-         *     unclaimed.
-         *
-         *     On a line with more than one of something the split covers
-         *     `units` of it (default: every unit nobody has claimed), and each
-         *     sharer owes unitPrice × units / ways. The rest of the line can
-         *     still be claimed one at a time. A quantity-1 item is in exactly one
-         *     mode session-wide — claim-mode (unit claims via `/claims`) or
-         *     share-mode.
-         *
-         *     Splitting an item someone else has claimed (#130) turns their claim
-         *     into their spot in a new split with the caller, `ways` (default 2),
-         *     at once: they're told, not asked. The split's `activity` records it
-         *     as `split`, `fromUserId` the former claimer.
-         *
-         *     - `409 SESSION_INVALID_STATE` if `units` is more than is left
-         *       unclaimed on the line,
-         *     - `409 CLAIM_SHARE_CONFLICT` if the caller has claimed it
-         *       themselves (remove the claim first), or
-         *     - `409 SHARE_PAID` if the person who claimed it has paid.
-         *
-         *     Editing the caller's share set un-readies them (same rule as
-         *     `/claims`).
-         */
-        post: operations["addShare"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/shares/{itemId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                itemId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Someone in a split changes how many ways it is divided
-         * @description Only people in the split may call this. `ways` can't go below the
-         *     number of people already in it (`SHARE_WAYS_TOO_LOW`) and can't
-         *     change once anyone in it has a pending or succeeded payment
-         *     (`SHARE_PAID`). Recorded in the split's `activity` so the others
-         *     in it can be told.
-         */
-        put: operations["setShareWays"];
-        post?: never;
-        /**
-         * Caller leaves the splitter set for a shared item (ADR-0006)
-         * @description Removes the caller from the share set for `itemId`. Idempotent —
-         *     no-op if not in the set. The number of ways stays the same (the
-         *     caller's spot reopens). If the caller is the last sharer, the
-         *     item reverts to no-share-at-all.
-         */
-        delete: operations["removeShare"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/ready": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Non-creator participant signals 'I'm done claiming'
-         * @description Per-diner readiness flag used by the hybrid claim model. Each guest
-         *     toggles this when they're done claiming items; the lead's lock-claims
-         *     precondition checks all non-creator participants are ready (unless
-         *     `force: true`). The creator cannot use this endpoint — they signal
-         *     readiness implicitly via `lock-claims`.
-         *
-         *     Editing claims (`POST /claims`) un-readies the participant.
-         */
-        post: operations["setReady"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/lock-claims": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Creator locks claims and transitions claiming -> paying
-         * @description Creator-only. All bill items must be claimed by ≥1 participant; otherwise returns
-         *     `409 CLAIMS_INCOMPLETE` with the list of unclaimed item IDs in `details`.
-         *
-         *     All non-creator participants must have `readyToLock: true` (set via
-         *     `POST /ready`); otherwise returns `409 PARTICIPANTS_NOT_READY` with
-         *     the list of un-ready user IDs in `details`. The order of these
-         *     checks: items completeness first, then readiness.
-         *
-         *     Pass `force: true` in the body to skip the readiness precondition
-         *     (e.g. a guest dropped off). Items completeness is always required.
-         *
-         *     On success, computes `owedPence` for every participant and freezes
-         *     claims.
-         */
-        post: operations["lockClaims"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/close": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Creator closes the bill (session becomes `settled`)
-         * @description "I've stopped waiting at the table." Anything still unclaimed is the
-         *     creator's by implication. Guests who still owe can pay afterwards.
-         *     Every diner is emailed their bill report (see `emailSessionReport`).
-         *     Idempotent: closing a settled session returns it unchanged and sends
-         *     nothing.
-         */
-        post: operations["closeSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Email the caller their bill report
-         * @description The lead's report lists every diner (themselves included): what each
-         *     had, their share of service and tax, and whether they've paid. A
-         *     guest's lists only what they had and paid. Works while the bill is
-         *     open (current state) and after it's closed. Nobody is emailed
-         *     automatically at close (#221: the lead's comes the next morning).
-         */
-        post: operations["emailSessionReport"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/abandon": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Creator marks the session abandoned (terminal) */
-        post: operations["abandonSession"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/participants/{userId}/received": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                /** @description The guest whose money arrived */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Collector marks everything a guest owes as received
-         * @description For when the lead sees the transfer land (a banking app notification) before, or
-         *     instead of, the guest saying they've paid. Confirms every payment the guest says
-         *     they've sent, closes one opened but not sent, and records the rest of what they owe
-         *     now as one more payment, already `succeeded`, so the guest is settled. Idempotent:
-         *     with nothing left to collect it changes nothing. A guest who claims more afterwards
-         *     owes the difference, as with any top-up.
-         *
-         *     #220: a guest who verified a number when they joined (#214) gets one
-         *     text saying it arrived, with a link to the bill (`/b/{token}`, 30 days).
-         *     Once per guest per bill; never more than 30 texts a bill.
-         */
-        post: operations["markParticipantReceived"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/texts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * What Remind can do for each guest (#219)
-         * @description The lead only. Per guest: `ready` (*Remind* sends a text), `today`
-         *     (reminded in the last day), `used_up` (three reminders sent),
-         *     `stopped` (they opted out), `no_number`, `not_owed` or `not_open`
-         *     (payments aren't open yet). `enabled: false` where texts are off.
-         *     Never a phone number.
-         */
-        get: operations["getGuestTexts"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/participants/{userId}/remind": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                /** @description The guest to remind */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * The lead texts a guest who still owes a reminder (#219)
-         * @description One text by AWS SMS: what they owe, the bill's link
-         *     (`/b/{token}`) and a link to stop reminders (`/s/{token}`). At most
-         *     one a day per guest and three in all (the automatic one counts),
-         *     and never more than 30 texts a bill. 429 when it's too soon or used
-         *     up; 409 when the guest can't be reminded (paid, no number, opted
-         *     out, payments not open); 503 where texts are off.
-         */
-        post: operations["remindGuest"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/receipt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * A guest has their receipt emailed (#220)
-         * @description From *All square*: what they had, their part of service and the
-         *     discount, and what they paid. No bank details. Not a sign-in and not
-         *     saved to an account: the address is kept with the bill only and goes
-         *     with it. Three sends per guest per bill, five a day to any one
-         *     address. Not for the lead (their report is `/report`).
-         */
-        post: operations["emailReceipt"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/open-payments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * The lead opens payments before every line is claimed
-         * @description Lead only (#216). Payments open by themselves once every line is claimed (every unit,
-         *     every spot in a split); this opens them early. Sets `paymentsOpenedAt`. Amounts don't
-         *     change, and whatever nobody has claimed is the lead's at settle. Idempotent: the first
-         *     time is kept.
-         */
-        post: operations["openPayments"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/comments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * The bill's comments, oldest first
-         * @description Anyone at the table (#218). Text only; at most the latest 200. Kept with the session and
-         *     gone when it expires (30 days).
-         */
-        get: operations["listComments"];
-        put?: never;
-        /**
-         * Write a comment on the bill
-         * @description Anyone at the table (#218), e.g. "Sent mine by Monzo". Plain text, trimmed, 1–280
-         *     characters; never turned into links. 30 per person per bill per hour.
-         */
-        post: operations["postComment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/proofs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Proof-of-payment screenshots
-         * @description The lead gets every guest's; a guest gets their own (#226). Sent ones only, oldest first,
-         *     each with a signed URL that lasts 5 minutes.
-         */
-        get: operations["listProofs"];
-        put?: never;
-        /**
-         * Start uploading a proof-of-payment screenshot
-         * @description A guest (not the lead) at a live bill (#226). The browser crops the screenshot and
-         *     re-encodes it as JPEG (no EXIF) first; only that is uploaded, with a presigned PUT
-         *     (`content-type: image/jpeg`, exactly `sizeBytes`, at most 2 MB, 5 minutes). Then call
-         *     `…/proofs/{proofId}/sent`. At most 3 per guest per bill; deleted after 30 days.
-         */
-        post: operations["startProof"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/proofs/{proofId}/sent": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                proofId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * The screenshot has uploaded
-         * @description Checks the object is there, then shows it to the lead (#226). Idempotent.
-         */
-        post: operations["proofSent"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/proofs/{proofId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                proofId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove your screenshot
-         * @description The guest who sent it (#226). Deletes the image too.
-         */
-        delete: operations["deleteProof"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/sessions/{sessionId}/payments": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Initiate a payment from the current participant to the collector
-         * @description The current user must be a guest at the table, and payments must be open: every line claimed
-         *     (every unit, every spot in a split), the lead has opened them early (`open-payments`), or the
-         *     bill is locked or closed. Otherwise `409 PAYMENTS_NOT_OPEN` with the unclaimed item IDs in
-         *     `details`. Pays what the guest owes now less what they've already sent (#121). Returns the
-         *     payment record and the details the guest pays with from their own banking app.
-         */
-        post: operations["initiatePayment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/payments/{paymentId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                paymentId: components["parameters"]["PaymentId"];
-            };
-            cookie?: never;
-        };
-        /**
-         * Get a payment record
-         * @description Caller must be the payer or the collector for this payment.
-         */
-        get: operations["getPayment"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/payments/{paymentId}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                paymentId: components["parameters"]["PaymentId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Collector confirms a manual payment was received
-         * @description The collector marks a guest payment as `succeeded` after seeing the funds arrive in
-         *     their bank account. Idempotent — confirming a payment already in `succeeded` returns
-         *     the same payment unchanged.
-         */
-        post: operations["confirmManualPayment"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/payments/{paymentId}/mark-paid": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                paymentId: components["parameters"]["PaymentId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Payer claims they've sent the money via their banking app
-         * @description Payer-only. Idempotent — re-claiming returns the same `payerClaimedPaidAt` timestamp.
-         *     **Does not advance payment status** — only the lead's `/confirm` does that. This claim
-         *     exists purely as a UX signal: the lead's session view can flag pending payments where
-         *     the payer says they've already paid, so the lead knows which ones to confirm next.
-         */
-        post: operations["markPaymentPaidByPayer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/links/{token}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The random token from a guest's text */
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        /**
-         * The bill behind a link in a guest's text (#220 G5)
-         * @description No sign-in: the random token is the key. Read-only and live: who had
-         *     what, who's paid, the guest the link was sent to (`isYou`), and what
-         *     nobody claimed. Never any phone number or bank details (ADR-0002).
-         *     Works for 30 days after the last text; then 404. 60 lookups per IP
-         *     per 10 minutes.
-         */
-        get: operations["getBillLink"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/links/{token}/stop": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The random token from a guest's text */
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Stop reminder texts for this bill (#219)
-         * @description From `/s/{token}` in a reminder (a named sender can't take STOP
-         *     replies). The guest gets no more reminders about this bill.
-         *     Idempotent.
-         */
-        post: operations["stopReminders"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/table-fee": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start the £1 hold for a bill
-         * @description Without a credit, sharing a bill puts a £1 hold on the lead's card (#165): authorised
-         *     now and always released at settle. Creates a Stripe Checkout Session (manual capture)
-         *     for the embedded form (`ui_mode: form`) and returns its client secret. The session is
-         *     for the lead's Stripe customer with `setup_future_usage: off_session` (#228), so the
-         *     card is saved for one charge at settle: the round-ups of the guests the lead marked
-         *     received. The hold is recorded by the Stripe webhook.
-         */
-        post: operations["startTableFeeCheckout"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/table-fee/{billId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * Whether the table fee for a bill is paid
-         * @description With `session_id`, an unpaid fee is checked with Stripe directly and recorded if that
-         *     Checkout Session is the caller's, for this bill, and paid. Covers a late or missing webhook.
-         */
-        get: operations["getTableFeeStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/table-fee/saved-card": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Place the £1 hold on the saved card
-         * @description #228: the hold on the card saved with the lead's last hold, in one tap. `held` when the
-         *     bank authorised it; `requires_action` when it wants the lead to confirm (3D Secure):
-         *     the page finishes it with Stripe.js and polls the status with `payment_intent`.
-         */
-        post: operations["holdOnSavedCard"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/fee-charge/{billId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: string;
-            };
-            cookie?: never;
-        };
-        /**
-         * The round-ups charge at settle, to confirm it
-         * @description #228: when the bank wanted the lead to confirm the charge made at settle, this gives the
-         *     page the PaymentIntent's client secret and the saved card. Checks with Stripe, so a
-         *     charge just confirmed comes back `charged`. The lead's own bill only.
-         */
-        get: operations["getFeeCharge"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/card": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove the saved card
-         * @description #228: detaches the card saved with the last hold. The Stripe customer stays.
-         */
-        delete: operations["removeSavedCard"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/billing/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The lead's credits this month and the platform fees they've paid */
-        get: operations["getMyBilling"];
-        put?: never;
-        post?: never;
+        post: operations["previewSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1509,344 +1434,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        StartTableFeeRequest: {
-            /** Format: uuid */
-            billId: string;
-        };
-        TableFeeCheckout: {
-            /** @description Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`. */
-            client_secret: string;
-            /** @description The hold: £1 */
-            amountPence: number;
-        };
-        TableFeeStatus: {
-            /** Format: uuid */
-            billId: string;
-            /**
-             * @description `held`: a £1 hold is on the lead's card for this bill (#165); nothing
-             *     is taken until close. `unpaid`: no hold or credit yet; `amountPence`
-             *     is the hold sharing needs. `paid`: a fee paid outright, from before
-             *     holds.
-             *     `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
-             *     `free`: the lead has this month's credit, which sharing spends.
-             * @enum {string}
-             */
-            status: "held" | "paid" | "unpaid" | "waived" | "free";
-            amountPence: number;
-            /** Format: date-time */
-            paidAt?: string;
-            /** Format: date-time */
-            heldAt?: string;
-            /**
-             * @description Credits left this month (on `free` and `unpaid`).
-             * @enum {integer}
-             */
-            creditsLeft?: 0 | 1;
-            /**
-             * Format: date
-             * @description The 1st of next month, when the next credit comes (on `free` and `unpaid`).
-             */
-            nextCreditOn?: string;
-        };
-        SavedCardHold: {
-            /** @enum {string} */
-            status: "held" | "requires_action";
-            amountPence?: number;
-            /** @description For Stripe.js handleNextAction */
-            clientSecret?: string;
-            paymentIntentId?: string;
-        };
-        FeeCharge: {
-            /** Format: uuid */
-            billId: string;
-            /** @enum {string} */
-            status: "charged" | "needs_confirming" | "none";
-            amountPence: number;
-            /** @description The PaymentIntent to confirm in the page */
-            clientSecret?: string;
-            /** @description The saved card, offered first */
-            paymentMethodId?: string;
-            card?: components["schemas"]["CardSummary"];
-        };
-        CardSummary: {
-            /** @description `visa`, `mastercard`… */
-            brand?: string;
-            last4?: string;
-            /** @description `apple_pay`, `google_pay`… */
-            wallet?: string;
-        };
-        BillingSummary: {
-            card?: components["schemas"]["CardSummary"];
-            /** @enum {integer} */
-            creditsLeft: 0 | 1;
-            /** Format: date */
-            nextCreditOn: string;
-            /** @description Every fee paid, refunded ones included */
-            paidPence: number;
-            refundedPence: number;
-            fees: {
-                /** Format: uuid */
-                billId: string;
+        AmendBillRequest: {
+            items: {
                 /**
                  * Format: uuid
-                 * @description The session this fee shared
+                 * @description Provide existing itemId to preserve identity; omit for a new item
                  */
-                sessionId?: string;
+                itemId?: string;
+                name: string;
+                unitPricePence: number;
+                quantity: number;
+                /** @enum {string} */
+                category: "food" | "drink" | "other";
+                /** @enum {string} */
+                course?: "starter" | "main" | "side" | "dessert";
+            }[];
+            taxPence: number;
+            serviceChargePence: number;
+            /** @description The bill's shared discounts. Absent keeps them; [] removes them. More off than the items come to is INVALID_INPUT. */
+            discounts?: {
+                name: string;
                 amountPence: number;
-                /** Format: date-time */
-                paidAt: string;
-                /**
-                 * @description A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`) or charged at settle (`chargePence`).
-                 * @enum {string}
-                 */
-                kind?: "hold";
-                /** Format: date-time */
-                releasedAt?: string;
-                /** @description What was taken from the hold at close, the guests' part (#167). */
-                capturedPence?: number;
-                /** Format: date-time */
-                capturedAt?: string;
-                /**
-                 * @description #228: the hold saved the card, so settle charges it the round-ups, no cap.
-                 * @enum {boolean}
-                 */
-                savedCard?: true;
-                /**
-                 * @description #228: the charge at settle on the saved card: the round-ups of the guests the
-                 *     lead marked received, no cap. `needs_confirming`: the bank wants the lead to
-                 *     confirm it. `none`: under 30p, or nobody paid.
-                 * @enum {string}
-                 */
-                chargeStatus?: "charged" | "needs_confirming" | "none";
-                chargePence?: number;
-                /** Format: date-time */
-                chargedAt?: string;
-                /** Format: date-time */
-                refundedAt?: string;
             }[];
-            credits: {
-                /** @description `yyyy-mm`, UK time */
-                month: string;
-                /** Format: uuid */
-                billId: string;
-                /** Format: uuid */
-                sessionId: string;
-                /** Format: date-time */
-                claimedAt: string;
-                /**
-                 * Format: date-time
-                 * @description Given back because nobody joined
-                 */
-                returnedAt?: string;
-            }[];
-        };
-        PostCommentRequest: {
-            /** @description Plain text, trimmed */
-            text: string;
-        };
-        Comment: {
-            /** Format: uuid */
-            commentId: string;
-            userId: string;
-            displayName: string;
-            text: string;
-            /** Format: date-time */
-            createdAt: string;
-        };
-        StartProofRequest: {
-            sizeBytes: number;
-        };
-        ProofUploadSlot: {
-            /** Format: uuid */
-            proofId: string;
-            /**
-             * Format: uri
-             * @description Presigned PUT, image/jpeg
-             */
-            url: string;
-            /** Format: date-time */
-            expiresAt: string;
-        };
-        Proof: {
-            /** Format: uuid */
-            proofId: string;
-            userId: string;
-            /** Format: date-time */
-            sentAt: string;
-            /**
-             * Format: uri
-             * @description Signed GET, 5 minutes
-             */
-            url: string;
-        };
-        ReportLine: {
-            name: string;
-            detail?: string;
-            pence: number;
-        };
-        /** @description #219: whether Remind can text this guest now. */
-        GuestRemind: {
-            /** @enum {string} */
-            remind: "ready" | "today" | "used_up" | "stopped" | "no_number" | "not_owed" | "not_open";
-            /** @description Reminders sent so far */
-            reminders: number;
-            /** Format: date-time */
-            lastRemindedAt?: string;
-        };
-        GuestTexts: {
-            /** @description False where texts are off */
-            enabled: boolean;
-            /** @description By guest userId */
-            guests: {
-                [key: string]: components["schemas"]["GuestRemind"];
+            /** @description Set to override the parsed venue; absent keeps whatever the bill has. */
+            venue?: {
+                name: string;
+                placeId?: string;
+                address?: string;
             };
-        };
-        /** @description #220 G5: a bill seen from a guest's text. No numbers, no bank details. */
-        BillLinkView: {
-            /** Format: uuid */
-            sessionId: string;
-            leadName: string;
-            venueName?: string;
-            /** Format: date-time */
-            dateISO: string;
-            settled: boolean;
-            billTotalPence: number;
-            /**
-             * Format: date-time
-             * @description When the link stops working
-             */
-            expiresAt: string;
-            diners: {
-                displayName: string;
-                isLead: boolean;
-                /** @description The guest the link was sent to */
-                isYou: boolean;
-                lines: components["schemas"]["ReportLine"][];
-                itemsPence: number;
-                /** @description Their part of service and tax */
-                extrasPence: number;
-                /** @description Their part of the bill's discount */
-                discountPence: number;
-                /** @description Their round-up */
-                feePence: number;
-                totalPence: number;
-                paid: {
-                    /** @enum {string} */
-                    kind: "lead" | "paid" | "says_paid" | "not_paid";
-                    amountPence?: number;
-                };
-            }[];
-            unclaimed: components["schemas"]["ReportLine"][];
-            /** @description Nobody claimed, with its service */
-            unclaimedPence: number;
-        };
-        ErrorResponse: {
-            error: {
-                /**
-                 * @description Stable error code (SCREAMING_SNAKE_CASE)
-                 * @enum {string}
-                 */
-                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "PAYMENTS_NOT_OPEN" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "CHANNEL_UNAVAILABLE" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
-                /** @description Human-safe explanation */
-                message: string;
-                /** @description Server request ID; cross-reference in support */
-                requestId: string;
-                /** @description Optional structured detail; omitted in production for non-validation errors */
-                details?: {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        User: {
-            /** @description Google sub claim */
-            userId: string;
-            displayName: string;
-            /** Format: email */
-            email?: string;
-            /** Format: uri */
-            avatarUrl?: string;
-            /** @description A phone account with no name yet (#213); the web app asks for one before anything else. */
-            needsName?: boolean;
-            /**
-             * Format: uuid
-             * @description Set for a guest who joined with just a name (#183); their token works for this session only.
-             */
-            guestSessionId?: string;
-            /**
-             * @deprecated
-             * @description **Deprecated** per ADR-0002. Bank details are now device-local and
-             *     exchanged peer-to-peer via QR. The field may still be returned for
-             *     users created before the migration but new clients should ignore it
-             *     and read the lead's payout from the QR fragment.
-             */
-            payoutAccount?: components["schemas"]["PayoutAccount"];
-        };
-        PayoutAccount: {
-            /**
-             * @description UK sort code, 6 digits, no separators
-             * @example 040668
-             */
-            sortCode: string;
-            /**
-             * @description UK account number, 8 digits
-             * @example 00079660
-             */
-            accountNumber: string;
-            /** @example Callum Davies */
-            accountHolderName: string;
-            /**
-             * @description Optional monzo.me username (without the leading `@` or domain). When set,
-             *     guest payment instructions include a one-tap `https://monzo.me/<handle>/...` link.
-             * @example callum.davies
-             */
-            monzoHandle?: string;
-            /**
-             * @description Optional Revolut tag (without the leading `@`). When set, guest payment
-             *     instructions include a one-tap `https://revolut.me/<tag>/...` link.
-             * @example callumd
-             */
-            revolutTag?: string;
-        };
-        Venue: {
-            placeId?: string;
-            name?: string;
-            address?: string;
-            /** Format: double */
-            lat?: number;
-            /** Format: double */
-            lng?: number;
-        };
-        BillItem: {
-            /**
-             * Format: uuid
-             * @description Stable across amendments where item identity is preserved
-             */
-            itemId: string;
-            name: string;
-            /** Format: int64 */
-            unitPricePence: number;
-            quantity: number;
-            /** @enum {string} */
-            category: "food" | "drink" | "other";
-            /**
-             * @description Food items only. The parser's best guess at the course, for grouping in the UI. May be absent.
-             * @enum {string}
-             */
-            course?: "starter" | "main" | "side" | "dessert";
-            /**
-             * @description The reader's note on a line it couldn't read clearly ("price faded"). The app asks the
-             *     lead to confirm these lines before Review bill. Absent on clear lines, and cleared by
-             *     any amend.
-             */
-            unsure?: string;
-        };
-        BillDiscount: {
-            name: string;
-            /**
-             * Format: int64
-             * @description The amount off.
-             */
-            amountPence: number;
         };
         Bill: {
             /** Format: uuid */
@@ -1922,52 +1537,377 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @enum {string} */
-        SessionStatus: "setup" | "claiming" | "paying" | "settled" | "abandoned";
-        ParticipantPaymentEntry: {
-            /** Format: uuid */
-            paymentId: string;
+        BillDiscount: {
+            name: string;
+            /**
+             * Format: int64
+             * @description The amount off.
+             */
             amountPence: number;
-            /** @enum {string} */
-            status: "pending" | "succeeded" | "failed";
-            /** Format: date-time */
-            payerClaimedPaidAt?: string;
-            /** Format: date-time */
-            paidAt?: string;
-            reason?: string;
         };
-        ParticipantPayment: {
-            /** @constant */
-            status: "unpaid";
-        } | {
-            /** @constant */
-            status: "self_paid";
-        } | {
-            /** @constant */
-            status: "pending";
+        BillingSummary: {
+            card?: components["schemas"]["CardSummary"];
+            /** @enum {integer} */
+            creditsLeft: 0 | 1;
+            /** Format: date */
+            nextCreditOn: string;
+            /** @description Every fee paid, refunded ones included */
+            paidPence: number;
+            refundedPence: number;
+            fees: {
+                /** Format: uuid */
+                billId: string;
+                /**
+                 * Format: uuid
+                 * @description The session this fee shared
+                 */
+                sessionId?: string;
+                amountPence: number;
+                /** Format: date-time */
+                paidAt: string;
+                /**
+                 * @description A £1 hold, counted in `paidPence` only for what was taken at close (`capturedPence`) or charged at settle (`chargePence`).
+                 * @enum {string}
+                 */
+                kind?: "hold";
+                /** Format: date-time */
+                releasedAt?: string;
+                /** @description What was taken from the hold at close, the guests' part (#167). */
+                capturedPence?: number;
+                /** Format: date-time */
+                capturedAt?: string;
+                /**
+                 * @description #228: the hold saved the card, so settle charges it the round-ups, no cap.
+                 * @enum {boolean}
+                 */
+                savedCard?: true;
+                /**
+                 * @description #228: the charge at settle on the saved card: the round-ups of the guests the
+                 *     lead marked received, no cap. `needs_confirming`: the bank wants the lead to
+                 *     confirm it. `none`: under 30p, or nobody paid.
+                 * @enum {string}
+                 */
+                chargeStatus?: "charged" | "needs_confirming" | "none";
+                chargePence?: number;
+                /** Format: date-time */
+                chargedAt?: string;
+                /** Format: date-time */
+                refundedAt?: string;
+            }[];
+            credits: {
+                /** @description `yyyy-mm`, UK time */
+                month: string;
+                /** Format: uuid */
+                billId: string;
+                /** Format: uuid */
+                sessionId: string;
+                /** Format: date-time */
+                claimedAt: string;
+                /**
+                 * Format: date-time
+                 * @description Given back because nobody joined
+                 */
+                returnedAt?: string;
+            }[];
+        };
+        BillItem: {
+            /**
+             * Format: uuid
+             * @description Stable across amendments where item identity is preserved
+             */
+            itemId: string;
+            name: string;
+            /** Format: int64 */
+            unitPricePence: number;
+            quantity: number;
+            /** @enum {string} */
+            category: "food" | "drink" | "other";
+            /**
+             * @description Food items only. The parser's best guess at the course, for grouping in the UI. May be absent.
+             * @enum {string}
+             */
+            course?: "starter" | "main" | "side" | "dessert";
+            /**
+             * @description The reader's note on a line it couldn't read clearly ("price faded"). The app asks the
+             *     lead to confirm these lines before Review bill. Absent on clear lines, and cleared by
+             *     any amend.
+             */
+            unsure?: string;
+        };
+        /** @description #220 G5: a bill seen from a guest's text. No numbers, no bank details. */
+        BillLinkView: {
             /** Format: uuid */
-            paymentId: string;
+            sessionId: string;
+            leadName: string;
+            venueName?: string;
+            /** Format: date-time */
+            dateISO: string;
+            settled: boolean;
+            billTotalPence: number;
             /**
              * Format: date-time
-             * @description Mirrors `Payment.payerClaimedPaidAt` — set when the payer hits
-             *     `/v1/payments/{paymentId}/mark-paid` to claim they've sent the money.
-             *     The lead's UI can use this to flag "they say they paid" alongside the
-             *     pending payment.
+             * @description When the link stops working
              */
-            payerClaimedPaidAt?: string;
-        } | {
-            /** @constant */
-            status: "succeeded";
+            expiresAt: string;
+            diners: {
+                displayName: string;
+                isLead: boolean;
+                /** @description The guest the link was sent to */
+                isYou: boolean;
+                lines: components["schemas"]["ReportLine"][];
+                itemsPence: number;
+                /** @description Their part of service and tax */
+                extrasPence: number;
+                /** @description Their part of the bill's discount */
+                discountPence: number;
+                /** @description Their round-up */
+                feePence: number;
+                totalPence: number;
+                paid: {
+                    /** @enum {string} */
+                    kind: "lead" | "paid" | "says_paid" | "not_paid";
+                    amountPence?: number;
+                };
+            }[];
+            unclaimed: components["schemas"]["ReportLine"][];
+            /** @description Nobody claimed, with its service */
+            unclaimedPence: number;
+        };
+        BillRead: {
             /** Format: uuid */
-            paymentId: string;
+            readId: string;
+            /** @enum {string} */
+            status: "reading" | "done" | "failed";
+            /**
+             * Format: uuid
+             * @description Set when `done`
+             */
+            billId?: string;
+            /** @description Set when `done` and the photo was this user's own bill from before */
+            duplicate?: {
+                /** @description The bill's latest version */
+                versionNumber: number;
+                /** @description `versionNumber > 1`: the lead has changed it */
+                amended: boolean;
+                session?: components["schemas"]["DuplicateSession"];
+            };
+            /** @description Set when `failed`. `code` is one of the API's error codes. */
+            error?: {
+                code: string;
+                message: string;
+                details?: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        CardSummary: {
+            /** @description `visa`, `mastercard`… */
+            brand?: string;
+            last4?: string;
+            /** @description `apple_pay`, `google_pay`… */
+            wallet?: string;
+        };
+        ClaimsRequest: {
+            /** @description Replaces the caller's full claim list; deduplicated server-side */
+            claimedItemIds: string[];
+        };
+        Comment: {
+            /** Format: uuid */
+            commentId: string;
+            userId: string;
+            displayName: string;
+            text: string;
             /** Format: date-time */
-            paidAt: string;
-        } | {
-            /** @constant */
-            status: "failed";
+            createdAt: string;
+        };
+        CreateSessionRequest: {
             /** Format: uuid */
-            paymentId: string;
-            reason: string;
+            billId: string;
+            /** @description Defaults to the latest version of the bill at session-create time */
+            billVersion?: number;
+            /** @description How many people are eating, lead included. Optional. */
+            expectedDiners?: number;
+        };
+        /** @description Where the uploader's own bill for a photo they've sent before stands, resolved at request time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or the bill's table when `session` is set. */
+        DuplicateContext: {
+            /** @description The bill's latest version */
+            versionNumber: number;
+            /** @description `versionNumber > 1`: the lead has changed it */
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
+        };
+        /** @description The bill's live session (setup, claiming or paying: it holds the bill), else the lead's newest session for it when that one is settled. Absent when there's none or it was abandoned. */
+        DuplicateSession: {
+            /** Format: uuid */
+            sessionId: string;
+            status: components["schemas"]["SessionStatus"];
+        };
+        ErrorResponse: {
+            error: {
+                /**
+                 * @description Stable error code (SCREAMING_SNAKE_CASE)
+                 * @enum {string}
+                 */
+                code: "AUTH_MISSING" | "AUTH_INVALID" | "AUTH_EXPIRED" | "INVALID_INPUT" | "IDEMPOTENCY_CONFLICT" | "NOT_FOUND" | "BILL_NOT_FOUND" | "SESSION_NOT_FOUND" | "PAYMENT_NOT_FOUND" | "SESSION_INVALID_STATE" | "CLAIMS_INCOMPLETE" | "PAYMENTS_NOT_OPEN" | "CLAIMS_EXCEED_QUANTITY" | "PARTICIPANTS_NOT_READY" | "CLAIM_SHARE_CONFLICT" | "ITEM_NOT_SHAREABLE" | "ALREADY_PAID_FOR" | "SHARE_WAYS_TOO_LOW" | "SHARE_PAID" | "SHARE_CONFLICT" | "PARSE_FAILED" | "PARSE_LOW_CONFIDENCE" | "PARSE_TIMEOUT" | "RATE_LIMITED" | "PAYMENT_PROVIDER_ERROR" | "CHANNEL_UNAVAILABLE" | "TABLE_FEE_PAID" | "TABLE_FEE_WAIVED" | "TABLE_FEE_REQUIRED" | "INTERNAL_ERROR";
+                /** @description Human-safe explanation */
+                message: string;
+                /** @description Server request ID; cross-reference in support */
+                requestId: string;
+                /** @description Optional structured detail; omitted in production for non-validation errors */
+                details?: {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        FeeCharge: {
+            /** Format: uuid */
+            billId: string;
+            /** @enum {string} */
+            status: "charged" | "needs_confirming" | "none";
+            amountPence: number;
+            /** @description The PaymentIntent to confirm in the page */
+            clientSecret?: string;
+            /** @description The saved card, offered first */
+            paymentMethodId?: string;
+            card?: components["schemas"]["CardSummary"];
+        };
+        ForkBillRequest: {
+            /**
+             * @description `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what the current parser reads off the photo.
+             * @default latest
+             * @enum {string}
+             */
+            from: "latest" | "analysis";
+        };
+        GuestJoinCodeRefused: {
+            /** @enum {string} */
+            status: "wrong" | "expired";
+            attemptsLeft?: number;
+        };
+        GuestJoinRequest: {
+            code: string;
+            name: string;
+            /** @description From guest-join/start (#214) */
+            requestId?: string;
+            /** @description The texted code (#214) */
+            phoneCode?: string;
+        };
+        GuestJoinResponse: {
+            /** @enum {string} */
+            status: "joined";
+            /** @description Session token for this one session */
+            token: string;
+            session: components["schemas"]["Session"];
+        };
+        GuestJoinStartRequest: {
+            code: string;
+            /** @description A UK mobile */
+            phone: string;
+        };
+        /** @description #219: whether Remind can text this guest now. */
+        GuestRemind: {
+            /** @enum {string} */
+            remind: "ready" | "today" | "used_up" | "stopped" | "no_number" | "not_owed" | "not_open";
+            /** @description Reminders sent so far */
+            reminders: number;
+            /** Format: date-time */
+            lastRemindedAt?: string;
+        };
+        GuestTexts: {
+            /** @description False where texts are off */
+            enabled: boolean;
+            /** @description By guest userId */
+            guests: {
+                [key: string]: components["schemas"]["GuestRemind"];
+            };
+        };
+        InitiatePaymentResponse: {
+            payment: components["schemas"]["Payment"];
+            instructions: components["schemas"]["PaymentInstructions"];
+        };
+        JoinByCodeRequest: {
+            code: string;
+        };
+        ParsedBill: {
+            /** Format: uuid */
+            billId: string;
+            versionNumber: number;
+            creatorUserId: string;
+            /** @enum {string} */
+            currency: "GBP";
+            /** Format: int64 */
+            subtotalPence: number;
+            /** Format: int64 */
+            taxPence: number;
+            /** Format: int64 */
+            serviceChargePence: number;
+            /**
+             * @description Discounts that aren't one item's (8 Nov 2026), shown under the items and shared by what
+             *     each person had, like service, but taken off. A discount on one item is folded into that
+             *     item's price instead. Absent on older bills.
+             */
+            discounts?: components["schemas"]["BillDiscount"][];
+            /**
+             * Format: int64
+             * @description subtotal + tax + service − the discounts.
+             */
+            totalPence: number;
+            /**
+             * Format: int64
+             * @description The total printed on the receipt itself, as read by OCR.
+             *     Kept alongside the computed `totalPence` so the client can
+             *     flag a mismatch — typical causes are OCR misreading an item
+             *     price, a restaurant arithmetic error, or an undisclosed
+             *     discount/tip baked into the printed total. Optional because
+             *     old bills predate this field and not every parser surfaces it.
+             */
+            parsedTotalPence?: number;
+            items: components["schemas"]["BillItem"][];
+            parsedFrom: {
+                /** @description SHA-256 hex of resized image bytes */
+                imageHash: string;
+                /** @example eu.anthropic.claude-sonnet-4-6 */
+                parser: string;
+                /** @example v1 */
+                parserVersion: string;
+                /** Format: date-time */
+                parsedAt: string;
+                /**
+                 * Format: uuid
+                 * @description Original upload identifier; absent on bills parsed before this field was retained.
+                 */
+                uploadId?: string;
+                /**
+                 * @description Where this bill's read came from: the parser, or the analysis
+                 *     cache (the same image read before by the same parser
+                 *     fingerprint, by anyone). Absent on bills from before the cache.
+                 * @enum {string}
+                 */
+                source?: "parser" | "cache";
+                /**
+                 * Format: date-time
+                 * @description When the read this bill came from was made. Absent on bills from before the cache.
+                 */
+                analysedAt?: string;
+                /** @description Set on a bill made by Start again (`POST /v1/bills/{billId}/fork`): the bill and version it came from. */
+                forkedFrom?: {
+                    /** Format: uuid */
+                    billId: string;
+                    versionNumber: number;
+                };
+            };
+            venue?: components["schemas"]["Venue"];
+            /** Format: uuid */
+            previousVersionId?: string;
+            /** Format: date-time */
+            createdAt: string;
+            duplicate?: components["schemas"]["DuplicateContext"];
+        };
+        ParseRequest: {
+            /** Format: uuid */
+            uploadId: string;
+            /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
+            skipCache?: boolean;
         };
         Participant: {
             userId: string;
@@ -2007,6 +1947,184 @@ export interface components {
              */
             readyToLock: boolean;
         };
+        ParticipantPayment: {
+            /** @enum {string} */
+            status: "unpaid";
+        } | {
+            /** @enum {string} */
+            status: "self_paid";
+        } | {
+            /** @enum {string} */
+            status: "pending";
+            /** Format: uuid */
+            paymentId: string;
+            /**
+             * Format: date-time
+             * @description Mirrors `Payment.payerClaimedPaidAt` — set when the payer hits
+             *     `/v1/payments/{paymentId}/mark-paid` to claim they've sent the money.
+             *     The lead's UI can use this to flag "they say they paid" alongside the
+             *     pending payment.
+             */
+            payerClaimedPaidAt?: string;
+        } | {
+            /** @enum {string} */
+            status: "succeeded";
+            /** Format: uuid */
+            paymentId: string;
+            /** Format: date-time */
+            paidAt: string;
+        } | {
+            /** @enum {string} */
+            status: "failed";
+            /** Format: uuid */
+            paymentId: string;
+            reason: string;
+        };
+        ParticipantPaymentEntry: {
+            /** Format: uuid */
+            paymentId: string;
+            amountPence: number;
+            /** @enum {string} */
+            status: "pending" | "succeeded" | "failed";
+            /** Format: date-time */
+            payerClaimedPaidAt?: string;
+            /** Format: date-time */
+            paidAt?: string;
+            reason?: string;
+        };
+        Payment: {
+            /** Format: uuid */
+            paymentId: string;
+            /** Format: uuid */
+            sessionId: string;
+            payerUserId: string;
+            collectorUserId: string;
+            /** Format: int64 */
+            amountPence: number;
+            /** @enum {string} */
+            currency: "GBP";
+            status: components["schemas"]["PaymentStatus"];
+            /** Format: uuid */
+            idempotencyKey?: string;
+            /** @description Audit trail of state transitions */
+            events?: {
+                /** Format: date-time */
+                at: string;
+                from: components["schemas"]["PaymentStatus"];
+                to: components["schemas"]["PaymentStatus"];
+                /** @enum {string} */
+                source: "api" | "system";
+                note?: string;
+            }[];
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Set when the payer hits `POST /v1/payments/{paymentId}/mark-paid` to claim
+             *     "I've sent the money via my bank app". Surfaced in the lead's session view so
+             *     they know which pending payments are awaiting their `/confirm`. Does not advance
+             *     payment status — only `/confirm` does that.
+             */
+            payerClaimedPaidAt?: string;
+        };
+        /**
+         * @description How the guest pays: the bank details and reference to use in their own banking app,
+         *     plus optional Monzo/Revolut links. The lead then confirms receipt via
+         *     `POST /v1/payments/{paymentId}/confirm`.
+         */
+        PaymentInstructions: {
+            /** @enum {string} */
+            type: "manual_transfer";
+            /** @description The collector's bank details, when stored server-side. Omitted when they only live on the lead's device (ADR-0002); clients then use the details from the join QR fragment. */
+            bankDetails?: {
+                sortCode: string;
+                accountNumber: string;
+                accountHolderName: string;
+            };
+            /** @description What the guest puts on their bank transfer: the venue and their first name ('Gennaro Tom'), letters, digits and spaces, at most 18 characters */
+            reference: string;
+            amountPence: number;
+            /** @description One-tap deep links into popular banking apps; populated only if the lead has the matching handle saved on `payoutAccount`. */
+            links: {
+                /**
+                 * Format: uri
+                 * @example https://monzo.me/callum.davies/12.34?d=gdp-019e137a
+                 */
+                monzo?: string;
+                /**
+                 * Format: uri
+                 * @example https://revolut.me/callumd/12.34
+                 */
+                revolut?: string;
+            };
+        };
+        /** @enum {string} */
+        PaymentStatus: "pending" | "succeeded" | "failed";
+        /** @description A UK bank account. Per ADR-0002 it lives on the lead's device and travels in the join link's fragment; the server never stores it. */
+        PayoutAccount: {
+            /**
+             * @description UK sort code, 6 digits, no separators
+             * @example 040668
+             */
+            sortCode: string;
+            /**
+             * @description UK account number, 8 digits
+             * @example 00079660
+             */
+            accountNumber: string;
+            /** @example Callum Davies */
+            accountHolderName: string;
+            /**
+             * @description Optional monzo.me username (without the leading `@` or domain). When set, guest payment instructions include a one-tap `https://monzo.me/<handle>/...` link.
+             * @example callum.davies
+             */
+            monzoHandle?: string;
+            /**
+             * @description Optional Revolut tag (without the leading `@`). When set, guest payment instructions include a one-tap `https://revolut.me/<tag>/...` link.
+             * @example callumd
+             */
+            revolutTag?: string;
+        };
+        PostCommentRequest: {
+            /** @description Plain text, trimmed */
+            text: string;
+        };
+        Proof: {
+            /** Format: uuid */
+            proofId: string;
+            userId: string;
+            /** Format: date-time */
+            sentAt: string;
+            /**
+             * Format: uri
+             * @description Signed GET, 5 minutes
+             */
+            url: string;
+        };
+        ProofUploadSlot: {
+            /** Format: uuid */
+            proofId: string;
+            /**
+             * Format: uri
+             * @description Presigned PUT, image/jpeg
+             */
+            url: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        ReportLine: {
+            name: string;
+            detail?: string;
+            pence: number;
+        };
+        SavedCardHold: {
+            /** @enum {string} */
+            status: "held" | "requires_action";
+            amountPence?: number;
+            /** @description For Stripe.js handleNextAction */
+            clientSecret?: string;
+            paymentIntentId?: string;
+        };
         Session: {
             /** Format: uuid */
             sessionId: string;
@@ -2026,7 +2144,15 @@ export interface components {
              *     Optional — predates this field on old sessions, and not every bill
              *     has a venue the reader could extract.
              */
-            venue?: components["schemas"]["Venue"];
+            venue?: {
+                placeId?: string;
+                name?: string;
+                address?: string;
+                /** Format: double */
+                lat?: number;
+                /** Format: double */
+                lng?: number;
+            };
             /**
              * @description How many people the lead said are eating, lead included. Shown as
              *     "3 of 4 joined"; never used in the money maths. Absent until set.
@@ -2087,19 +2213,21 @@ export interface components {
             /** Format: date-time */
             ttlAt?: string;
         };
-        ShareActivity: {
-            /**
-             * @description `split`: `byUserId` split an item `fromUserId` had claimed (#130).
-             * @enum {string}
-             */
-            kind: "started" | "joined" | "left" | "ways" | "split";
-            byUserId: string;
-            fromUserId?: string;
+        SessionPreview: {
+            /** Format: uuid */
+            sessionId: string;
+            /** @enum {string} */
+            status: "setup" | "claiming" | "paying" | "settled" | "abandoned";
+            hostName: string;
+            venueName?: string;
             /** Format: date-time */
-            at: string;
-            fromWays?: number;
-            toWays?: number;
+            createdAt: string;
+            itemCount: number;
+            totalPence: number;
+            people: string[];
         };
+        /** @enum {string} */
+        SessionStatus: "setup" | "claiming" | "paying" | "settled" | "abandoned";
         SessionSummary: {
             /** Format: uuid */
             sessionId: string;
@@ -2144,42 +2272,79 @@ export interface components {
             /** @description Open bills the caller leads only. Guests who haven't paid in full yet. */
             toPayCount?: number;
         };
-        /** @enum {string} */
-        PaymentStatus: "pending" | "succeeded" | "failed";
-        Payment: {
-            /** Format: uuid */
-            paymentId: string;
-            /** Format: uuid */
-            sessionId: string;
-            payerUserId: string;
-            collectorUserId: string;
-            /** Format: int64 */
-            amountPence: number;
-            /** @enum {string} */
-            currency: "GBP";
-            status: components["schemas"]["PaymentStatus"];
-            /** Format: uuid */
-            idempotencyKey?: string;
-            /** @description Audit trail of state transitions */
-            events?: {
-                /** Format: date-time */
-                at: string;
-                from: components["schemas"]["PaymentStatus"];
-                to: components["schemas"]["PaymentStatus"];
-                /** @enum {string} */
-                source: "api" | "system";
-                note?: string;
-            }[];
-            /** Format: date-time */
-            createdAt: string;
+        ShareActivity: {
             /**
-             * Format: date-time
-             * @description Set when the payer hits `POST /v1/payments/{paymentId}/mark-paid` to claim
-             *     "I've sent the money via my bank app". Surfaced in the lead's session view so
-             *     they know which pending payments are awaiting their `/confirm`. Does not advance
-             *     payment status — only `/confirm` does that.
+             * @description `split`: `byUserId` split an item `fromUserId` had claimed (#130).
+             * @enum {string}
              */
-            payerClaimedPaidAt?: string;
+            kind: "started" | "joined" | "left" | "ways" | "split";
+            byUserId: string;
+            fromUserId?: string;
+            /** Format: date-time */
+            at: string;
+            fromWays?: number;
+            toWays?: number;
+        };
+        StartProofRequest: {
+            sizeBytes: number;
+        };
+        StartTableFeeRequest: {
+            /** Format: uuid */
+            billId: string;
+        };
+        TableFeeCheckout: {
+            /** @description Pass to Stripe.js `initCheckoutFormSdk` / `CheckoutFormProvider`. */
+            client_secret: string;
+            /** @description The hold: £1 */
+            amountPence: number;
+        };
+        TableFeeStatus: {
+            /** Format: uuid */
+            billId: string;
+            /**
+             * @description `held`: a £1 hold is on the lead's card for this bill (#165); nothing
+             *     is taken until close. `unpaid`: no hold or credit yet; `amountPence`
+             *     is the hold sharing needs. `paid`: a fee paid outright, from before
+             *     holds.
+             *     `waived`: the lead's email is on TABLE_FEE_EXEMPT_EMAILS; no fee is due.
+             *     `free`: the lead has this month's credit, which sharing spends.
+             * @enum {string}
+             */
+            status: "held" | "paid" | "unpaid" | "waived" | "free";
+            amountPence: number;
+            /** Format: date-time */
+            paidAt?: string;
+            /** Format: date-time */
+            heldAt?: string;
+            /**
+             * @description Credits left this month (on `free` and `unpaid`).
+             * @enum {integer}
+             */
+            creditsLeft?: 0 | 1;
+            /**
+             * Format: date
+             * @description The 1st of next month, when the next credit comes (on `free` and `unpaid`).
+             */
+            nextCreditOn?: string;
+        };
+        UpdateSessionRequest: {
+            /** @description How many people are eating, lead included; `null` clears it. */
+            expectedDiners: number | null;
+        };
+        UploadDuplicate: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            status: "duplicate";
+            /**
+             * Format: uuid
+             * @description An existing bill matched the supplied image hash; do not upload again
+             */
+            billId: string;
+            versionNumber: number;
+            amended: boolean;
+            session?: components["schemas"]["DuplicateSession"];
         };
         UploadRequest: {
             /** @description SHA-256 hex of the resized image bytes (lowercase) */
@@ -2209,201 +2374,61 @@ export interface components {
             /** @description Enforced via Content-Length on the PUT */
             maxBytes: number;
         };
-        UploadDuplicate: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            status: "duplicate";
-            /**
-             * Format: uuid
-             * @description An existing bill matched the supplied image hash; do not upload again
-             */
-            billId: string;
-            versionNumber: number;
-            amended: boolean;
-            session?: components["schemas"]["DuplicateSession"];
-        };
-        /** @description Where the uploader's own bill for a photo they've sent before stands, resolved at request time. The app opens Review bill (saying "Picked up where you left off" when `amended`), or the bill's table when `session` is set. */
-        DuplicateContext: {
-            /** @description The bill's latest version */
-            versionNumber: number;
-            /** @description `versionNumber > 1`: the lead has changed it */
-            amended: boolean;
-            session?: components["schemas"]["DuplicateSession"];
-        };
-        /** @description The bill's live session (setup, claiming or paying: it holds the bill), else the lead's newest session for it when that one is settled. Absent when there's none or it was abandoned. */
-        DuplicateSession: {
-            /** Format: uuid */
-            sessionId: string;
-            status: components["schemas"]["SessionStatus"];
-        };
-        ParsedBill: components["schemas"]["Bill"] & {
-            duplicate?: components["schemas"]["DuplicateContext"];
-        };
-        ParseRequest: {
-            /** Format: uuid */
-            uploadId: string;
-            /** @description Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill. */
-            skipCache?: boolean;
-        };
-        ForkBillRequest: {
-            /**
-             * @description `latest`: copy the latest version (the lead's corrections carry over). `analysis`: what the current parser reads off the photo.
-             * @default latest
-             * @enum {string}
-             */
-            from: "latest" | "analysis";
-        };
-        BillRead: {
-            /** Format: uuid */
-            readId: string;
-            /** @enum {string} */
-            status: "reading" | "done" | "failed";
+        User: {
+            /** @description Google sub claim */
+            userId: string;
+            displayName: string;
+            /** Format: email */
+            email?: string;
+            /** Format: uri */
+            avatarUrl?: string;
+            /** @description A phone account with no name yet (#213); the web app asks for one before anything else. */
+            needsName?: boolean;
             /**
              * Format: uuid
-             * @description Set when `done`
+             * @description Set for a guest who joined with just a name (#183); their token works for this session only.
              */
-            billId?: string;
-            /** @description Set when `done` and the photo was this user's own bill from before */
-            duplicate?: components["schemas"]["DuplicateContext"];
-            /** @description Set when `failed`. `code` is one of the API's error codes. */
-            error?: {
-                code: string;
-                message: string;
-                details?: {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        AmendBillRequest: {
-            items: {
+            guestSessionId?: string;
+            /**
+             * @deprecated
+             * @description **Deprecated** per ADR-0002. Bank details are now device-local and
+             *     exchanged peer-to-peer via QR. The field may still be returned for
+             *     users created before the migration but new clients should ignore it
+             *     and read the lead's payout from the QR fragment.
+             */
+            payoutAccount?: {
                 /**
-                 * Format: uuid
-                 * @description Provide existing itemId to preserve identity; omit for a new item
+                 * @description UK sort code, 6 digits, no separators
+                 * @example 040668
                  */
-                itemId?: string;
-                name: string;
-                /** Format: int64 */
-                unitPricePence: number;
-                quantity: number;
-                /** @enum {string} */
-                category: "food" | "drink" | "other";
-                /** @enum {string} */
-                course?: "starter" | "main" | "side" | "dessert";
-            }[];
-            /** Format: int64 */
-            taxPence: number;
-            /** Format: int64 */
-            serviceChargePence: number;
-            /**
-             * @description The bill's shared discounts. Absent keeps them; [] removes them. More off than the
-             *     items come to is INVALID_INPUT.
-             */
-            discounts?: {
-                name: string;
-                /** Format: int64 */
-                amountPence: number;
-            }[];
-            /** @description Set to override the parsed venue; absent keeps whatever the bill has. */
-            venue?: {
-                name: string;
-                placeId?: string;
-                address?: string;
-            };
-        };
-        CreateSessionRequest: {
-            /** Format: uuid */
-            billId: string;
-            /** @description Defaults to the latest version of the bill at session-create time */
-            billVersion?: number;
-            /** @description How many people are eating, lead included. Optional. */
-            expectedDiners?: number;
-        };
-        UpdateSessionRequest: {
-            /** @description How many people are eating, lead included; `null` clears it. */
-            expectedDiners: number | null;
-        };
-        GuestJoinRequest: {
-            code: string;
-            name: string;
-            /** @description From guest-join/start (#214) */
-            requestId?: string;
-            /** @description The texted code (#214) */
-            phoneCode?: string;
-        };
-        GuestJoinStartRequest: {
-            code: string;
-            /** @description A UK mobile */
-            phone: string;
-        };
-        GuestJoinResponse: {
-            /** @enum {string} */
-            status: "joined";
-            /** @description Session token for this one session */
-            token: string;
-            session: components["schemas"]["Session"];
-        };
-        GuestJoinCodeRefused: {
-            /** @enum {string} */
-            status: "wrong" | "expired";
-            attemptsLeft?: number;
-        };
-        SessionPreview: {
-            /** Format: uuid */
-            sessionId: string;
-            /** @enum {string} */
-            status: "setup" | "claiming" | "paying" | "settled" | "abandoned";
-            hostName: string;
-            venueName?: string;
-            /** Format: date-time */
-            createdAt: string;
-            itemCount: number;
-            totalPence: number;
-            people: string[];
-        };
-        JoinByCodeRequest: {
-            code: string;
-        };
-        ClaimsRequest: {
-            /** @description Replaces the caller's full claim list; deduplicated server-side */
-            claimedItemIds: string[];
-        };
-        InitiatePaymentResponse: {
-            payment: components["schemas"]["Payment"];
-            instructions: components["schemas"]["PaymentInstructions"];
-        };
-        /**
-         * @description How the guest pays: the bank details and reference to use in their own banking app,
-         *     plus optional Monzo/Revolut links. The lead then confirms receipt via
-         *     `POST /v1/payments/{paymentId}/confirm`.
-         */
-        PaymentInstructions: components["schemas"]["ManualTransferInstructions"];
-        ManualTransferInstructions: {
-            /** @enum {string} */
-            type: "manual_transfer";
-            /** @description The collector's bank details, when stored server-side. Omitted when they only live on the lead's device (ADR-0002); clients then use the details from the join QR fragment. */
-            bankDetails?: {
                 sortCode: string;
+                /**
+                 * @description UK account number, 8 digits
+                 * @example 00079660
+                 */
                 accountNumber: string;
+                /** @example Callum Davies */
                 accountHolderName: string;
-            };
-            /** @description What the guest puts on their bank transfer: the venue and their first name ('Gennaro Tom'), letters, digits and spaces, at most 18 characters */
-            reference: string;
-            amountPence: number;
-            /** @description One-tap deep links into popular banking apps; populated only if the lead has the matching handle saved on `payoutAccount`. */
-            links: {
                 /**
-                 * Format: uri
-                 * @example https://monzo.me/callum.davies/12.34?d=gdp-019e137a
+                 * @description Optional monzo.me username (without the leading `@` or domain). When set, guest payment instructions include a one-tap `https://monzo.me/<handle>/...` link.
+                 * @example callum.davies
                  */
-                monzo?: string;
+                monzoHandle?: string;
                 /**
-                 * Format: uri
-                 * @example https://revolut.me/callumd/12.34
+                 * @description Optional Revolut tag (without the leading `@`). When set, guest payment instructions include a one-tap `https://revolut.me/<tag>/...` link.
+                 * @example callumd
                  */
-                revolut?: string;
+                revolutTag?: string;
             };
+        };
+        Venue: {
+            placeId?: string;
+            name?: string;
+            address?: string;
+            /** Format: double */
+            lat?: number;
+            /** Format: double */
+            lng?: number;
         };
     };
     responses: {
@@ -2453,15 +2478,7 @@ export interface components {
             };
         };
     };
-    parameters: {
-        BillId: string;
-        SessionId: string;
-        /** @description The random token from a guest's text */
-        LinkToken: string;
-        PaymentId: string;
-        /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
-        IdempotencyKey: string;
-    };
+    parameters: never;
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -2484,7 +2501,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
+                        /** @enum {string} */
                         status: "ok";
                     };
                 };
@@ -2507,7 +2524,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
+                        /** @enum {string} */
                         status: "ok";
                         checks: {
                             /** @enum {string} */
@@ -2552,7 +2569,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
+                        /** @enum {boolean} */
                         ok: true;
                         /** @description Everyone but exempt addresses. Secret; keep it in the tab that asked. */
                         requestId?: string;
@@ -2575,6 +2592,52 @@ export interface operations {
              *     `details.retryAfterSeconds` says when to try again.
              */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    testAccountSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in. Same shape as `openEmailSignInLink`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            /** Format: uuid */
+                            userId: string;
+                            /** Format: email */
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Test accounts are off on this server. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2680,7 +2743,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** @constant */
+                        /** @enum {boolean} */
                         ok: true;
                         /** @description Secret; keep it in the tab that asked. */
                         requestId: string;
@@ -2755,53 +2818,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
         };
     };
-    testAccountSignIn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: email */
-                    email: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Signed in. Same shape as `openEmailSignInLink`. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        token: string;
-                        user: {
-                            /** Format: uuid */
-                            userId: string;
-                            /** Format: email */
-                            email: string;
-                            displayName: string;
-                        };
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            /** @description Test accounts are off on this server. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getCurrentUser: {
+    removeSavedCard: {
         parameters: {
             query?: never;
             header?: never;
@@ -2810,1684 +2827,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The authenticated user, derived from the verified ID token */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    updateCurrentUser: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    displayName?: string;
-                    email?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Saved. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        token: string;
-                        user: {
-                            userId: string;
-                            email: string;
-                            displayName: string;
-                        };
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    signOutEverywhere: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Signed out everywhere. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        ok: true;
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    setMyPayoutAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PayoutAccount"];
-            };
-        };
-        responses: {
-            /**
-             * @description Always returned for valid bodies. The supplied account is echoed back
-             *     but **not** persisted.
-             */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        payoutAccount: components["schemas"]["PayoutAccount"];
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    listMySessions: {
-        parameters: {
-            query?: {
-                /** @description Maximum number of summaries to return (1–100, defaults to 20). */
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of session summaries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        sessions: components["schemas"]["SessionSummary"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
-    };
-    requestBillUpload: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UploadRequest"];
-            };
-        };
-        responses: {
-            /** @description Upload slot or duplicate-bill resolution */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UploadSlot"] | components["schemas"]["UploadDuplicate"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    parseBill: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ParseRequest"];
-            };
-        };
-        responses: {
-            /** @description Parsed bill. When the photo is one this user read before, their own latest version of that bill, with `duplicate` saying where it stands. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ParsedBill"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Upload not found or expired */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: components["responses"]["IdempotencyConflict"];
-            /** @description Parser returned but output failed validation, or confidence below threshold */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-            /** @description Upstream parser provider error */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
-            504: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    startBillRead: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ParseRequest"];
-            };
-        };
-        responses: {
-            /** @description Reading has started (or, if it couldn't be started, has already failed) */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillRead"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            409: components["responses"]["IdempotencyConflict"];
-        };
-    };
-    getBillRead: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                readId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The read */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillRead"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description No such read for this user */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getBill: {
-        parameters: {
-            query?: {
-                /** @description Specific version number; omit for latest */
-                version?: number;
-            };
-            header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Bill record */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Bill"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    getBillImageUrl: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Presigned URL */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uri */
-                        url: string;
-                        /** Format: date-time */
-                        expiresAt: string;
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    amendBill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AmendBillRequest"];
-            };
-        };
-        responses: {
-            /** @description New bill version */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Bill"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description Bill is frozen (session in `paying` or `settled`), or the amend would orphan existing
-             *     claims (`CLAIMS_EXCEED_QUANTITY`).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    forkBill: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            path: {
-                billId: components["parameters"]["BillId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ForkBillRequest"];
-            };
-        };
-        responses: {
-            /** @description The new bill */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Bill"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Bill not found, or (`from: analysis`) its photo is no longer available */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            409: components["responses"]["IdempotencyConflict"];
-            /** @description Reading the photo again failed (`from: analysis`) */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-            /** @description Upstream parser provider error */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Reading the photo again ran out of time (PARSE_TIMEOUT) */
-            504: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    createSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateSessionRequest"];
-            };
-        };
-        responses: {
-            /** @description Session created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Bill not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The bill already has an open session (`SESSION_INVALID_STATE`) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    previewSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JoinByCodeRequest"];
-            };
-        };
-        responses: {
-            /** @description The bill as the landing page shows it */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SessionPreview"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            /** @description Unknown token, or a bill that isn't open */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too many tries from this address (`RATE_LIMITED`). */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    guestJoin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GuestJoinRequest"];
-            };
-        };
-        responses: {
-            /** @description The code was wrong or has expired (#214) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GuestJoinCodeRefused"];
-                };
-            };
-            /** @description Seated; keep the token */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GuestJoinResponse"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            /** @description Unknown token, or a bill that isn't taking new people */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too many joins (`RATE_LIMITED`). */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    guestJoinStart: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GuestJoinStartRequest"];
-            };
-        };
-        responses: {
-            /** @description Sent; `requestId` is this tab's secret for the code */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        requestId: string;
-                        /** @description The number in E.164 */
-                        phone: string;
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            /** @description Unknown token, or a bill that isn't taking new people */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too many codes (`RATE_LIMITED`). */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Texts aren't on here (`CHANNEL_UNAVAILABLE`). */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    resolveJoinCode: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["JoinByCodeRequest"];
-            };
-        };
-        responses: {
-            /** @description Resolved session id */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        sessionId: string;
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Code not found, expired, or attached to a non-claiming session */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Too many codes tried (`RATE_LIMITED`). */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session state */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    updateSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateSessionRequest"];
-            };
-        };
-        responses: {
-            /** @description Session with the new value */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description The bill is closed or deleted (`SESSION_INVALID_STATE`) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    shareSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    /** @description The Checkout Session just paid (`cs_...`), checked with Stripe if the webhook is late. */
-                    checkoutSessionId?: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Session, now in `claiming` with the join code visible */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description No paid fee, exemption or credit for this share (`TABLE_FEE_REQUIRED`) */
-            402: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Caller is not the creator */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Session is not in `setup` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setSessionPayoutCheck: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    payoutCheck: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The session, with `payoutCheck`. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description The bill is closed (`SESSION_INVALID_STATE`). */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    joinSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session including the new participant */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is not in `claiming`, or user already a participant */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setClaims: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClaimsRequest"];
-            };
-        };
-        responses: {
-            /** @description Session reflecting the updated claims */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is in a state where claims cannot be modified by this caller */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    addShare: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: uuid */
-                    itemId: string;
-                    /** @description How many people shared the item. Only read when starting the split. */
-                    ways?: number;
-                    /**
-                     * @description How many of a multi-quantity line the split covers. Only read
-                     *     when starting the split; defaults to every unit nobody has
-                     *     claimed. Always 1 on a quantity-1 line.
-                     */
-                    units?: number;
-                };
-            };
-        };
-        responses: {
-            /** @description Updated session, with the caller now in the splitter set */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description Session is not in setup/claiming or there aren't `units` left
-             *     unclaimed (`SESSION_INVALID_STATE`), the caller has claimed it
-             *     (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
-             *     has paid or the person who claimed it has paid (`SHARE_PAID`),
-             *     or a concurrent edit kept winning
-             *     (`SHARE_CONFLICT`).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setShareWays: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                itemId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    ways: number;
-                };
-            };
-        };
-        responses: {
-            /** @description Updated session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description Caller isn't in the split (`SHARE_CONFLICT`), `ways` is below the
-             *     number of people in it (`SHARE_WAYS_TOO_LOW`), someone in it has
-             *     paid (`SHARE_PAID`), or the session isn't in setup/claiming.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    removeShare: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                itemId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Updated session */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is in a state where shares cannot be modified */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    setReady: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    ready: boolean;
-                };
-            };
-        };
-        responses: {
-            /** @description Session, with the caller's readyToLock flipped */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session not in `claiming`, or caller is the creator */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    lockClaims: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": {
-                    /**
-                     * @description Skip the readiness precondition.
-                     * @default false
-                     */
-                    force?: boolean;
-                };
-            };
-        };
-        responses: {
-            /** @description Session, now in `paying` with `owedPence` computed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Caller is not the creator */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /**
-             * @description One of: session not in `claiming`, items unclaimed
-             *     (`CLAIMS_INCOMPLETE`), or participants not ready
-             *     (`PARTICIPANTS_NOT_READY`).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    closeSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session, now in `settled` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is `setup` or `abandoned` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    emailSessionReport: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Report sent to the caller's email */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        sent: boolean;
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is `setup` or `abandoned` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    abandonSession: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session, now in `abandoned` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Caller is not the creator */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Session is already `settled` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    markParticipantReceived: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                /** @description The guest whose money arrived */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session, with the guest paid up */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Session or guest not found, or caller is not the collector */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Session is in setup or deleted */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getGuestTexts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Reminder state per guest */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GuestTexts"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    remindGuest: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                /** @description The guest to remind */
-                userId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Sent; the guest's reminder state now */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GuestRemind"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description This guest can't be reminded */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-            /** @description Texts aren't available here */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    emailReceipt: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: email */
-                    email: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Receipt sent */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        sent: boolean;
-                    };
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /** @description Session is `setup` or `abandoned` */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    openPayments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Session, with `paymentsOpenedAt` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Session"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Session not found, or caller is not the lead */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Session is in setup, closed or deleted */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    listComments: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Comments, oldest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        comments: components["schemas"]["Comment"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Session not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    postComment: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PostCommentRequest"];
-            };
-        };
-        responses: {
-            /** @description The comment */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Comment"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Session not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The bill was deleted */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    listProofs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Screenshots */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        proofs: components["schemas"]["Proof"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Session or screenshot not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    startProof: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["StartProofRequest"];
-            };
-        };
-        responses: {
-            /** @description Where to PUT the image */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProofUploadSlot"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Session or screenshot not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The bill is deleted or not shared yet */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    proofSent: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                proofId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The screenshot */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Proof"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Session or screenshot not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Nothing uploaded yet */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    deleteProof: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-                proofId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed */
+            /** @description Removed (or there was none) */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4495,228 +2835,51 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Session or screenshot not found, or caller isn't at the table */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
         };
     };
-    initiatePayment: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
-                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            path: {
-                sessionId: components["parameters"]["SessionId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Payment created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InitiatePaymentResponse"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /** @description Caller is not a participant in this session */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            /** @description Payments not open yet (`PAYMENTS_NOT_OPEN`), session in setup or deleted, or nothing to pay */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getPayment: {
+    getFeeCharge: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                paymentId: components["parameters"]["PaymentId"];
+                billId: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Payment record */
+            /** @description The charge */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Payment"];
+                    "application/json": components["schemas"]["FeeCharge"];
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Caller is not authorized to view this payment */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
             404: components["responses"]["NotFound"];
         };
     };
-    confirmManualPayment: {
+    getMyBilling: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                paymentId: components["parameters"]["PaymentId"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Payment, now in `succeeded` */
+            /** @description Credits and fees */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Payment"];
+                    "application/json": components["schemas"]["BillingSummary"];
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Payment not found, or caller is not the collector */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Payment is in a state that can't be confirmed */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    markPaymentPaidByPayer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                paymentId: components["parameters"]["PaymentId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Payment with `payerClaimedPaidAt` set */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Payment"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            /** @description Payment not found, or caller is not the payer */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Payment is not in `pending` (e.g. already succeeded or failed) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    getBillLink: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The random token from a guest's text */
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The bill */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BillLinkView"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["RateLimited"];
-        };
-    };
-    stopReminders: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description The random token from a guest's text */
-                token: components["parameters"]["LinkToken"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Stopped */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        stopped: boolean;
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-            429: components["responses"]["RateLimited"];
         };
     };
     startTableFeeCheckout: {
@@ -4836,7 +2999,144 @@ export interface operations {
             };
         };
     };
-    getFeeCharge: {
+    getBill: {
+        parameters: {
+            query?: {
+                /** @description Specific version number; omit for latest */
+                version?: number;
+            };
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bill record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bill"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    amendBill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AmendBillRequest"];
+            };
+        };
+        responses: {
+            /** @description New bill version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bill"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Bill is frozen (session in `paying` or `settled`), or the amend would orphan existing
+             *     claims (`CLAIMS_EXCEED_QUANTITY`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    forkBill: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                billId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkBillRequest"];
+            };
+        };
+        responses: {
+            /** @description The new bill */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bill"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Bill not found, or (`from: analysis`) its photo is no longer available */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["IdempotencyConflict"];
+            /** @description Reading the photo again failed (`from: analysis`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Upstream parser provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the photo again ran out of time (PARSE_TIMEOUT) */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getBillImageUrl: {
         parameters: {
             query?: never;
             header?: never;
@@ -4847,20 +3147,233 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The charge */
+            /** @description Presigned URL */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FeeCharge"];
+                    "application/json": {
+                        /** Format: uri */
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
                 };
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
-    removeSavedCard: {
+    parseBill: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Parsed bill. When the photo is one this user read before, their own latest version of that bill, with `duplicate` saying where it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsedBill"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Upload not found or expired */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["IdempotencyConflict"];
+            /** @description Parser returned but output failed validation, or confidence below threshold */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Upstream parser provider error */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Reading the bill ran out of time (PARSE_TIMEOUT). The upload is kept, so the same uploadId can be parsed again. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startBillRead: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Reading has started (or, if it couldn't be started, has already failed) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["IdempotencyConflict"];
+        };
+    };
+    getBillRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                readId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The read */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillRead"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No such read for this user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    requestBillUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Upload slot or duplicate-bill resolution */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadSlot"] | components["schemas"]["UploadDuplicate"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getBillLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The bill */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillLinkView"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    stopReminders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The random token from a guest's text */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        stopped: boolean;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    getCurrentUser: {
         parameters: {
             query?: never;
             header?: never;
@@ -4869,7 +3382,945 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Removed (or there was none) */
+            /** @description The authenticated user, derived from the verified ID token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateCurrentUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    email?: string | "";
+                };
+            };
+        };
+        responses: {
+            /** @description Saved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        user: {
+                            userId: string;
+                            email: string;
+                            displayName: string;
+                        };
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    setMyPayoutAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PayoutAccount"];
+            };
+        };
+        responses: {
+            /**
+             * @description Always returned for valid bodies. The supplied account is echoed back
+             *     but **not** persisted.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        payoutAccount: components["schemas"]["PayoutAccount"];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMySessions: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of summaries to return (1–100, defaults to 20). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of session summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sessions: components["schemas"]["SessionSummary"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    signOutEverywhere: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out everywhere. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        ok: true;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not authorized to view this payment */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    confirmManualPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment, now in `succeeded` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Payment not found, or caller is not the collector */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Payment is in a state that can't be confirmed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markPaymentPaidByPayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                paymentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment with `payerClaimedPaidAt` set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Payment"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Payment not found, or caller is not the payer */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Payment is not in `pending` (e.g. already succeeded or failed) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Bill not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The bill already has an open session (`SESSION_INVALID_STATE`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Session with the new value */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill is closed or deleted (`SESSION_INVALID_STATE`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    abandonSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, now in `abandoned` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Session is already `settled` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimsRequest"];
+            };
+        };
+        responses: {
+            /** @description Session reflecting the updated claims */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is in a state where claims cannot be modified by this caller */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    closeSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, now in `settled` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listComments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Comments, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        comments: components["schemas"]["Comment"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    postComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostCommentRequest"];
+            };
+        };
+        responses: {
+            /** @description The comment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The bill was deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    joinSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session including the new participant */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is not in `claiming`, or user already a participant */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    lockClaims: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Skip the readiness precondition. */
+                    force?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Session, now in `paying` with `owedPence` computed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description One of: session not in `claiming`, items unclaimed
+             *     (`CLAIMS_INCOMPLETE`), or participants not ready
+             *     (`PARTICIPANTS_NOT_READY`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    openPayments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, with `paymentsOpenedAt` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session not found, or caller is not the lead */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is in setup, closed or deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    markParticipantReceived: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                /** @description The guest whose money arrived */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session, with the guest paid up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or guest not found, or caller is not the collector */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is in setup or deleted */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remindGuest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                /** @description The guest to remind */
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sent; the guest's reminder state now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestRemind"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description This guest can't be reminded */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+            /** @description Texts aren't available here */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    initiatePayment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated UUIDv7. Cached server-side for 24 hours. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payment created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InitiatePaymentResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Caller is not a participant in this session */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Payments not open yet (`PAYMENTS_NOT_OPEN`), session in setup or deleted, or nothing to pay */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setSessionPayoutCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    payoutCheck: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The session, with `payoutCheck`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description The bill is closed (`SESSION_INVALID_STATE`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listProofs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Screenshots */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        proofs: components["schemas"]["Proof"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    startProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartProofRequest"];
+            };
+        };
+        responses: {
+            /** @description Where to PUT the image */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProofUploadSlot"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The bill is deleted or not shared yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    deleteProof: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -4877,27 +4328,586 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    getMyBilling: {
+    proofSent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                proofId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The screenshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Proof"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Session or screenshot not found, or caller isn't at the table */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Nothing uploaded yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setReady: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ready: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Session, with the caller's readyToLock flipped */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session not in `claiming`, or caller is the creator */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    emailReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Receipt sent */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    emailSessionReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Report sent to the caller's email */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sent: boolean;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is `setup` or `abandoned` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    shareSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description The Checkout Session just paid (`cs_...`), checked with Stripe if the webhook is late. */
+                    checkoutSessionId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Session, now in `claiming` with the join code visible */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No paid fee, exemption or credit for this share (`TABLE_FEE_REQUIRED`) */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Caller is not the creator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Session is not in `setup` */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    addShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    itemId: string;
+                    /** @description How many people shared the item. Only read when starting the split. */
+                    ways?: number;
+                    /** @description How many of a multi-quantity line the split covers. Only read when starting the split; defaults to every unit nobody has claimed. Always 1 on a quantity-1 line. */
+                    units?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated session, with the caller now in the splitter set */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Session is not in setup/claiming or there aren't `units` left
+             *     unclaimed (`SESSION_INVALID_STATE`), the caller has claimed it
+             *     (`CLAIM_SHARE_CONFLICT`), the split is full and someone in it
+             *     has paid or the person who claimed it has paid (`SHARE_PAID`),
+             *     or a concurrent edit kept winning
+             *     (`SHARE_CONFLICT`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    setShareWays: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ways: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description Caller isn't in the split (`SHARE_CONFLICT`), `ways` is below the
+             *     number of people in it (`SHARE_WAYS_TOO_LOW`), someone in it has
+             *     paid (`SHARE_PAID`), or the session isn't in setup/claiming.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    removeShare: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Session is in a state where shares cannot be modified */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getGuestTexts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reminder state per guest */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestTexts"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveJoinCode: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinByCodeRequest"];
+            };
+        };
         responses: {
-            /** @description Credits and fees */
+            /** @description Resolved session id */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BillingSummary"];
+                    "application/json": {
+                        /** Format: uuid */
+                        sessionId: string;
+                    };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            /** @description Code not found, expired, or attached to a non-claiming session */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many codes tried (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    guestJoin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestJoinRequest"];
+            };
+        };
+        responses: {
+            /** @description The code was wrong or has expired (#214) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestJoinCodeRefused"];
+                };
+            };
+            /** @description Seated; keep the token */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestJoinResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't taking new people */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many joins (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    guestJoinStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestJoinStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Sent; `requestId` is this tab's secret for the code */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        requestId: string;
+                        /** @description The number in E.164 */
+                        phone: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't taking new people */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many codes (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Texts aren't on here (`CHANNEL_UNAVAILABLE`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    previewSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinByCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The bill as the landing page shows it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Unknown token, or a bill that isn't open */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many tries from this address (`RATE_LIMITED`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     stripeWebhook: {

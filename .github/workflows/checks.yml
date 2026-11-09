@@ -93,12 +93,12 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run openapi:lint
-      - name: Generated API types are up to date
+      - name: openapi.yaml and the client's types are what the code generates
         working-directory: .
         run: |
           npm run gen:api
-          git diff --exit-code packages/core/src/api/schema.d.ts \
-            || { echo "::error::Run 'npm run gen:api' and commit packages/core/src/api/schema.d.ts"; exit 1; }
+          git diff --exit-code apps/api/openapi.yaml packages/core/src/api/schema.d.ts \
+            || { echo "::error::Run 'npm run gen:api' and commit apps/api/openapi.yaml and packages/core/src/api/schema.d.ts"; exit 1; }
       - run: npm test
       - run: npm run build
       - name: Validate Lambda bundle (cdk synth + handler load)

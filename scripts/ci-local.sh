@@ -74,8 +74,8 @@ if [ "$api" = true ]; then
     step npm run openapi:lint
   )
   step npm run gen:api
-  git diff --exit-code packages/core/src/api/schema.d.ts \
-    || { echo "✗ Run 'npm run gen:api' and commit packages/core/src/api/schema.d.ts"; exit 1; }
+  git diff --exit-code apps/api/openapi.yaml packages/core/src/api/schema.d.ts \
+    || { echo "✗ Run 'npm run gen:api' and commit apps/api/openapi.yaml and packages/core/src/api/schema.d.ts"; exit 1; }
   (
     cd apps/api
     step npm test

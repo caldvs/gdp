@@ -110,38 +110,60 @@ export type Bill = z.infer<typeof BillSchema>;
 
 // ---- Request bodies ----
 
-export const UploadRequestSchema = z.object({
-  sha256: z.string().regex(/^[a-f0-9]{64}$/, 'sha256 must be 64 lowercase hex chars'),
-  sizeBytes: z
-    .number()
-    .int()
-    .positive()
-    .max(5 * 1024 * 1024),
-  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-  /** Local only: ignore an earlier read of the same photo. */
-  skipCache: z.boolean().optional(),
-});
+// The `.meta()` on request bodies names them and documents them in
+// openapi.yaml (src/openapi); it changes nothing about what's accepted.
+
+export const UploadRequestSchema = z
+  .object({
+    sha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/, 'sha256 must be 64 lowercase hex chars')
+      .meta({ description: 'SHA-256 hex of the resized image bytes (lowercase)' }),
+    sizeBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(5 * 1024 * 1024)
+      .meta({ description: 'Max 5 MB' }),
+    mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+    /** Local only: ignore an earlier read of the same photo. */
+    skipCache: z.boolean().optional().meta({
+      description:
+        "Local API only (ignored elsewhere): don't return an earlier bill for this photo, so it's uploaded and read again.",
+    }),
+  })
+  .meta({ id: 'UploadRequest' });
 export type UploadRequest = z.infer<typeof UploadRequestSchema>;
 
-export const ParseRequestSchema = z.object({
-  uploadId: z.string().uuid(),
-  /** Local only: read the photo again even if it was read before. */
-  skipCache: z.boolean().optional(),
-});
+export const ParseRequestSchema = z
+  .object({
+    uploadId: z.string().uuid(),
+    /** Local only: read the photo again even if it was read before. */
+    skipCache: z.boolean().optional().meta({
+      description:
+        "Local API only (ignored elsewhere): read the photo with the model again even if it was read before. The new bill replaces the old one as this photo's bill.",
+    }),
+  })
+  .meta({ id: 'ParseRequest' });
 export type ParseRequest = z.infer<typeof ParseRequestSchema>;
 
 /**
  * Start again: a new bill from the latest version (the lead's corrections
  * carry over) or from what today's parser reads off the photo.
  */
-export const ForkBillRequestSchema = z.object({
-  from: z.enum(['latest', 'analysis']).default('latest'),
-});
+export const ForkBillRequestSchema = z
+  .object({
+    from: z.enum(['latest', 'analysis']).default('latest').meta({
+      description:
+        "`latest`: copy the latest version (the lead's corrections carry over). `analysis`: what the current parser reads off the photo.",
+    }),
+  })
+  .meta({ id: 'ForkBillRequest' });
 export type ForkBillRequest = z.infer<typeof ForkBillRequestSchema>;
 
 // Bounds on what a lead can send (#155): far past any real bill, and they
-// keep a bill version well under DynamoDB's 400 KB item limit. Mirrored in
-// openapi.yaml.
+// keep a bill version well under DynamoDB's 400 KB item limit. openapi.yaml
+// is generated from the schema below, so it states them too.
 export const AMEND_LIMITS = {
   items: 200,
   nameLength: 200,
@@ -151,39 +173,50 @@ export const AMEND_LIMITS = {
   discounts: 20,
 } as const;
 
-export const AmendBillRequestSchema = z.object({
-  items: z
-    .array(
-      z.object({
-        itemId: z.string().uuid().optional(),
-        name: z.string().min(1).max(AMEND_LIMITS.nameLength),
-        unitPricePence: z.number().int().nonnegative().max(AMEND_LIMITS.unitPricePence),
-        quantity: z.number().int().positive().max(AMEND_LIMITS.quantity),
-        category: BillItemCategory,
-        course: BillItemCourse.optional(),
+export const AmendBillRequestSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          itemId: z.string().uuid().optional().meta({
+            description: 'Provide existing itemId to preserve identity; omit for a new item',
+          }),
+          name: z.string().min(1).max(AMEND_LIMITS.nameLength),
+          unitPricePence: z.number().int().nonnegative().max(AMEND_LIMITS.unitPricePence),
+          quantity: z.number().int().positive().max(AMEND_LIMITS.quantity),
+          category: BillItemCategory,
+          course: BillItemCourse.optional(),
+        }),
+      )
+      .min(1)
+      .max(AMEND_LIMITS.items),
+    taxPence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
+    serviceChargePence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
+    // The shared discount lines. Absent keeps the bill's; [] removes them.
+    discounts: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(AMEND_LIMITS.nameLength),
+          amountPence: z.number().int().positive().max(AMEND_LIMITS.extraPence),
+        }),
+      )
+      .max(AMEND_LIMITS.discounts)
+      .optional()
+      .meta({
+        description:
+          "The bill's shared discounts. Absent keeps them; [] removes them. More off than the items come to is INVALID_INPUT.",
       }),
-    )
-    .min(1)
-    .max(AMEND_LIMITS.items),
-  taxPence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
-  serviceChargePence: z.number().int().nonnegative().max(AMEND_LIMITS.extraPence),
-  // The shared discount lines. Absent keeps the bill's; [] removes them.
-  discounts: z
-    .array(
-      z.object({
-        name: z.string().min(1).max(AMEND_LIMITS.nameLength),
-        amountPence: z.number().int().positive().max(AMEND_LIMITS.extraPence),
+    // Set to override the parsed venue. Absent keeps whatever the bill has.
+    venue: z
+      .object({
+        name: z.string().min(1).max(80),
+        placeId: z.string().max(200).optional(),
+        address: z.string().max(300).optional(),
+      })
+      .optional()
+      .meta({
+        description: 'Set to override the parsed venue; absent keeps whatever the bill has.',
       }),
-    )
-    .max(AMEND_LIMITS.discounts)
-    .optional(),
-  // Set to override the parsed venue. Absent keeps whatever the bill has.
-  venue: z
-    .object({
-      name: z.string().min(1).max(80),
-      placeId: z.string().max(200).optional(),
-      address: z.string().max(300).optional(),
-    })
-    .optional(),
-});
+  })
+  .meta({ id: 'AmendBillRequest' });
 export type AmendBillRequest = z.infer<typeof AmendBillRequestSchema>;

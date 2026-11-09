@@ -77,7 +77,7 @@ export type SetReadyRequest = z.infer<typeof SetReadyRequestSchema>;
 
 export const LockClaimsRequestSchema = z.object({
   // Bypass the all-ready precondition. Useful if a guest has dropped off.
-  force: z.boolean().optional(),
+  force: z.boolean().optional().meta({ description: 'Skip the readiness precondition.' }),
 });
 export type LockClaimsRequest = z.infer<typeof LockClaimsRequestSchema>;
 
@@ -97,8 +97,13 @@ const UnitsSchema = z.number().int().min(1).max(SHARE_UNITS_MAX);
 // it defaults to every unit nobody has claimed.
 export const AddShareRequestSchema = z.object({
   itemId: z.string().uuid(),
-  ways: WaysSchema.optional(),
-  units: UnitsSchema.optional(),
+  ways: WaysSchema.optional().meta({
+    description: 'How many people shared the item. Only read when starting the split.',
+  }),
+  units: UnitsSchema.optional().meta({
+    description:
+      'How many of a multi-quantity line the split covers. Only read when starting the split; defaults to every unit nobody has claimed. Always 1 on a quantity-1 line.',
+  }),
 });
 export type AddShareRequest = z.infer<typeof AddShareRequestSchema>;
 
@@ -208,50 +213,71 @@ export type Session = z.infer<typeof SessionSchema>;
 
 // ---- Request bodies ----
 
-export const CreateSessionRequestSchema = z.object({
-  billId: z.string().uuid(),
-  billVersion: z.number().int().min(1).optional(),
-  expectedDiners: ExpectedDinersSchema.optional(),
-});
+export const CreateSessionRequestSchema = z
+  .object({
+    billId: z.string().uuid(),
+    billVersion: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .meta({ description: 'Defaults to the latest version of the bill at session-create time' }),
+    expectedDiners: ExpectedDinersSchema.optional().meta({
+      description: 'How many people are eating, lead included. Optional.',
+    }),
+  })
+  .meta({ id: 'CreateSessionRequest' });
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
 
 // PATCH /v1/sessions/:id body — the lead changes how many are eating;
 // null clears it.
 export const UpdateSessionRequestSchema = z
-  .object({ expectedDiners: ExpectedDinersSchema.nullable() })
-  .strict();
+  .object({
+    expectedDiners: ExpectedDinersSchema.nullable().meta({
+      description: 'How many people are eating, lead included; `null` clears it.',
+    }),
+  })
+  .strict()
+  .meta({ id: 'UpdateSessionRequest' });
 export type UpdateSessionRequest = z.infer<typeof UpdateSessionRequestSchema>;
 
-export const JoinByCodeRequestSchema = z.object({
-  code: z.string().regex(JOIN_CODE),
-});
+export const JoinByCodeRequestSchema = z
+  .object({
+    code: z.string().regex(JOIN_CODE),
+  })
+  .meta({ id: 'JoinByCodeRequest' });
 export type JoinByCodeRequest = z.infer<typeof JoinByCodeRequestSchema>;
 
 /** A guest joining with just a name (#183). */
-export const GuestJoinRequestSchema = z.object({
-  code: z.string().regex(JOIN_CODE),
-  name: z
-    .string()
-    .trim()
-    .min(1)
-    .max(40)
-    // No markup or control characters: it's shown to everyone at the table.
-    .refine((n) => !/[<>]/.test(n) && [...n].every((ch) => ch.charCodeAt(0) >= 32), 'Not a name'),
-  // #214: where texts are on, the guest proves their mobile number with the
-  // 4-digit code from /guest-join/start.
-  requestId: z.string().max(100).optional(),
-  phoneCode: z
-    .string()
-    .regex(/^[0-9]{4}$/)
-    .optional(),
-});
+export const GuestJoinRequestSchema = z
+  .object({
+    code: z.string().regex(JOIN_CODE),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(40)
+      // No markup or control characters: it's shown to everyone at the table.
+      .refine((n) => !/[<>]/.test(n) && [...n].every((ch) => ch.charCodeAt(0) >= 32), 'Not a name'),
+    // #214: where texts are on, the guest proves their mobile number with the
+    // 4-digit code from /guest-join/start.
+    requestId: z.string().max(100).optional().meta({ description: 'From guest-join/start (#214)' }),
+    phoneCode: z
+      .string()
+      .regex(/^[0-9]{4}$/)
+      .optional()
+      .meta({ description: 'The texted code (#214)' }),
+  })
+  .meta({ id: 'GuestJoinRequest' });
 export type GuestJoinRequest = z.infer<typeof GuestJoinRequestSchema>;
 
 /** #214: text a guest the code that proves their number. */
-export const GuestJoinStartRequestSchema = z.object({
-  code: z.string().regex(JOIN_CODE),
-  phone: z.string().min(6).max(24),
-});
+export const GuestJoinStartRequestSchema = z
+  .object({
+    code: z.string().regex(JOIN_CODE),
+    phone: z.string().min(6).max(24).meta({ description: 'A UK mobile' }),
+  })
+  .meta({ id: 'GuestJoinStartRequest' });
 
 /** What the QR's landing page shows before anyone joins (#183). No bank details (ADR-0002). */
 export interface SessionPreview {
@@ -266,10 +292,15 @@ export interface SessionPreview {
   people: string[];
 }
 
-export const ClaimsRequestSchema = z.object({
-  // A bill has at most 200 lines (AMEND_LIMITS, #155).
-  claimedItemIds: z.array(z.string().uuid()).max(200),
-});
+export const ClaimsRequestSchema = z
+  .object({
+    // A bill has at most 200 lines (AMEND_LIMITS, #155).
+    claimedItemIds: z
+      .array(z.string().uuid())
+      .max(200)
+      .meta({ description: "Replaces the caller's full claim list; deduplicated server-side" }),
+  })
+  .meta({ id: 'ClaimsRequest' });
 
 // PUT /v1/sessions/:id/payout-check body (#151): the lead's device's
 // fingerprint of the bank details it puts in the join link. Never the

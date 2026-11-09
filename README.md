@@ -46,10 +46,10 @@ Bill reading uses Bedrock even locally: set `BEDROCK_MODEL_ID` and `AWS_PROFILE=
 | `npm test`                                 | Unit tests (`packages/core`, `apps/api`)                                                                                                                                                                                                                                            |
 | `npm run test:int -w apps/api`             | Integration tests (needs `npm run ddb:up -w apps/api`)                                                                                                                                                                                                                              |
 | `npm run build && npm run e2e -w apps/web` | Playwright e2e against an in-memory fake API                                                                                                                                                                                                                                        |
-| `npm run gen:api`                          | Regenerate client types from `apps/api/openapi.yaml`                                                                                                                                                                                                                                |
+| `npm run gen:api`                          | Regenerate `apps/api/openapi.yaml` from the API's Zod, then the client types from it                                                                                                                                                                                                                              |
 | `npm run deploy:dev -w apps/api`           | Deploy the dev API stack and smoke-test it                                                                                                                                                                                                                                          |
 
-An API contract change and the matching client change go in the same commit, since the client types come from `openapi.yaml`.
+An API contract change and the matching client change go in the same commit: `openapi.yaml` is generated from the API's Zod, and the client types from `openapi.yaml`.
 
 ## Docs
 

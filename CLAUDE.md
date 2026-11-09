@@ -33,7 +33,7 @@ Each has a README. The diagrams in `docs/architecture/` show every route, AWS re
 - `npm run test:cov -w apps/api` / `-w packages/core`: tests with coverage and the floors CI enforces (API needs the integration services).
 - `npm run test:int -w apps/api`: integration tests. Needs `npm run ddb:up -w apps/api`.
 - e2e (Playwright against the in-memory `FakeApi`): **never run it on Callum's Mac** (it crashed the machine, 8 Nov 2026). Push the commit to a `ci/<name>` branch; GitHub's Checks run it there. Visual baselines are CI's; don't commit locally-made snapshots.
-- `npm run gen:api`: after any change to `apps/api/openapi.yaml`. Commit the contract and client change together.
+- `npm run gen:api`: after any change to the API's Zod (`apps/api/src/openapi`, or a request schema in `apps/api/src/types`). It writes `apps/api/openapi.yaml` (generated: never edit it) and the client types; commit them with the change. CI fails if either is stale.
 
 ## Rules that keep breaking
 

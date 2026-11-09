@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import { StartTableFeeRequestSchema } from '../types/billing.js';
 import { requireAuth } from '../middleware/auth.js';
 import { callerOf } from '../context/caller.js';
 import type { IdTokenVerifier } from '../services/auth.js';
@@ -11,8 +11,6 @@ export interface BillingRoutesDeps {
   tableFees: TableFeeService;
 }
 
-const StartTableFeeSchema = z.object({ billId: z.string().uuid() });
-
 export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
   const r = new Hono();
 
@@ -20,7 +18,7 @@ export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
   r.post(
     '/table-fee',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', StartTableFeeSchema),
+    zValidator('json', StartTableFeeRequestSchema),
     async (c) => {
       const { billId } = c.req.valid('json');
       const result = await deps.tableFees.startCheckout({ caller: callerOf(c), billId });
@@ -32,7 +30,7 @@ export const buildBillingRoutes = (deps: BillingRoutesDeps): Hono => {
   r.post(
     '/table-fee/saved-card',
     requireAuth(deps.idTokenVerifier),
-    zValidator('json', StartTableFeeSchema),
+    zValidator('json', StartTableFeeRequestSchema),
     async (c) => {
       const { billId } = c.req.valid('json');
       return c.json(await deps.tableFees.holdOnSavedCard({ caller: callerOf(c), billId }));

@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
-import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
+import {
+  EmailStartRequestSchema,
+  EmailVerifyRequestSchema,
+  PhoneStartRequestSchema,
+  PhoneVerifyRequestSchema,
+} from '../types/auth.js';
 import { createEmailSignInService } from '../services/auth/emailSignIn.js';
 import { createPhoneSignInService } from '../services/auth/phoneSignIn.js';
 import type { SmsSender } from '../services/messaging/sms.js';
@@ -16,26 +21,6 @@ export const sourceIpOf = (env: unknown): string | undefined => {
     ?.requestContext?.http?.sourceIp;
   return typeof ip === 'string' && ip ? ip : undefined;
 };
-
-const StartSchema = z.object({
-  email: z.string().email().max(254),
-});
-
-const VerifySchema = z.object({
-  requestId: z.string().min(1).max(200),
-  code: z.string().regex(/^[0-9]{6}$/),
-});
-
-const PhoneStartSchema = z.object({
-  phone: z.string().min(6).max(24),
-  // Texts are the only way (WhatsApp dropped); older pages still send it.
-  channel: z.literal('sms').optional(),
-});
-
-const PhoneVerifySchema = z.object({
-  requestId: z.string().min(1).max(200),
-  code: z.string().regex(/^[0-9]{4}$/),
-});
 
 export interface AuthRoutesDeps {
   emailSender: EmailSender;
@@ -78,7 +63,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
 
   r.post(
     '/phone/start',
-    zValidator('json', PhoneStartSchema, (result, c) => {
+    zValidator('json', PhoneStartRequestSchema, (result, c) => {
       if (!result.success) {
         return c.json(
           {
@@ -101,7 +86,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
 
   r.post(
     '/phone/verify',
-    zValidator('json', PhoneVerifySchema, (result, c) => {
+    zValidator('json', PhoneVerifyRequestSchema, (result, c) => {
       if (!result.success) {
         return c.json(
           {
@@ -123,7 +108,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
 
   r.post(
     '/email/start',
-    zValidator('json', StartSchema, (result, c) => {
+    zValidator('json', EmailStartRequestSchema, (result, c) => {
       if (!result.success) {
         return c.json(
           {
@@ -162,7 +147,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
   // requestId stays in the body and out of request logs.
   r.post(
     '/email/verify',
-    zValidator('json', VerifySchema, (result, c) => {
+    zValidator('json', EmailVerifyRequestSchema, (result, c) => {
       if (!result.success) {
         return c.json(
           {
@@ -185,7 +170,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
   if (deps.devEmailSignIn) {
     r.post(
       '/email/dev-sign-in',
-      zValidator('json', StartSchema, (result, c) => {
+      zValidator('json', EmailStartRequestSchema, (result, c) => {
         if (!result.success) {
           return c.json(
             {
@@ -209,7 +194,7 @@ export const buildAuthRoutes = (deps: AuthRoutesDeps): Hono => {
   if (deps.testAccountSignIn) {
     r.post(
       '/email/test-sign-in',
-      zValidator('json', StartSchema, (result, c) => {
+      zValidator('json', EmailStartRequestSchema, (result, c) => {
         if (!result.success) {
           return c.json(
             {

@@ -47,4 +47,4 @@ google-chrome --headless=new --hide-scrollbars --window-size=1720,1780 --screens
 google-chrome --headless=new --hide-scrollbars --window-size=1600,3500 --screenshot=data-model.png "file://$PWD/data-model.html"
 ```
 
-Sources of truth: `apps/api/openapi.yaml` for endpoints, `apps/api/infra/main.ts` for AWS resources, `apps/api/src/storage/*` for keys. Update the diagrams in the same PR as a change to any of those.
+Sources of truth: `apps/api/openapi.yaml` (generated from `apps/api/src/openapi`) for endpoints, `apps/api/infra/main.ts` for AWS resources, `apps/api/src/storage/*` for keys. Update the diagrams in the same PR as a change to any of those.

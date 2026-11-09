@@ -5,20 +5,12 @@ import { AppError } from '../errors/AppError.js';
 import { listMySessions } from '../services/sessions/mySessions.js';
 import { userStore } from '../storage/userStore.js';
 import { z } from 'zod';
-import { SetPayoutAccountRequestSchema } from '../types/users.js';
+import { ProfilePatchSchema, SetPayoutAccountRequestSchema } from '../types/users.js';
 import type { IdTokenVerifier } from '../services/auth.js';
 import { mintSessionToken } from '../services/auth/sessionToken.js';
 
 const DEFAULT_HISTORY_LIMIT = 20;
 const MAX_HISTORY_LIMIT = 100;
-
-const ProfilePatchSchema = z
-  .object({
-    displayName: z.string().trim().min(1).max(40).optional(),
-    /** Where bill emails go (#213). Not used to sign in; '' removes it. */
-    email: z.union([z.string().trim().email().max(254), z.literal('')]).optional(),
-  })
-  .strict();
 
 export const buildMeRoutes = (verifier?: IdTokenVerifier, jwtSecret?: Uint8Array): Hono => {
   const r = new Hono();

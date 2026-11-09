@@ -75,7 +75,7 @@ describe('bill reports', () => {
     expect(done).toMatchObject({ due: 1, sent: 1, failed: [] });
     expect(sent.map((m) => m.to)).toEqual([`${lead}@example.com`]);
     expect(sent[0]!.category).toBe('lead-settled');
-    expect(sent[0]!.subject).toMatch(/^g-[^ ]+ still owes you £\d+\.\d\d for /);
+    expect(sent[0]!.subject).toMatch(/^Your bill summary (for .+ )?is ready$/);
     expect(sent[0]!.body.text).toContain(`https://test.paymeback.dev/session/${sessionId}`);
 
     // Sent once: the row is gone.

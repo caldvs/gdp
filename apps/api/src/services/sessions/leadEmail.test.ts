@@ -45,47 +45,30 @@ const owing = (name: string, p: number) =>
   diner({ userId: name, displayName: name, totalPence: p });
 
 describe('#221 lead email', () => {
-  it('subject says how it ended', () => {
-    expect(leadSubject(report([paid('Sam', 2000)]))).toBe('Everyone’s paid for Gennaro');
-    expect(leadSubject(report([paid('Sam', 2000), owing('Tom Hill', 2531)]))).toBe(
-      'Tom still owes you £25.31 for Gennaro',
-    );
-    expect(leadSubject(report([owing('Tom', 2531), owing('Ana', 1000)]))).toBe(
-      '2 people still owe you £35.31 for Gennaro',
-    );
-    expect(
-      leadSubject(
-        report([diner({ displayName: 'Ana', paid: { kind: 'says_paid', amountPence: 900 } })]),
-      ),
-    ).toBe('Check Ana’s payment for Gennaro');
-    expect(leadSubject(report([], { venueName: undefined }))).toBe('Everyone’s paid for your bill');
-  });
-
-  it('body: the lead’s share, each guest, Nobody claimed, Open the bill; html escaped; plain text too', () => {
+  it('says the summary is ready, with no amounts or names', () => {
     const r = report([paid('Sam', 2000), owing('<Tom>', 2531)], {
       unclaimed: [{ name: 'Tiramisu', pence: 650 }],
       unclaimedPence: 731,
       collectedPence: 2000,
     });
+    expect(leadSubject(r)).toBe('Your bill summary for Gennaro is ready');
     const e = renderLeadEmail(r, 'https://paymeback.dev/session/s1');
-    expect(e.text).toContain('Your share  £32.00');
-    expect(e.text).toContain('Sam  Paid £20.00');
-    expect(e.text).toContain('<Tom>  Owes £25.31');
-    expect(e.text).toContain('Nobody claimed (not paid back)');
-    expect(e.text).toContain('  Tiramisu  £6.50');
+    expect(e.subject).toBe('Your bill summary for Gennaro is ready');
+    expect(e.text).toContain('See who paid what in the app.');
     expect(e.text).toContain('Open the bill: https://paymeback.dev/session/s1');
-    expect(e.html).toContain('&lt;Tom&gt;');
-    expect(e.html).not.toContain('<Tom>');
-    expect(e.html).toContain('Nobody claimed');
     expect(e.html).toContain('href="https://paymeback.dev/session/s1"');
+    for (const part of [e.subject, e.text, e.html]) {
+      expect(part).not.toMatch(/£|Tom|Sam|Tiramisu/);
+    }
     // Mail-client safe: tables, no web fonts, masks or stylesheets.
     expect(e.html).not.toMatch(/@font-face|mask|<style|<link/);
     expect(e.html).toContain('role="presentation"');
   });
 
-  it('nobody joined', () => {
-    const e = renderLeadEmail(report([]), 'https://x/session/s');
-    expect(e.text).toContain('Nobody joined.');
-    expect(e.html).toContain('Nobody joined.');
+  it('no venue on the bill; venue names are escaped', () => {
+    expect(leadSubject(report([], { venueName: undefined }))).toBe('Your bill summary is ready');
+    const e = renderLeadEmail(report([], { venueName: '<b>Bar</b>' }), 'https://x/session/s');
+    expect(e.html).toContain('&lt;b&gt;Bar&lt;/b&gt;');
+    expect(e.html).not.toContain('<b>Bar</b>');
   });
 });

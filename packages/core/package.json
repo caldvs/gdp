@@ -18,7 +18,7 @@
   "dependencies": {
     "@tanstack/react-query": "^5.100.9",
     "heic2any": "^0.0.4",
-    "js-sha256": "^0.11.1",
+    "js-sha256": "^1.0.0",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
